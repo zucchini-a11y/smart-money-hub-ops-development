@@ -47,3 +47,12 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Local bot data and secrets
+data/*.sqlite3
+data/*.sqlite3-*
+.env
