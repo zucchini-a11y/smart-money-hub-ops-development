@@ -1,0 +1,376 @@
+I want you to build a Telegram bot called “Smart Money Hub AI Coach.”
+
+This is NOT just a quiz bot. It should become an interactive SMC trading education, assessment, journaling, and accountability bot for members of my Telegram community.
+
+IMPORTANT:
+
+* Use Python.
+* Use the Telegram Bot API.
+* Use the Telegram bot token already provided in the project.
+* Do NOT require OpenAI, Grok, or any paid AI API for the first version.
+* Build the system so an AI provider can be added later without rebuilding the whole application.
+* Do not ask me for an OpenAI API key.
+* Keep all secrets in environment variables.
+* The bot must work without an AI API initially.
+
+1. MEMBER ONBOARDING
+
+When a member sends /start:
+
+Welcome them to Smart Money Hub.
+
+Explain that the bot will help them:
+
+* Learn SMC
+* Test their knowledge
+* Journal trades
+* Review mistakes
+* Track trading discipline
+* Prepare for the trading week
+* Receive accountability check-ins
+
+Ask them to choose:
+
+[Start SMC Assessment]
+[Trading Journal]
+[Weekly Check-In]
+[My Progress]
+[Learn SMC]
+
+Store:
+
+* Telegram user ID
+* Username
+* First name
+* Date they started the bot
+* Assessment history
+* Trade journal history
+* Weak areas
+* Strong areas
+* Last check-in
+* Last interaction
+
+2. SMC ASSESSMENT
+
+Create a 10-question SMC assessment.
+
+Topics:
+
+* Market structure
+* BOS
+* CHoCH
+* Liquidity
+* SSL
+* BSL
+* Order Blocks
+* FVG
+* IFVG
+* POI
+* Displacement
+* Retest
+* Confirmation
+* Risk management
+
+Use multiple-choice questions for the first version.
+
+After completion:
+
+* Calculate score
+* Show score out of 10
+* Show percentage
+* Show questions answered incorrectly
+* Explain the correct answer
+* Identify weak topics
+* Save the result
+
+Use these Smart Money Hub principles:
+
+“No confirmation, no entry.”
+
+“No retest, no entry.”
+
+“Don’t chase missed trades.”
+
+“Liquidity matters.”
+
+“Displacement matters.”
+
+“A POI needs a valid reason.”
+
+“Risk management comes before profit.”
+
+3. TRADING JOURNAL
+
+Create a Trading Journal button.
+
+When a member selects it, ask:
+
+1. What pair/asset did you trade?
+2. Buy or sell?
+3. What was your POI?
+4. What timeframe?
+5. What confirmation did you see?
+6. Was liquidity swept?
+7. Did you wait for a retest?
+8. Where was your stop loss?
+9. Where was your TP?
+10. Did you take partial profit?
+11. Did you move SL to BE?
+12. What was the result?
+13. Did you follow your plan?
+14. What mistake did you make, if any?
+15. What did you learn?
+
+Save the entire trade journal.
+
+Allow the member to review previous trades.
+
+4. TRADE REVIEW
+
+After a member journals a trade, give them a structured review.
+
+For example:
+
+TRADE REVIEW
+
+Asset: Gold
+Direction: Sell
+POI: 15M FVG
+Confirmation: Rejection wick
+Liquidity sweep: No
+Retest: No
+Result: Loss
+
+Potential issue:
+You entered before sufficient confirmation.
+
+Reminder:
+No confirmation = no entry.
+
+Do not insult or shame the member.
+
+The purpose is education and discipline, not predicting trades.
+
+5. WEEKLY CHECK-IN
+
+Create a Weekly Check-In.
+
+Ask:
+
+1. How many trades did you take this week?
+2. How many were winners?
+3. How many were losses?
+4. Did you follow your trading plan?
+5. Did you enter without confirmation?
+6. Did you chase any missed trades?
+7. Did you move your SL unnecessarily?
+8. Did you secure partials/BE according to your plan?
+9. What was your biggest mistake?
+10. What is your main focus for next week?
+
+Save the answers.
+
+At the end, give them a weekly discipline summary.
+
+6. SUNDAY PREPARATION
+
+Create a Sunday preparation flow.
+
+Ask:
+
+“What is your main trading goal for this week?”
+
+“What SMC concept are you currently working on?”
+
+“What trading mistake are you determined not to repeat?”
+
+“What will you do if you miss a setup?”
+
+Then remind them:
+
+“No confirmation, no entry.”
+
+“No retest, no entry.”
+
+“Do not chase.”
+
+7. MEMBER PROGRESS
+
+Create a “My Progress” section.
+
+Show:
+
+* Tests completed
+* Average test score
+* Latest score
+* Number of trades journaled
+* Winning trades
+* Losing trades
+* Most common mistake
+* Strongest SMC topic
+* Weakest SMC topic
+* Weekly check-in history
+
+Example:
+
+SMART MONEY HUB PROGRESS
+
+Assessment Average: 82%
+
+Strongest:
+Market Structure
+
+Needs Work:
+Liquidity
+
+Trades Journaled: 17
+
+Most Common Mistake:
+Entering before confirmation
+
+Current Focus:
+Waiting for liquidity + displacement + confirmation.
+
+8. LEARN SMC
+
+Create an education menu:
+
+[Market Structure]
+[BOS & CHoCH]
+[Liquidity]
+[Order Blocks]
+[FVG]
+[POI]
+[Confirmation]
+[Retest]
+[Risk Management]
+[Trading Psychology]
+
+For now, use short predefined educational explanations.
+
+Make the education content easy for me to edit later.
+
+9. REMINDERS / CHECK-INS
+
+Design the system so that members who have previously started the bot can receive scheduled private messages.
+
+Examples:
+
+Sunday:
+“🧠 Sunday Check-In — Are you prepared for the week?”
+
+After a journal entry:
+“📋 Trade Review Reminder — Have you reviewed today’s trade?”
+
+Weekly:
+“How did you perform this week?”
+
+IMPORTANT:
+Only send private messages to users who have previously started/interacted with the bot and have not blocked it.
+
+Add an unsubscribe/stop option so users can stop scheduled messages.
+
+10. DATABASE
+
+Use a simple database such as SQLite for the first version.
+
+Create tables/models for:
+
+Users
+Assessments
+Assessment Answers
+Trades
+Weekly Check-Ins
+Progress
+Reminders
+
+Make sure the bot can retrieve a member’s previous information.
+
+11. FUTURE AI INTEGRATION
+
+Do NOT connect an AI API yet.
+
+However, structure the code so that later we can add an AI provider.
+
+Create a clean function/service such as:
+
+ai_evaluate_answer()
+
+The first version can use predefined rules.
+
+Later, I want an AI to:
+
+* Understand written answers
+* Evaluate SMC reasoning
+* Ask follow-up questions
+* Review trade journals
+* Identify recurring mistakes
+* Personalize questions
+* Remember the member’s learning weaknesses
+* Act as an SMC accountability coach
+
+Do not hard-code the application around OpenAI.
+
+12. ADMIN FEATURES
+
+Create an admin section that only I can access.
+
+I should eventually be able to see:
+
+* Number of members
+* Active members
+* Assessment scores
+* Average score
+* Most common weak topic
+* Number of trades journaled
+* Most common trading mistake
+* Weekly participation
+
+Use my Telegram user ID as the admin ID and store it as an environment variable.
+
+13. SAFETY
+
+This is an educational and journaling bot.
+
+It should NOT promise profits.
+
+It should NOT tell members that a trade will definitely win.
+
+It should NOT encourage excessive risk.
+
+When discussing trades, emphasize analysis, confirmation, risk management and journaling.
+
+14. USER EXPERIENCE
+
+Use Telegram inline buttons wherever possible.
+
+Keep messages short and natural.
+
+Use emojis moderately.
+
+Make navigation simple.
+
+Always provide:
+
+[⬅️ Back]
+[🏠 Main Menu]
+
+Handle users pressing buttons in the middle of a conversation gracefully.
+
+15. TESTING
+
+After building the application:
+
+1. Check that /start works.
+2. Check the assessment.
+3. Check scoring.
+4. Check trade journaling.
+5. Check weekly check-in.
+6. Check progress.
+7. Check that data is saved.
+8. Check that scheduled messaging only targets users who have interacted with the bot.
+9. Check that the bot restarts without losing database data.
+
+If anything is missing or broken, fix it before telling me the project is complete.
+
+Explain to me in simple terms what you built and exactly how I should test it from Telegram.

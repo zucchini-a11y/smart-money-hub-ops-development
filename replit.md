@@ -1,6 +1,6 @@
-# Smart Money Hub SMC Assessment Bot
+# Smart Money Hub AI Coach
 
-A Python Telegram bot that tests Smart Money Hub members on Smart Money Concepts and stores completed scores locally.
+A Python Telegram Bot API app for SMC education, assessments, trade journaling, and member accountability. The first version uses deterministic rules only; no AI provider or paid AI API is connected.
 
 ## Run & Operate
 
@@ -15,6 +15,8 @@ A Python Telegram bot that tests Smart Money Hub members on Smart Money Concepts
 - Required env: `DATABASE_URL` — Postgres connection string
 - Bot secret: `TELEGRAM_BOT_TOKEN` — get it from Telegram's `@BotFather`; never put it in code
 - Optional bot setting: `SMH_DATABASE_PATH` — defaults to `data/smart_money_hub.sqlite3`
+- Optional admin secret: `ADMIN_TELEGRAM_ID` — numeric Telegram user ID shown by `/myid`
+- Optional reminder settings: `SMH_REMINDER_TIMEZONE` (default `Africa/Lagos`) and `SMH_SUNDAY_REMINDER_TIME` (default `09:00`)
 
 ## Stack
 
@@ -32,32 +34,38 @@ A Python Telegram bot that tests Smart Money Hub members on Smart Money Concepts
 - `smart_money_hub_bot/questions.py` — editable 10-question SMC assessment
 - `smart_money_hub_bot/scoring.py` — deterministic answer checking and results
 - `smart_money_hub_bot/telegram_api.py` — Telegram Bot API HTTP client
-- `smart_money_hub_bot/bot.py` — Telegram commands, quiz sessions, and result messages
-- `smart_money_hub_bot/storage.py` — local SQLite score records
+- `smart_money_hub_bot/bot.py` — Telegram menus, assessment, journal, check-in, progress, and reminders
+- `smart_money_hub_bot/flows.py` — editable journal and check-in prompts
+- `smart_money_hub_bot/education.py` — editable lesson cards
+- `smart_money_hub_bot/grading.py` — provider-neutral written-answer evaluation interface with a deterministic implementation
+- `smart_money_hub_bot/storage.py` — SQLite persistence and prior-score migration
 - `smart_money_hub_bot/README.md` — setup, run, and test instructions
 
 ## Architecture decisions
 
 - The current bot uses only Telegram and Python's standard library; no AI or paid API is required.
-- Questions, transport, scoring, and persistence are separate so a future written-answer grader can be added without replacing the quiz flow.
-- Active quiz answers are held in memory; completed scores are stored in SQLite.
+- Assessment questions, education content, flows, Telegram transport, grading, and persistence are separated so a future evaluator can be added without replacing the bot.
+- The first version uses no OpenAI, Grok, or other AI service; the written-answer evaluator uses configured concepts and deterministic matching.
+- In-progress conversations are held in memory; completed member records are stored in SQLite.
+- Sunday reminders are opt-in, private-chat-only, and configurable; `/stop` unsubscribes.
 - Run only one polling process for a given Telegram bot token.
 
 ## Product
 
-Members start a 10-question multiple-choice SMC assessment in Telegram, get a score out of 10 and percentage, review explanations for incorrect answers, and can retake it. Each completed result records the Telegram ID, username, score, and UTC completion date locally.
+Members can learn SMC, take a 10-question assessment, journal and review trades, complete weekly check-ins and Sunday preparation, manage opt-in reminders, and view their progress. Admin statistics are gated by `ADMIN_TELEGRAM_ID`. Member data and assessment-answer details are stored locally in SQLite.
 
 Teaching principles: no confirmation, no entry; no retest, no entry; a POI needs a valid reason; liquidity and displacement matter; risk management comes before chasing a trade.
 
 ## User preferences
 
-- Keep the bot dependent only on Python and the Telegram Bot API.
+- Keep the first version dependent only on Python and the Telegram Bot API; do not add OpenAI, Grok, paid AI, or require an AI key.
 
 ## Gotchas
 
 - Add the Telegram token through Replit Secrets before starting the bot workflow.
 - Polling and a Telegram webhook cannot be used at the same time; startup detects an existing webhook and stops without changing it.
-- Restarting the process clears in-progress quiz sessions, but does not remove completed SQLite records.
+- Restarting the process clears in-progress flows, but does not remove completed SQLite records.
+- Existing `assessment_results` rows are migrated into the assessment history and retained; old entries have no per-question answers or topic breakdown.
 
 ## Pointers
 

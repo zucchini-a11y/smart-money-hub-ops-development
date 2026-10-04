@@ -65,18 +65,22 @@ QUESTIONS: tuple[Question, ...] = (
         ),
     ),
     Question(
-        topic="Liquidity",
-        prompt="Where is sell-side liquidity commonly found around equal lows?",
-        options=(
-            "Above the equal lows, where buy stops sit",
-            "Below the equal lows, where sell stops may be resting",
-            "Only at the midpoint of the range",
-            "There is no liquidity near equal lows",
+        topic="Liquidity (SSL/BSL)",
+        prompt=(
+            "Which statement best describes sell-side (SSL) and buy-side (BSL) "
+            "liquidity around obvious swing levels?"
         ),
-        correct_index=1,
+        options=(
+            "SSL commonly rests below lows and BSL above highs; a sweep is context, not an entry by itself",
+            "SSL is always above highs and BSL always below lows",
+            "A liquidity sweep guarantees an immediate reversal",
+            "Liquidity only exists inside fair value gaps",
+        ),
+        correct_index=0,
         explanation=(
-            "Sell-side liquidity commonly gathers below obvious lows. A sweep can "
-            "provide context, but it does not guarantee that price will reverse."
+            "Sell-side liquidity (SSL) is commonly associated with stops below "
+            "lows; buy-side liquidity (BSL) with stops above highs. A sweep can "
+            "provide context, but it does not guarantee a reversal or replace confirmation."
         ),
     ),
     Question(
@@ -96,19 +100,19 @@ QUESTIONS: tuple[Question, ...] = (
         ),
     ),
     Question(
-        topic="Fair Value Gaps (FVGs)",
-        prompt="In a three-candle bullish FVG, which candles define the imbalance?",
+        topic="FVG and IFVG",
+        prompt="Which statement best describes an FVG and a possible inverse FVG (IFVG)?",
         options=(
-            "The first candle's low and the second candle's high",
-            "The first candle's high and the third candle's low, with a gap between them",
-            "The second candle's open and close",
-            "The third candle's high and the first candle's low",
+            "An FVG is an imbalance; if price decisively breaks through it, it may act as an IFVG after confirmation",
+            "An FVG and an IFVG are both guaranteed reversal zones",
+            "An IFVG is simply the middle candle of every three-candle pattern",
+            "A gap becomes an IFVG as soon as price touches it",
         ),
-        correct_index=1,
+        correct_index=0,
         explanation=(
-            "A bullish three-candle FVG is commonly marked where the third "
-            "candle's low is above the first candle's high, leaving an imbalance "
-            "between those prices."
+            "An FVG marks a price imbalance. If price breaks through a gap, some "
+            "traders watch it as an inverse FVG, but the role change is not an "
+            "automatic entry signal; wait for confirmation and respect the broader context."
         ),
     ),
     Question(
@@ -144,8 +148,8 @@ QUESTIONS: tuple[Question, ...] = (
         ),
     ),
     Question(
-        topic="Retests",
-        prompt="Under the Smart Money Hub rule, what should happen after a breakout before entry?",
+        topic="Retest and confirmation",
+        prompt="Under Smart Money Hub's rules, what should happen after a breakout before entry?",
         options=(
             "Enter immediately so the move is not missed",
             "Wait for price to retest the relevant level or POI and show a response",
