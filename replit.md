@@ -25,7 +25,7 @@ A Python Telegram bot that tests Smart Money Hub members on Smart Money Concepts
 - API codegen: Orval (from OpenAPI spec)
 - Build: esbuild (CJS bundle)
 - Telegram bot: Python 3.11+ standard library and Telegram Bot API long polling
-- Bot persistence: local SQLite; no OpenAI or paid API dependency
+- Bot persistence: local SQLite; only Telegram Bot API credentials are required
 
 ## Where things live
 
@@ -51,7 +51,7 @@ Teaching principles: no confirmation, no entry; no retest, no entry; a POI needs
 
 ## User preferences
 
-- Keep the first bot version free of OpenAI and other paid API dependencies.
+- Keep the bot dependent only on Python and the Telegram Bot API.
 
 ## Gotchas
 

@@ -1,6 +1,6 @@
 # Smart Money Hub SMC Assessment Bot
 
-A polling-based Telegram bot for a 10-question Smart Money Concepts assessment. It uses Python's standard library and Telegram's Bot API; it does not need OpenAI, Grok, Make, paid APIs, or Python package installs.
+A polling-based Telegram bot for a 10-question Smart Money Concepts assessment. It uses Python's standard library and Telegram's Bot API, with no Python package installs.
 
 ## Teaching principles in the assessment
 
@@ -24,7 +24,7 @@ A polling-based Telegram bot for a 10-question Smart Money Concepts assessment. 
 4. Paste the token from BotFather into its value field and save it.
 5. Do not put the token in Python code, commit it to Git, or share it in chat.
 
-No OpenAI key or other API key is used.
+The Telegram bot token is the only required credential.
 
 ## 3. Run the bot
 
