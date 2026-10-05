@@ -3,9 +3,12 @@
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from .bot import ADMIN_LOW_SCORE_THRESHOLD, ADMIN_PAGE_SIZE, ADMIN_RECENT_CHECKIN_DAYS
 from .storage import Repository
 from .telegram_api import TelegramAPI
+
+ADMIN_RECENT_CHECKIN_DAYS = 14
+ADMIN_LOW_SCORE_THRESHOLD = 60
+ADMIN_PAGE_SIZE = 8
 
 
 class AdminDashboard:
@@ -570,9 +573,6 @@ class AdminDashboard:
                 ]]
             ),
         )
-
-    def _complete_admin_search(self, chat_id: int, query: str) -> None:
-        self.handle_search_message(chat_id, int(self.admin_id or 0), True, query)
 
     def _admin_navigation(
         self,

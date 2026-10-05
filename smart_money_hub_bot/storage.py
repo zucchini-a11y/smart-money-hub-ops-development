@@ -957,24 +957,50 @@ class Repository:
             connection.close()
 
     def admin_trade_page(
-        self, page: int = 0, page_size: int = 8
+        self,
+        page: int = 0,
+        page_size: int = 8,
+        *,
+        telegram_id: int | None = None,
     ) -> tuple[int, list[dict[str, Any]]]:
         safe_page_size = max(1, min(page_size, 20))
         safe_page = max(page, 0)
         connection = self._connect()
         try:
-            total = int(connection.execute("SELECT COUNT(*) FROM trades").fetchone()[0])
-            rows = connection.execute(
-                """
-                SELECT t.id, t.telegram_id, t.asset, t.direction, t.result,
-                       t.mistake, t.created_at, u.username, u.first_name
-                FROM trades t
-                JOIN users u ON u.telegram_id = t.telegram_id
-                ORDER BY t.created_at DESC, t.id DESC
-                LIMIT ? OFFSET ?
-                """,
-                (safe_page_size, safe_page * safe_page_size),
-            ).fetchall()
+            if telegram_id is None:
+                total = int(
+                    connection.execute("SELECT COUNT(*) FROM trades").fetchone()[0]
+                )
+                rows = connection.execute(
+                    """
+                    SELECT t.id, t.telegram_id, t.asset, t.direction, t.result,
+                           t.mistake, t.created_at, u.username, u.first_name
+                    FROM trades t
+                    JOIN users u ON u.telegram_id = t.telegram_id
+                    ORDER BY t.created_at DESC, t.id DESC
+                    LIMIT ? OFFSET ?
+                    """,
+                    (safe_page_size, safe_page * safe_page_size),
+                ).fetchall()
+            else:
+                total = int(
+                    connection.execute(
+                        "SELECT COUNT(*) FROM trades WHERE telegram_id = ?",
+                        (telegram_id,),
+                    ).fetchone()[0]
+                )
+                rows = connection.execute(
+                    """
+                    SELECT t.id, t.telegram_id, t.asset, t.direction, t.result,
+                           t.mistake, t.created_at, u.username, u.first_name
+                    FROM trades t
+                    JOIN users u ON u.telegram_id = t.telegram_id
+                    WHERE t.telegram_id = ?
+                    ORDER BY t.created_at DESC, t.id DESC
+                    LIMIT ? OFFSET ?
+                    """,
+                    (telegram_id, safe_page_size, safe_page * safe_page_size),
+                ).fetchall()
             return total, [dict(row) for row in rows]
         finally:
             connection.close()

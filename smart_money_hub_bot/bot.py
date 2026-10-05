@@ -38,11 +38,6 @@ BLOCKED_CHAT_ERRORS = (
     "bot can't initiate conversation",
     "bot cannot initiate conversation",
 )
-ADMIN_RECENT_CHECKIN_DAYS = 14
-ADMIN_LOW_SCORE_THRESHOLD = 60
-ADMIN_PAGE_SIZE = 8
-
-
 @dataclass
 class Conversation:
     kind: str

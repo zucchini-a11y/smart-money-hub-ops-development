@@ -302,12 +302,173 @@ class BotFlowTests(unittest.TestCase):
         self.assertIn("Admin access is not configured", self.api.messages[-1]["text"])
 
         self.bot.admin_id = self.user_id
+        self.bot.admin_dashboard.admin_id = self.user_id
         self._message("/admin")
-        self.assertIn("SMART MONEY HUB ADMIN", self.api.messages[-1]["text"])
-        self.assertIn("Members: 1", self.api.messages[-1]["text"])
+        self.assertIn("SMART MONEY HUB — ADMIN DASHBOARD", self.api.messages[-1]["text"])
+        self.assertIn("Total registered members: 1", self.api.messages[-1]["text"])
+        button_labels = {
+            button["text"]
+            for row in self.api.messages[-1]["reply_markup"]["inline_keyboard"]
+            for button in row
+        }
+        self.assertTrue(
+            {
+                "👥 All Members",
+                "📊 Statistics",
+                "📚 Weak Topics",
+                "📒 Trade Journals",
+                "🔍 Search Member",
+                "📈 Member Progress",
+            }.issubset(button_labels)
+        )
 
         self._callback("admin:open", sender_id=self.user_id + 1, chat_id=self.chat_id + 1)
-        self.assertIn("only available", self.api.messages[-1]["text"])
+        self.assertIn("restricted", self.api.messages[-1]["text"])
+
+    def test_admin_dashboard_records_are_private_and_persist_across_reopen(self) -> None:
+        admin_id = self.user_id
+        member_id = 770077
+        low_score_id = 880088
+        self.bot.admin_id = admin_id
+        self.bot.admin_dashboard.admin_id = admin_id
+        self.bot.store.register_user(
+            telegram_id=member_id,
+            username="tayo_trades",
+            first_name="Tayo",
+            chat_id=member_id,
+            is_private=True,
+        )
+        self.bot.store.register_user(
+            telegram_id=low_score_id,
+            username="low_score",
+            first_name="Low",
+            chat_id=low_score_id,
+            is_private=True,
+        )
+
+        member_answers = [question.correct_index for question in QUESTIONS]
+        member_answers[2] = (member_answers[2] + 1) % 4
+        self.bot.store.save_assessment(
+            member_id, "tayo_trades", grade_answers(member_answers)
+        )
+        self.bot.store.save_assessment(
+            low_score_id,
+            "low_score",
+            grade_answers(
+                [(question.correct_index + 1) % 4 for question in QUESTIONS]
+            ),
+        )
+        trade_id = self.bot.store.save_trade(
+            member_id,
+            {
+                "asset": "EURUSD",
+                "direction": "Buy",
+                "poi": "Bullish FVG",
+                "timeframe": "15m",
+                "confirmation": "MSS",
+                "liquidity_swept": True,
+                "waited_for_retest": True,
+                "stop_loss": "1.0800",
+                "take_profit": "1.0900",
+                "partial_profit": True,
+                "moved_sl_to_be": False,
+                "result": "Win",
+                "followed_plan": True,
+                "mistake": "Chased entry",
+                "lesson": "Wait for a retest",
+            },
+            "Trade review summary",
+        )
+        self.bot.store.save_weekly_checkin(
+            member_id,
+            {
+                "trades_taken": 2,
+                "winners": 1,
+                "losses": 1,
+                "followed_plan": True,
+                "entered_without_confirmation": False,
+                "chased_missed_trade": False,
+                "moved_sl_unnecessarily": False,
+                "secured_partials": True,
+                "biggest_mistake": "Chased entry",
+                "next_focus": "Wait for the retest",
+            },
+            "Weekly summary",
+        )
+
+        # Reopening the existing SQLite database must retain all member records.
+        reopened = Repository(self.database_path)
+        saved_detail = reopened.admin_member_detail(member_id)
+        self.assertIsNotNone(saved_detail)
+        self.assertEqual(saved_detail["trade_total"], 1)
+        self.assertEqual(saved_detail["wins"], 1)
+        self.assertEqual(len(saved_detail["assessment_history"]), 1)
+        self.assertEqual(len(saved_detail["weekly_checkins"]), 1)
+
+        self._message("/admin")
+        self.assertIn("Latest score below 60%: 1 members", self.api.messages[-1]["text"])
+        self._click("admin:statistics")
+        self.assertIn("Top-performing members", self.api.messages[-1]["text"])
+        self.assertIn("Tayo", self.api.messages[-1]["text"])
+        self.assertIn("Low", self.api.messages[-1]["text"])
+        self._click("admin:weak_topics")
+        self.assertIn(QUESTIONS[2].topic, self.api.messages[-1]["text"])
+        self._click("admin:members")
+        self.assertTrue(
+            any(
+                button["callback_data"] == f"admin:member:{member_id}"
+                for row in self.api.messages[-1]["reply_markup"]["inline_keyboard"]
+                for button in row
+            )
+        )
+        self._click(f"admin:member:{member_id}")
+        profile = self.api.messages[-1]["text"]
+        for expected in (
+            "@tayo_trades",
+            "First name: Tayo",
+            "Average score:",
+            "Strong topics:",
+            "Weak topics:",
+            "Trades journaled: 1",
+            "1 wins, 0 losses",
+            "Chased entry",
+            "Weekly check-in history",
+            "Wait for the retest",
+        ):
+            self.assertIn(expected, profile)
+
+        self._click("admin:member_trades:{}:0".format(member_id))
+        trade_page = self.api.messages[-1]
+        self.assertIn("1 entries", trade_page["text"])
+        self.assertTrue(
+            any(
+                "EURUSD" in button["text"]
+                for row in trade_page["reply_markup"]["inline_keyboard"]
+                for button in row
+            )
+        )
+        self._click(f"admin:trade:{trade_id}")
+        self.assertIn("Wait for a retest", self.api.messages[-1]["text"])
+        self._click("admin:search")
+        self._message("tayo_trades")
+        self.assertIn("Search results", self.api.messages[-1]["text"])
+
+        # A regular member cannot read a page even if they forge its callback data.
+        self._callback(
+            "admin:member:{}".format(member_id),
+            sender_id=member_id,
+            chat_id=member_id,
+        )
+        self.assertIn("restricted", self.api.messages[-1]["text"])
+        self.assertNotIn("Tayo", self.api.messages[-1]["text"])
+        # The authorized admin is also refused in a group chat.
+        self._callback(
+            "admin:statistics",
+            sender_id=admin_id,
+            chat_id=-100123,
+            chat_type="supergroup",
+        )
+        self.assertIn("private chat", self.api.messages[-1]["text"])
 
     def test_scheduled_reminders_are_private_opt_in_and_idempotent(self) -> None:
         self.bot.store.register_user(
@@ -357,7 +518,12 @@ class BotFlowTests(unittest.TestCase):
             self.bot.run()
 
     def _message(
-        self, text: str, *, user_id: int | None = None, chat_id: int | None = None
+        self,
+        text: str,
+        *,
+        user_id: int | None = None,
+        chat_id: int | None = None,
+        chat_type: str = "private",
     ) -> None:
         member = user_id if user_id is not None else self.user_id
         private_chat = chat_id if chat_id is not None else (
@@ -367,7 +533,7 @@ class BotFlowTests(unittest.TestCase):
             {
                 "message": {
                     "text": text,
-                    "chat": {"id": private_chat, "type": "private"},
+                    "chat": {"id": private_chat, "type": chat_type},
                     "from": {
                         "id": member,
                         "username": self.username if member == self.user_id else None,
@@ -384,7 +550,14 @@ class BotFlowTests(unittest.TestCase):
         self.callback_counter += 1
         self._callback(data, sender_id=self.user_id, chat_id=self.chat_id)
 
-    def _callback(self, data: str, *, sender_id: int, chat_id: int) -> None:
+    def _callback(
+        self,
+        data: str,
+        *,
+        sender_id: int,
+        chat_id: int,
+        chat_type: str = "private",
+    ) -> None:
         self.callback_counter += 1
         self.bot.handle_update(
             {
@@ -397,7 +570,7 @@ class BotFlowTests(unittest.TestCase):
                     },
                     "message": {
                         "message_id": self.callback_counter,
-                        "chat": {"id": chat_id, "type": "private"},
+                        "chat": {"id": chat_id, "type": chat_type},
                     },
                     "data": data,
                 }

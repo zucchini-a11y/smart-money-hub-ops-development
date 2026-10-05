@@ -1,0 +1,1 @@
+- [Smart Money Hub module boundaries](smart-money-hub-module-boundaries.md) — keep dashboard dependencies one-way from the bot orchestrator.
