@@ -1,0 +1,131 @@
+Now that the Telegram bot is working, I want to add a **DM Coach feature** to the existing Smart Money Hub Coach bot.
+
+Do NOT create a second bot.
+
+The existing bot should allow members to privately message the bot and have a conversational SMC trading coach.
+
+### DM COACH
+
+When a member sends a normal text message to the bot, the bot should respond as a Smart Money Hub trading coach.
+
+The coach should understand and use my trading framework:
+
+* Market Structure
+* BOS
+* CHOCH
+* MSS
+* Liquidity
+* SSL / BSL
+* Order Blocks
+* FVG / IFVG
+* POI
+* Displacement
+* Retest
+* Confirmation
+* HTF / LTF analysis
+* Risk management
+* Partial profits
+* Break-even
+* Trade psychology
+* Trading discipline
+
+My core rules are:
+
+"No confirmation, no entry."
+
+"No retest, no entry."
+
+"Don't chase missed trades."
+
+"Risk management first."
+
+The coach should teach members to understand their own setups rather than simply giving them entries.
+
+### IMPORTANT
+
+For now, do NOT connect any paid AI API.
+
+Build the DM system so the AI provider can be added later through a separate service such as:
+
+`ai_evaluate_answer()`
+
+The current version can use predefined responses, keyword/topic detection, and guided questions.
+
+### EXAMPLES
+
+Member:
+"What is CHOCH?"
+
+Bot:
+Explain CHOCH simply, then ask a short question to check whether the member understands it.
+
+Member:
+"I saw an FVG and entered immediately."
+
+Bot:
+Explain that an FVG alone isn't necessarily confirmation and ask what happened with liquidity, displacement and retest.
+
+Member:
+"I got stopped out."
+
+Bot:
+Ask:
+
+1. What was your POI?
+2. What timeframe?
+3. What liquidity was taken?
+4. What confirmation did you see?
+5. Did price retest?
+6. Where was your SL?
+7. Did you follow your plan?
+
+Then help identify the mistake.
+
+### MENU
+
+Add:
+
+💬 Ask Coach
+
+The member should be able to enter a conversational coaching mode and return to the main menu at any time.
+
+### MEMBER DATA
+
+Save DM coaching interactions in SQLite.
+
+Track:
+
+* user ID
+* username
+* question/topic
+* coach response
+* detected SMC topic
+* mistakes identified
+* lessons learned
+* timestamp
+
+Use this information later for:
+
+* weak-topic tracking
+* personalized assessments
+* weekly check-ins
+* trade reviews
+* progress dashboard
+
+### ADMIN
+
+Add DM coaching statistics to the existing admin dashboard:
+
+* number of members using the coach
+* most common questions
+* most common weak SMC topics
+* most common trading mistakes
+* recent coaching activity
+
+Keep `/admin` restricted to `ADMIN_TELEGRAM_ID`.
+
+Do not change or expose my Telegram bot token.
+
+Do not remove any existing functionality.
+
+Run all existing tests and add tests for the new DM Coach functionality.

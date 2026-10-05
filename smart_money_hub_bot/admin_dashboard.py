@@ -78,6 +78,8 @@ class AdminDashboard:
             self._show_members(chat_id, page=self._page(data), sort="joined")
         elif data == "admin:statistics":
             self._show_statistics(chat_id)
+        elif data == "admin:dm_coach":
+            self._show_dm_coach_stats(chat_id)
         elif data == "admin:weak_topics":
             self._show_weak_topics(chat_id)
         elif data == "admin:trade_journals":
@@ -149,6 +151,7 @@ class AdminDashboard:
 
     def _show_dashboard(self, chat_id: int) -> None:
         stats = self._dashboard_data()
+        coach_stats = self.store.admin_dm_coach_stats()
         average = stats["average_score"]
         lines = [
             "SMART MONEY HUB — ADMIN DASHBOARD",
@@ -161,6 +164,7 @@ class AdminDashboard:
                 f"{stats['low_score_members']} members"
             ),
             f"Trades journaled: {stats['trades_journaled']}",
+            f"Members using DM Coach: {coach_stats['members_using_coach']}",
             (
                 f"No check-in in the last {ADMIN_RECENT_CHECKIN_DAYS} days: "
                 f"{stats['no_recent_checkin']} members"
@@ -213,6 +217,7 @@ class AdminDashboard:
                     {"text": "🔍 Search Member", "callback_data": "admin:search"},
                     {"text": "📈 Member Progress", "callback_data": "admin:progress"},
                 ],
+                [{"text": "💬 DM Coach Stats", "callback_data": "admin:dm_coach"}],
                 [{"text": "🏠 Main Menu", "callback_data": "nav:home"}],
             ]
         }
@@ -263,6 +268,55 @@ class AdminDashboard:
         )
         if not stats["no_checkin_members"]:
             lines.append("• Everyone has checked in recently")
+        self.api.send_message(
+            chat_id, "\n".join(lines), self._admin_navigation()
+        )
+
+    def _show_dm_coach_stats(self, chat_id: int) -> None:
+        stats = self.store.admin_dm_coach_stats()
+        lines = [
+            "DM COACH STATISTICS",
+            f"Members using coach: {stats['members_using_coach']}",
+            f"Recorded interactions: {stats['total_interactions']}",
+            "\nMost common questions:",
+        ]
+        lines.extend(
+            f"• {self._short(item['question'], 90)} — {item['occurrences']}"
+            for item in stats["common_questions"]
+        )
+        if not stats["common_questions"]:
+            lines.append("• No coaching questions recorded")
+
+        lines.append("\nMost common weak SMC topics:")
+        lines.extend(
+            f"• {item['topic']} — {item['occurrences']} flagged interactions"
+            for item in stats["weak_topics"]
+        )
+        if not stats["weak_topics"]:
+            lines.append("• No potential process gaps identified yet")
+
+        lines.append("\nMost common trading mistakes:")
+        lines.extend(
+            f"• {item['mistake']} — {item['occurrences']}"
+            for item in stats["common_mistakes"]
+        )
+        if not stats["common_mistakes"]:
+            lines.append("• No mistakes identified yet")
+
+        lines.append("\nRecent coaching activity:")
+        for item in stats["recent_activity"]:
+            lines.append(
+                f"• {self._member_label(item)} — {item['detected_topic']} — "
+                f"{str(item['created_at'])[:16]}"
+            )
+            lines.append(f"  {self._short(item['question'], 100)}")
+            if item["mistakes_identified"]:
+                lines.append(
+                    f"  Review: {self._short(item['mistakes_identified'], 120)}"
+                )
+        if not stats["recent_activity"]:
+            lines.append("• No recent coaching activity")
+
         self.api.send_message(
             chat_id, "\n".join(lines), self._admin_navigation()
         )

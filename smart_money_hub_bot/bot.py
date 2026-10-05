@@ -9,6 +9,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from .admin_dashboard import AdminDashboard
+from .coach import CoachService, RuleBasedCoachService, ai_evaluate_answer
 from .education import EDUCATION
 from .flows import SUNDAY_FIELDS, TRADE_FIELDS, WEEKLY_FIELDS
 from .questions import QUESTIONS
@@ -20,6 +21,7 @@ from .telegram_api import TelegramAPI, TelegramAPIError
 logger = logging.getLogger(__name__)
 MAIN_MENU: tuple[tuple[str, str], ...] = (
     ("Start SMC Assessment", "menu:assessment"),
+    ("💬 Ask Coach", "menu:coach"),
     ("Trading Journal", "menu:journal"),
     ("Weekly Check-In", "menu:weekly"),
     ("Sunday Preparation", "menu:sunday"),
@@ -71,6 +73,7 @@ class SmartMoneyHubBot:
             raise ValueError("The reminder time must be local wall time without a UTC offset.")
         # One active conversation per member; saved records live in SQLite.
         self.sessions: dict[int, Conversation] = {}
+        self.coach_service: CoachService = RuleBasedCoachService()
 
     def run(self) -> None:
         webhook_info = self.api.get_webhook_info()
@@ -163,11 +166,15 @@ class SmartMoneyHubBot:
         if command == "/help":
             self.api.send_message(
                 chat_id,
-                "Use the buttons to assess your SMC knowledge, journal trades, "
-                "review progress, and prepare for the week. This is educational, "
-                "not a promise or prediction of trading results.",
+                "Use 💬 Ask Coach to discuss SMC in a private chat, or use the "
+                "buttons to assess your knowledge, journal trades, review progress, "
+                "and prepare for the week. This is educational, not a promise or "
+                "prediction of trading results.",
                 self._nav_keyboard(),
             )
+            return
+        if command == "/coach":
+            self._enter_coach(chat_id, telegram_id, is_private)
             return
         if command in {"/stop", "/unsubscribe"}:
             self.store.set_reminders_enabled(telegram_id, False)
@@ -213,7 +220,20 @@ class SmartMoneyHubBot:
             else:
                 self._accept_text_answer(session, text)
             return
-        self._show_main_menu(chat_id)
+        if is_private:
+            self._answer_coach_message(
+                chat_id,
+                telegram_id,
+                sender.get("username"),
+                text,
+            )
+        else:
+            self.api.send_message(
+                chat_id,
+                "DM Coach is private. Open a private chat with this bot and send "
+                "/start or /coach to begin.",
+                self._main_menu_keyboard(),
+            )
 
     def _handle_callback(self, callback: dict[str, Any]) -> None:
         callback_id = callback.get("id")
@@ -268,6 +288,9 @@ class SmartMoneyHubBot:
             self._begin_assessment(
                 telegram_id, chat_id, sender.get("username"), sender.get("first_name")
             )
+        elif data == "menu:coach":
+            self.sessions.pop(telegram_id, None)
+            self._enter_coach(chat_id, telegram_id, is_private)
         elif data.startswith("quiz:answer:") or data.startswith("answer:"):
             self._handle_assessment_answer(telegram_id, chat_id, data)
         elif data == "menu:journal":
@@ -309,6 +332,60 @@ class SmartMoneyHubBot:
                 self._main_menu_keyboard(),
             )
 
+    def _enter_coach(self, chat_id: int, telegram_id: int, is_private: bool) -> None:
+        if not is_private:
+            self.api.send_message(
+                chat_id,
+                "For member privacy, open a private chat with this bot and send /coach.",
+                self._main_menu_keyboard(),
+            )
+            return
+        self.sessions.pop(telegram_id, None)
+        self.api.send_message(
+            chat_id,
+            "💬 Ask Coach is on. Send a question about SMC or describe a setup "
+            "or stopped-out trade. I’ll help you review your own reasoning, not "
+            "give you an entry. You can return to the main menu at any time.",
+            self._coach_keyboard(),
+        )
+
+    def _answer_coach_message(
+        self,
+        chat_id: int,
+        telegram_id: int,
+        username: str | None,
+        question: str,
+    ) -> None:
+        reply = ai_evaluate_answer(question, self.coach_service)
+        try:
+            self.store.save_dm_coaching_interaction(
+                telegram_id=telegram_id,
+                username=username,
+                question=question,
+                coach_response=reply.response,
+                detected_topic=reply.detected_topic,
+                mistakes_identified=reply.mistakes,
+                lesson_learned=reply.lesson_learned,
+            )
+            response = reply.response
+        except Exception:
+            logger.exception("Could not save a DM coaching interaction.")
+            response = (
+                reply.response
+                + "\n\nI couldn't save this coaching interaction locally. "
+                "Please try again later."
+            )
+        self.api.send_message(chat_id, response, self._coach_keyboard())
+
+    @staticmethod
+    def _coach_keyboard() -> dict[str, Any]:
+        return {
+            "inline_keyboard": [
+                [{"text": "💬 Ask Coach", "callback_data": "menu:coach"}],
+                [{"text": "🏠 Main Menu", "callback_data": "nav:home"}],
+            ]
+        }
+
     def _show_welcome(self, chat_id: int, first_name: str | None) -> None:
         greeting = f" {first_name}" if first_name else ""
         self.api.send_message(
@@ -316,7 +393,7 @@ class SmartMoneyHubBot:
             (
                 f"Welcome{greeting} to Smart Money Hub.\n\n"
                 "I can help you learn SMC, test your knowledge, journal trades, "
-                "review mistakes, track discipline, prepare for the trading week, "
+                "ask the DM Coach, review mistakes, track discipline, prepare for the trading week, "
                 "and check in on your progress.\n\n"
                 "This bot is for education and journaling. It does not predict "
                 "trades or promise profits. Choose where you want to begin."

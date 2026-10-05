@@ -7,6 +7,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from smart_money_hub_bot.bot import SmartMoneyHubBot
+from smart_money_hub_bot.coach import RuleBasedCoachService
 from smart_money_hub_bot.grading import RuleBasedWrittenAnswerEvaluator
 from smart_money_hub_bot.questions import QUESTIONS, validate_questions
 from smart_money_hub_bot.scoring import grade_answers
@@ -109,6 +110,48 @@ class AssessmentTests(unittest.TestCase):
         self.assertFalse(result.missing_concepts)
 
 
+class CoachTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.coach = RuleBasedCoachService()
+
+    def test_choch_answer_teaches_then_checks_understanding(self) -> None:
+        reply = self.coach.evaluate("What is CHOCH?")
+
+        self.assertEqual(reply.detected_topic, "CHoCH")
+        self.assertIn("Change of Character", reply.response)
+        self.assertIn("does not guarantee a reversal", reply.response)
+        self.assertIn("Which swing level broke", reply.response)
+
+    def test_fvg_entry_without_waiting_for_context_flags_possible_mistake(self) -> None:
+        reply = self.coach.evaluate("I saw an FVG and entered immediately.")
+
+        self.assertEqual(reply.detected_topic, "FVG / IFVG")
+        self.assertIn("not an entry confirmation", reply.response)
+        self.assertIn("Did price take SSL/BSL", reply.response)
+        self.assertIn(
+            "Entered at an FVG without clear confirmation", reply.mistakes
+        )
+
+    def test_stop_out_review_identifies_reported_process_gaps(self) -> None:
+        prompt = self.coach.evaluate("I got stopped out.")
+        self.assertIn("What was your POI?", prompt.response)
+        self.assertIn("Did you follow your plan?", prompt.response)
+
+        reply = self.coach.evaluate(
+            "POI: 15m bearish FVG\n"
+            "Timeframe: 5m\n"
+            "Liquidity: BSL swept\n"
+            "Confirmation: none\n"
+            "Retest: no\n"
+            "Stop loss: above swing\n"
+            "Followed plan: no"
+        )
+        self.assertIn("Entry was taken without confirmation", reply.mistakes)
+        self.assertIn("Entry was taken before a retest", reply.mistakes)
+        self.assertIn("The written plan was not followed", reply.mistakes)
+        self.assertIn("possible process issues", reply.response)
+
+
 class BotFlowTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -130,6 +173,7 @@ class BotFlowTests(unittest.TestCase):
         self.assertIn("Welcome Amara to Smart Money Hub", welcome["text"])
         menu = welcome["reply_markup"]["inline_keyboard"]
         self.assertEqual(menu[0][0]["text"], "Start SMC Assessment")
+        self.assertEqual(menu[1][0]["text"], "💬 Ask Coach")
         self.assertTrue(any(row[0]["text"] == "Sunday Preparation" for row in menu))
 
         self._click("menu:assessment")
@@ -195,6 +239,92 @@ class BotFlowTests(unittest.TestCase):
         )
         self._click("menu:progress")
         self.assertIn("SMART MONEY HUB PROGRESS", self.api.messages[-1]["text"])
+
+    def test_dm_coach_saves_interactions_and_shows_private_admin_statistics(self) -> None:
+        self._message("/start")
+        self._click("menu:coach")
+        self.assertIn("Ask Coach is on", self.api.messages[-1]["text"])
+
+        self._text("What is CHOCH?")
+        self.assertIn("Change of Character", self.api.messages[-1]["text"])
+        self._text("What is CHOCH?")
+        self._text("I saw an FVG and entered immediately.")
+        self.assertIn("No confirmation, no entry.", self.api.messages[-1]["text"])
+
+        stats = Repository(self.database_path).admin_dm_coach_stats()
+        self.assertEqual(stats["members_using_coach"], 1)
+        self.assertEqual(stats["total_interactions"], 3)
+        self.assertEqual(stats["common_questions"][0]["question"], "What is CHOCH?")
+        self.assertEqual(stats["common_questions"][0]["occurrences"], 2)
+        self.assertEqual(stats["weak_topics"][0]["topic"], "FVG / IFVG")
+        self.assertIn(
+            "Entered at an FVG without clear confirmation",
+            [item["mistake"] for item in stats["common_mistakes"]],
+        )
+        self.assertEqual(stats["recent_activity"][0]["username"], self.username)
+
+        connection = sqlite3.connect(self.database_path)
+        try:
+            saved = connection.execute(
+                """
+                SELECT telegram_id, username, question, detected_topic,
+                       mistakes_identified, lesson_learned
+                FROM dm_coaching_interactions
+                ORDER BY id DESC LIMIT 1
+                """
+            ).fetchone()
+        finally:
+            connection.close()
+        self.assertEqual(saved[0:4], (
+            self.user_id,
+            self.username,
+            "I saw an FVG and entered immediately.",
+            "FVG / IFVG",
+        ))
+        self.assertIn("Entered at an FVG", saved[4])
+        self.assertTrue(saved[5])
+
+        # Coaching stays private; messages in group chats are not stored.
+        self._message(
+            "What is CHOCH?",
+            user_id=909090,
+            chat_id=-100909090,
+            chat_type="supergroup",
+        )
+        self.assertIn("DM Coach is private", self.api.messages[-1]["text"])
+        self.assertEqual(
+            Repository(self.database_path).admin_dm_coach_stats()["total_interactions"],
+            3,
+        )
+
+        self.bot.admin_id = self.user_id
+        self.bot.admin_dashboard.admin_id = self.user_id
+        self._message("/admin")
+        labels = {
+            button["text"]
+            for row in self.api.messages[-1]["reply_markup"]["inline_keyboard"]
+            for button in row
+        }
+        self.assertIn("💬 DM Coach Stats", labels)
+        self._click("admin:dm_coach")
+        dashboard = self.api.messages[-1]["text"]
+        for expected in (
+            "DM COACH STATISTICS",
+            "Members using coach: 1",
+            "Most common questions:",
+            "Most common weak SMC topics:",
+            "Most common trading mistakes:",
+            "Recent coaching activity:",
+            "What is CHOCH?",
+        ):
+            self.assertIn(expected, dashboard)
+
+        self._callback(
+            "admin:dm_coach",
+            sender_id=self.user_id + 1,
+            chat_id=self.user_id + 1,
+        )
+        self.assertIn("restricted", self.api.messages[-1]["text"])
 
     def test_back_and_main_menu_clear_or_rewind_active_assessments(self) -> None:
         self._click("menu:assessment")

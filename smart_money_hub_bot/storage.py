@@ -164,6 +164,35 @@ class Repository:
                         sent_at TEXT NOT NULL,
                         UNIQUE (telegram_id, reminder_type, schedule_key)
                     );
+
+                    CREATE TABLE IF NOT EXISTS dm_coaching_interactions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        telegram_id INTEGER NOT NULL REFERENCES users(telegram_id),
+                        username TEXT,
+                        question TEXT NOT NULL,
+                        coach_response TEXT NOT NULL,
+                        detected_topic TEXT NOT NULL,
+                        mistakes_identified TEXT NOT NULL DEFAULT '',
+                        lesson_learned TEXT NOT NULL DEFAULT '',
+                        created_at TEXT NOT NULL
+                    );
+
+                    CREATE INDEX IF NOT EXISTS dm_coaching_member_date
+                    ON dm_coaching_interactions (telegram_id, created_at DESC);
+
+                    CREATE INDEX IF NOT EXISTS dm_coaching_topic_date
+                    ON dm_coaching_interactions (detected_topic, created_at DESC);
+
+                    CREATE TABLE IF NOT EXISTS dm_coach_mistakes (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        interaction_id INTEGER NOT NULL REFERENCES dm_coaching_interactions(id)
+                            ON DELETE CASCADE,
+                        telegram_id INTEGER NOT NULL REFERENCES users(telegram_id),
+                        mistake TEXT NOT NULL
+                    );
+
+                    CREATE INDEX IF NOT EXISTS dm_coach_mistakes_mistake
+                    ON dm_coach_mistakes (mistake);
                     """
                 )
                 self._migrate_legacy_assessments(connection)
@@ -768,6 +797,128 @@ class Repository:
                 "common_mistakes": [dict(row) for row in common_mistakes],
                 "no_checkin_members": [dict(row) for row in no_checkin_members],
                 "low_score_threshold": low_score_below,
+            }
+        finally:
+            connection.close()
+
+    def save_dm_coaching_interaction(
+        self,
+        *,
+        telegram_id: int,
+        username: str | None,
+        question: str,
+        coach_response: str,
+        detected_topic: str,
+        mistakes_identified: list[str] | tuple[str, ...],
+        lesson_learned: str,
+        at: str | None = None,
+    ) -> int:
+        created_at = at or utc_now()
+        mistakes = tuple(dict.fromkeys(
+            mistake.strip() for mistake in mistakes_identified if mistake.strip()
+        ))
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO dm_coaching_interactions
+                        (telegram_id, username, question, coach_response,
+                         detected_topic, mistakes_identified, lesson_learned, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        telegram_id,
+                        username,
+                        question,
+                        coach_response,
+                        detected_topic,
+                        "\n".join(mistakes),
+                        lesson_learned,
+                        created_at,
+                    ),
+                )
+                interaction_id = int(cursor.lastrowid)
+                connection.executemany(
+                    """
+                    INSERT INTO dm_coach_mistakes
+                        (interaction_id, telegram_id, mistake)
+                    VALUES (?, ?, ?)
+                    """,
+                    (
+                        (interaction_id, telegram_id, mistake)
+                        for mistake in mistakes
+                    ),
+                )
+                connection.execute(
+                    """
+                    UPDATE users SET last_interaction_at = ?
+                    WHERE telegram_id = ?
+                    """,
+                    (created_at, telegram_id),
+                )
+                return interaction_id
+        finally:
+            connection.close()
+
+    def admin_dm_coach_stats(self) -> dict[str, Any]:
+        connection = self._connect()
+        try:
+            counts = connection.execute(
+                """
+                SELECT
+                    COUNT(*) AS total_interactions,
+                    COUNT(DISTINCT telegram_id) AS members_using_coach
+                FROM dm_coaching_interactions
+                """
+            ).fetchone()
+            common_questions = connection.execute(
+                """
+                SELECT MIN(question) AS question, COUNT(*) AS occurrences
+                FROM dm_coaching_interactions
+                WHERE trim(question) <> ''
+                GROUP BY lower(trim(question))
+                ORDER BY occurrences DESC, lower(trim(question)) ASC
+                LIMIT 5
+                """
+            ).fetchall()
+            weak_topics = connection.execute(
+                """
+                SELECT i.detected_topic AS topic,
+                       COUNT(DISTINCT i.id) AS occurrences
+                FROM dm_coaching_interactions i
+                JOIN dm_coach_mistakes m ON m.interaction_id = i.id
+                WHERE i.detected_topic <> 'General SMC'
+                GROUP BY i.detected_topic
+                ORDER BY occurrences DESC, i.detected_topic ASC
+                LIMIT 5
+                """
+            ).fetchall()
+            common_mistakes = connection.execute(
+                """
+                SELECT mistake, COUNT(*) AS occurrences
+                FROM dm_coach_mistakes
+                GROUP BY mistake
+                ORDER BY occurrences DESC, mistake ASC
+                LIMIT 5
+                """
+            ).fetchall()
+            recent_activity = connection.execute(
+                """
+                SELECT i.telegram_id, u.username, u.first_name, i.question,
+                       i.detected_topic, i.created_at, i.mistakes_identified
+                FROM dm_coaching_interactions i
+                JOIN users u ON u.telegram_id = i.telegram_id
+                ORDER BY i.created_at DESC, i.id DESC
+                LIMIT 5
+                """
+            ).fetchall()
+            return {
+                **dict(counts),
+                "common_questions": [dict(row) for row in common_questions],
+                "weak_topics": [dict(row) for row in weak_topics],
+                "common_mistakes": [dict(row) for row in common_mistakes],
+                "recent_activity": [dict(row) for row in recent_activity],
             }
         finally:
             connection.close()
