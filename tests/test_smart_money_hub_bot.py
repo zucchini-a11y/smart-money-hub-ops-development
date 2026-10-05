@@ -11,6 +11,7 @@ from smart_money_hub_bot.grading import RuleBasedWrittenAnswerEvaluator
 from smart_money_hub_bot.questions import QUESTIONS, validate_questions
 from smart_money_hub_bot.scoring import grade_answers
 from smart_money_hub_bot.storage import Repository
+from smart_money_hub_bot.telegram_api import TelegramAPIError
 
 
 class FakeTelegramAPI:
@@ -18,6 +19,7 @@ class FakeTelegramAPI:
         self.messages: list[dict[str, Any]] = []
         self.answered_callbacks: list[dict[str, Any]] = []
         self.webhook_info: dict[str, Any] = {}
+        self.callback_ack_error: TelegramAPIError | None = None
 
     def get_webhook_info(self) -> dict[str, Any]:
         return self.webhook_info
@@ -41,6 +43,8 @@ class FakeTelegramAPI:
         text: str | None = None,
         show_alert: bool = False,
     ) -> None:
+        if self.callback_ack_error:
+            raise self.callback_ack_error
         self.answered_callbacks.append(
             {
                 "callback_query_id": callback_query_id,
@@ -184,6 +188,13 @@ class BotFlowTests(unittest.TestCase):
         self.assertEqual(
             self.api.answered_callbacks[-1]["text"], "That answer is not valid."
         )
+
+    def test_expired_callback_acknowledgement_does_not_drop_the_action(self) -> None:
+        self.api.callback_ack_error = TelegramAPIError(
+            "Bad Request: query is too old and response timeout expired"
+        )
+        self._click("menu:progress")
+        self.assertIn("SMART MONEY HUB PROGRESS", self.api.messages[-1]["text"])
 
     def test_back_and_main_menu_clear_or_rewind_active_assessments(self) -> None:
         self._click("menu:assessment")

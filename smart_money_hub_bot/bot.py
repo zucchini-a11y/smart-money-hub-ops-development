@@ -242,7 +242,16 @@ class SmartMoneyHubBot:
                         callback_id, "That answer is not valid."
                     )
                     return
-        self.api.answer_callback_query(callback_id)
+        try:
+            self.api.answer_callback_query(callback_id)
+        except TelegramAPIError as error:
+            # Telegram may expire button callbacks while the bot is offline.
+            # The acknowledgement is best-effort; a stale answer must not stop
+            # the bot from handling the callback and sending a useful reply.
+            logger.warning(
+                "Could not acknowledge Telegram callback; continuing to process it: %s",
+                error,
+            )
 
         if data.startswith("admin:"):
             self.admin_dashboard.handle_callback(
