@@ -29,6 +29,10 @@ MAIN_MENU: tuple[tuple[str, str], ...] = (
     ("Learn SMC", "menu:learn"),
     ("Reminder Settings", "menu:reminders"),
 )
+CLASS_REMINDER_WEEKDAYS = {0: "Monday", 3: "Thursday"}
+CLASS_REMINDER_TIME = ClockTime(19, 0)
+CLASS_START_TIME = ClockTime(20, 0)
+CLASS_REMINDER_GRACE = timedelta(minutes=5)
 FLOW_FIELDS = {
     "journal": TRADE_FIELDS,
     "weekly": WEEKLY_FIELDS,
@@ -178,10 +182,11 @@ class SmartMoneyHubBot:
             return
         if command in {"/stop", "/unsubscribe"}:
             self.store.set_reminders_enabled(telegram_id, False)
+            self.store.set_class_reminders_enabled(telegram_id, False)
             self.api.send_message(
                 chat_id,
-                "Scheduled reminders are off. You can still use the bot; turn "
-                "reminders on again from Reminder Settings.",
+                "Scheduled Sunday and Zoom class reminders are off. You can still "
+                "use the bot; manage each reminder separately in Reminder Settings.",
                 self._nav_keyboard(),
             )
             return
@@ -318,7 +323,13 @@ class SmartMoneyHubBot:
         elif data == "menu:reminders":
             self.sessions.pop(telegram_id, None)
             self._show_reminder_settings(chat_id, telegram_id)
-        elif data in {"reminders:toggle", "reminders:on", "reminders:off"}:
+        elif data in {
+            "reminders:toggle",
+            "reminders:weekly:toggle",
+            "reminders:class:toggle",
+            "reminders:on",
+            "reminders:off",
+        }:
             self._change_reminder_setting(
                 chat_id, telegram_id, is_private, data
             )
@@ -921,33 +932,79 @@ class SmartMoneyHubBot:
         )
 
     def _show_reminder_settings(self, chat_id: int, telegram_id: int) -> None:
-        enabled = self.store.reminders_enabled(telegram_id)
-        state = "On" if enabled else "Off"
-        toggle_text = "Turn reminders off" if enabled else "Turn reminders on"
+        weekly_enabled = self.store.reminders_enabled(telegram_id)
+        class_enabled = self.store.class_reminders_enabled(telegram_id)
+        weekly_state = "On" if weekly_enabled else "Off"
+        class_state = "On" if class_enabled else "Off"
         self.api.send_message(
             chat_id,
-            f"Scheduled Sunday check-ins: {state}.\n"
-            f"Schedule: Sunday at {self.reminder_time.strftime('%H:%M')} "
+            f"Weekly Sunday check-in: {weekly_state} — "
+            f"{self.reminder_time.strftime('%H:%M')} ({self.reminder_zone.key}).\n"
+            f"Zoom class reminders: {class_state} — Monday and Thursday at "
+            f"{CLASS_REMINDER_TIME.strftime('%H:%M')} and "
+            f"{CLASS_START_TIME.strftime('%H:%M')} "
             f"({self.reminder_zone.key}).\n\n"
-            "Only members who have started the bot in a private chat and opted "
-            "in receive reminders. Use /stop at any time to unsubscribe.",
+            "Each reminder is opt-in separately. Only members who have started "
+            "the bot in a private chat receive DMs. Use /stop to turn both off.",
             self._menu_keyboard(
-                [[{"text": toggle_text, "callback_data": "reminders:toggle"}]]
+                [
+                    [
+                        {
+                            "text": (
+                                "Turn Sunday check-in off"
+                                if weekly_enabled
+                                else "Turn Sunday check-in on"
+                            ),
+                            "callback_data": "reminders:weekly:toggle",
+                        }
+                    ],
+                    [
+                        {
+                            "text": (
+                                "Turn Zoom class reminders off"
+                                if class_enabled
+                                else "Turn Zoom class reminders on"
+                            ),
+                            "callback_data": "reminders:class:toggle",
+                        }
+                    ],
+                ]
             ),
         )
 
     def _change_reminder_setting(
         self, chat_id: int, telegram_id: int, is_private: bool, action: str
     ) -> None:
-        current = self.store.reminders_enabled(telegram_id)
-        enabled = action == "reminders:on" or (
-            action == "reminders:toggle" and not current
-        )
-        if not enabled:
-            self.store.set_reminders_enabled(telegram_id, False)
+        if action in {"reminders:on", "reminders:off"}:
+            enabled = action == "reminders:on"
+            if enabled and not is_private:
+                self._reminder_private_chat_required(chat_id)
+                return
+            self.store.set_reminders_enabled(telegram_id, enabled)
+            self.store.set_class_reminders_enabled(telegram_id, enabled)
             self._show_reminder_settings(chat_id, telegram_id)
             return
-        if not is_private or not self.store.set_reminders_enabled(telegram_id, True):
+
+        reminder_setting = (
+            "class"
+            if action == "reminders:class:toggle"
+            else "weekly"
+        )
+        current = (
+            self.store.class_reminders_enabled(telegram_id)
+            if reminder_setting == "class"
+            else self.store.reminders_enabled(telegram_id)
+        )
+        enabled = not current
+        if enabled and not is_private:
+            self._reminder_private_chat_required(chat_id)
+            return
+        saved = (
+            self.store.set_class_reminders_enabled(telegram_id, enabled)
+            if reminder_setting == "class"
+            else self.store.set_reminders_enabled(telegram_id, enabled)
+        )
+        if not saved:
             self.api.send_message(
                 chat_id,
                 "Open this bot in a private chat and send /start before enabling reminders.",
@@ -956,11 +1013,27 @@ class SmartMoneyHubBot:
             return
         self._show_reminder_settings(chat_id, telegram_id)
 
+    def _reminder_private_chat_required(self, chat_id: int) -> None:
+        self.api.send_message(
+            chat_id,
+            "Open this bot in a private chat and send /start before enabling reminders.",
+            self._nav_keyboard(),
+        )
+
     def _dispatch_due_reminders(self, now: datetime | None = None) -> None:
         current = now or datetime.now(timezone.utc)
         local_now = current.astimezone(self.reminder_zone)
-        if local_now.weekday() != 6 or local_now.time().replace(tzinfo=None) < self.reminder_time:
-            return
+        if (
+            local_now.weekday() == 6
+            and local_now.time().replace(tzinfo=None) >= self.reminder_time
+        ):
+            self._dispatch_weekly_checkin(local_now)
+
+        class_day = CLASS_REMINDER_WEEKDAYS.get(local_now.weekday())
+        if class_day:
+            self._dispatch_class_reminders(local_now, class_day)
+
+    def _dispatch_weekly_checkin(self, local_now: datetime) -> None:
         schedule_key = local_now.date().isoformat()
         for member in self.store.reminder_recipients():
             telegram_id = int(member["telegram_id"])
@@ -971,8 +1044,8 @@ class SmartMoneyHubBot:
             try:
                 self.api.send_message(
                     int(member["chat_id"]),
-                    "🧠 Sunday Check-In — are you prepared for the week?\n\n"
-                    "Choose a check-in or set your weekly plan.",
+                    "🧠 Sunday Check-In — how is your trading going?\n\n"
+                    "Take a moment to review your week or prepare your plan.",
                     {
                         "inline_keyboard": [
                             [
@@ -984,15 +1057,66 @@ class SmartMoneyHubBot:
                     },
                 )
             except TelegramAPIError as error:
-                if any(part in str(error).casefold() for part in BLOCKED_CHAT_ERRORS):
-                    self.store.set_reminders_enabled(telegram_id, False)
-                    logger.info("Disabled reminders for a Telegram chat that is unavailable.")
-                else:
-                    logger.warning("Could not send a scheduled reminder: %s", error)
+                self._handle_reminder_send_error(telegram_id, error)
                 continue
             self.store.record_reminder_sent(
                 telegram_id, "weekly_sunday", schedule_key
             )
+
+    def _dispatch_class_reminders(
+        self, local_now: datetime, class_day: str
+    ) -> None:
+        for reminder_time, reminder_type, message in (
+            (
+                CLASS_REMINDER_TIME,
+                "zoom_class_one_hour",
+                f"🔔 Zoom class reminder: your {class_day} class starts at 8:00 PM "
+                f"({self.reminder_zone.key}). Join using your usual Zoom link.",
+            ),
+            (
+                CLASS_START_TIME,
+                "zoom_class_start",
+                f"🎥 Your {class_day} Zoom class starts now. Join using your usual Zoom link.",
+            ),
+        ):
+            scheduled_at = datetime.combine(
+                local_now.date(), reminder_time, tzinfo=self.reminder_zone
+            )
+            if not scheduled_at <= local_now <= scheduled_at + CLASS_REMINDER_GRACE:
+                continue
+            schedule_key = f"{local_now.date().isoformat()}:{reminder_time:%H%M}"
+            for member in self.store.class_reminder_recipients():
+                telegram_id = int(member["telegram_id"])
+                if self.store.reminder_was_sent(
+                    telegram_id, reminder_type, schedule_key
+                ):
+                    continue
+                try:
+                    self.api.send_message(
+                        int(member["chat_id"]),
+                        message,
+                        {
+                            "inline_keyboard": [
+                                [{"text": "Stop All Reminders", "callback_data": "reminders:off"}]
+                            ]
+                        },
+                    )
+                except TelegramAPIError as error:
+                    self._handle_reminder_send_error(telegram_id, error)
+                    continue
+                self.store.record_reminder_sent(
+                    telegram_id, reminder_type, schedule_key
+                )
+
+    def _handle_reminder_send_error(
+        self, telegram_id: int, error: TelegramAPIError
+    ) -> None:
+        if any(part in str(error).casefold() for part in BLOCKED_CHAT_ERRORS):
+            self.store.set_reminders_enabled(telegram_id, False)
+            self.store.set_class_reminders_enabled(telegram_id, False)
+            logger.info("Disabled reminders for a Telegram chat that is unavailable.")
+        else:
+            logger.warning("Could not send a scheduled reminder: %s", error)
 
     def _go_back(self, telegram_id: int, chat_id: int) -> None:
         session = self.sessions.get(telegram_id)

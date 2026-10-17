@@ -20,7 +20,7 @@ The bot uses long polling. Run only one process with this token at a time. Teleg
 - **My Progress:** assessment history totals and averages, latest score, journaled trades and outcomes, strongest and weakest topics, common mistake, and recent check-ins.
 - **Learn SMC:** short lessons on structure, BOS/CHoCH, liquidity, order blocks, FVG/IFVG, POIs, confirmation, retests, risk, and psychology.
 - **DM Coach:** members can send private SMC questions or describe a setup for deterministic, guided coaching on the framework, confirmation, retests, risk, and trade reviews. Ask Coach is available from the main menu; `/coach` opens it directly. No AI provider or paid API is connected.
-- **Reminders:** optional Sunday private check-in. It is off by default; members must start the bot in a private chat and opt in. `/stop` unsubscribes. A trade journal also returns an immediate review reminder.
+- **Reminders:** optional weekly Sunday check-in at 09:00 and Monday/Thursday Zoom-class reminders at 19:00 and 20:00 (`Africa/Lagos` by default). Sunday and class reminders have separate opt-ins; `/stop` turns both off. Members must start the bot in a private chat to receive DMs. A trade journal also returns an immediate review reminder.
 
 The education and journal flows emphasize confirmation, retests, liquidity and displacement context, valid POIs, avoiding chase entries, and risk management. The bot is for education and record-keeping; it does not predict trades or promise profits. Back and Main Menu buttons are available through active flows.
 
@@ -35,13 +35,13 @@ The dashboard's **DM Coach Stats** page shows members using the coach, repeated 
 
 ## Reminder schedule
 
-The default is Sunday at **09:00 Africa/Lagos**. Optional environment variables:
+The default weekly check-in is Sunday at **09:00 Africa/Lagos**. Zoom-class reminders are sent at **19:00** and **20:00** on Mondays and Thursdays. Optional environment variables:
 
 - `SMH_REMINDER_TIMEZONE` — an IANA timezone, default `Africa/Lagos`.
 - `SMH_SUNDAY_REMINDER_TIME` — 24-hour local time, default `09:00`.
 - `SMH_DATABASE_PATH` — SQLite file location, default `data/smart_money_hub.sqlite3`.
 
-Only members with a private chat, prior interaction, and explicit reminder opt-in are scheduled. If Telegram reports that a chat is blocked or unavailable, reminders for that member are disabled. Each Sunday reminder is recorded to prevent duplicates across workflow restarts.
+Only members with a private chat, prior interaction, and explicit opt-in for the relevant reminder type are scheduled. If Telegram reports that a chat is blocked or unavailable, all reminders for that member are disabled. Each scheduled reminder is recorded to prevent duplicates across workflow restarts.
 
 ## Data and editing
 

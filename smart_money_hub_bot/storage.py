@@ -42,7 +42,8 @@ class Repository:
                         started_at TEXT NOT NULL,
                         last_interaction_at TEXT NOT NULL,
                         last_checkin_at TEXT,
-                        reminders_enabled INTEGER NOT NULL DEFAULT 0
+                        reminders_enabled INTEGER NOT NULL DEFAULT 0,
+                        zoom_class_reminders_enabled INTEGER NOT NULL DEFAULT 0
                     );
 
                     CREATE TABLE IF NOT EXISTS assessment_results (
@@ -195,6 +196,11 @@ class Repository:
                     ON dm_coach_mistakes (mistake);
                     """
                 )
+                self._ensure_user_column(
+                    connection,
+                    "zoom_class_reminders_enabled",
+                    "INTEGER NOT NULL DEFAULT 0",
+                )
                 self._migrate_legacy_assessments(connection)
                 member_ids = connection.execute(
                     "SELECT telegram_id FROM users"
@@ -203,6 +209,19 @@ class Repository:
                     self._refresh_progress(connection, int(member["telegram_id"]))
         finally:
             connection.close()
+
+    @staticmethod
+    def _ensure_user_column(
+        connection: sqlite3.Connection, column_name: str, definition: str
+    ) -> None:
+        columns = {
+            str(row["name"])
+            for row in connection.execute("PRAGMA table_info(users)").fetchall()
+        }
+        if column_name not in columns:
+            connection.execute(
+                f"ALTER TABLE users ADD COLUMN {column_name} {definition}"
+            )
 
     @staticmethod
     def _migrate_legacy_assessments(connection: sqlite3.Connection) -> None:
@@ -336,6 +355,34 @@ class Repository:
         finally:
             connection.close()
 
+    def class_reminders_enabled(self, telegram_id: int) -> bool:
+        user = self.get_user(telegram_id)
+        return bool(user and user["zoom_class_reminders_enabled"])
+
+    def set_class_reminders_enabled(self, telegram_id: int, enabled: bool) -> bool:
+        connection = self._connect()
+        try:
+            with connection:
+                user = connection.execute(
+                    "SELECT is_private, chat_id FROM users WHERE telegram_id = ?",
+                    (telegram_id,),
+                ).fetchone()
+                if not user:
+                    return False
+                if enabled and (not user["is_private"] or not user["chat_id"]):
+                    return False
+                connection.execute(
+                    """
+                    UPDATE users SET zoom_class_reminders_enabled = ?,
+                        last_interaction_at = ?
+                    WHERE telegram_id = ?
+                    """,
+                    (int(enabled), utc_now(), telegram_id),
+                )
+            return True
+        finally:
+            connection.close()
+
     def reminder_recipients(self) -> list[dict[str, Any]]:
         connection = self._connect()
         try:
@@ -347,6 +394,24 @@ class Repository:
                   AND is_private = 1
                   AND chat_id IS NOT NULL
                   AND reminders_enabled = 1
+                ORDER BY telegram_id
+                """
+            ).fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            connection.close()
+
+    def class_reminder_recipients(self) -> list[dict[str, Any]]:
+        connection = self._connect()
+        try:
+            rows = connection.execute(
+                """
+                SELECT telegram_id, chat_id, first_name
+                FROM users
+                WHERE started_at IS NOT NULL
+                  AND is_private = 1
+                  AND chat_id IS NOT NULL
+                  AND zoom_class_reminders_enabled = 1
                 ORDER BY telegram_id
                 """
             ).fetchall()
