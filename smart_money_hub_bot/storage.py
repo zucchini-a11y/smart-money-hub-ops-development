@@ -43,7 +43,8 @@ class Repository:
                         last_interaction_at TEXT NOT NULL,
                         last_checkin_at TEXT,
                         reminders_enabled INTEGER NOT NULL DEFAULT 0,
-                        zoom_class_reminders_enabled INTEGER NOT NULL DEFAULT 0
+                        zoom_class_reminders_enabled INTEGER NOT NULL DEFAULT 0,
+                        reminders_stopped INTEGER NOT NULL DEFAULT 0
                     );
 
                     CREATE TABLE IF NOT EXISTS assessment_results (
@@ -199,6 +200,11 @@ class Repository:
                 self._ensure_user_column(
                     connection,
                     "zoom_class_reminders_enabled",
+                    "INTEGER NOT NULL DEFAULT 0",
+                )
+                self._ensure_user_column(
+                    connection,
+                    "reminders_stopped",
                     "INTEGER NOT NULL DEFAULT 0",
                 )
                 self._migrate_legacy_assessments(connection)
@@ -383,6 +389,37 @@ class Repository:
         finally:
             connection.close()
 
+    def reminders_stopped(self, telegram_id: int) -> bool:
+        user = self.get_user(telegram_id)
+        return bool(user and user["reminders_stopped"])
+
+    def set_reminders_stopped(self, telegram_id: int, stopped: bool) -> bool:
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE users
+                    SET reminders_stopped = ?,
+                        reminders_enabled = CASE WHEN ? = 1 THEN 0 ELSE reminders_enabled END,
+                        zoom_class_reminders_enabled = CASE
+                            WHEN ? = 1 THEN 0 ELSE zoom_class_reminders_enabled
+                        END,
+                        last_interaction_at = ?
+                    WHERE telegram_id = ?
+                    """,
+                    (
+                        int(stopped),
+                        int(stopped),
+                        int(stopped),
+                        utc_now(),
+                        telegram_id,
+                    ),
+                )
+                return cursor.rowcount > 0
+        finally:
+            connection.close()
+
     def reminder_recipients(self) -> list[dict[str, Any]]:
         connection = self._connect()
         try:
@@ -394,6 +431,7 @@ class Repository:
                   AND is_private = 1
                   AND chat_id IS NOT NULL
                   AND reminders_enabled = 1
+                  AND reminders_stopped = 0
                 ORDER BY telegram_id
                 """
             ).fetchall()
@@ -411,7 +449,7 @@ class Repository:
                 WHERE started_at IS NOT NULL
                   AND is_private = 1
                   AND chat_id IS NOT NULL
-                  AND zoom_class_reminders_enabled = 1
+                  AND reminders_stopped = 0
                 ORDER BY telegram_id
                 """
             ).fetchall()

@@ -20,7 +20,7 @@ The bot uses long polling. Run only one process with this token at a time. Teleg
 - **My Progress:** assessment history totals and averages, latest score, journaled trades and outcomes, strongest and weakest topics, common mistake, and recent check-ins.
 - **Learn SMC:** short lessons on structure, BOS/CHoCH, liquidity, order blocks, FVG/IFVG, POIs, confirmation, retests, risk, and psychology.
 - **DM Coach:** members can send private SMC questions or describe a setup for deterministic, guided coaching on the framework, confirmation, retests, risk, and trade reviews. Ask Coach is available from the main menu; `/coach` opens it directly. No AI provider or paid API is connected.
-- **Reminders:** optional weekly Sunday check-in at 09:00 and Monday/Thursday Zoom-class reminders at 19:00 and 20:00 (`Africa/Lagos` by default). Sunday and class reminders have separate opt-ins; `/stop` turns both off. Members must start the bot in a private chat to receive DMs. A trade journal also returns an immediate review reminder.
+- **Reminders:** optional weekly Sunday check-in at 09:00 and automatic Monday/Thursday Zoom-class check-ins at 19:00 and 20:00 (`Africa/Lagos` by default). `/stop` turns off all scheduled reminders. Members must start the bot in a private chat to receive DMs. A trade journal also returns an immediate review reminder.
 
 The education and journal flows emphasize confirmation, retests, liquidity and displacement context, valid POIs, avoiding chase entries, and risk management. The bot is for education and record-keeping; it does not predict trades or promise profits. Back and Main Menu buttons are available through active flows.
 
@@ -41,7 +41,7 @@ The default weekly check-in is Sunday at **09:00 Africa/Lagos**. Zoom-class remi
 - `SMH_SUNDAY_REMINDER_TIME` — 24-hour local time, default `09:00`.
 - `SMH_DATABASE_PATH` — SQLite file location, default `data/smart_money_hub.sqlite3`.
 
-Only members with a private chat, prior interaction, and explicit opt-in for the relevant reminder type are scheduled. If Telegram reports that a chat is blocked or unavailable, all reminders for that member are disabled. Each scheduled reminder is recorded to prevent duplicates across workflow restarts.
+Only members who have started the bot in a private chat are eligible for automatic Zoom-class check-ins. Sunday check-ins remain optional. `/stop` disables all scheduled reminders until the member resumes them in Reminder Settings. If Telegram reports that a chat is blocked or unavailable, all reminders for that member are stopped. Each scheduled reminder is recorded to prevent duplicates across workflow restarts.
 
 ## Data and editing
 

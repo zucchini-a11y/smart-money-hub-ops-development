@@ -653,7 +653,7 @@ class BotFlowTests(unittest.TestCase):
         ]
         self.assertEqual(len(scheduled), 1)
 
-    def test_zoom_class_reminders_fire_at_7pm_and_8pm_on_both_class_days(self) -> None:
+    def test_zoom_class_checkins_are_automatic_and_honor_stop(self) -> None:
         self.bot.store.register_user(
             telegram_id=303,
             username="class_member",
@@ -663,7 +663,15 @@ class BotFlowTests(unittest.TestCase):
             at="2026-10-01T10:00:00+00:00",
         )
         self.assertFalse(self.bot.store.reminders_enabled(303))
-        self.assertTrue(self.bot.store.set_class_reminders_enabled(303, True))
+        self.assertFalse(self.bot.store.class_reminders_enabled(303))
+        self.bot.store.register_user(
+            telegram_id=404,
+            username="group_member",
+            first_name="Bola",
+            chat_id=-404,
+            is_private=False,
+            at="2026-10-01T10:00:00+00:00",
+        )
 
         lagos = ZoneInfo("Africa/Lagos")
         for day in (5, 8):  # Monday and Thursday in this week
@@ -714,16 +722,33 @@ class BotFlowTests(unittest.TestCase):
 
         self._message("/stop", user_id=303, chat_id=303)
         self.assertFalse(self.bot.store.class_reminders_enabled(303))
+        self.assertTrue(self.bot.store.reminders_stopped(303))
+        self.assertEqual(self.bot.store.class_reminder_recipients(), [])
 
-    def test_reminder_settings_keep_weekly_and_class_opt_ins_separate(self) -> None:
+        self._message("/start", user_id=303, chat_id=303)
+        self.assertTrue(self.bot.store.reminders_stopped(303))
+
+        self._callback("reminders:on", sender_id=303, chat_id=303)
+        self.assertFalse(self.bot.store.reminders_stopped(303))
+        self.assertTrue(self.bot.store.reminders_enabled(303))
+        self.assertEqual(
+            [member["telegram_id"] for member in self.bot.store.class_reminder_recipients()],
+            [303],
+        )
+
+    def test_reminder_settings_show_automatic_class_checkins(self) -> None:
         self._click("menu:reminders")
-        self.assertIn("Zoom class reminders: Off", self.api.messages[-1]["text"])
-        self._click("reminders:class:toggle")
-        self.assertTrue(self.bot.store.class_reminders_enabled(self.user_id))
+        self.assertIn("Zoom class check-ins: Automatic", self.api.messages[-1]["text"])
+        self.assertIn("All scheduled reminders: Active", self.api.messages[-1]["text"])
         self.assertFalse(self.bot.store.reminders_enabled(self.user_id))
         self._click("reminders:weekly:toggle")
-        self.assertTrue(self.bot.store.class_reminders_enabled(self.user_id))
         self.assertTrue(self.bot.store.reminders_enabled(self.user_id))
+        self.assertFalse(self.bot.store.reminders_stopped(self.user_id))
+        self._click("reminders:off")
+        self.assertTrue(self.bot.store.reminders_stopped(self.user_id))
+        self.assertIn("All scheduled reminders: Stopped", self.api.messages[-1]["text"])
+        self._click("reminders:on")
+        self.assertFalse(self.bot.store.reminders_stopped(self.user_id))
 
     def test_run_does_not_change_an_existing_webhook(self) -> None:
         self.api.webhook_info = {"url": "https://example.invalid/webhook"}
@@ -824,6 +849,7 @@ class StorageMigrationTests(unittest.TestCase):
             member = repository.get_user(555)
             self.assertEqual(member["username"], "existing_member")
             self.assertEqual(member["zoom_class_reminders_enabled"], 0)
+            self.assertEqual(member["reminders_stopped"], 0)
 
     def test_legacy_assessment_rows_survive_repeated_database_initialization(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
