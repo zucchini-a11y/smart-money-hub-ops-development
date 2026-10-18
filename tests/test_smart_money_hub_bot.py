@@ -440,7 +440,9 @@ class BotFlowTests(unittest.TestCase):
         self._message("/myid")
         self.assertIn(str(self.user_id), self.api.messages[-1]["text"])
         self._message("/admin")
-        self.assertIn("Admin access is not configured", self.api.messages[-1]["text"])
+        self.assertIn("Admin access is restricted", self.api.messages[-1]["text"])
+        self.assertNotIn("ADMIN_TELEGRAM_ID", self.api.messages[-1]["text"])
+        self.assertNotIn("Send /myid", self.api.messages[-1]["text"])
 
         self.bot.admin_id = self.user_id
         self.bot.admin_dashboard.admin_id = self.user_id

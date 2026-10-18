@@ -276,15 +276,7 @@ class AdminDashboard:
             )
 
     def _authorize(self, chat_id: int, telegram_id: int, is_private: bool) -> bool:
-        if self.admin_id is None:
-            self.api.send_message(
-                chat_id,
-                "Admin access is not configured. Send /myid and add your numeric ID "
-                "as the Replit Secret ADMIN_TELEGRAM_ID.",
-                self._basic_navigation(),
-            )
-            return False
-        if telegram_id != self.admin_id:
+        if self.admin_id is None or telegram_id != self.admin_id:
             self.api.send_message(
                 chat_id,
                 "Admin access is restricted.",
