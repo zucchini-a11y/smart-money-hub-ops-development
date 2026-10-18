@@ -1074,14 +1074,14 @@ class SmartMoneyHubBot:
                 f"{class_day.upper()} ZOOM CLASS\n"
                 f"Your class begins in one hour, at 8:00 PM "
                 f"({self.reminder_zone.key}).\n"
-                "Please join using your usual Zoom link.",
+                "The Zoom link will be available in the channel.",
             ),
             (
                 CLASS_START_TIME,
                 "zoom_class_start",
                 f"SMART MONEY HUB\n"
                 f"{class_day.upper()} ZOOM CLASS IS STARTING NOW\n"
-                "Please join using your usual Zoom link.",
+                "The Zoom link will be available in the channel.",
             ),
         ):
             scheduled_at = datetime.combine(

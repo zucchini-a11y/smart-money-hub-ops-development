@@ -690,26 +690,26 @@ class BotFlowTests(unittest.TestCase):
             "SMART MONEY HUB\n"
             "MONDAY ZOOM CLASS\n"
             "Your class begins in one hour, at 8:00 PM (Africa/Lagos).\n"
-            "Please join using your usual Zoom link.",
+            "The Zoom link will be available in the channel.",
         )
         self.assertEqual(
             class_messages[1]["text"],
             "SMART MONEY HUB\n"
             "MONDAY ZOOM CLASS IS STARTING NOW\n"
-            "Please join using your usual Zoom link.",
+            "The Zoom link will be available in the channel.",
         )
         self.assertEqual(
             class_messages[2]["text"],
             "SMART MONEY HUB\n"
             "THURSDAY ZOOM CLASS\n"
             "Your class begins in one hour, at 8:00 PM (Africa/Lagos).\n"
-            "Please join using your usual Zoom link.",
+            "The Zoom link will be available in the channel.",
         )
         self.assertEqual(
             class_messages[3]["text"],
             "SMART MONEY HUB\n"
             "THURSDAY ZOOM CLASS IS STARTING NOW\n"
-            "Please join using your usual Zoom link.",
+            "The Zoom link will be available in the channel.",
         )
 
         self._message("/stop", user_id=303, chat_id=303)
