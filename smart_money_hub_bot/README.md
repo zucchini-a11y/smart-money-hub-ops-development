@@ -29,9 +29,9 @@ The education and journal flows emphasize confirmation, retests, liquidity and d
 1. Send `/myid` to the bot in a private chat.
 2. Add a Replit Secret named `ADMIN_TELEGRAM_ID` with the numeric ID shown to you.
 3. Restart **Smart Money Hub Bot**.
-4. Send `/admin` to view the admin-only member, activity, assessment, journal, weekly participation totals, and DM Coach statistics.
+4. Send `/admin` to view the admin-only member, activity, assessment, journal, weekly participation totals, DM Coach statistics, and one-time DM tool.
 
-The dashboard's **DM Coach Stats** page shows members using the coach, repeated questions, topics associated with reported process gaps, common mistakes, and recent activity. Admin access is not configured until that secret is set. The bot never asks for your Telegram token in chat.
+The dashboard's **DM Coach Stats** page shows members using the coach, repeated questions, topics associated with reported process gaps, common mistakes, and recent activity. **Send One-Time DM** lets the admin write, preview, and confirm a plain-text DM to active private-chat members who have not used `/stop`; the admin is excluded. Admin access is not configured until that secret is set. The bot never asks for your Telegram token in chat.
 
 ## Reminder schedule
 

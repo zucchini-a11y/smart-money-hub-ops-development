@@ -4,11 +4,18 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from .storage import Repository
-from .telegram_api import TelegramAPI
+from .telegram_api import TelegramAPI, TelegramAPIError
 
 ADMIN_RECENT_CHECKIN_DAYS = 14
 ADMIN_LOW_SCORE_THRESHOLD = 60
 ADMIN_PAGE_SIZE = 8
+MAX_BROADCAST_MESSAGE_LENGTH = 3500
+UNAVAILABLE_CHAT_ERRORS = (
+    "bot was blocked by the user",
+    "chat not found",
+    "bot can't initiate conversation",
+    "bot cannot initiate conversation",
+)
 
 
 class AdminDashboard:
@@ -19,12 +26,27 @@ class AdminDashboard:
         self.store = store
         self.admin_id = admin_id
         self._search_pending: set[int] = set()
+        self._broadcast_pending: set[int] = set()
+        self._broadcast_drafts: dict[int, str] = {}
 
     def search_is_pending(self, telegram_id: int) -> bool:
         return telegram_id in self._search_pending
 
     def cancel_search(self, telegram_id: int) -> None:
         self._search_pending.discard(telegram_id)
+
+    def broadcast_is_pending(self, telegram_id: int) -> bool:
+        return telegram_id in self._broadcast_pending
+
+    def has_broadcast_state(self, telegram_id: int) -> bool:
+        return (
+            telegram_id in self._broadcast_pending
+            or telegram_id in self._broadcast_drafts
+        )
+
+    def cancel_broadcast(self, telegram_id: int) -> None:
+        self._broadcast_pending.discard(telegram_id)
+        self._broadcast_drafts.pop(telegram_id, None)
 
     def open(self, chat_id: int, telegram_id: int, is_private: bool) -> None:
         if self._authorize(chat_id, telegram_id, is_private):
@@ -62,11 +84,139 @@ class AdminDashboard:
             self._admin_navigation(rows),
         )
 
+    def handle_broadcast_message(
+        self, chat_id: int, telegram_id: int, is_private: bool, text: str
+    ) -> None:
+        if not self._authorize(chat_id, telegram_id, is_private):
+            self.cancel_broadcast(telegram_id)
+            return
+
+        draft = text.strip()
+        if not draft:
+            self._prompt_for_broadcast_text(chat_id, "Please send a non-empty message.")
+            return
+        if len(draft) > MAX_BROADCAST_MESSAGE_LENGTH:
+            self._prompt_for_broadcast_text(
+                chat_id,
+                f"That message is too long. Keep it under "
+                f"{MAX_BROADCAST_MESSAGE_LENGTH} characters.",
+            )
+            return
+
+        recipients = self._broadcast_recipients()
+        if not recipients:
+            self.cancel_broadcast(telegram_id)
+            self.api.send_message(
+                chat_id,
+                "There are no eligible private-chat recipients right now. "
+                "Members must start the bot and must not have used /stop.",
+                self._admin_navigation(),
+            )
+            return
+
+        self._broadcast_pending.discard(telegram_id)
+        self._broadcast_drafts[telegram_id] = draft
+        self.api.send_message(
+            chat_id,
+            f"ONE-TIME DM PREVIEW\nRecipients: {len(recipients)}\n\n"
+            f"{draft}\n\nSend this message now?",
+            self._admin_navigation(
+                [
+                    [
+                        {
+                            "text": "Send DM",
+                            "callback_data": "admin:dm_broadcast:confirm",
+                        },
+                        {
+                            "text": "Cancel",
+                            "callback_data": "admin:dm_broadcast:cancel",
+                        },
+                    ]
+                ]
+            ),
+        )
+
+    def _prompt_for_broadcast_text(self, chat_id: int, notice: str | None = None) -> None:
+        prefix = f"{notice}\n\n" if notice else ""
+        self.api.send_message(
+            chat_id,
+            f"{prefix}Type the one-time DM to send to eligible members. "
+            "Nothing is sent until you review and confirm it.",
+            self._admin_navigation(
+                [[{"text": "Cancel", "callback_data": "admin:dm_broadcast:cancel"}]]
+            ),
+        )
+
+    def _broadcast_recipients(self) -> list[dict[str, Any]]:
+        return [
+            member
+            for member in self.store.active_private_dm_recipients()
+            if int(member["telegram_id"]) != self.admin_id
+        ]
+
+    def _send_broadcast(self, chat_id: int, telegram_id: int) -> None:
+        draft = self._broadcast_drafts.pop(telegram_id, None)
+        if draft is None:
+            self.api.send_message(
+                chat_id,
+                "There is no pending DM to send. Start a new one from the dashboard.",
+                self._dashboard_keyboard(),
+            )
+            return
+
+        recipients = self._broadcast_recipients()
+        if not recipients:
+            self.api.send_message(
+                chat_id,
+                "There are no eligible private-chat recipients right now. "
+                "Members must start the bot and must not have used /stop.",
+                self._dashboard_keyboard(),
+            )
+            return
+
+        sent = 0
+        failed = 0
+        for member in recipients:
+            try:
+                self.api.send_message(
+                    int(member["chat_id"]),
+                    draft,
+                    {
+                        "inline_keyboard": [
+                            [
+                                {
+                                    "text": "Stop All Reminders",
+                                    "callback_data": "reminders:off",
+                                }
+                            ]
+                        ]
+                    },
+                )
+            except TelegramAPIError as error:
+                failed += 1
+                if any(part in str(error).casefold() for part in UNAVAILABLE_CHAT_ERRORS):
+                    self.store.set_reminders_stopped(int(member["telegram_id"]), True)
+            else:
+                sent += 1
+
+        self.api.send_message(
+            chat_id,
+            f"One-time DM complete. Sent: {sent}. Failed: {failed}.",
+            self._dashboard_keyboard(),
+        )
+
     def handle_callback(
         self, chat_id: int, telegram_id: int, is_private: bool, data: str
     ) -> None:
         if not self._authorize(chat_id, telegram_id, is_private):
             return
+        broadcast_actions = {
+            "admin:dm_broadcast",
+            "admin:dm_broadcast:confirm",
+            "admin:dm_broadcast:cancel",
+        }
+        if data not in broadcast_actions:
+            self.cancel_broadcast(telegram_id)
         if data != "admin:search":
             self.cancel_search(telegram_id)
 
@@ -80,6 +230,17 @@ class AdminDashboard:
             self._show_statistics(chat_id)
         elif data == "admin:dm_coach":
             self._show_dm_coach_stats(chat_id)
+        elif data == "admin:dm_broadcast":
+            self._broadcast_pending.add(telegram_id)
+            self._broadcast_drafts.pop(telegram_id, None)
+            self._prompt_for_broadcast_text(chat_id)
+        elif data == "admin:dm_broadcast:confirm":
+            self._send_broadcast(chat_id, telegram_id)
+        elif data == "admin:dm_broadcast:cancel":
+            self.cancel_broadcast(telegram_id)
+            self.api.send_message(
+                chat_id, "One-time DM cancelled.", self._dashboard_keyboard()
+            )
         elif data == "admin:weak_topics":
             self._show_weak_topics(chat_id)
         elif data == "admin:trade_journals":
@@ -218,6 +379,7 @@ class AdminDashboard:
                     {"text": "📈 Member Progress", "callback_data": "admin:progress"},
                 ],
                 [{"text": "💬 DM Coach Stats", "callback_data": "admin:dm_coach"}],
+                [{"text": "📨 Send One-Time DM", "callback_data": "admin:dm_broadcast"}],
                 [{"text": "🏠 Main Menu", "callback_data": "nav:home"}],
             ]
         }

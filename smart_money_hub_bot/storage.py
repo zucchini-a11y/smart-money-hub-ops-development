@@ -440,6 +440,9 @@ class Repository:
             connection.close()
 
     def class_reminder_recipients(self) -> list[dict[str, Any]]:
+        return self.active_private_dm_recipients()
+
+    def active_private_dm_recipients(self) -> list[dict[str, Any]]:
         connection = self._connect()
         try:
             rows = connection.execute(

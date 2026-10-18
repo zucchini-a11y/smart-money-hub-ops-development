@@ -162,6 +162,7 @@ class SmartMoneyHubBot:
         if command == "/start":
             self.sessions.pop(telegram_id, None)
             self.admin_dashboard.cancel_search(telegram_id)
+            self.admin_dashboard.cancel_broadcast(telegram_id)
             self._show_welcome(
                 chat_id,
                 sender.get("first_name"),
@@ -181,6 +182,7 @@ class SmartMoneyHubBot:
             self._enter_coach(chat_id, telegram_id, is_private)
             return
         if command in {"/stop", "/unsubscribe"}:
+            self.admin_dashboard.cancel_broadcast(telegram_id)
             self.store.set_reminders_stopped(telegram_id, True)
             self.api.send_message(
                 chat_id,
@@ -200,15 +202,25 @@ class SmartMoneyHubBot:
             return
         if command == "/admin":
             self.admin_dashboard.cancel_search(telegram_id)
+            self.admin_dashboard.cancel_broadcast(telegram_id)
             self.admin_dashboard.open(chat_id, telegram_id, is_private)
             return
-        if command == "/cancel" and self.admin_dashboard.search_is_pending(telegram_id):
+        if command == "/cancel" and (
+            self.admin_dashboard.search_is_pending(telegram_id)
+            or self.admin_dashboard.has_broadcast_state(telegram_id)
+        ):
             self.admin_dashboard.cancel_search(telegram_id)
+            self.admin_dashboard.cancel_broadcast(telegram_id)
             self.admin_dashboard.open(chat_id, telegram_id, is_private)
             return
 
         if self.admin_dashboard.search_is_pending(telegram_id):
             self.admin_dashboard.handle_search_message(
+                chat_id, telegram_id, is_private, text
+            )
+            return
+        if self.admin_dashboard.broadcast_is_pending(telegram_id):
+            self.admin_dashboard.handle_broadcast_message(
                 chat_id, telegram_id, is_private, text
             )
             return
@@ -276,6 +288,13 @@ class SmartMoneyHubBot:
                 "Could not acknowledge Telegram callback; continuing to process it: %s",
                 error,
             )
+
+        if data not in {
+            "admin:dm_broadcast",
+            "admin:dm_broadcast:confirm",
+            "admin:dm_broadcast:cancel",
+        }:
+            self.admin_dashboard.cancel_broadcast(telegram_id)
 
         if data.startswith("admin:"):
             self.admin_dashboard.handle_callback(

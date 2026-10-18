@@ -460,11 +460,129 @@ class BotFlowTests(unittest.TestCase):
                 "📒 Trade Journals",
                 "🔍 Search Member",
                 "📈 Member Progress",
+                "📨 Send One-Time DM",
             }.issubset(button_labels)
         )
 
         self._callback("admin:open", sender_id=self.user_id + 1, chat_id=self.chat_id + 1)
         self.assertIn("restricted", self.api.messages[-1]["text"])
+
+    def test_admin_can_preview_confirm_and_cancel_one_time_dm(self) -> None:
+        admin_id = self.user_id
+        active_member_id = 770101
+        stopped_member_id = 770102
+        group_member_id = 770103
+        self.bot.admin_id = admin_id
+        self.bot.admin_dashboard.admin_id = admin_id
+        self.bot.store.register_user(
+            telegram_id=active_member_id,
+            username="active_member",
+            first_name="Active",
+            chat_id=active_member_id,
+            is_private=True,
+        )
+        self.bot.store.register_user(
+            telegram_id=stopped_member_id,
+            username="stopped_member",
+            first_name="Stopped",
+            chat_id=stopped_member_id,
+            is_private=True,
+        )
+        self.bot.store.set_reminders_stopped(stopped_member_id, True)
+        self.bot.store.register_user(
+            telegram_id=group_member_id,
+            username="group_member",
+            first_name="Group",
+            chat_id=-group_member_id,
+            is_private=False,
+        )
+
+        self._callback(
+            "admin:dm_broadcast",
+            sender_id=admin_id + 1,
+            chat_id=-(admin_id + 1),
+            chat_type="supergroup",
+        )
+        self.assertIn("restricted", self.api.messages[-1]["text"])
+        self.assertFalse(
+            self.bot.admin_dashboard.broadcast_is_pending(admin_id + 1)
+        )
+
+        self._callback(
+            "admin:dm_broadcast",
+            sender_id=admin_id,
+            chat_id=self.chat_id,
+        )
+        self.assertIn("Nothing is sent until", self.api.messages[-1]["text"])
+        message_text = "Hello members,\n\nPlease remember to check the channel."
+        self._message(message_text, user_id=admin_id, chat_id=self.chat_id)
+        preview = self.api.messages[-1]
+        self.assertIn("Recipients: 1", preview["text"])
+        self.assertIn(message_text, preview["text"])
+        self.assertFalse(
+            any(message["chat_id"] == active_member_id for message in self.api.messages)
+        )
+
+        self._callback(
+            "admin:dm_broadcast:confirm",
+            sender_id=admin_id,
+            chat_id=self.chat_id,
+        )
+        direct_messages = [
+            message
+            for message in self.api.messages
+            if message["chat_id"] == active_member_id
+        ]
+        self.assertEqual([message["text"] for message in direct_messages], [message_text])
+        self.assertEqual(
+            direct_messages[0]["reply_markup"]["inline_keyboard"][0][0]["callback_data"],
+            "reminders:off",
+        )
+        self.assertFalse(
+            any(message["chat_id"] == stopped_member_id for message in self.api.messages)
+        )
+        self.assertFalse(
+            any(message["chat_id"] == -group_member_id for message in self.api.messages)
+        )
+        self.assertFalse(
+            any(
+                message["chat_id"] == self.chat_id and message["text"] == message_text
+                for message in self.api.messages
+            )
+        )
+        self.assertIn("Sent: 1. Failed: 0.", self.api.messages[-1]["text"])
+
+        # A repeated confirmation cannot send the same one-time message again.
+        self._callback(
+            "admin:dm_broadcast:confirm",
+            sender_id=admin_id,
+            chat_id=self.chat_id,
+        )
+        self.assertEqual(
+            sum(message["chat_id"] == active_member_id for message in self.api.messages),
+            1,
+        )
+
+        self._callback(
+            "admin:dm_broadcast",
+            sender_id=admin_id,
+            chat_id=self.chat_id,
+        )
+        self._message("This draft should not be sent.", user_id=admin_id, chat_id=self.chat_id)
+        self._callback(
+            "admin:dm_broadcast:cancel",
+            sender_id=admin_id,
+            chat_id=self.chat_id,
+        )
+        self._callback(
+            "admin:dm_broadcast:confirm",
+            sender_id=admin_id,
+            chat_id=self.chat_id,
+        )
+        self.assertEqual(
+            sum(message["chat_id"] == active_member_id for message in self.api.messages),
+            1,
+        )
 
     def test_admin_dashboard_records_are_private_and_persist_across_reopen(self) -> None:
         admin_id = self.user_id
