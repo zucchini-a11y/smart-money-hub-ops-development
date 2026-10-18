@@ -682,13 +682,35 @@ class BotFlowTests(unittest.TestCase):
 
         class_messages = [
             message for message in self.api.messages
-            if "Zoom class" in message["text"] or "Zoom class" in message["text"]
+            if "ZOOM CLASS" in message["text"]
         ]
         self.assertEqual(len(class_messages), 4)
-        self.assertIn("Monday class starts at 8:00 PM", class_messages[0]["text"])
-        self.assertIn("Monday Zoom class starts now", class_messages[1]["text"])
-        self.assertIn("Thursday class starts at 8:00 PM", class_messages[2]["text"])
-        self.assertIn("Thursday Zoom class starts now", class_messages[3]["text"])
+        self.assertEqual(
+            class_messages[0]["text"],
+            "SMART MONEY HUB\n"
+            "MONDAY ZOOM CLASS\n"
+            "Your class begins in one hour, at 8:00 PM (Africa/Lagos).\n"
+            "Please join using your usual Zoom link.",
+        )
+        self.assertEqual(
+            class_messages[1]["text"],
+            "SMART MONEY HUB\n"
+            "MONDAY ZOOM CLASS IS STARTING NOW\n"
+            "Please join using your usual Zoom link.",
+        )
+        self.assertEqual(
+            class_messages[2]["text"],
+            "SMART MONEY HUB\n"
+            "THURSDAY ZOOM CLASS\n"
+            "Your class begins in one hour, at 8:00 PM (Africa/Lagos).\n"
+            "Please join using your usual Zoom link.",
+        )
+        self.assertEqual(
+            class_messages[3]["text"],
+            "SMART MONEY HUB\n"
+            "THURSDAY ZOOM CLASS IS STARTING NOW\n"
+            "Please join using your usual Zoom link.",
+        )
 
         self._message("/stop", user_id=303, chat_id=303)
         self.assertFalse(self.bot.store.class_reminders_enabled(303))

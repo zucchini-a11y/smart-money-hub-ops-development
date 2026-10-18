@@ -1070,13 +1070,18 @@ class SmartMoneyHubBot:
             (
                 CLASS_REMINDER_TIME,
                 "zoom_class_one_hour",
-                f"🔔 Zoom class reminder: your {class_day} class starts at 8:00 PM "
-                f"({self.reminder_zone.key}). Join using your usual Zoom link.",
+                f"SMART MONEY HUB\n"
+                f"{class_day.upper()} ZOOM CLASS\n"
+                f"Your class begins in one hour, at 8:00 PM "
+                f"({self.reminder_zone.key}).\n"
+                "Please join using your usual Zoom link.",
             ),
             (
                 CLASS_START_TIME,
                 "zoom_class_start",
-                f"🎥 Your {class_day} Zoom class starts now. Join using your usual Zoom link.",
+                f"SMART MONEY HUB\n"
+                f"{class_day.upper()} ZOOM CLASS IS STARTING NOW\n"
+                "Please join using your usual Zoom link.",
             ),
         ):
             scheduled_at = datetime.combine(
