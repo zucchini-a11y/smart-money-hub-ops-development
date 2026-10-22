@@ -502,6 +502,63 @@ class BotFlowTests(unittest.TestCase):
             "Start SMC Assessment",
         )
 
+    def test_admin_can_get_channel_id_from_forwarded_post_in_private_chat(self) -> None:
+        self.bot.admin_id = self.user_id
+        self._message("/channelid", user_id=self.user_id + 1)
+        self.assertIn("restricted", self.api.messages[-1]["text"])
+
+        self._message("/channelid")
+        self.assertIn("Forward a post", self.api.messages[-1]["text"])
+        self.assertIn(self.user_id, self.bot._channel_id_lookup_pending)
+        self.bot.handle_update(
+            {
+                "message": {
+                    "chat": {"id": self.chat_id, "type": "private"},
+                    "from": {"id": self.user_id, "first_name": self.first_name},
+                    "forward_origin": {
+                        "type": "channel",
+                        "chat": {
+                            "id": -1009876543210,
+                            "type": "channel",
+                            "title": "Smart Money Hub",
+                        },
+                        "message_id": 42,
+                        "date": 1_797_631_200,
+                    },
+                }
+            }
+        )
+        result = self.api.messages[-1]
+        self.assertEqual(result["chat_id"], self.chat_id)
+        self.assertIn("Numeric channel ID: -1009876543210", result["text"])
+        self.assertIn("Name: Smart Money Hub", result["text"])
+        self.assertNotIn(self.user_id, self.bot._channel_id_lookup_pending)
+
+    def test_channel_id_lookup_accepts_legacy_forward_and_can_be_cancelled(self) -> None:
+        self.bot.admin_id = self.user_id
+        self._message("/channelid")
+        self.bot.handle_update(
+            {
+                "message": {
+                    "text": "Forwarded channel post",
+                    "chat": {"id": self.chat_id, "type": "private"},
+                    "from": {"id": self.user_id, "first_name": self.first_name},
+                    "forward_from_chat": {
+                        "id": -1001234567890,
+                        "type": "channel",
+                        "title": "Smart Money Hub",
+                    },
+                    "forward_from_message_id": 7,
+                }
+            }
+        )
+        self.assertIn("Numeric channel ID: -1001234567890", self.api.messages[-1]["text"])
+
+        self._message("/channelid")
+        self._message("/cancel")
+        self.assertIn("Channel ID lookup cancelled", self.api.messages[-1]["text"])
+        self.assertNotIn(self.user_id, self.bot._channel_id_lookup_pending)
+
     def test_admin_can_preview_confirm_and_cancel_one_time_dm(self) -> None:
         admin_id = self.user_id
         active_member_id = 770101

@@ -77,6 +77,7 @@ class SmartMoneyHubBot:
             raise ValueError("The reminder time must be local wall time without a UTC offset.")
         # One active conversation per member; saved records live in SQLite.
         self.sessions: dict[int, Conversation] = {}
+        self._channel_id_lookup_pending: set[int] = set()
         self.coach_service: CoachService = RuleBasedCoachService()
 
     def run(self) -> None:
@@ -150,14 +151,87 @@ class SmartMoneyHubBot:
         )
         return telegram_id, chat_id, is_private
 
+    @staticmethod
+    def _forwarded_channel(message: dict[str, Any]) -> dict[str, Any] | None:
+        origin = message.get("forward_origin")
+        channel: Any = None
+        if isinstance(origin, dict) and origin.get("type") == "channel":
+            channel = origin.get("chat")
+        if not isinstance(channel, dict):
+            channel = message.get("forward_from_chat")
+        if (
+            not isinstance(channel, dict)
+            or channel.get("type") != "channel"
+            or not isinstance(channel.get("id"), int)
+        ):
+            return None
+        return channel
+
     def _handle_message(self, message: dict[str, Any]) -> None:
         text = message.get("text")
         sender = message.get("from") or {}
         chat = message.get("chat") or {}
-        if not isinstance(text, str):
+        sender_id = sender.get("id")
+        if not isinstance(text, str) and sender_id not in self._channel_id_lookup_pending:
             return
+        if not isinstance(text, str):
+            text = ""
         telegram_id, chat_id, is_private = self._register(sender, chat)
         command = text.strip().split(maxsplit=1)[0].split("@", maxsplit=1)[0].lower()
+
+        if command == "/channelid":
+            if self.admin_id is None or telegram_id != self.admin_id:
+                self.api.send_message(chat_id, "Admin access is restricted.")
+                return
+            if not is_private:
+                self.api.send_message(
+                    chat_id, "Use /channelid in a private chat with this bot."
+                )
+                return
+            self._channel_id_lookup_pending.add(telegram_id)
+            self.api.send_message(
+                chat_id,
+                "Forward a post from your private channel directly to this chat. "
+                "Use Telegram's Forward option; do not copy and paste the post. "
+                "I will reply here with the channel's numeric ID. Send /cancel to exit.",
+            )
+            return
+        if command == "/cancel" and telegram_id in self._channel_id_lookup_pending:
+            self._channel_id_lookup_pending.discard(telegram_id)
+            self.api.send_message(chat_id, "Channel ID lookup cancelled.")
+            return
+        if telegram_id in self._channel_id_lookup_pending:
+            if telegram_id != self.admin_id or not is_private:
+                self._channel_id_lookup_pending.discard(telegram_id)
+                self.api.send_message(
+                    chat_id,
+                    "For privacy, run /channelid and forward the post in a private chat.",
+                )
+                return
+            channel = self._forwarded_channel(message)
+            if channel is None:
+                self.api.send_message(
+                    chat_id,
+                    "I couldn't identify a forwarded channel post. Please forward "
+                    "a post directly from the channel using Telegram's Forward option. "
+                    "Do not copy and paste it. Send /cancel to exit.",
+                )
+                return
+            self._channel_id_lookup_pending.discard(telegram_id)
+            username = (
+                f"@{channel['username']}"
+                if channel.get("username")
+                else "Private channel"
+            )
+            self.api.send_message(
+                chat_id,
+                "Channel identified from the forwarded post.\n"
+                f"Name: {channel.get('title') or 'Not provided'}\n"
+                f"Username: {username}\n"
+                f"Numeric channel ID: {channel['id']}\n\n"
+                "This ID is being sent only in this private chat.",
+            )
+            return
 
         if command == "/start":
             self.sessions.pop(telegram_id, None)
