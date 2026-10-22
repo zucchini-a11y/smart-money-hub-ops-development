@@ -1021,6 +1021,49 @@ class GeminiCoachTests(unittest.TestCase):
         provider.evaluate.assert_not_called()
         self.assertEqual(unknown.response_path, "local_response")
 
+    def test_unvetted_educational_question_reaches_gemini(self) -> None:
+        question = "What does SMT divergence mean in trading?"
+        answer = (
+            "SMT divergence compares related markets for different swing behavior. "
+            "It can suggest relative weakness or strength, but is not an entry signal alone."
+        )
+        service = GeminiCoachService("test-key")
+        router = CoachMessageRouter(service, _EmptyKnowledgeStore())
+        with patch(
+            "smart_money_hub_bot.gemini_coach.urlopen",
+            return_value=_response(answer),
+        ) as mocked_urlopen:
+            routed = router.route(988, question)
+
+        self.assertEqual(mocked_urlopen.call_count, 1)
+        self.assertEqual(routed.response_path, "gemini_success")
+        self.assertEqual(routed.reply.response, answer)
+        self.assertIsNotNone(routed.assessment)
+        self.assertEqual(routed.assessment.confidence, "high")
+        self.assertFalse(routed.assessment.needs_research)
+
+    def test_unvetted_educational_question_still_goes_to_review_if_gemini_fails(
+        self,
+    ) -> None:
+        question = "What does SMT divergence mean in trading?"
+        service = GeminiCoachService("test-key")
+        router = CoachMessageRouter(service, _EmptyKnowledgeStore())
+        with patch(
+            "smart_money_hub_bot.gemini_coach.urlopen",
+            side_effect=lambda *_args, **_kwargs: _raise_provider_error(
+                429, "RESOURCE_EXHAUSTED", "Quota exceeded."
+            ),
+        ) as mocked_urlopen:
+            routed = router.route(989, question)
+
+        self.assertEqual(
+            mocked_urlopen.call_count, len(GEMINI_FALLBACK_MODELS) + 1
+        )
+        self.assertEqual(routed.response_path, "fallback")
+        self.assertTrue(routed.reply.requires_review)
+        self.assertTrue(routed.assessment.needs_research)
+        self.assertIn("flagged", routed.reply.response)
+
     def test_private_telegram_update_sends_gemini_answer_from_provider(self) -> None:
         synthetic_key = "test-key-never-log"
         synthetic_question = "What is liquidity?"

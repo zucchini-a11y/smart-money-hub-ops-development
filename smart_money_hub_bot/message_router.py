@@ -117,7 +117,11 @@ class CoachMessageRouter:
                 request_id=request_id,
             )
 
-        if assessment and assessment.needs_research:
+        if (
+            assessment
+            and assessment.needs_research
+            and assessment.topic != "General"
+        ):
             reply = ai_evaluate_answer(
                 message,
                 self.fallback_service,
@@ -172,6 +176,18 @@ class CoachMessageRouter:
             response_path = "fallback"
         if assessment and reply.detected_topic != topic:
             assessment = detect_member_question(message, reply.detected_topic) or assessment
+        if assessment and assessment.needs_research and assessment.topic == "General":
+            if response_path == "gemini_success" and not reply.requires_review:
+                from dataclasses import replace
+
+                assessment = replace(
+                    assessment,
+                    confidence="high",
+                    review_reason="Answered by the configured Coach provider.",
+                )
+            elif response_path != "gemini_success" and not reply.requires_review:
+                reply = self._needs_review_reply(reply)
+                response_path = "fallback"
         if reply.requires_review:
             response_path = "fallback"
             if assessment is None:
