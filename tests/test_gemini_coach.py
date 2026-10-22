@@ -92,6 +92,18 @@ def _provider_error(
     )
 
 
+def _raise_provider_error(
+    status_code: int,
+    provider_status: str,
+    message: str,
+    *,
+    headers: dict[str, str] | None = None,
+) -> None:
+    raise _provider_error(
+        status_code, provider_status, message, headers=headers
+    )
+
+
 class _EmptyKnowledgeStore:
     def approved_knowledge_items(self):
         return []
