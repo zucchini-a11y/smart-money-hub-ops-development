@@ -2,7 +2,7 @@
 
 import re
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 
 @dataclass(frozen=True)
@@ -14,7 +14,13 @@ class CoachReply:
 
 
 class CoachService(Protocol):
-    def evaluate(self, message: str) -> CoachReply: ...
+    def evaluate(
+        self,
+        message: str,
+        *,
+        history: list[dict[str, Any]] | None = None,
+        profile: dict[str, Any] | None = None,
+    ) -> CoachReply: ...
 
 
 class RuleBasedCoachService:
@@ -111,27 +117,130 @@ class RuleBasedCoachService:
         ),
     }
 
-    def evaluate(self, message: str) -> CoachReply:
+    def evaluate(
+        self,
+        message: str,
+        *,
+        history: list[dict[str, Any]] | None = None,
+        profile: dict[str, Any] | None = None,
+    ) -> CoachReply:
         text = " ".join(message.split())
         normalized = text.casefold()
+        history = history or []
+        profile = profile or {}
         if not text:
             return CoachReply(
-                "Tell me what you are studying or what happened in a setup. "
-                "I can help you reason through structure, liquidity, confirmation, retests, and risk.",
+                "I’m here. What would you like to work through?",
                 "General SMC",
                 (),
-                "Describe the setup before deciding whether it fits your rules.",
+                "Start with the question or decision you want to understand.",
+            )
+
+        if normalized.startswith(("setup review:", "mistake review:")):
+            topic = self._detect_topic(normalized)
+            mistakes = self._identify_mistakes(normalized)
+            trade_was_taken = bool(
+                re.search(
+                    r"\b(?:i\s+)?(?:entered|took the trade|placed the trade|was in the trade)\b",
+                    normalized,
+                )
+            )
+            if mistakes and (
+                normalized.startswith("mistake review:") or trade_was_taken
+            ):
+                return self._review_feedback(topic, mistakes)
+            if normalized.startswith("setup review:"):
+                return CoachReply(
+                    "Thanks, that gives us a useful checklist. You’ve described your "
+                    "context, area, and risk plan; I can’t verify a live chart or confirm "
+                    "an entry from text alone. What specific event would make you stand aside?",
+                    topic,
+                    (),
+                    "Use the planned invalidation and confirmation rather than forcing a trade.",
+                )
+            return CoachReply(
+                "Thanks for laying it out. Let’s look at the decision without beating "
+                "you up over the result. Which part of your plan will you make easiest "
+                "to follow next time?",
+                "Trade Review",
+                (),
+                "Turn the review into one practical process adjustment.",
+            )
+
+        if re.fullmatch(
+            r"(?:hey|hiya|hello|hi|yo|yoo|what'?s up|what is up|how far)"
+            r"(?:\s+(?:bro|sis|there|coach))?[!.? ]*",
+            normalized,
+        ):
+            return CoachReply(
+                "Yoo! 👋 What’s good? Are we learning something, reviewing a trade, "
+                "or just chatting?",
+                "Conversation",
+                (),
+                "",
+            )
+
+        if re.fullmatch(r"(?:thanks|thank you|cheers|appreciate it|got it)[!. ]*", normalized):
+            return CoachReply(
+                "Anytime — you’ve got this. 🙂",
+                "Conversation",
+                (),
+                "",
+            )
+
+        if self._is_loss_message(normalized) and not self._is_stop_out_message(normalized):
+            return CoachReply(
+                "Ah, that’s frustrating. Take a breath before thinking about another trade. "
+                "Did you follow your plan, or did something pull you away from it?",
+                "Trade Review",
+                (),
+                "Review the decision process before judging yourself by one result.",
+            )
+
+        if self._is_win_message(normalized):
+            return CoachReply(
+                "Let’s gooo! 🔥 Nice one. Did you follow your full plan, or did you have "
+                "to manage the trade differently?",
+                "Trade Review",
+                (),
+                "A good process matters more than one winning outcome.",
             )
 
         if self._is_stop_out_message(normalized):
             return CoachReply(
-                self._trade_review_questions(),
+                "Ahh, that’s frustrating. A stop-out doesn’t automatically mean the setup "
+                "was bad. Did you follow your plan, or did something pull you away from it?",
                 "Trade Review",
                 (),
                 "A stop-out alone does not prove a mistake; review the process and risk plan.",
             )
 
         topic = self._detect_topic(normalized)
+        if topic == "General SMC" and history and self._looks_like_follow_up(text):
+            previous = history[0]
+            previous_topic = str(previous.get("detected_topic") or "General SMC")
+            if previous_topic not in {
+                "General SMC",
+                "Conversation",
+                "Outside coaching scope",
+            }:
+                reply = self._continue_conversation(text, previous_topic)
+                return CoachReply(
+                    reply,
+                    previous_topic,
+                    (),
+                    f"Continue the member's recent discussion about {previous_topic}.",
+                )
+
+        if self._is_direct_entry_request(normalized):
+            return CoachReply(
+                "I can’t see live prices or your chart, so I won’t guess at an entry. "
+                "What’s the POI and confirmation you’re seeing?",
+                "Setup Review",
+                (),
+                "Do not make a trade decision from an unseen chart or an unverified signal.",
+            )
+
         if self._looks_like_trade_review_answer(normalized):
             mistakes = self._identify_mistakes(normalized)
             return self._review_feedback(topic, mistakes)
@@ -145,8 +254,8 @@ class RuleBasedCoachService:
             return CoachReply(
                 "An FVG can be a POI, but the gap by itself is not an entry confirmation. "
                 "If you entered as soon as you saw it, you may have skipped the liquidity "
-                "and reaction checks your plan requires. No confirmation, no entry. "
-                "No retest, no entry. Did price take SSL/BSL, show displacement, and then retest?",
+                "and reaction checks your plan requires. Did price take liquidity and then "
+                "show a planned confirmation?",
                 topic,
                 mistakes,
                 "Treat an FVG as an area to watch; wait for planned confirmation and a retest.",
@@ -154,10 +263,23 @@ class RuleBasedCoachService:
 
         if topic in self._topic_guides:
             explanation, check_question = self._topic_guides[topic]
-            response = f"{explanation}\n\n{check_question}"
+            response = f"Think of it this way: {explanation}\n\n{check_question}"
             if mistakes:
                 response += "\n\nFrom what you wrote, review: " + "; ".join(mistakes) + "."
-            response += "\n\nRisk management first. This is education, not a trade signal."
+            if profile.get("latest_assessment_score") is not None and int(
+                profile["latest_assessment_score"]
+            ) <= 5:
+                response = "Let’s keep it simple. " + response
+            if profile.get("weakest_topic") == topic:
+                response += (
+                    f"\n\nThis is one of your current review topics, so it’s a good "
+                    "one to practise slowly."
+                )
+            learning_goal = str(profile.get("learning_goal") or "").strip()
+            if learning_goal and self._goal_mentions_topic(learning_goal, topic):
+                response += (
+                    f"\n\nThat connects to your current focus on {learning_goal}."
+                )
             return CoachReply(
                 response,
                 topic,
@@ -166,18 +288,150 @@ class RuleBasedCoachService:
             )
 
         if mistakes:
-            return self._review_feedback(topic, mistakes)
+            reply = self._review_feedback(topic, mistakes)
+            recurring = self._recurring_mistakes(mistakes, history)
+            if recurring:
+                return CoachReply(
+                    reply.response
+                    + "\n\nYou’ve mentioned this before too—no judgment. It may help "
+                    "to make that rule extra clear in your checklist.",
+                    reply.detected_topic,
+                    reply.mistakes,
+                    reply.lesson_learned,
+                )
+            return reply
+
+        if self._looks_like_social_message(normalized):
+            return CoachReply(
+                "I hear you. Hope things ease up a bit. If you want to talk it through, "
+                "I’m here.",
+                "Conversation",
+                (),
+                "",
+            )
+
+        if self._is_explicitly_unrelated(normalized):
+            return CoachReply(
+                "I don’t have reliable information for that, so I don’t want to guess. "
+                "I can help with SMC concepts, trading-process questions, or reviewing "
+                "a decision you’ve already made.",
+                "Outside coaching scope",
+                (),
+                "",
+            )
+
+        if topic != "General SMC":
+            return CoachReply(
+                f"I’m with you on {topic}. What part feels unclear right now?",
+                topic,
+                (),
+                "",
+            )
 
         return CoachReply(
-            "I can help you understand your own setup rather than give you an entry. "
-            "What is the HTF context and POI? What liquidity was taken? What confirmation "
-            "and retest did you see, and where is the setup invalidated?\n\n"
-            "No confirmation, no entry. No retest, no entry. Don't chase missed trades. "
-            "Risk management first.",
+            "I’m not sure what you mean yet. Can you tell me a little more about what "
+            "you’re asking?",
             topic,
             (),
-            "Describe the structure, liquidity, confirmation, retest, and invalidation before acting.",
+            "",
         )
+
+    @staticmethod
+    def _is_loss_message(text: str) -> bool:
+        return bool(
+            re.search(
+                r"\b(?:i\s+)?(?:lost|took a loss|another loss|losing trade|"
+                r"had a loss|blew the account|bad trade|rough day)\b",
+                text,
+            )
+        )
+
+    @staticmethod
+    def _is_win_message(text: str) -> bool:
+        return bool(
+            re.search(
+                r"\b(?:hit (?:my )?(?:tp|take profit)|hit tp|closed in profit|"
+                r"took profit|profitable trade|won (?:a )?trade)\b",
+                text,
+            )
+        )
+
+    @staticmethod
+    def _is_direct_entry_request(text: str) -> bool:
+        return bool(
+            re.search(
+                r"\b(?:should i|can i|is it time to)\s+(?:buy|sell|enter|short|long)\b"
+                r"|\b(?:buy|sell)\s+(?:gold|xauusd|btc|eurusd|now)\s*\??$",
+                text,
+            )
+        )
+
+    @staticmethod
+    def _looks_like_follow_up(text: str) -> bool:
+        return len(text.split()) <= 12 and not RuleBasedCoachService._contains_any(
+            text.casefold(),
+            ("what is", "what's", "define", "explain", "teach me", "should i"),
+        )
+
+    @staticmethod
+    def _continue_conversation(text: str, topic: str) -> str:
+        if topic == "CHoCH":
+            return (
+                f"Got it — you’re pointing to {text}. For a CHoCH, check whether that "
+                "was a meaningful swing and whether price closed through it with intent. "
+                "Did you get a close beyond the level?"
+            )
+        if topic in {"FVG / IFVG", "Order Blocks", "POI"}:
+            return (
+                f"Got it: {text}. That helps pin down the area you’re watching. "
+                "What did price do when it reached the zone?"
+            )
+        return (
+            f"Got it — {text}. That adds context to your {topic} question. "
+            "What did price do next?"
+        )
+
+    @staticmethod
+    def _looks_like_social_message(text: str) -> bool:
+        return bool(
+            re.search(
+                r"\b(?:tired|stressed|rough|busy|excited|nervous|scared|"
+                r"not feeling great|long day)\b",
+                text,
+            )
+        )
+
+    @staticmethod
+    def _is_explicitly_unrelated(text: str) -> bool:
+        return bool(
+            re.search(
+                r"\b(?:weather|football|soccer|movie|recipe|restaurant|"
+                r"politics|celebrity|homework|travel plans)\b",
+                text,
+            )
+        )
+
+    @staticmethod
+    def _recurring_mistakes(
+        mistakes: tuple[str, ...], history: list[dict[str, Any]]
+    ) -> tuple[str, ...]:
+        previous = {
+            item.strip()
+            for entry in history
+            for item in str(entry.get("mistakes_identified") or "").splitlines()
+            if item.strip()
+        }
+        return tuple(mistake for mistake in mistakes if mistake in previous)
+
+    @classmethod
+    def _goal_mentions_topic(cls, goal: str, topic: str) -> bool:
+        normalized_goal = goal.casefold()
+        if topic.casefold() in normalized_goal:
+            return True
+        for known_topic, aliases in cls._topic_aliases:
+            if known_topic == topic:
+                return any(alias in normalized_goal for alias in aliases)
+        return False
 
     @classmethod
     def _detect_topic(cls, text: str) -> str:
@@ -252,6 +506,17 @@ class RuleBasedCoachService:
         ):
             mistakes.append("The written plan was not followed")
         if re.search(
+            r"\bentered?\s+(?:too\s+early|before\s+the\s+planned\s+trigger)\b",
+            text,
+        ):
+            mistakes.append("Entry may have been earlier than the planned trigger")
+        if re.search(
+            r"\b(?:afraid|fear)\s+of\s+missing\s+(?:the\s+)?(?:move|trade|setup)\b"
+            r"|\bfomo\b",
+            text,
+        ):
+            mistakes.append("Fear of missing out may have influenced the decision")
+        if re.search(
             r"\bmoved\s+(?:my\s+)?(?:sl|stop(?:\s?loss)?)\s+"
             r"(?:to\s+)?(?:break[\s-]?even|be)\s+(?:too\s+early|unnecessarily|without\s+(?:a\s+)?plan)\b",
             text,
@@ -295,6 +560,12 @@ class RuleBasedCoachService:
         return CoachReply(response, topic, mistakes, lesson)
 
 
-def ai_evaluate_answer(message: str, service: CoachService) -> CoachReply:
+def ai_evaluate_answer(
+    message: str,
+    service: CoachService,
+    *,
+    history: list[dict[str, Any]] | None = None,
+    profile: dict[str, Any] | None = None,
+) -> CoachReply:
     """Provider seam; this version delegates to a local deterministic service."""
-    return service.evaluate(message)
+    return service.evaluate(message, history=history, profile=profile)

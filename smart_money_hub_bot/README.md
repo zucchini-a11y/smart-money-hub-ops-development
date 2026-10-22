@@ -19,20 +19,27 @@ The bot uses long polling. Run only one process with this token at a time. Teleg
 - **Sunday Preparation:** weekly goal, SMC focus, mistake to avoid, and a plan for missed setups.
 - **My Progress:** assessment history totals and averages, latest score, journaled trades and outcomes, strongest and weakest topics, common mistake, and recent check-ins.
 - **Learn SMC:** short lessons on structure, BOS/CHoCH, liquidity, order blocks, FVG/IFVG, POIs, confirmation, retests, risk, and psychology.
-- **DM Coach:** members can send private SMC questions or describe a setup for deterministic, guided coaching on the framework, confirmation, retests, risk, and trade reviews. Ask Coach is available from the main menu; `/coach` opens it directly. No AI provider or paid API is connected.
+- **DM Coach:** private conversations respond to greetings, concept questions, trade wins or losses, setup questions, and explicit unrelated requests with different, context-appropriate replies. Recent coaching exchanges and available assessment/progress data are used for follow-ups and topic personalization. Genuine questions can be rated Helpful, Not helpful, or Still unclear. `/coach` opens the coaching menu.
+- **Interactive coaching:** Chat with Coach, adaptive three-question SMC challenges, guided setup and mistake reviews, short lessons, and an optional daily knowledge challenge. Challenges are started by the member; they are not sent as unsolicited DMs.
 - **Reminders:** optional weekly Sunday check-in at 09:00 and automatic Monday/Thursday Zoom-class check-ins at 19:00 and 20:00 (`Africa/Lagos` by default). `/stop` turns off all scheduled reminders and `/resume` turns them back on. Members must start the bot in a private chat to receive DMs. A trade journal also returns an immediate review reminder.
-- **Quick commands:** `/menu` opens the main menu, `/progress` shows a private progress summary, and `/reminders` shows the reminder schedule and controls. Progress and reminder details are only shown in a private chat.
+- **Quick commands:** `/menu` opens the main menu, `/coach` opens coaching modes, `/clearcoach` asks to clear your saved Coach conversations, `/progress` shows a private progress summary, and `/reminders` shows the reminder schedule and controls. Progress and reminder details are only shown in a private chat.
 
 The education and journal flows emphasize confirmation, retests, liquidity and displacement context, valid POIs, avoiding chase entries, and risk management. The bot is for education and record-keeping; it does not predict trades or promise profits. Back and Main Menu buttons are available through active flows.
+
+The coach is a deterministic, offline rule-based system, not a general conversational AI. It handles known SMC concepts and common coaching situations, uses recent stored Coach exchanges to continue some follow-ups, and is explicit when a request is outside its scope. It does not see charts, check live prices, or know unrecorded preferences. No paid AI provider is connected or required.
 
 ## Find your Telegram ID and enable admin stats
 
 1. Send `/myid` to the bot in a private chat.
 2. Add a Replit Secret named `ADMIN_TELEGRAM_ID` with the numeric ID shown to you.
 3. Restart **Smart Money Hub Bot**.
-4. Send `/admin` to view the admin-only member, activity, assessment, journal, weekly participation totals, DM Coach statistics, one-time DM tool, and channel-promo tool.
+4. Send `/admin` to view the admin-only member, activity, assessment, journal, weekly participation totals, DM Coach statistics, Knowledge Improvement queue, one-time DM tool, and channel-promo tool.
 
-The dashboard's **DM Coach Stats** page shows members using the coach, repeated questions, topics associated with reported process gaps, common mistakes, and recent activity. **Send One-Time DM** lets the admin write, preview, and confirm a plain-text DM to active private-chat members who have not used `/stop`; the admin is excluded. **Promote Bot in Channel** previews a single bot introduction in the configured channel and posts only after the admin confirms. Set `SMH_MAIN_CHANNEL_ID` to the channel's numeric ID. Admin access is not configured until `ADMIN_TELEGRAM_ID` is set. The bot never asks for your Telegram token in chat.
+The dashboard's **DM Coach Stats** page shows members using the coach, repeated questions, topics associated with reported process gaps, common mistakes, and recent activity. **Knowledge Improvement** groups repeated question examples, shows low-confidence items and negative feedback, and lets the admin research, draft, edit, approve, reject, version, or disable answers. The question queue does not show member usernames or IDs. Only the configured administrator can manage entries. The Coach uses only approved answers; question matching is offline and based on wording/category, not semantic AI.
+
+There is no automated web-research provider in the bot runtime. Selecting **Request more research** explicitly leaves an item awaiting research. The admin must research it outside the bot, then enter HTTPS source links, publication dates or limits as `NOTE:` lines, optional conflict notes, and an optional `REVIEW_BY: YYYY-MM-DD`. The bot stores links but does not fetch or verify page contents. Approval requires an answer and at least one HTTPS source; broker/platform and economic information also require a review date. Nothing becomes reusable knowledge until approved. Member feedback can reopen an item for review but never changes an approved answer automatically.
+
+**Send One-Time DM** lets the admin write, preview, and confirm a plain-text DM to active private-chat members who have not used `/stop`; the admin is excluded. **Promote Bot in Channel** previews a single bot introduction in the configured channel and posts only after the admin confirms. Set `SMH_MAIN_CHANNEL_ID` to the channel's numeric ID. Admin access is not configured until `ADMIN_TELEGRAM_ID` is set. The bot never asks for your Telegram token in chat.
 
 ## Reminder schedule
 
@@ -47,7 +54,7 @@ Only members who have started the bot in a private chat are eligible for automat
 
 ## Data and editing
 
-SQLite stores members, assessments and individual answers, trades, weekly check-ins, Sunday preparations, progress, reminder deliveries, and DM coaching interactions with detected topics, possible mistakes, and lessons. The default database file is local to the Replit project and excluded from Git. Existing score rows from the earlier assessment-only bot are migrated into the new assessment history without deleting the original records. Older attempts did not retain individual answers, so their topic breakdowns are unavailable.
+SQLite stores members, assessments and individual answers, trades, weekly check-ins, Sunday preparations, progress, reminder deliveries, DM coaching interactions, anonymized question examples, feedback, and approved knowledge versions. Recent coaching interactions provide per-member conversational continuity; no member's history is mixed with another's. `/clearcoach` deletes that member's coaching interactions, related Coach mistake notes, feedback, and their question examples. Approved generalized knowledge and its version history remain. It does not delete assessments, trade journal records, or reminder settings. The default database file is local to the Replit project and excluded from Git. Existing score rows from the earlier assessment-only bot are migrated into the new assessment history without deleting the original records. Older attempts did not retain individual answers, so their topic breakdowns are unavailable.
 
 Editable content is in:
 
@@ -56,6 +63,7 @@ Editable content is in:
 - `flows.py` — guided journal and check-in prompts.
 - `grading.py` — deterministic written-answer rubric behind a replaceable evaluator interface. No AI connection is enabled.
 - `coach.py` — rule-based DM Coach behind a provider-neutral service interface; `ai_evaluate_answer()` currently delegates to the local rules.
+- `question_detection.py`, `knowledge_base.py`, and the `knowledge_*.py` modules — question triage, offline retrieval, research/draft validation, approval, versions, and member feedback.
 
 In-progress conversations are kept in memory and can be restarted if the workflow stops. Completed member records are stored in SQLite.
 
@@ -63,13 +71,16 @@ In-progress conversations are kept in memory and can be restarted if the workflo
 
 ### From Telegram
 
-1. Send `/start`, open **💬 Ask Coach**, ask “What is CHOCH?”, and try “I saw an FVG and entered immediately.” Then send “I got stopped out” and answer the review checklist.
-2. Open **Start SMC Assessment**. Answer all 10 questions; check the score, topic feedback, missed answers, and explanations.
-3. Open **Trading Journal** → **New Trade Entry**. Complete all 15 prompts, then use **Review Previous Trades** to retrieve the saved entry.
-4. Complete **Weekly Check-In** and **Sunday Preparation**. Open **My Progress** to confirm the check-in and journal data appear.
-5. Open **Learn SMC** and select a lesson.
-6. In **Reminder Settings**, opt in to the Sunday reminder, then send `/stop` to unsubscribe.
-7. Send `/myid`, configure `ADMIN_TELEGRAM_ID` as a Replit Secret, restart the workflow, and send `/admin`; open **DM Coach Stats**.
+1. Send `/start`, open **💬 Ask Coach**, test a greeting, “What is liquidity?”, a trade loss, “Gold hit my TP today,” and “Should I buy Gold now?” The bot should not give the same long checklist to every message.
+2. Ask “What is CHOCH?” and reply to its follow-up; the next reply should continue that topic. Open **Challenge Me**, complete the three-question round, and try **Daily Challenge**.
+3. Try **Review My Setup** and **Review My Mistake**. Send `/clearcoach` to see the confirmation, then cancel it or confirm to clear only your Coach history.
+4. Open **Start SMC Assessment**. Answer all 10 questions; check the score, topic feedback, missed answers, and explanations.
+5. Open **Trading Journal** → **New Trade Entry**. Complete all 15 prompts, then use **Review Previous Trades** to retrieve the saved entry.
+6. Complete **Weekly Check-In** and **Sunday Preparation**. Open **My Progress** to confirm the check-in and journal data appear.
+7. Open **Learn SMC** and select a lesson.
+8. In **Reminder Settings**, opt in to the Sunday reminder, then send `/stop` to unsubscribe.
+9. Send `/myid`, configure `ADMIN_TELEGRAM_ID` as a Replit Secret, restart the workflow, and send `/admin`; open **DM Coach Stats**.
+10. Open **Knowledge Improvement**. Test a known concept question and an unsupported or current-information question; inspect the anonymous queue, add researched HTTPS sources, draft an answer, and approve it. Confirm that an approved matching question uses that answer, while a negative member rating creates a review candidate without changing it.
 
 ### Offline tests
 

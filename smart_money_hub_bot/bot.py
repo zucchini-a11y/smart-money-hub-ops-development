@@ -12,6 +12,8 @@ from .admin_dashboard import AdminDashboard
 from .coach import CoachService, RuleBasedCoachService, ai_evaluate_answer
 from .education import EDUCATION
 from .flows import SUNDAY_FIELDS, TRADE_FIELDS, WEEKLY_FIELDS
+from .knowledge_base import find_approved_answer
+from .question_detection import detect_member_question
 from .questions import QUESTIONS
 from .scoring import AssessmentResult, grade_answers
 from .storage import Repository
@@ -22,12 +24,87 @@ logger = logging.getLogger(__name__)
 MAIN_MENU: tuple[tuple[str, str], ...] = (
     ("Start SMC Assessment", "menu:assessment"),
     ("💬 Ask Coach", "menu:coach"),
+    ("🎯 Challenge Me", "coach:challenge"),
+    ("🔍 Review My Setup", "coach:setup"),
+    ("📒 Review My Mistake", "coach:mistake"),
+    ("🧠 Teach Me Something", "coach:teach"),
+    ("🔥 Daily Challenge", "coach:daily"),
     ("Trading Journal", "menu:journal"),
     ("Weekly Check-In", "menu:weekly"),
     ("Sunday Preparation", "menu:sunday"),
     ("My Progress", "menu:progress"),
     ("Learn SMC", "menu:learn"),
     ("Reminder Settings", "menu:reminders"),
+)
+COACH_GUIDED_PROMPTS: dict[str, tuple[str, ...]] = {
+    "coach_setup": (
+        "What asset and timeframe are you looking at, and are you considering a long or short?",
+        "What is the higher-timeframe context, and where is your point of interest?",
+        "What liquidity was taken, and what confirmation or retest did you see?",
+        "Where would the setup be invalidated, and what risk limit is in your plan?",
+    ),
+    "coach_mistake": (
+        "What happened? Share the trade decision or moment you want to review.",
+        "What did your written plan say you would do?",
+        "What got in the way, and what one rule would you like to reinforce next time?",
+    ),
+}
+COACH_CHALLENGES: tuple[dict[str, Any], ...] = (
+    {
+        "id": "liquidity",
+        "topic": "Liquidity / SSL / BSL",
+        "difficulty": 0,
+        "prompt": "Where is buy-side liquidity (BSL) commonly found?",
+        "options": (
+            "Below obvious lows",
+            "Above obvious highs",
+            "Only inside an FVG",
+            "At every candle close",
+        ),
+        "answer": 1,
+        "explanation": "BSL is commonly watched above obvious highs; SSL is commonly below lows.",
+    },
+    {
+        "id": "fvg",
+        "topic": "FVG / IFVG",
+        "difficulty": 0,
+        "prompt": "Does an FVG alone confirm an entry?",
+        "options": ("Yes, always", "No; it is an area to watch", "Only on gold", "Only on 1-minute charts"),
+        "answer": 1,
+        "explanation": "An FVG may be a POI, but you still need the confirmation your plan calls for.",
+    },
+    {
+        "id": "retest",
+        "topic": "Retest",
+        "difficulty": 1,
+        "prompt": "Price breaks a relevant swing and runs without a retest. What is the disciplined choice?",
+        "options": ("Chase the move", "Increase size", "Wait for another setup", "Move the stop closer"),
+        "answer": 2,
+        "explanation": "If the planned retest never comes, skipping is better than chasing a missed setup.",
+    },
+    {
+        "id": "risk",
+        "topic": "Risk Management",
+        "difficulty": 1,
+        "prompt": "When should invalidation and acceptable risk be decided?",
+        "options": ("Before entry", "After price moves against you", "Only after a win", "Whenever the chart feels uncertain"),
+        "answer": 0,
+        "explanation": "Define invalidation and risk before entry so the decision is not improvised under pressure.",
+    },
+    {
+        "id": "choch",
+        "topic": "CHoCH",
+        "difficulty": 1,
+        "prompt": "A CHoCH is best treated as…",
+        "options": (
+            "A guaranteed reversal",
+            "An early sign order flow may be shifting",
+            "A reason to ignore the higher timeframe",
+            "An automatic entry signal",
+        ),
+        "answer": 1,
+        "explanation": "A CHoCH can warn that structure is changing, but it does not guarantee a reversal or entry.",
+    },
 )
 CLASS_REMINDER_WEEKDAYS = {0: "Monday", 3: "Thursday"}
 CLASS_REMINDER_TIME = ClockTime(19, 0)
@@ -161,6 +238,8 @@ class SmartMoneyHubBot:
             return
         telegram_id, chat_id, is_private = self._register(sender, chat)
         command = text.strip().split(maxsplit=1)[0].split("@", maxsplit=1)[0].lower()
+        if command.startswith("/") and command != "/cancel":
+            self.admin_dashboard.cancel_knowledge_action(telegram_id)
 
         if command == "/start":
             self.sessions.pop(telegram_id, None)
@@ -182,7 +261,7 @@ class SmartMoneyHubBot:
                 "Quick commands: /menu for the main menu, /progress for your "
                 "private progress summary, /reminders to check your schedule, "
                 "/resume to turn scheduled reminders back on, and /stop to turn "
-                "them off.",
+                "them off. Use /clearcoach to review and clear your saved Coach chats.",
                 self._nav_keyboard(),
             )
             return
@@ -227,7 +306,17 @@ class SmartMoneyHubBot:
             )
             return
         if command == "/coach":
-            self._enter_coach(chat_id, telegram_id, is_private)
+            self._show_coach_menu(chat_id, is_private)
+            return
+        if command in {"/clearcoach", "/forgetcoach"}:
+            if not is_private:
+                self.api.send_message(
+                    chat_id,
+                    "For privacy, clear your coaching history in a private chat with this bot.",
+                    self._nav_keyboard(),
+                )
+                return
+            self._confirm_clear_coach_history(chat_id)
             return
         if command in {"/stop", "/unsubscribe"}:
             self.admin_dashboard.cancel_broadcast(telegram_id)
@@ -258,10 +347,12 @@ class SmartMoneyHubBot:
             self.admin_dashboard.search_is_pending(telegram_id)
             or self.admin_dashboard.has_broadcast_state(telegram_id)
             or self.admin_dashboard.has_channel_promo_state(telegram_id)
+            or self.admin_dashboard.has_knowledge_state(telegram_id)
         ):
             self.admin_dashboard.cancel_search(telegram_id)
             self.admin_dashboard.cancel_broadcast(telegram_id)
             self.admin_dashboard.cancel_channel_promo(telegram_id)
+            self.admin_dashboard.cancel_knowledge_action(telegram_id)
             self.admin_dashboard.open(chat_id, telegram_id, is_private)
             return
 
@@ -275,6 +366,11 @@ class SmartMoneyHubBot:
                 chat_id, telegram_id, is_private, text
             )
             return
+        if self.admin_dashboard.knowledge_is_pending(telegram_id):
+            self.admin_dashboard.handle_knowledge_message(
+                chat_id, telegram_id, is_private, text
+            )
+            return
 
         session = self.sessions.get(telegram_id)
         if session and session.chat_id == chat_id:
@@ -283,6 +379,14 @@ class SmartMoneyHubBot:
                     chat_id,
                     "Please choose one of the answer buttons, or use Back or Main Menu.",
                     self._nav_keyboard(),
+                )
+            elif session.kind in COACH_GUIDED_PROMPTS:
+                self._accept_guided_coach_answer(telegram_id, text)
+            elif session.kind in {"coach_challenge", "coach_daily"}:
+                self.api.send_message(
+                    chat_id,
+                    "Tap one of the answer buttons, or return to the main menu.",
+                    self._coach_keyboard(),
                 )
             else:
                 self._accept_text_answer(session, text)
@@ -329,6 +433,22 @@ class SmartMoneyHubBot:
                         callback_id, "That answer is not valid."
                     )
                     return
+        if data.startswith("coach:challenge:answer:") or data.startswith(
+            "coach:daily:answer:"
+        ):
+            match = re.fullmatch(
+                r"coach:(?:challenge|daily):answer:([a-z_]+):(\d+)", data
+            )
+            if not match or not 0 <= int(match.group(2)) < len(
+                COACH_CHALLENGES[0]["options"]
+            ):
+                self.api.answer_callback_query(callback_id, "That answer is not valid.")
+                return
+        if data.startswith("coach:feedback:") and not re.fullmatch(
+            r"coach:feedback:\d+:(?:helpful|unhelpful|unclear)", data
+        ):
+            self.api.answer_callback_query(callback_id, "That feedback button is invalid.")
+            return
         try:
             self.api.answer_callback_query(callback_id)
         except TelegramAPIError as error:
@@ -347,6 +467,19 @@ class SmartMoneyHubBot:
         }:
             self.admin_dashboard.cancel_broadcast(telegram_id)
 
+        feedback_match = re.fullmatch(
+            r"coach:feedback:(\d+):(helpful|unhelpful|unclear)", data
+        )
+        if feedback_match:
+            self._handle_coach_feedback(
+                chat_id,
+                telegram_id,
+                is_private,
+                int(feedback_match.group(1)),
+                feedback_match.group(2),
+            )
+            return
+
         if data.startswith("admin:"):
             self.admin_dashboard.handle_callback(
                 chat_id, telegram_id, is_private, data
@@ -364,7 +497,56 @@ class SmartMoneyHubBot:
             )
         elif data == "menu:coach":
             self.sessions.pop(telegram_id, None)
+            self._show_coach_menu(chat_id, is_private)
+        elif data == "coach:chat":
+            self.sessions.pop(telegram_id, None)
             self._enter_coach(chat_id, telegram_id, is_private)
+        elif data == "coach:challenge":
+            self._start_coach_challenge(telegram_id, chat_id, sender, is_private)
+        elif data == "coach:daily":
+            self._start_coach_challenge(
+                telegram_id, chat_id, sender, is_private, daily=True
+            )
+        elif data in {"coach:setup", "coach:mistake"}:
+            kind = "coach_setup" if data == "coach:setup" else "coach_mistake"
+            self._begin_guided_coach_session(
+                kind, telegram_id, chat_id, sender, is_private
+            )
+        elif data == "coach:teach":
+            self.sessions.pop(telegram_id, None)
+            if is_private:
+                self._show_education_menu(chat_id)
+            else:
+                self._enter_coach(chat_id, telegram_id, is_private)
+        elif data == "coach:clear:prompt":
+            self._confirm_clear_coach_history(chat_id, is_private=is_private)
+        elif data == "coach:clear:confirm":
+            if not is_private:
+                self._confirm_clear_coach_history(chat_id, is_private=False)
+            else:
+                deleted = self.store.clear_dm_coaching_history(telegram_id)
+                session = self.sessions.get(telegram_id)
+                if session and session.kind in {
+                    "coach_challenge",
+                    "coach_daily",
+                    *COACH_GUIDED_PROMPTS,
+                }:
+                    self.sessions.pop(telegram_id, None)
+                self.api.send_message(
+                    chat_id,
+                    f"Done — I cleared {deleted} saved coaching conversation"
+                    f"{'' if deleted == 1 else 's'} for this account. Your assessments, "
+                    "trade journal, and reminder settings are unchanged.",
+                    self._coach_menu_keyboard(),
+                )
+        elif data == "coach:clear:cancel":
+            self._show_coach_menu(chat_id, is_private)
+        elif data.startswith("coach:challenge:answer:") or data.startswith(
+            "coach:daily:answer:"
+        ):
+            self._handle_coach_challenge_answer(
+                telegram_id, chat_id, data, is_private
+            )
         elif data.startswith("quiz:answer:") or data.startswith("answer:"):
             self._handle_assessment_answer(telegram_id, chat_id, data)
         elif data == "menu:journal":
@@ -423,10 +605,294 @@ class SmartMoneyHubBot:
         self.sessions.pop(telegram_id, None)
         self.api.send_message(
             chat_id,
-            "💬 Ask Coach is on. Send a question about SMC or describe a setup "
-            "or stopped-out trade. I’ll help you review your own reasoning, not "
-            "give you an entry. You can return to the main menu at any time.",
+            "Chat with Coach is open. Ask a question, tell me what happened, or "
+            "continue where we left off. I’ll help you think it through without "
+            "pretending to see a live chart or giving you an entry.",
             self._coach_keyboard(),
+        )
+
+    def _show_coach_menu(self, chat_id: int, is_private: bool) -> None:
+        if not is_private:
+            self.api.send_message(
+                chat_id,
+                "Coaching modes are private. Open a private chat with this bot to continue.",
+                self._main_menu_keyboard(),
+            )
+            return
+        self.api.send_message(
+            chat_id,
+            "Choose how you want to work today. Challenges and guided reviews are "
+            "optional; the bot won’t send extra challenge messages on its own.",
+            self._coach_menu_keyboard(),
+        )
+
+    @staticmethod
+    def _coach_menu_keyboard() -> dict[str, Any]:
+        return {
+            "inline_keyboard": [
+                [{"text": "💬 Chat with Coach", "callback_data": "coach:chat"}],
+                [{"text": "🎯 Challenge Me", "callback_data": "coach:challenge"}],
+                [{"text": "🔍 Review My Setup", "callback_data": "coach:setup"}],
+                [{"text": "📒 Review My Mistake", "callback_data": "coach:mistake"}],
+                [{"text": "🧠 Teach Me Something", "callback_data": "coach:teach"}],
+                [{"text": "🔥 Daily Challenge", "callback_data": "coach:daily"}],
+                [{"text": "🧹 Clear My Coach History", "callback_data": "coach:clear:prompt"}],
+                SmartMoneyHubBot._nav_row(),
+            ]
+        }
+
+    def _confirm_clear_coach_history(
+        self, chat_id: int, *, is_private: bool = True
+    ) -> None:
+        if not is_private:
+            self.api.send_message(
+                chat_id,
+                "For privacy, clear coaching history in a private chat with this bot.",
+                self._nav_keyboard(),
+            )
+            return
+        self.api.send_message(
+            chat_id,
+            "Clear your saved Coach conversation history? This removes your saved "
+            "Coach chats and Coach mistake notes. Your assessments, trade journal, "
+            "and reminder settings will stay unchanged.",
+            {
+                "inline_keyboard": [
+                    [{"text": "Clear Coach History", "callback_data": "coach:clear:confirm"}],
+                    [{"text": "Cancel", "callback_data": "coach:clear:cancel"}],
+                    self._nav_row(),
+                ]
+            },
+        )
+
+    def _begin_guided_coach_session(
+        self,
+        kind: str,
+        telegram_id: int,
+        chat_id: int,
+        sender: dict[str, Any],
+        is_private: bool,
+    ) -> None:
+        if not is_private:
+            self._show_coach_menu(chat_id, is_private)
+            return
+        self.sessions[telegram_id] = Conversation(
+            kind=kind,
+            chat_id=chat_id,
+            username=sender.get("username"),
+            first_name=sender.get("first_name"),
+        )
+        self._ask_guided_coach_question(telegram_id)
+
+    def _ask_guided_coach_question(self, telegram_id: int) -> None:
+        session = self.sessions.get(telegram_id)
+        if not session or session.kind not in COACH_GUIDED_PROMPTS:
+            return
+        prompts = COACH_GUIDED_PROMPTS[session.kind]
+        if session.step >= len(prompts):
+            self._finish_guided_coach_session(telegram_id)
+            return
+        title = "Setup Review" if session.kind == "coach_setup" else "Mistake Review"
+        self.api.send_message(
+            session.chat_id,
+            f"{title} — {session.step + 1}/{len(prompts)}\n\n"
+            f"{prompts[session.step]}\n\nReply with one answer. You can use Back or Main Menu.",
+            self._nav_keyboard(),
+        )
+
+    def _accept_guided_coach_answer(self, telegram_id: int, text: str) -> None:
+        session = self.sessions.get(telegram_id)
+        if not session or session.kind not in COACH_GUIDED_PROMPTS:
+            return
+        value = text.strip()
+        if not value:
+            self._ask_guided_coach_question(telegram_id)
+            return
+        if len(value) > 400:
+            self.api.send_message(
+                session.chat_id,
+                "Please keep each answer under 400 characters so I can review it clearly.",
+                self._nav_keyboard(),
+            )
+            return
+        session.answers.append(value)
+        if session.step < len(COACH_GUIDED_PROMPTS[session.kind]):
+            self._ask_guided_coach_question(telegram_id)
+        else:
+            self._finish_guided_coach_session(telegram_id)
+
+    def _finish_guided_coach_session(self, telegram_id: int) -> None:
+        session = self.sessions.get(telegram_id)
+        if not session or session.kind not in COACH_GUIDED_PROMPTS:
+            return
+        label = "Setup review" if session.kind == "coach_setup" else "Mistake review"
+        prompts = COACH_GUIDED_PROMPTS[session.kind]
+        prompt = "\n".join(
+            f"{question}\nMember: {answer}"
+            for question, answer in zip(prompts, session.answers)
+        )
+        self.sessions.pop(telegram_id, None)
+        self._answer_coach_message(
+            session.chat_id,
+            telegram_id,
+            session.username,
+            f"{label}:\n{prompt}",
+        )
+
+    def _start_coach_challenge(
+        self,
+        telegram_id: int,
+        chat_id: int,
+        sender: dict[str, Any],
+        is_private: bool,
+        *,
+        daily: bool = False,
+    ) -> None:
+        if not is_private:
+            self._show_coach_menu(chat_id, is_private)
+            return
+        kind = "coach_daily" if daily else "coach_challenge"
+        self.sessions[telegram_id] = Conversation(
+            kind=kind,
+            chat_id=chat_id,
+            username=sender.get("username"),
+            first_name=sender.get("first_name"),
+        )
+        self._send_coach_challenge(telegram_id)
+
+    def _current_coach_challenge(
+        self, telegram_id: int, session: Conversation
+    ) -> dict[str, Any] | None:
+        used = {str(answer["id"]) for answer in session.answers}
+        if session.kind == "coach_daily":
+            if session.answers:
+                return None
+            day_number = datetime.now(self.reminder_zone).date().toordinal()
+            progress = self.store.progress_for(telegram_id)
+            weak_topic = str(progress.get("weakest_topic") or "").casefold()
+            matching = [
+                question
+                for question in COACH_CHALLENGES
+                if weak_topic and weak_topic in question["topic"].casefold()
+            ]
+            pool = matching or list(COACH_CHALLENGES)
+            return pool[day_number % len(pool)]
+
+        remaining = [
+            question for question in COACH_CHALLENGES if question["id"] not in used
+        ]
+        if not remaining:
+            return None
+        correct = sum(bool(answer["correct"]) for answer in session.answers)
+        target_difficulty = (
+            1
+            if session.answers and correct / len(session.answers) >= 0.5
+            else 0
+        )
+        return min(
+            remaining,
+            key=lambda question: (
+                abs(question["difficulty"] - target_difficulty),
+                question["difficulty"],
+                question["id"],
+            ),
+        )
+
+    def _send_coach_challenge(self, telegram_id: int) -> None:
+        session = self.sessions.get(telegram_id)
+        if not session or session.kind not in {"coach_challenge", "coach_daily"}:
+            return
+        limit = 1 if session.kind == "coach_daily" else 3
+        if len(session.answers) >= limit:
+            self._finish_coach_challenge(telegram_id)
+            return
+        question = self._current_coach_challenge(telegram_id, session)
+        if question is None:
+            self._finish_coach_challenge(telegram_id)
+            return
+        session.answers.append({"pending": question["id"]})
+        rows = [
+            [
+                {
+                    "text": option,
+                    "callback_data": (
+                        f"coach:{'daily' if session.kind == 'coach_daily' else 'challenge'}:"
+                        f"answer:{question['id']}:{index}"
+                    ),
+                }
+            ]
+            for index, option in enumerate(question["options"])
+        ]
+        rows.append(self._nav_row())
+        session.answers.pop()
+        self.api.send_message(
+            session.chat_id,
+            (
+                f"{'Daily Challenge' if session.kind == 'coach_daily' else 'Challenge Me'}"
+                f" — {len(session.answers) + 1}/{limit}\n"
+                f"Topic: {question['topic']}\n\n{question['prompt']}"
+            ),
+            {"inline_keyboard": rows},
+        )
+
+    def _handle_coach_challenge_answer(
+        self, telegram_id: int, chat_id: int, data: str, is_private: bool
+    ) -> None:
+        session = self.sessions.get(telegram_id)
+        expected_kind = "coach_daily" if data.startswith("coach:daily:") else "coach_challenge"
+        match = re.fullmatch(
+            r"coach:(?:daily|challenge):answer:([a-z_]+):(\d+)", data
+        )
+        if (
+            not is_private
+            or not session
+            or session.kind != expected_kind
+            or session.chat_id != chat_id
+            or not match
+        ):
+            self._show_coach_menu(chat_id, is_private)
+            return
+        question = self._current_coach_challenge(telegram_id, session)
+        question_id, answer_text = match.groups()
+        if not question or question["id"] != question_id:
+            self.api.send_message(
+                chat_id,
+                "That challenge has moved on. Use the current answer buttons.",
+                self._coach_keyboard(),
+            )
+            return
+        answer_index = int(answer_text)
+        if not 0 <= answer_index < len(question["options"]):
+            return
+        is_correct = answer_index == question["answer"]
+        session.answers.append(
+            {"id": question_id, "correct": is_correct, "topic": question["topic"]}
+        )
+        feedback = "That’s right. " if is_correct else "Not quite — that’s okay. "
+        feedback += question["explanation"]
+        limit = 1 if session.kind == "coach_daily" else 3
+        if len(session.answers) == limit:
+            score = sum(bool(answer["correct"]) for answer in session.answers)
+            self.sessions.pop(telegram_id, None)
+            feedback += (
+                f"\n\nChallenge complete: {score}/{limit}. "
+                "You can try another round whenever you like."
+            )
+            self.api.send_message(chat_id, feedback, self._coach_menu_keyboard())
+            return
+        self.api.send_message(chat_id, feedback, self._coach_keyboard())
+        self._send_coach_challenge(telegram_id)
+
+    def _finish_coach_challenge(self, telegram_id: int) -> None:
+        session = self.sessions.pop(telegram_id, None)
+        if not session:
+            return
+        limit = 1 if session.kind == "coach_daily" else 3
+        score = sum(bool(answer.get("correct")) for answer in session.answers)
+        self.api.send_message(
+            session.chat_id,
+            f"Challenge complete: {score}/{limit}. Nice work showing up to practise.",
+            self._coach_menu_keyboard(),
         )
 
     def _answer_coach_message(
@@ -436,32 +902,144 @@ class SmartMoneyHubBot:
         username: str | None,
         question: str,
     ) -> None:
-        reply = ai_evaluate_answer(question, self.coach_service)
         try:
-            self.store.save_dm_coaching_interaction(
+            history = self.store.recent_dm_coaching_interactions(telegram_id)
+            profile = self.store.progress_for(telegram_id)
+            sunday_plan = self.store.latest_sunday_preparation(telegram_id)
+            recent_checkins = self.store.recent_checkins(telegram_id, limit=1)
+            if sunday_plan:
+                profile["learning_goal"] = (
+                    sunday_plan.get("concept_focus")
+                    or sunday_plan.get("weekly_goal")
+                    or sunday_plan.get("mistake_to_avoid")
+                )
+            elif recent_checkins:
+                profile["learning_goal"] = recent_checkins[0].get("next_focus")
+        except Exception:
+            logger.exception("Could not load saved coaching context.")
+            history = []
+            profile = {}
+        reply = ai_evaluate_answer(
+            question,
+            self.coach_service,
+            history=history,
+            profile=profile,
+        )
+        assessment = detect_member_question(question, reply.detected_topic)
+        approved_item = None
+        if assessment:
+            try:
+                approved_item = find_approved_answer(
+                    question,
+                    assessment.topic,
+                    self.store.approved_knowledge_items(),
+                )
+            except Exception:
+                logger.exception("Could not retrieve approved Coach knowledge.")
+        response_text = reply.response
+        if approved_item:
+            response_text = approved_item["approved_answer"]
+        elif assessment and assessment.needs_research:
+            response_text = (
+                "I don’t have a vetted answer for this yet, so I won’t guess. "
+                "I’ve flagged the question for administrator review. "
+                "Any answer added to my knowledge will be checked and approved first."
+            )
+
+        interaction_id: int | None = None
+        question_recorded = False
+        try:
+            interaction_id = self.store.save_dm_coaching_interaction(
                 telegram_id=telegram_id,
                 username=username,
                 question=question,
-                coach_response=reply.response,
+                coach_response=response_text,
                 detected_topic=reply.detected_topic,
                 mistakes_identified=reply.mistakes,
                 lesson_learned=reply.lesson_learned,
             )
-            response = reply.response
+            response = response_text
         except Exception:
             logger.exception("Could not save a DM coaching interaction.")
             response = (
-                reply.response
+                response_text
                 + "\n\nI couldn't save this coaching interaction locally. "
                 "Please try again later."
             )
-        self.api.send_message(chat_id, response, self._coach_keyboard())
+        if assessment and interaction_id is not None:
+            try:
+                self.store.record_knowledge_question(
+                    question=question,
+                    topic=assessment.topic,
+                    confidence=assessment.confidence,
+                    review_reason=assessment.review_reason,
+                    interaction_id=interaction_id,
+                )
+                question_recorded = True
+            except Exception:
+                logger.exception("Could not add Coach question to the knowledge queue.")
+        markup = (
+            self._coach_feedback_keyboard(interaction_id)
+            if question_recorded and interaction_id is not None
+            else self._coach_keyboard()
+        )
+        self.api.send_message(chat_id, response, markup)
+
+    def _handle_coach_feedback(
+        self,
+        chat_id: int,
+        telegram_id: int,
+        is_private: bool,
+        interaction_id: int,
+        reaction: str,
+    ) -> None:
+        if not is_private:
+            self.api.send_message(
+                chat_id,
+                "Please send Coach feedback in your private chat with the bot.",
+                self._coach_keyboard(),
+            )
+            return
+        try:
+            recorded = self.store.record_knowledge_feedback(
+                telegram_id, interaction_id, reaction
+            )
+        except Exception:
+            logger.exception("Could not save member feedback on Coach answer.")
+            recorded = False
+        if not recorded:
+            self.api.send_message(
+                chat_id,
+                "I couldn't match that button to your recent Coach question.",
+                self._coach_keyboard(),
+            )
+            return
+        messages = {
+            "helpful": "Thanks for the feedback. I’ll keep this reviewed explanation available.",
+            "unhelpful": "Thanks for telling me. I’ve flagged this answer for administrator review.",
+            "unclear": "Thanks for letting me know. I’ve flagged it for a clearer explanation.",
+        }
+        self.api.send_message(chat_id, messages[reaction], self._coach_keyboard())
+
+    @staticmethod
+    def _coach_feedback_keyboard(interaction_id: int) -> dict[str, Any]:
+        return {
+            "inline_keyboard": [
+                [
+                    {"text": "✅ Helpful", "callback_data": f"coach:feedback:{interaction_id}:helpful"},
+                    {"text": "👎 Not helpful", "callback_data": f"coach:feedback:{interaction_id}:unhelpful"},
+                    {"text": "❓ Still unclear", "callback_data": f"coach:feedback:{interaction_id}:unclear"},
+                ],
+                [{"text": "Coaching Modes", "callback_data": "menu:coach"}],
+                [{"text": "🏠 Main Menu", "callback_data": "nav:home"}],
+            ]
+        }
 
     @staticmethod
     def _coach_keyboard() -> dict[str, Any]:
         return {
             "inline_keyboard": [
-                [{"text": "💬 Ask Coach", "callback_data": "menu:coach"}],
+                [{"text": "Coaching Modes", "callback_data": "menu:coach"}],
                 [{"text": "🏠 Main Menu", "callback_data": "nav:home"}],
             ]
         }
@@ -1211,6 +1789,18 @@ class SmartMoneyHubBot:
         session = self.sessions.get(telegram_id)
         if not session or session.chat_id != chat_id:
             self._show_main_menu(chat_id)
+            return
+        if session.kind in COACH_GUIDED_PROMPTS:
+            if session.answers:
+                session.answers.pop()
+                self._ask_guided_coach_question(telegram_id)
+            else:
+                self.sessions.pop(telegram_id, None)
+                self._show_coach_menu(chat_id, True)
+            return
+        if session.kind in {"coach_challenge", "coach_daily"}:
+            self.sessions.pop(telegram_id, None)
+            self._show_coach_menu(chat_id, True)
             return
         if session.kind == "assessment":
             if session.answers:

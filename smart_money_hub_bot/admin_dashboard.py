@@ -3,6 +3,9 @@
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from .knowledge_approval import can_approve
+from .knowledge_drafting import parse_research_material, validate_answer_draft
+from .knowledge_research import UnavailableResearchProvider
 from .storage import Repository
 from .telegram_api import TelegramAPI, TelegramAPIError
 
@@ -49,6 +52,7 @@ class AdminDashboard:
         self._broadcast_pending: set[int] = set()
         self._broadcast_drafts: dict[int, str] = {}
         self._channel_promo_pending: set[int] = set()
+        self._knowledge_pending: dict[int, tuple[str, int]] = {}
 
     def search_is_pending(self, telegram_id: int) -> bool:
         return telegram_id in self._search_pending
@@ -74,6 +78,15 @@ class AdminDashboard:
 
     def cancel_channel_promo(self, telegram_id: int) -> None:
         self._channel_promo_pending.discard(telegram_id)
+
+    def knowledge_is_pending(self, telegram_id: int) -> bool:
+        return telegram_id in self._knowledge_pending
+
+    def cancel_knowledge_action(self, telegram_id: int) -> None:
+        self._knowledge_pending.pop(telegram_id, None)
+
+    def has_knowledge_state(self, telegram_id: int) -> bool:
+        return telegram_id in self._knowledge_pending
 
     def open(self, chat_id: int, telegram_id: int, is_private: bool) -> None:
         if self._authorize(chat_id, telegram_id, is_private):
@@ -161,6 +174,49 @@ class AdminDashboard:
                     ]
                 ]
             ),
+        )
+
+    def handle_knowledge_message(
+        self, chat_id: int, telegram_id: int, is_private: bool, text: str
+    ) -> None:
+        if not self._authorize(chat_id, telegram_id, is_private):
+            self.cancel_knowledge_action(telegram_id)
+            return
+        pending = self._knowledge_pending.get(telegram_id)
+        if not pending:
+            return
+        action, item_id = pending
+        try:
+            if action == "answer":
+                answer = validate_answer_draft(text)
+                if not self.store.set_knowledge_draft(item_id, answer):
+                    raise ValueError("That knowledge question no longer exists.")
+                notice = "Draft answer saved for review. It is not trusted or used by the Coach yet."
+            elif action == "sources":
+                research = parse_research_material(text)
+                if not self.store.set_knowledge_research(item_id, **research):
+                    raise ValueError("That knowledge question no longer exists.")
+                notice = "Research notes saved. The source links are recorded; no live web research was performed by the bot."
+            else:
+                raise ValueError("That admin action is no longer active.")
+        except ValueError as error:
+            prompt = (
+                "Send the proposed answer again."
+                if action == "answer"
+                else "Send HTTPS source URLs, one per line. Optional lines: NOTE: text, "
+                "CONFLICT: text, REVIEW_BY: YYYY-MM-DD."
+            )
+            self.api.send_message(
+                chat_id,
+                f"{error}\n\n{prompt}\nSend /cancel to stop.",
+                self._admin_navigation(),
+            )
+            return
+        self.cancel_knowledge_action(telegram_id)
+        self.api.send_message(
+            chat_id,
+            notice,
+            self._knowledge_item_keyboard(item_id),
         )
 
     def _prompt_for_broadcast_text(self, chat_id: int, notice: str | None = None) -> None:
@@ -310,6 +366,7 @@ class AdminDashboard:
     ) -> None:
         if not self._authorize(chat_id, telegram_id, is_private):
             return
+        self.cancel_knowledge_action(telegram_id)
         broadcast_actions = {
             "admin:dm_broadcast",
             "admin:dm_broadcast:confirm",
@@ -337,6 +394,75 @@ class AdminDashboard:
             self._show_statistics(chat_id)
         elif data == "admin:dm_coach":
             self._show_dm_coach_stats(chat_id)
+        elif data in {"admin:knowledge", "admin:knowledge:home"}:
+            self._show_knowledge_home(chat_id)
+        elif data.startswith("admin:knowledge:list:"):
+            view = data.rsplit(":", maxsplit=1)[1]
+            self._show_knowledge_queue(chat_id, view, page=0)
+        elif data.startswith("admin:knowledge:page:"):
+            parts = data.split(":")
+            if len(parts) == 5:
+                self._show_knowledge_queue(chat_id, parts[3], self._integer_suffix(":" + parts[4]))
+            else:
+                self._show_knowledge_home(chat_id)
+        elif data.startswith("admin:knowledge:item:"):
+            self._show_knowledge_item(
+                chat_id, self._integer_suffix(data)
+            )
+        elif data.startswith("admin:knowledge:research:"):
+            self._request_knowledge_research(
+                chat_id, self._integer_suffix(data)
+            )
+        elif data.startswith("admin:knowledge:draft:"):
+            self._prompt_knowledge_input(
+                chat_id,
+                telegram_id,
+                "answer",
+                self._integer_suffix(data),
+            )
+        elif data.startswith("admin:knowledge:sources:"):
+            self._prompt_knowledge_input(
+                chat_id,
+                telegram_id,
+                "sources",
+                self._integer_suffix(data),
+            )
+        elif data.startswith("admin:knowledge:approve:"):
+            self._approve_knowledge_item(
+                chat_id,
+                telegram_id,
+                self._integer_suffix(data),
+            )
+        elif data.startswith("admin:knowledge:reject:"):
+            item_id = self._integer_suffix(data)
+            self.store.reject_knowledge_draft(item_id)
+            self.api.send_message(
+                chat_id,
+                "Draft rejected. Any previously approved answer remains unchanged.",
+                self._knowledge_item_keyboard(item_id),
+            )
+        elif data.startswith("admin:knowledge:retire:"):
+            item_id = self._integer_suffix(data)
+            self.store.set_knowledge_status(item_id, "retired")
+            self.api.send_message(
+                chat_id,
+                "Knowledge entry disabled. The Coach will no longer retrieve it.",
+                self._knowledge_item_keyboard(item_id),
+            )
+        elif data.startswith("admin:knowledge:enable:"):
+            item_id = self._integer_suffix(data)
+            if self.store.set_knowledge_status(item_id, "approved"):
+                self.api.send_message(
+                    chat_id,
+                    "Approved knowledge entry re-enabled.",
+                    self._knowledge_item_keyboard(item_id),
+                )
+            else:
+                self._show_knowledge_item(chat_id, item_id)
+        elif data.startswith("admin:knowledge:versions:"):
+            self._show_knowledge_versions(
+                chat_id, self._integer_suffix(data)
+            )
         elif data == "admin:dm_broadcast":
             self._broadcast_pending.add(telegram_id)
             self._broadcast_drafts.pop(telegram_id, None)
@@ -489,6 +615,7 @@ class AdminDashboard:
                     {"text": "📈 Member Progress", "callback_data": "admin:progress"},
                 ],
                 [{"text": "💬 DM Coach Stats", "callback_data": "admin:dm_coach"}],
+                [{"text": "🧠 Knowledge Improvement", "callback_data": "admin:knowledge"}],
                 [{"text": "📨 Send One-Time DM", "callback_data": "admin:dm_broadcast"}],
                 [{"text": "📣 Promote Bot in Channel", "callback_data": "admin:channel_promo"}],
                 [{"text": "🏠 Main Menu", "callback_data": "nav:home"}],
@@ -592,6 +719,359 @@ class AdminDashboard:
 
         self.api.send_message(
             chat_id, "\n".join(lines), self._admin_navigation()
+        )
+
+    def _show_knowledge_home(self, chat_id: int) -> None:
+        counts = self.store.knowledge_admin_summary()
+        lines = [
+            "🧠 KNOWLEDGE IMPROVEMENT",
+            "Member questions are grouped without usernames or Telegram IDs. "
+            "Only approved answers are reusable by the Coach.",
+            "",
+            f"Awaiting research: {counts['awaiting_research']}",
+            f"Awaiting approval: {counts['awaiting_approval']}",
+            f"Member feedback needs review: {counts['unhelpful']}",
+            f"Repeated questions: {counts['repeated']}",
+            f"Resolved or covered: {counts['covered'] + counts['approved'] + counts['retired']}",
+            f"Rejected drafts: {counts['rejected']}",
+            "",
+            "Research provider: unavailable in the bot runtime. Research manually, "
+            "then add HTTPS source links and an answer for approval.",
+        ]
+        rows = [
+            [
+                {
+                    "text": f"🔎 Awaiting research ({counts['awaiting_research']})",
+                    "callback_data": "admin:knowledge:list:awaiting_research",
+                }
+            ],
+            [
+                {
+                    "text": f"✅ Awaiting approval ({counts['awaiting_approval']})",
+                    "callback_data": "admin:knowledge:list:awaiting_approval",
+                }
+            ],
+            [
+                {
+                    "text": f"👎 Feedback review ({counts['unhelpful']})",
+                    "callback_data": "admin:knowledge:list:unhelpful",
+                },
+                {
+                    "text": f"🔁 Repeated ({counts['repeated']})",
+                    "callback_data": "admin:knowledge:list:repeated",
+                },
+            ],
+            [
+                {
+                    "text": "📚 Covered / resolved",
+                    "callback_data": "admin:knowledge:list:resolved",
+                },
+                {
+                    "text": "🗂 All active",
+                    "callback_data": "admin:knowledge:list:all",
+                },
+            ],
+            [
+                {
+                    "text": f"🚫 Rejected ({counts['rejected']})",
+                    "callback_data": "admin:knowledge:list:rejected",
+                }
+            ],
+        ]
+        self.api.send_message(chat_id, "\n".join(lines), self._admin_navigation(rows))
+
+    def _show_knowledge_queue(self, chat_id: int, view: str, page: int = 0) -> None:
+        titles = {
+            "awaiting_research": "AWAITING RESEARCH",
+            "awaiting_approval": "AWAITING APPROVAL",
+            "unhelpful": "MEMBER FEEDBACK REVIEW",
+            "repeated": "REPEATED QUESTIONS",
+            "resolved": "COVERED / RESOLVED",
+            "rejected": "REJECTED DRAFTS",
+            "all": "ALL ACTIVE KNOWLEDGE ITEMS",
+        }
+        if view not in titles:
+            self._show_knowledge_home(chat_id)
+            return
+        total, items = self.store.knowledge_queue(view, page=page)
+        lines = [titles[view], f"{total} item(s). Question text is shown without member identity."]
+        rows: list[list[dict[str, str]]] = []
+        for item in items:
+            question = item.get("display_question") or "No member question retained"
+            button_text = (
+                f"{self._short(item['topic'], 17)} · "
+                f"{self._short(question, 31)} · {item['occurrence_count']}×"
+            )
+            rows.append(
+                [
+                    {
+                        "text": button_text[:64],
+                        "callback_data": f"admin:knowledge:item:{item['id']}",
+                    }
+                ]
+            )
+            lines.append(
+                f"• {item['topic']} — {item['status']} — "
+                f"{item['occurrence_count']} question(s)"
+            )
+        if not items:
+            lines.append("No items in this view.")
+        page_count = max(1, (total + 7) // 8)
+        if page > 0 or page + 1 < page_count:
+            navigation: list[dict[str, str]] = []
+            if page > 0:
+                navigation.append(
+                    {
+                        "text": "⬅️ Previous",
+                        "callback_data": f"admin:knowledge:page:{view}:{page - 1}",
+                    }
+                )
+            if page + 1 < page_count:
+                navigation.append(
+                    {
+                        "text": "Next ➡️",
+                        "callback_data": f"admin:knowledge:page:{view}:{page + 1}",
+                    }
+                )
+            rows.append(navigation)
+        rows.append(
+            [{"text": "🧠 Knowledge dashboard", "callback_data": "admin:knowledge:home"}]
+        )
+        self.api.send_message(
+            chat_id, "\n".join(lines), self._admin_navigation(rows)
+        )
+
+    def _show_knowledge_item(self, chat_id: int, item_id: int) -> None:
+        item = self.store.knowledge_item_detail(item_id)
+        if not item:
+            self.api.send_message(
+                chat_id, "Knowledge item not found.", self._admin_navigation()
+            )
+            return
+        lines = [
+            f"KNOWLEDGE ITEM #{item['id']}",
+            f"Category: {item['topic']}",
+            f"Status: {item['status']} · confidence: {item['confidence']}",
+            f"Occurrences: {item['occurrence_count']} · "
+            f"Helpful: {item['helpful_count']} · Not helpful: {item['unhelpful_count']} · "
+            f"Still unclear: {item['unclear_count']}",
+            f"Review reason: {item['review_reason'] or '—'}",
+            f"Last seen: {str(item['last_seen_at'])[:16]}",
+        ]
+        if item["last_researched_at"]:
+            lines.append(f"Research entered: {str(item['last_researched_at'])[:16]}")
+        if item["review_after"]:
+            lines.append(f"Review by: {item['review_after']}")
+        if item["draft_review_after"]:
+            lines.append(f"Proposed review date: {item['draft_review_after']}")
+        lines.append("\nAnonymized question examples:")
+        lines.extend(
+            f"• {self._short(example['question'], 220)}"
+            for example in item["examples"][:5]
+        )
+        if not item["examples"]:
+            lines.append("• No member question text retained.")
+        if item["proposed_answer"]:
+            lines.extend(
+                [
+                    "\nPROPOSED ANSWER — not used by the Coach:",
+                    self._short(item["proposed_answer"], 1500),
+                ]
+            )
+        if item["approved_answer"]:
+            lines.extend(
+                [
+                    "\nCURRENT APPROVED ANSWER:",
+                    self._short(item["approved_answer"], 1500),
+                ]
+            )
+        if item["source_urls"] and item["proposed_answer"]:
+            lines.append("\nProposed answer source links:")
+            lines.extend(
+                f"• {url}"
+                for url in item["source_urls"].splitlines()[:5]
+            )
+        elif item["versions"]:
+            lines.append("\nCurrent approved answer source links:")
+            lines.extend(
+                f"• {url}"
+                for url in item["versions"][0]["source_urls"].splitlines()[:5]
+            )
+        if item["research_notes"]:
+            lines.append(f"\nResearch notes: {self._short(item['research_notes'], 500)}")
+        if len("\n".join(lines)) > 3900:
+            lines = [*lines[:12], "\nDetails are shortened to fit Telegram."]
+        self.api.send_message(
+            chat_id,
+            "\n".join(lines),
+            self._knowledge_item_keyboard(item),
+        )
+
+    def _knowledge_item_keyboard(self, item_or_id: dict[str, Any] | int) -> dict[str, Any]:
+        item = (
+            item_or_id
+            if isinstance(item_or_id, dict)
+            else self.store.knowledge_item_detail(item_or_id)
+        )
+        if not item:
+            return self._admin_navigation()
+        item_id = int(item["id"])
+        rows: list[list[dict[str, str]]] = [
+            [
+                {
+                    "text": "✏️ Draft / edit answer",
+                    "callback_data": f"admin:knowledge:draft:{item_id}",
+                },
+                {
+                    "text": "🔗 Add research sources",
+                    "callback_data": f"admin:knowledge:sources:{item_id}",
+                },
+            ],
+            [
+                {
+                    "text": "🔎 Request more research",
+                    "callback_data": f"admin:knowledge:research:{item_id}",
+                },
+                {
+                    "text": "📜 Version history",
+                    "callback_data": f"admin:knowledge:versions:{item_id}",
+                },
+            ],
+        ]
+        if (
+            item.get("status") == "awaiting_approval"
+            and can_approve(item.get("proposed_answer"), item.get("source_urls"))
+        ):
+            rows.append(
+                [
+                    {
+                        "text": "✅ Approve answer",
+                        "callback_data": f"admin:knowledge:approve:{item_id}",
+                    }
+                ]
+            )
+        if item.get("proposed_answer"):
+            rows.append(
+                [
+                    {
+                        "text": "❌ Reject proposed answer",
+                        "callback_data": f"admin:knowledge:reject:{item_id}",
+                    }
+                ]
+            )
+        if item["status"] == "retired":
+            rows.append(
+                [
+                    {
+                        "text": "♻️ Re-enable approved entry",
+                        "callback_data": f"admin:knowledge:enable:{item_id}",
+                    }
+                ]
+            )
+        elif item.get("approved_answer"):
+            rows.append(
+                [
+                    {
+                        "text": "⏸ Disable approved entry",
+                        "callback_data": f"admin:knowledge:retire:{item_id}",
+                    }
+                ]
+            )
+        rows.append(
+            [{"text": "🧠 Knowledge dashboard", "callback_data": "admin:knowledge:home"}]
+        )
+        return self._admin_navigation(rows)
+
+    def _request_knowledge_research(self, chat_id: int, item_id: int) -> None:
+        item = self.store.knowledge_item_detail(item_id)
+        if not item:
+            self.api.send_message(
+                chat_id, "Knowledge item not found.", self._admin_navigation()
+            )
+            return
+        question = item["examples"][0]["question"] if item["examples"] else item["topic"]
+        result = UnavailableResearchProvider().research(question)
+        self.store.set_knowledge_status(item_id, "awaiting_research")
+        self.api.send_message(
+            chat_id,
+            result.message,
+            self._knowledge_item_keyboard(item),
+        )
+
+    def _prompt_knowledge_input(
+        self, chat_id: int, telegram_id: int, action: str, item_id: int
+    ) -> None:
+        item = self.store.knowledge_item_detail(item_id)
+        if not item:
+            self.api.send_message(
+                chat_id, "Knowledge item not found.", self._admin_navigation()
+            )
+            return
+        self._knowledge_pending[telegram_id] = (action, item_id)
+        if action == "answer":
+            prompt = (
+                "Send a reviewed answer for this question. Keep it concise and factual; "
+                "include relevant limitations or uncertainty. It will remain a draft "
+                "until you add source links and approve it.\n\n"
+                f"Category: {item['topic']}\n"
+                f"Question: {self._short(item['examples'][0]['question'], 400) if item['examples'] else item['topic']}"
+            )
+        else:
+            prompt = (
+                "Send one HTTPS source URL per line. Optional lines:\n"
+                "NOTE: research context or limitation\n"
+                "CONFLICT: conflicting information to review\n"
+                "REVIEW_BY: YYYY-MM-DD\n\n"
+                "Add publication dates and source limitations in NOTE lines. "
+                "The bot will store these links, not fetch or verify their contents. "
+                "Send /cancel to stop."
+            )
+        self.api.send_message(
+            chat_id, prompt + "\n\nSend /cancel to stop.", self._admin_navigation()
+        )
+
+    def _approve_knowledge_item(
+        self, chat_id: int, telegram_id: int, item_id: int
+    ) -> None:
+        try:
+            version = self.store.approve_knowledge_item(item_id, telegram_id)
+        except ValueError as error:
+            self.api.send_message(
+                chat_id,
+                str(error),
+                self._knowledge_item_keyboard(item_id),
+            )
+            return
+        self.api.send_message(
+            chat_id,
+            f"Answer approved as version {version}. The Coach may now reuse it for matching questions.",
+            self._knowledge_item_keyboard(item_id),
+        )
+
+    def _show_knowledge_versions(self, chat_id: int, item_id: int) -> None:
+        item = self.store.knowledge_item_detail(item_id)
+        if not item:
+            self.api.send_message(
+                chat_id, "Knowledge item not found.", self._admin_navigation()
+            )
+            return
+        lines = [f"VERSION HISTORY · {item['topic']}"]
+        for version in item["versions"]:
+            lines.extend(
+                [
+                    f"\nVersion {version['version']} · {str(version['created_at'])[:16]}",
+                    self._short(version["answer"], 1000),
+                    "Sources: " + (version["source_urls"].replace("\n", ", ")[:600] or "—"),
+                ]
+            )
+            if version["review_after"]:
+                lines.append(f"Review by: {version['review_after']}")
+        if not item["versions"]:
+            lines.append("No approved versions yet.")
+        self.api.send_message(
+            chat_id,
+            "\n".join(lines)[:3900],
+            self._knowledge_item_keyboard(item),
         )
 
     def _show_weak_topics(self, chat_id: int) -> None:

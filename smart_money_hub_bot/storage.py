@@ -5,6 +5,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .knowledge_approval import can_approve, rejection_status
+from .knowledge_base import find_similar_item
+from .knowledge_versions import next_version_number
 from .scoring import AssessmentResult
 
 
@@ -195,6 +198,77 @@ class Repository:
 
                     CREATE INDEX IF NOT EXISTS dm_coach_mistakes_mistake
                     ON dm_coach_mistakes (mistake);
+
+                    CREATE TABLE IF NOT EXISTS knowledge_items (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        topic TEXT NOT NULL,
+                        status TEXT NOT NULL DEFAULT 'awaiting_research'
+                            CHECK (status IN (
+                                'covered', 'awaiting_research', 'awaiting_approval',
+                                'approved', 'rejected', 'retired'
+                            )),
+                        confidence TEXT NOT NULL DEFAULT 'low'
+                            CHECK (confidence IN ('high', 'low')),
+                        review_reason TEXT NOT NULL DEFAULT '',
+                        proposed_answer TEXT,
+                        approved_answer TEXT,
+                        source_urls TEXT NOT NULL DEFAULT '',
+                        research_notes TEXT NOT NULL DEFAULT '',
+                        created_at TEXT NOT NULL,
+                        last_seen_at TEXT NOT NULL,
+                        last_researched_at TEXT,
+                        approved_at TEXT,
+                        last_reviewed_at TEXT,
+                        review_after TEXT,
+                        draft_review_after TEXT
+                    );
+
+                    CREATE INDEX IF NOT EXISTS knowledge_items_status_date
+                    ON knowledge_items (status, last_seen_at DESC);
+
+                    CREATE TABLE IF NOT EXISTS knowledge_item_examples (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        item_id INTEGER NOT NULL REFERENCES knowledge_items(id)
+                            ON DELETE CASCADE,
+                        interaction_id INTEGER NOT NULL UNIQUE
+                            REFERENCES dm_coaching_interactions(id) ON DELETE CASCADE,
+                        question TEXT NOT NULL,
+                        created_at TEXT NOT NULL
+                    );
+
+                    CREATE INDEX IF NOT EXISTS knowledge_examples_item
+                    ON knowledge_item_examples (item_id, created_at DESC);
+
+                    CREATE TABLE IF NOT EXISTS knowledge_versions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        item_id INTEGER NOT NULL REFERENCES knowledge_items(id)
+                            ON DELETE CASCADE,
+                        version INTEGER NOT NULL,
+                        answer TEXT NOT NULL,
+                        source_urls TEXT NOT NULL,
+                        research_notes TEXT NOT NULL DEFAULT '',
+                        admin_telegram_id INTEGER NOT NULL,
+                        created_at TEXT NOT NULL,
+                        review_after TEXT,
+                        UNIQUE (item_id, version)
+                    );
+
+                    CREATE INDEX IF NOT EXISTS knowledge_versions_item_date
+                    ON knowledge_versions (item_id, version DESC);
+
+                    CREATE TABLE IF NOT EXISTS knowledge_feedback (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        interaction_id INTEGER NOT NULL UNIQUE
+                            REFERENCES dm_coaching_interactions(id) ON DELETE CASCADE,
+                        item_id INTEGER NOT NULL REFERENCES knowledge_items(id)
+                            ON DELETE CASCADE,
+                        reaction TEXT NOT NULL
+                            CHECK (reaction IN ('helpful', 'unhelpful', 'unclear')),
+                        created_at TEXT NOT NULL
+                    );
+
+                    CREATE INDEX IF NOT EXISTS knowledge_feedback_item
+                    ON knowledge_feedback (item_id, reaction);
                     """
                 )
                 self._ensure_user_column(
@@ -206,6 +280,12 @@ class Repository:
                     connection,
                     "reminders_stopped",
                     "INTEGER NOT NULL DEFAULT 0",
+                )
+                self._ensure_table_column(
+                    connection,
+                    "knowledge_items",
+                    "draft_review_after",
+                    "TEXT",
                 )
                 self._migrate_legacy_assessments(connection)
                 member_ids = connection.execute(
@@ -227,6 +307,22 @@ class Repository:
         if column_name not in columns:
             connection.execute(
                 f"ALTER TABLE users ADD COLUMN {column_name} {definition}"
+            )
+
+    @staticmethod
+    def _ensure_table_column(
+        connection: sqlite3.Connection,
+        table_name: str,
+        column_name: str,
+        definition: str,
+    ) -> None:
+        columns = {
+            str(row["name"])
+            for row in connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+        }
+        if column_name not in columns:
+            connection.execute(
+                f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}"
             )
 
     @staticmethod
@@ -964,6 +1060,566 @@ class Repository:
                     (created_at, telegram_id),
                 )
                 return interaction_id
+        finally:
+            connection.close()
+
+    def recent_dm_coaching_interactions(
+        self, telegram_id: int, limit: int = 6
+    ) -> list[dict[str, Any]]:
+        connection = self._connect()
+        try:
+            rows = connection.execute(
+                """
+                SELECT question, coach_response, detected_topic,
+                       mistakes_identified, lesson_learned, created_at
+                FROM dm_coaching_interactions
+                WHERE telegram_id = ?
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                """,
+                (telegram_id, max(1, min(limit, 20))),
+            ).fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            connection.close()
+
+    def clear_dm_coaching_history(self, telegram_id: int) -> int:
+        """Delete only this member's saved coach conversations and coach mistakes."""
+        connection = self._connect()
+        try:
+            with connection:
+                affected_items = [
+                    int(row["item_id"])
+                    for row in connection.execute(
+                        """
+                        SELECT DISTINCT e.item_id
+                        FROM knowledge_item_examples e
+                        JOIN dm_coaching_interactions i
+                          ON i.id = e.interaction_id
+                        WHERE i.telegram_id = ?
+                        """,
+                        (telegram_id,),
+                    ).fetchall()
+                ]
+                cursor = connection.execute(
+                    "DELETE FROM dm_coaching_interactions WHERE telegram_id = ?",
+                    (telegram_id,),
+                )
+                for item_id in affected_items:
+                    remaining = connection.execute(
+                        "SELECT COUNT(*) FROM knowledge_item_examples WHERE item_id = ?",
+                        (item_id,),
+                    ).fetchone()[0]
+                    approved = connection.execute(
+                        "SELECT approved_answer FROM knowledge_items WHERE id = ?",
+                        (item_id,),
+                    ).fetchone()
+                    if not remaining and approved and not approved["approved_answer"]:
+                        connection.execute(
+                            "DELETE FROM knowledge_items WHERE id = ?", (item_id,)
+                        )
+                return int(cursor.rowcount)
+        finally:
+            connection.close()
+
+    def knowledge_items_for_matching(self) -> list[dict[str, Any]]:
+        connection = self._connect()
+        try:
+            items = connection.execute(
+                """
+                SELECT * FROM knowledge_items
+                WHERE status <> 'retired'
+                ORDER BY id DESC
+                LIMIT 1000
+                """
+            ).fetchall()
+            results = []
+            for item in items:
+                record = dict(item)
+                examples = connection.execute(
+                    """
+                    SELECT question FROM knowledge_item_examples
+                    WHERE item_id = ? ORDER BY created_at DESC, id DESC LIMIT 20
+                    """,
+                    (item["id"],),
+                ).fetchall()
+                record["examples"] = [row["question"] for row in examples]
+                results.append(record)
+            return results
+        finally:
+            connection.close()
+
+    def approved_knowledge_items(self) -> list[dict[str, Any]]:
+        return [
+            item
+            for item in self.knowledge_items_for_matching()
+            if item.get("approved_answer") and item.get("status") != "retired"
+        ]
+
+    def record_knowledge_question(
+        self,
+        *,
+        question: str,
+        topic: str,
+        confidence: str,
+        review_reason: str,
+        interaction_id: int,
+        at: str | None = None,
+    ) -> int:
+        if confidence not in {"high", "low"}:
+            raise ValueError("Knowledge confidence must be high or low.")
+        created_at = at or utc_now()
+        candidates = self.knowledge_items_for_matching()
+        matched = find_similar_item(question, topic, candidates)
+        connection = self._connect()
+        try:
+            with connection:
+                if matched:
+                    item_id = int(matched["id"])
+                    connection.execute(
+                        """
+                        UPDATE knowledge_items
+                        SET last_seen_at = ?,
+                            confidence = ?,
+                            review_reason = CASE
+                                WHEN ? <> '' THEN ? ELSE review_reason
+                            END,
+                            status = CASE
+                                WHEN ? = 'low'
+                                  AND status IN ('covered', 'rejected')
+                                    THEN 'awaiting_research'
+                                WHEN ? = 'low' AND status = 'approved'
+                                  AND (review_after IS NULL OR review_after < date('now'))
+                                    THEN 'awaiting_research'
+                                ELSE status
+                            END
+                        WHERE id = ?
+                        """,
+                        (
+                            created_at,
+                            confidence,
+                            review_reason,
+                            review_reason,
+                            confidence,
+                            confidence,
+                            item_id,
+                        ),
+                    )
+                else:
+                    cursor = connection.execute(
+                        """
+                        INSERT INTO knowledge_items
+                            (topic, status, confidence, review_reason, created_at, last_seen_at)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            topic,
+                            "awaiting_research" if confidence == "low" else "covered",
+                            confidence,
+                            review_reason,
+                            created_at,
+                            created_at,
+                        ),
+                    )
+                    item_id = int(cursor.lastrowid)
+                connection.execute(
+                    """
+                    INSERT OR IGNORE INTO knowledge_item_examples
+                        (item_id, interaction_id, question, created_at)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (item_id, interaction_id, question, created_at),
+                )
+                return item_id
+        finally:
+            connection.close()
+
+    def knowledge_admin_summary(self) -> dict[str, int]:
+        connection = self._connect()
+        try:
+            statuses = {
+                row["status"]: int(row["count"])
+                for row in connection.execute(
+                    """
+                    SELECT status, COUNT(*) AS count
+                    FROM knowledge_items GROUP BY status
+                    """
+                ).fetchall()
+            }
+            unhelpful = connection.execute(
+                """
+                SELECT COUNT(DISTINCT item_id)
+                FROM knowledge_feedback WHERE reaction IN ('unhelpful', 'unclear')
+                """
+            ).fetchone()[0]
+            repeated = connection.execute(
+                """
+                SELECT COUNT(*) FROM (
+                    SELECT item_id FROM knowledge_item_examples
+                    GROUP BY item_id HAVING COUNT(*) > 1
+                )
+                """
+            ).fetchone()[0]
+            return {
+                **{status: statuses.get(status, 0) for status in (
+                    "covered", "awaiting_research", "awaiting_approval",
+                    "approved", "rejected", "retired",
+                )},
+                "unhelpful": int(unhelpful),
+                "repeated": int(repeated),
+            }
+        finally:
+            connection.close()
+
+    def knowledge_queue(
+        self, view: str = "awaiting_research", page: int = 0, page_size: int = 8
+    ) -> tuple[int, list[dict[str, Any]]]:
+        where = {
+            "awaiting_research": "k.status = 'awaiting_research'",
+            "awaiting_approval": "k.status = 'awaiting_approval'",
+            "unhelpful": (
+                "EXISTS (SELECT 1 FROM knowledge_feedback f WHERE "
+                "f.item_id = k.id AND f.reaction IN ('unhelpful', 'unclear'))"
+            ),
+            "repeated": (
+                "(SELECT COUNT(*) FROM knowledge_item_examples e "
+                "WHERE e.item_id = k.id) > 1"
+            ),
+            "resolved": "k.status IN ('covered', 'approved', 'retired')",
+            "rejected": "k.status = 'rejected'",
+            "all": "k.status <> 'retired'",
+        }.get(view)
+        if where is None:
+            raise ValueError("Unsupported knowledge queue view.")
+        safe_page = max(0, page)
+        safe_page_size = max(1, min(page_size, 20))
+        connection = self._connect()
+        try:
+            total = int(
+                connection.execute(
+                    f"SELECT COUNT(*) FROM knowledge_items k WHERE {where}"
+                ).fetchone()[0]
+            )
+            rows = connection.execute(
+                f"""
+                SELECT k.*,
+                    (SELECT COUNT(*) FROM knowledge_item_examples e
+                     WHERE e.item_id = k.id) AS occurrence_count,
+                    (SELECT COUNT(*) FROM knowledge_feedback f
+                     WHERE f.item_id = k.id AND f.reaction = 'helpful') AS helpful_count,
+                    (SELECT COUNT(*) FROM knowledge_feedback f
+                     WHERE f.item_id = k.id AND f.reaction = 'unhelpful') AS unhelpful_count,
+                    (SELECT COUNT(*) FROM knowledge_feedback f
+                     WHERE f.item_id = k.id AND f.reaction = 'unclear') AS unclear_count,
+                    (SELECT question FROM knowledge_item_examples e
+                     WHERE e.item_id = k.id ORDER BY e.created_at DESC, e.id DESC LIMIT 1)
+                     AS display_question
+                FROM knowledge_items k
+                WHERE {where}
+                ORDER BY
+                    CASE k.status
+                        WHEN 'awaiting_research' THEN 0
+                        WHEN 'awaiting_approval' THEN 1
+                        WHEN 'approved' THEN 2
+                        ELSE 3
+                    END,
+                    occurrence_count DESC, k.last_seen_at DESC
+                LIMIT ? OFFSET ?
+                """,
+                (safe_page_size, safe_page * safe_page_size),
+            ).fetchall()
+            return total, [dict(row) for row in rows]
+        finally:
+            connection.close()
+
+    def knowledge_item_detail(self, item_id: int) -> dict[str, Any] | None:
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                """
+                SELECT k.*,
+                    (SELECT COUNT(*) FROM knowledge_item_examples e
+                     WHERE e.item_id = k.id) AS occurrence_count,
+                    (SELECT COUNT(*) FROM knowledge_feedback f
+                     WHERE f.item_id = k.id AND f.reaction = 'helpful') AS helpful_count,
+                    (SELECT COUNT(*) FROM knowledge_feedback f
+                     WHERE f.item_id = k.id AND f.reaction = 'unhelpful') AS unhelpful_count,
+                    (SELECT COUNT(*) FROM knowledge_feedback f
+                     WHERE f.item_id = k.id AND f.reaction = 'unclear') AS unclear_count
+                FROM knowledge_items k WHERE k.id = ?
+                """,
+                (item_id,),
+            ).fetchone()
+            if not row:
+                return None
+            detail = dict(row)
+            detail["examples"] = [
+                dict(example)
+                for example in connection.execute(
+                    """
+                    SELECT question, created_at FROM knowledge_item_examples
+                    WHERE item_id = ? ORDER BY created_at DESC, id DESC LIMIT 8
+                    """,
+                    (item_id,),
+                ).fetchall()
+            ]
+            detail["versions"] = [
+                dict(version)
+                for version in connection.execute(
+                    """
+                    SELECT version, answer, source_urls, research_notes,
+                           admin_telegram_id, created_at, review_after
+                    FROM knowledge_versions
+                    WHERE item_id = ? ORDER BY version DESC LIMIT 10
+                    """,
+                    (item_id,),
+                ).fetchall()
+            ]
+            return detail
+        finally:
+            connection.close()
+
+    def set_knowledge_draft(self, item_id: int, answer: str) -> bool:
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE knowledge_items
+                    SET proposed_answer = ?, status = 'awaiting_approval', last_seen_at = ?,
+                        source_urls = '', research_notes = '',
+                        last_researched_at = NULL, draft_review_after = NULL
+                    WHERE id = ?
+                    """,
+                    (answer, utc_now(), item_id),
+                )
+                return cursor.rowcount > 0
+        finally:
+            connection.close()
+
+    def set_knowledge_research(
+        self,
+        item_id: int,
+        *,
+        source_urls: str,
+        research_notes: str,
+        review_after: str,
+    ) -> bool:
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE knowledge_items
+                    SET source_urls = ?, research_notes = ?, draft_review_after = ?,
+                        last_researched_at = ?,
+                        status = CASE
+                            WHEN proposed_answer IS NOT NULL THEN 'awaiting_approval'
+                            WHEN approved_answer IS NOT NULL THEN 'awaiting_research'
+                            ELSE 'awaiting_research'
+                        END
+                    WHERE id = ?
+                    """,
+                    (
+                        source_urls,
+                        research_notes,
+                        review_after or None,
+                        utc_now(),
+                        item_id,
+                    ),
+                )
+                return cursor.rowcount > 0
+        finally:
+            connection.close()
+
+    def approve_knowledge_item(self, item_id: int, admin_telegram_id: int) -> int:
+        connection = self._connect()
+        try:
+            with connection:
+                item = connection.execute(
+                    "SELECT * FROM knowledge_items WHERE id = ?", (item_id,)
+                ).fetchone()
+                if not item:
+                    raise ValueError("Knowledge question not found.")
+                if item["status"] != "awaiting_approval":
+                    raise ValueError(
+                        "Move the item to awaiting approval after adding its answer and sources."
+                    )
+                if not can_approve(item["proposed_answer"], item["source_urls"]):
+                    raise ValueError(
+                        "Add a proposed answer and at least one research source before approval."
+                    )
+                if (
+                    item["topic"]
+                    in {"Broker and Platform Questions", "Economic News and Fundamentals"}
+                    and not item["draft_review_after"]
+                ):
+                    raise ValueError(
+                        "Current broker or economic information needs a REVIEW_BY date."
+                    )
+                versions = [
+                    dict(row)
+                    for row in connection.execute(
+                        "SELECT version FROM knowledge_versions WHERE item_id = ?",
+                        (item_id,),
+                    ).fetchall()
+                ]
+                version = next_version_number(versions)
+                approved_at = utc_now()
+                connection.execute(
+                    """
+                    INSERT INTO knowledge_versions
+                        (item_id, version, answer, source_urls, research_notes,
+                         admin_telegram_id, created_at, review_after)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        item_id,
+                        version,
+                        item["proposed_answer"],
+                        item["source_urls"],
+                        item["research_notes"],
+                        admin_telegram_id,
+                        approved_at,
+                        item["draft_review_after"],
+                    ),
+                )
+                connection.execute(
+                    """
+                    UPDATE knowledge_items
+                    SET approved_answer = proposed_answer,
+                        proposed_answer = NULL,
+                        status = 'approved',
+                        confidence = 'high',
+                        approved_at = ?,
+                        last_reviewed_at = ?,
+                        last_seen_at = ?,
+                        review_after = draft_review_after,
+                        draft_review_after = NULL
+                    WHERE id = ?
+                    """,
+                    (approved_at, approved_at, approved_at, item_id),
+                )
+                return version
+        finally:
+            connection.close()
+
+    def reject_knowledge_draft(self, item_id: int) -> bool:
+        connection = self._connect()
+        try:
+            with connection:
+                item = connection.execute(
+                    "SELECT approved_answer FROM knowledge_items WHERE id = ?",
+                    (item_id,),
+                ).fetchone()
+                if not item:
+                    return False
+                status = rejection_status(bool(item["approved_answer"]))
+                previous = None
+                if item["approved_answer"]:
+                    previous = connection.execute(
+                        """
+                        SELECT source_urls, research_notes, review_after
+                        FROM knowledge_versions
+                        WHERE item_id = ? ORDER BY version DESC LIMIT 1
+                        """,
+                        (item_id,),
+                    ).fetchone()
+                cursor = connection.execute(
+                    """
+                    UPDATE knowledge_items
+                    SET proposed_answer = NULL, status = ?, last_seen_at = ?,
+                        source_urls = ?, research_notes = ?, review_after = ?,
+                        draft_review_after = NULL
+                    WHERE id = ?
+                    """,
+                    (
+                        status,
+                        utc_now(),
+                        previous["source_urls"] if previous else "",
+                        previous["research_notes"] if previous else "",
+                        previous["review_after"] if previous else None,
+                        item_id,
+                    ),
+                )
+                return cursor.rowcount > 0
+        finally:
+            connection.close()
+
+    def set_knowledge_status(self, item_id: int, status: str) -> bool:
+        if status not in {"awaiting_research", "retired", "approved"}:
+            raise ValueError("Unsupported knowledge entry status.")
+        connection = self._connect()
+        try:
+            with connection:
+                if status == "approved":
+                    cursor = connection.execute(
+                        """
+                        UPDATE knowledge_items SET status = ?, last_seen_at = ?
+                        WHERE id = ? AND approved_answer IS NOT NULL
+                        """,
+                        (status, utc_now(), item_id),
+                    )
+                else:
+                    cursor = connection.execute(
+                        """
+                        UPDATE knowledge_items SET status = ?, last_seen_at = ?
+                        WHERE id = ?
+                        """,
+                        (status, utc_now(), item_id),
+                    )
+                return cursor.rowcount > 0
+        finally:
+            connection.close()
+
+    def record_knowledge_feedback(
+        self, telegram_id: int, interaction_id: int, reaction: str
+    ) -> bool:
+        from .knowledge_feedback import REACTIONS, requires_review
+
+        if reaction not in REACTIONS:
+            raise ValueError("Unsupported Coach feedback.")
+        connection = self._connect()
+        try:
+            with connection:
+                ownership = connection.execute(
+                    """
+                    SELECT e.item_id
+                    FROM dm_coaching_interactions i
+                    JOIN knowledge_item_examples e ON e.interaction_id = i.id
+                    WHERE i.id = ? AND i.telegram_id = ?
+                    """,
+                    (interaction_id, telegram_id),
+                ).fetchone()
+                if not ownership:
+                    return False
+                item_id = int(ownership["item_id"])
+                connection.execute(
+                    """
+                    INSERT INTO knowledge_feedback (interaction_id, item_id, reaction, created_at)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(interaction_id) DO UPDATE SET
+                        reaction = excluded.reaction,
+                        created_at = excluded.created_at
+                    """,
+                    (interaction_id, item_id, reaction, utc_now()),
+                )
+                if requires_review(reaction):
+                    reason = (
+                        "Member reported the answer was not helpful."
+                        if reaction == "unhelpful"
+                        else "Member said they still do not understand the answer."
+                    )
+                    connection.execute(
+                        """
+                        UPDATE knowledge_items
+                        SET status = 'awaiting_research', confidence = 'low',
+                            review_reason = ?, last_seen_at = ?
+                        WHERE id = ?
+                        """,
+                        (reason, utc_now(), item_id),
+                    )
+                return True
         finally:
             connection.close()
 

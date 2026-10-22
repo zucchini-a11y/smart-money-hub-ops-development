@@ -127,15 +127,16 @@ class CoachTests(unittest.TestCase):
 
         self.assertEqual(reply.detected_topic, "FVG / IFVG")
         self.assertIn("not an entry confirmation", reply.response)
-        self.assertIn("Did price take SSL/BSL", reply.response)
+        self.assertIn("Did price take liquidity", reply.response)
         self.assertIn(
             "Entered at an FVG without clear confirmation", reply.mistakes
         )
 
     def test_stop_out_review_identifies_reported_process_gaps(self) -> None:
         prompt = self.coach.evaluate("I got stopped out.")
-        self.assertIn("What was your POI?", prompt.response)
-        self.assertIn("Did you follow your plan?", prompt.response)
+        self.assertIn("that’s frustrating", prompt.response)
+        self.assertIn("Did you follow your plan", prompt.response)
+        self.assertEqual(prompt.response.count("?"), 1)
 
         reply = self.coach.evaluate(
             "POI: 15m bearish FVG\n"
@@ -150,6 +151,48 @@ class CoachTests(unittest.TestCase):
         self.assertIn("Entry was taken before a retest", reply.mistakes)
         self.assertIn("The written plan was not followed", reply.mistakes)
         self.assertIn("possible process issues", reply.response)
+
+    def test_coach_replies_to_greetings_wins_entries_and_unrelated_requests(self) -> None:
+        greeting = self.coach.evaluate("Hey bro")
+        self.assertIn("Yoo!", greeting.response)
+        self.assertEqual(greeting.detected_topic, "Conversation")
+
+        liquidity = self.coach.evaluate("What is liquidity?")
+        self.assertIn("obvious highs and lows", liquidity.response)
+        self.assertNotIn("HTF context and POI", liquidity.response)
+
+        win = self.coach.evaluate("Gold hit my TP today!")
+        self.assertIn("Nice one", win.response)
+        self.assertEqual(win.response.count("?"), 1)
+
+        entry = self.coach.evaluate("Should I buy Gold now?")
+        self.assertIn("I can’t see live prices", entry.response)
+        self.assertEqual(entry.response.count("?"), 1)
+
+        unrelated = self.coach.evaluate("What is the weather today?")
+        self.assertIn("I don’t have reliable information", unrelated.response)
+        self.assertNotIn("No confirmation, no entry", unrelated.response)
+
+    def test_coach_continues_from_member_history_and_personalizes_weak_topic(self) -> None:
+        follow_up = self.coach.evaluate(
+            "The 15m high.",
+            history=[{"detected_topic": "CHoCH", "mistakes_identified": ""}],
+        )
+        self.assertIn("Got it", follow_up.response)
+        self.assertIn("CHoCH", follow_up.detected_topic)
+
+        personalized = self.coach.evaluate(
+            "What is CHOCH?",
+            profile={"latest_assessment_score": 4, "weakest_topic": "CHoCH"},
+        )
+        self.assertIn("Let’s keep it simple", personalized.response)
+        self.assertIn("one of your current review topics", personalized.response)
+
+        focused = self.coach.evaluate(
+            "What is liquidity?",
+            profile={"learning_goal": "Practise liquidity sweeps this week"},
+        )
+        self.assertIn("connects to your current focus", focused.response)
 
 
 class BotFlowTests(unittest.TestCase):
@@ -243,13 +286,14 @@ class BotFlowTests(unittest.TestCase):
     def test_dm_coach_saves_interactions_and_shows_private_admin_statistics(self) -> None:
         self._message("/start")
         self._click("menu:coach")
-        self.assertIn("Ask Coach is on", self.api.messages[-1]["text"])
+        self._click("coach:chat")
+        self.assertIn("Chat with Coach is open", self.api.messages[-1]["text"])
 
         self._text("What is CHOCH?")
         self.assertIn("Change of Character", self.api.messages[-1]["text"])
         self._text("What is CHOCH?")
         self._text("I saw an FVG and entered immediately.")
-        self.assertIn("No confirmation, no entry.", self.api.messages[-1]["text"])
+        self.assertIn("not an entry confirmation", self.api.messages[-1]["text"])
 
         stats = Repository(self.database_path).admin_dm_coach_stats()
         self.assertEqual(stats["members_using_coach"], 1)
@@ -325,6 +369,89 @@ class BotFlowTests(unittest.TestCase):
             chat_id=self.user_id + 1,
         )
         self.assertIn("restricted", self.api.messages[-1]["text"])
+
+    def test_coach_modes_and_private_clear_history(self) -> None:
+        self._click("menu:coach")
+        labels = {
+            button["text"]
+            for row in self.api.messages[-1]["reply_markup"]["inline_keyboard"]
+            for button in row
+        }
+        self.assertTrue(
+            {
+                "💬 Chat with Coach",
+                "🎯 Challenge Me",
+                "🔍 Review My Setup",
+                "📒 Review My Mistake",
+                "🧠 Teach Me Something",
+                "🔥 Daily Challenge",
+                "🧹 Clear My Coach History",
+            }.issubset(labels)
+        )
+
+        self._click("coach:challenge")
+        for _ in range(3):
+            markup = self.api.messages[-1]["reply_markup"]["inline_keyboard"]
+            answer_callback = markup[0][0]["callback_data"]
+            self._callback(answer_callback, sender_id=self.user_id, chat_id=self.chat_id)
+        self.assertIn("Challenge complete:", self.api.messages[-1]["text"])
+
+        self._click("coach:daily")
+        answer_callback = self.api.messages[-1]["reply_markup"]["inline_keyboard"][0][0][
+            "callback_data"
+        ]
+        self._callback(answer_callback, sender_id=self.user_id, chat_id=self.chat_id)
+        self.assertIn("Challenge complete:", self.api.messages[-1]["text"])
+        self.assertIn("/1", self.api.messages[-1]["text"])
+
+        self._click("coach:mistake")
+        self._text("I entered too early and then took a loss.")
+        self._text("My plan said to wait for a close and retest.")
+        self._text("I was afraid of missing the move; next time I will wait.")
+        self.assertNotIn(self.user_id, self.bot.sessions)
+        self.assertIn("Entry may have been earlier", self.api.messages[-1]["text"])
+        self.assertIn("Fear of missing out", self.api.messages[-1]["text"])
+        self.assertEqual(
+            len(Repository(self.database_path).recent_dm_coaching_interactions(self.user_id)),
+            1,
+        )
+
+        self._message("What is liquidity?", user_id=909091)
+        self.assertEqual(
+            len(Repository(self.database_path).recent_dm_coaching_interactions(909091)),
+            1,
+        )
+
+        self._message("/clearcoach")
+        self.assertIn("Clear your saved Coach conversation history", self.api.messages[-1]["text"])
+        self._click("coach:clear:cancel")
+        self.assertEqual(
+            len(Repository(self.database_path).recent_dm_coaching_interactions(self.user_id)),
+            1,
+        )
+
+        self._message("/clearcoach")
+        self._click("coach:clear:confirm")
+        self.assertIn("Your assessments, trade journal", self.api.messages[-1]["text"])
+        self.assertEqual(
+            Repository(self.database_path).recent_dm_coaching_interactions(self.user_id),
+            [],
+        )
+        self.assertEqual(
+            len(Repository(self.database_path).recent_dm_coaching_interactions(909091)),
+            1,
+        )
+
+    def test_guided_setup_review_asks_one_question_at_a_time(self) -> None:
+        self._click("coach:setup")
+        self.assertIn("Setup Review — 1/4", self.api.messages[-1]["text"])
+        self._text("Gold, 15m, considering a short.")
+        self.assertIn("Setup Review — 2/4", self.api.messages[-1]["text"])
+        self._text("Bearish HTF, supply POI.")
+        self._text("BSL swept, no confirmation yet.")
+        self._text("Above the swing; fixed risk in my plan.")
+        self.assertNotIn(self.user_id, self.bot.sessions)
+        self.assertIn("I can’t verify a live chart", self.api.messages[-1]["text"])
 
     def test_back_and_main_menu_clear_or_rewind_active_assessments(self) -> None:
         self._click("menu:assessment")
