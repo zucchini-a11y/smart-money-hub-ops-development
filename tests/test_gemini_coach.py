@@ -18,33 +18,41 @@ from smart_money_hub_bot.message_router import CoachMessageRouter
 from smart_money_hub_bot.telegram_api import TelegramAPI
 
 
-def _response(answer: str, needs_review: bool = False) -> MagicMock:
+def _http_response(body: bytes) -> MagicMock:
     response = MagicMock()
     response.status = 200
     response.headers = Message()
     response.__enter__.return_value.status = 200
     response.__enter__.return_value.headers = Message()
-    response.__enter__.return_value.read.return_value = json.dumps(
-        {
-            "candidates": [
-                {
-                    "content": {
-                        "parts": [
-                            {
-                                "text": json.dumps(
-                                    {
-                                        "answer": answer,
-                                        "needs_review": needs_review,
-                                    }
-                                )
-                            }
-                        ]
-                    }
-                }
-            ]
-        }
-    ).encode("utf-8")
+    response.__enter__.return_value.read.return_value = body
     return response
+
+
+def _response(answer: str, needs_review: bool = False) -> MagicMock:
+    data = {
+        "candidates": [
+            {
+                "content": {
+                    "parts": [
+                        {
+                            "text": json.dumps(
+                                {
+                                    "answer": answer,
+                                    "needs_review": needs_review,
+                                }
+                            )
+                        }
+                    ]
+                },
+                "finishReason": "STOP",
+            }
+        ]
+    }
+    return _http_response(json.dumps(data).encode("utf-8"))
+
+
+def _provider_response(data: dict) -> MagicMock:
+    return _http_response(json.dumps(data).encode("utf-8"))
 
 
 def _provider_error(
@@ -120,6 +128,170 @@ class GeminiCoachTests(unittest.TestCase):
         self.assertIn("relevant swing", reply.response)
         self.assertEqual(reply.detected_topic, "BOS")
         self.assertFalse(reply.requires_review)
+        payload = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(
+            payload["generationConfig"]["responseMimeType"], "application/json"
+        )
+
+    def test_plain_text_candidate_parts_are_returned_without_json_decoding(self) -> None:
+        service = GeminiCoachService("test-key")
+        router = CoachMessageRouter(service, _EmptyKnowledgeStore())
+        response = _provider_response(
+            {
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {"text": "A BOS breaks a relevant swing. "},
+                                {"text": "It can support continuation."},
+                                {"text": "private thought", "thought": True},
+                            ]
+                        },
+                        "finishReason": "STOP",
+                    }
+                ]
+            }
+        )
+
+        with patch(
+            "smart_money_hub_bot.gemini_coach.urlopen", return_value=response
+        ), self.assertLogs("smart_money_hub_bot", level="INFO") as logs:
+            routed = router.route(321, "What is BOS?")
+
+        self.assertEqual(
+            routed.reply.response,
+            "A BOS breaks a relevant swing. It can support continuation.",
+        )
+        self.assertFalse(routed.reply.requires_review)
+        self.assertEqual(routed.response_path, "gemini_success")
+        joined_logs = "\n".join(logs.output)
+        self.assertNotIn("A BOS breaks a relevant swing", joined_logs)
+        self.assertNotIn("private thought", joined_logs)
+        self.assertNotIn("test-key", joined_logs)
+
+    def test_candidate_without_optional_finish_reason_is_accepted(self) -> None:
+        service = GeminiCoachService("test-key")
+        response = _provider_response(
+            {
+                "candidates": [
+                    {
+                        "content": {"parts": [{"text": "Liquidity is resting orders."}]}
+                    }
+                ]
+            }
+        )
+
+        with patch(
+            "smart_money_hub_bot.gemini_coach.urlopen", return_value=response
+        ):
+            reply = service.evaluate("What is liquidity?")
+
+        self.assertEqual(reply.response, "Liquidity is resting orders.")
+
+    def test_structured_answer_is_preserved_when_review_flag_is_omitted(self) -> None:
+        service = GeminiCoachService("test-key")
+        response = _provider_response(
+            {
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {
+                                    "text": json.dumps(
+                                        {"answer": "An FVG is an imbalance."}
+                                    )
+                                }
+                            ]
+                        },
+                        "finishReason": "STOP",
+                    }
+                ]
+            }
+        )
+
+        with patch(
+            "smart_money_hub_bot.gemini_coach.urlopen", return_value=response
+        ):
+            reply = service.evaluate("What is an FVG?")
+
+        self.assertEqual(reply.response, "An FVG is an imbalance.")
+        self.assertFalse(reply.requires_review)
+
+    def test_truncated_and_blocked_finish_reasons_are_rejected_safely(self) -> None:
+        cases = (
+            ("MAX_TOKENS", "incomplete_response"),
+            ("SAFETY", "blocked_response"),
+            ("RECITATION", "blocked_response"),
+        )
+        for finish_reason, failure_kind in cases:
+            with self.subTest(finish_reason=finish_reason):
+                service = GeminiCoachService("test-key")
+                response = _provider_response(
+                    {
+                        "candidates": [
+                            {
+                                "content": {
+                                    "parts": [{"text": "partial answer"}]
+                                },
+                                "finishReason": finish_reason,
+                            }
+                        ]
+                    }
+                )
+                with patch(
+                    "smart_money_hub_bot.gemini_coach.urlopen",
+                    return_value=response,
+                ):
+                    with self.assertRaises(CoachProviderError) as caught:
+                        service.evaluate("What is liquidity?")
+                self.assertEqual(caught.exception.failure_kind, failure_kind)
+                self.assertEqual(caught.exception.provider_status, finish_reason)
+
+    def test_prompt_block_and_empty_or_malformed_responses_fail_safely(self) -> None:
+        cases = (
+            (
+                _provider_response(
+                    {"promptFeedback": {"blockReason": "SAFETY"}}
+                ),
+                "blocked_response",
+            ),
+            (_provider_response({"candidates": []}), "invalid_response"),
+            (
+                _provider_response(
+                    {
+                        "candidates": [
+                            {"content": {"parts": [{"inlineData": {"data": "x"}}]}}
+                        ]
+                    }
+                ),
+                "invalid_response",
+            ),
+            (_http_response(b"{malformed"), "invalid_response"),
+        )
+        for response, failure_kind in cases:
+            with self.subTest(failure_kind=failure_kind):
+                service = GeminiCoachService("test-key")
+                with patch(
+                    "smart_money_hub_bot.gemini_coach.urlopen",
+                    return_value=response,
+                ):
+                    with self.assertRaises(CoachProviderError) as caught:
+                        service.evaluate("What is liquidity?")
+                self.assertEqual(caught.exception.failure_kind, failure_kind)
+
+    def test_empty_candidate_response_uses_local_fallback(self) -> None:
+        router = CoachMessageRouter(
+            GeminiCoachService("test-key"), _EmptyKnowledgeStore()
+        )
+        response = _provider_response({"candidates": []})
+
+        with patch(
+            "smart_money_hub_bot.gemini_coach.urlopen", return_value=response
+        ):
+            routed = router.route(321, "What is liquidity?")
+
+        self.assertEqual(routed.response_path, "fallback")
+        self.assertIn("liquidity", routed.reply.response.casefold())
 
     def test_conversation_context_is_bounded_and_isolated_per_member(self) -> None:
         service = GeminiCoachService("test-key")
