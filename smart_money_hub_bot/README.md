@@ -30,9 +30,9 @@ The education and journal flows emphasize confirmation, retests, liquidity and d
 1. Send `/myid` to the bot in a private chat.
 2. Add a Replit Secret named `ADMIN_TELEGRAM_ID` with the numeric ID shown to you.
 3. Restart **Smart Money Hub Bot**.
-4. Send `/admin` to view the admin-only member, activity, assessment, journal, weekly participation totals, DM Coach statistics, and one-time DM tool.
+4. Send `/admin` to view the admin-only member, activity, assessment, journal, weekly participation totals, DM Coach statistics, one-time DM tool, and channel-promo tool.
 
-The dashboard's **DM Coach Stats** page shows members using the coach, repeated questions, topics associated with reported process gaps, common mistakes, and recent activity. **Send One-Time DM** lets the admin write, preview, and confirm a plain-text DM to active private-chat members who have not used `/stop`; the admin is excluded. Admin access is not configured until that secret is set. The bot never asks for your Telegram token in chat.
+The dashboard's **DM Coach Stats** page shows members using the coach, repeated questions, topics associated with reported process gaps, common mistakes, and recent activity. **Send One-Time DM** lets the admin write, preview, and confirm a plain-text DM to active private-chat members who have not used `/stop`; the admin is excluded. **Promote Bot in Channel** previews a single bot introduction in the configured channel and posts only after the admin confirms. Set `SMH_MAIN_CHANNEL_ID` to the channel's numeric ID. Admin access is not configured until `ADMIN_TELEGRAM_ID` is set. The bot never asks for your Telegram token in chat.
 
 ## Reminder schedule
 
@@ -40,6 +40,7 @@ The default weekly check-in is Sunday at **09:00 Africa/Lagos**. Zoom-class remi
 
 - `SMH_REMINDER_TIMEZONE` — an IANA timezone, default `Africa/Lagos`.
 - `SMH_SUNDAY_REMINDER_TIME` — 24-hour local time, default `09:00`.
+- `SMH_MAIN_CHANNEL_ID` — numeric ID of the Telegram channel for admin-confirmed bot promotions.
 - `SMH_DATABASE_PATH` — SQLite file location, default `data/smart_money_hub.sqlite3`.
 
 Only members who have started the bot in a private chat are eligible for automatic Zoom-class check-ins. Sunday check-ins remain optional. `/stop` disables all scheduled reminders until the member resumes them in Reminder Settings. If Telegram reports that a chat is blocked or unavailable, all reminders for that member are stopped. Each scheduled reminder is recorded to prevent duplicates across workflow restarts.

@@ -463,6 +463,7 @@ class BotFlowTests(unittest.TestCase):
                 "🔍 Search Member",
                 "📈 Member Progress",
                 "📨 Send One-Time DM",
+                "📣 Promote Bot in Channel",
             }.issubset(button_labels)
         )
 
@@ -502,62 +503,123 @@ class BotFlowTests(unittest.TestCase):
             "Start SMC Assessment",
         )
 
-    def test_admin_can_get_channel_id_from_forwarded_post_in_private_chat(self) -> None:
+    def test_admin_can_preview_confirm_and_cancel_one_time_channel_promo(self) -> None:
+        channel_id = -1004481197912
         self.bot.admin_id = self.user_id
-        self._message("/channelid", user_id=self.user_id + 1)
+        self.bot.admin_dashboard.admin_id = self.user_id
+        self.bot.admin_dashboard.main_channel_id = channel_id
+
+        self._callback(
+            "admin:channel_promo",
+            sender_id=self.user_id + 1,
+            chat_id=self.user_id + 1,
+        )
         self.assertIn("restricted", self.api.messages[-1]["text"])
-
-        self._message("/channelid")
-        self.assertIn("Forward a post", self.api.messages[-1]["text"])
-        self.assertIn(self.user_id, self.bot._channel_id_lookup_pending)
-        self.bot.handle_update(
-            {
-                "message": {
-                    "chat": {"id": self.chat_id, "type": "private"},
-                    "from": {"id": self.user_id, "first_name": self.first_name},
-                    "forward_origin": {
-                        "type": "channel",
-                        "chat": {
-                            "id": -1009876543210,
-                            "type": "channel",
-                            "title": "Smart Money Hub",
-                        },
-                        "message_id": 42,
-                        "date": 1_797_631_200,
-                    },
-                }
-            }
+        self.assertFalse(
+            any(message["chat_id"] == channel_id for message in self.api.messages)
         )
-        result = self.api.messages[-1]
-        self.assertEqual(result["chat_id"], self.chat_id)
-        self.assertIn("Numeric channel ID: -1009876543210", result["text"])
-        self.assertIn("Name: Smart Money Hub", result["text"])
-        self.assertNotIn(self.user_id, self.bot._channel_id_lookup_pending)
 
-    def test_channel_id_lookup_accepts_legacy_forward_and_can_be_cancelled(self) -> None:
+        self._callback(
+            "admin:channel_promo", sender_id=self.user_id, chat_id=self.chat_id
+        )
+        preview = self.api.messages[-1]
+        self.assertIn(f"Destination channel ID: {channel_id}", preview["text"])
+        self.assertIn("Learn key SMC concepts through short lessons", preview["text"])
+        self.assertIn("does not provide trade signals", preview["text"])
+        self.assertIn("Nothing has been posted yet", preview["text"])
+        self.assertFalse(
+            any(message["chat_id"] == channel_id for message in self.api.messages)
+        )
+
+        buttons = [
+            button
+            for row in preview["reply_markup"]["inline_keyboard"]
+            for button in row
+        ]
+        self.assertTrue(
+            any(button["callback_data"] == "admin:channel_promo:confirm" for button in buttons)
+        )
+        self.assertTrue(
+            any(button["callback_data"] == "admin:channel_promo:cancel" for button in buttons)
+        )
+
+        self._callback(
+            "admin:channel_promo:confirm",
+            sender_id=self.user_id,
+            chat_id=self.chat_id,
+        )
+        posted = [
+            message for message in self.api.messages if message["chat_id"] == channel_id
+        ]
+        self.assertEqual(len(posted), 1)
+        self.assertIn("SMART MONEY HUB", posted[0]["text"])
+        self.assertEqual(
+            posted[0]["reply_markup"]["inline_keyboard"][0][0],
+            {
+                "text": "Open Smart Money Hub",
+                "url": "https://t.me/SmartMoneyHubSignalsBot",
+            },
+        )
+        self.assertIn("posted to the channel", self.api.messages[-1]["text"])
+
+        self._callback(
+            "admin:channel_promo:confirm",
+            sender_id=self.user_id,
+            chat_id=self.chat_id,
+        )
+        self.assertEqual(
+            sum(message["chat_id"] == channel_id for message in self.api.messages),
+            1,
+        )
+
+    def test_channel_promo_cancel_and_missing_configuration_do_not_post(self) -> None:
+        channel_id = -1004481197912
         self.bot.admin_id = self.user_id
-        self._message("/channelid")
-        self.bot.handle_update(
-            {
-                "message": {
-                    "text": "Forwarded channel post",
-                    "chat": {"id": self.chat_id, "type": "private"},
-                    "from": {"id": self.user_id, "first_name": self.first_name},
-                    "forward_from_chat": {
-                        "id": -1001234567890,
-                        "type": "channel",
-                        "title": "Smart Money Hub",
-                    },
-                    "forward_from_message_id": 7,
-                }
-            }
-        )
-        self.assertIn("Numeric channel ID: -1001234567890", self.api.messages[-1]["text"])
+        self.bot.admin_dashboard.admin_id = self.user_id
+        self.bot.admin_dashboard.main_channel_id = channel_id
 
-        self._message("/channelid")
-        self._message("/cancel")
-        self.assertIn("Channel ID lookup cancelled", self.api.messages[-1]["text"])
-        self.assertNotIn(self.user_id, self.bot._channel_id_lookup_pending)
+        self._callback(
+            "admin:channel_promo", sender_id=self.user_id, chat_id=self.chat_id
+        )
+        self._callback(
+            "admin:channel_promo:cancel",
+            sender_id=self.user_id,
+            chat_id=self.chat_id,
+        )
+        self.assertIn("Nothing was posted", self.api.messages[-1]["text"])
+        self.assertFalse(
+            any(message["chat_id"] == channel_id for message in self.api.messages)
+        )
+
+        self.bot.admin_dashboard.main_channel_id = None
+        self._callback(
+            "admin:channel_promo", sender_id=self.user_id, chat_id=self.chat_id
+        )
+        self.assertIn("not configured", self.api.messages[-1]["text"])
+        self._callback(
+            "admin:channel_promo:confirm",
+            sender_id=self.user_id,
+            chat_id=self.chat_id,
+        )
+        self.assertFalse(
+            any(message["chat_id"] == channel_id for message in self.api.messages)
+        )
+
+    def test_channel_promo_requires_admin_private_chat(self) -> None:
+        channel_id = -1004481197912
+        self.bot.admin_id = self.user_id
+        self.bot.admin_dashboard.admin_id = self.user_id
+        self.bot.admin_dashboard.main_channel_id = channel_id
+        self._callback(
+            "admin:channel_promo",
+            sender_id=self.user_id,
+            chat_id=-100777,
+            chat_type="supergroup",
+        )
+        self.assertIn("private chat", self.api.messages[-1]["text"])
+        self.assertFalse(
+            any(message["chat_id"] == channel_id for message in self.api.messages)
+        )
 
     def test_admin_can_preview_confirm_and_cancel_one_time_dm(self) -> None:
         admin_id = self.user_id

@@ -32,6 +32,14 @@ def main() -> None:
     except ValueError:
         raise SystemExit("ADMIN_TELEGRAM_ID must contain a numeric Telegram user ID.") from None
 
+    channel_value = os.getenv("SMH_MAIN_CHANNEL_ID", "").strip()
+    try:
+        main_channel_id = int(channel_value) if channel_value else None
+    except ValueError:
+        raise SystemExit(
+            "SMH_MAIN_CHANNEL_ID must contain a numeric Telegram channel ID."
+        ) from None
+
     reminder_timezone = os.getenv("SMH_REMINDER_TIMEZONE", "Africa/Lagos").strip()
     reminder_time = os.getenv("SMH_SUNDAY_REMINDER_TIME", "09:00").strip()
     try:
@@ -39,6 +47,7 @@ def main() -> None:
             TelegramAPI(token),
             str(database_path),
             admin_id=admin_id,
+            main_channel_id=main_channel_id,
             reminder_timezone=reminder_timezone,
             reminder_time=reminder_time,
         )

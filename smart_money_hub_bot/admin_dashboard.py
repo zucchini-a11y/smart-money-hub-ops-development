@@ -16,18 +16,39 @@ UNAVAILABLE_CHAT_ERRORS = (
     "bot can't initiate conversation",
     "bot cannot initiate conversation",
 )
+CHANNEL_PROMO_TEXT = (
+    "SMART MONEY HUB\n\n"
+    "Build a more disciplined approach to Smart Money Concepts (SMC) with our "
+    "Telegram bot.\n\n"
+    "• Learn key SMC concepts through short lessons\n"
+    "• Take an SMC assessment and see which topics to review\n"
+    "• Journal trades and reflect on your decision-making\n"
+    "• Ask the private DM Coach about SMC concepts and trade reviews\n"
+    "• Track progress, set a weekly focus, and prepare for the week\n"
+    "• Get Monday and Thursday Zoom class reminders; the link is shared here\n\n"
+    "Tap “Open Smart Money Hub” below and send /start to begin.\n\n"
+    "For education and journaling only. This bot does not provide trade signals "
+    "or guarantee profits."
+)
+CHANNEL_PROMO_URL = "https://t.me/SmartMoneyHubSignalsBot"
 
 
 class AdminDashboard:
     def __init__(
-        self, api: TelegramAPI, store: Repository, admin_id: int | None
+        self,
+        api: TelegramAPI,
+        store: Repository,
+        admin_id: int | None,
+        main_channel_id: int | None = None,
     ) -> None:
         self.api = api
         self.store = store
         self.admin_id = admin_id
+        self.main_channel_id = main_channel_id
         self._search_pending: set[int] = set()
         self._broadcast_pending: set[int] = set()
         self._broadcast_drafts: dict[int, str] = {}
+        self._channel_promo_pending: set[int] = set()
 
     def search_is_pending(self, telegram_id: int) -> bool:
         return telegram_id in self._search_pending
@@ -47,6 +68,12 @@ class AdminDashboard:
     def cancel_broadcast(self, telegram_id: int) -> None:
         self._broadcast_pending.discard(telegram_id)
         self._broadcast_drafts.pop(telegram_id, None)
+
+    def has_channel_promo_state(self, telegram_id: int) -> bool:
+        return telegram_id in self._channel_promo_pending
+
+    def cancel_channel_promo(self, telegram_id: int) -> None:
+        self._channel_promo_pending.discard(telegram_id)
 
     def open(self, chat_id: int, telegram_id: int, is_private: bool) -> None:
         if self._authorize(chat_id, telegram_id, is_private):
@@ -205,6 +232,79 @@ class AdminDashboard:
             self._dashboard_keyboard(),
         )
 
+    def _preview_channel_promo(self, chat_id: int, telegram_id: int) -> None:
+        if self.main_channel_id is None:
+            self.api.send_message(
+                chat_id,
+                "Channel posting is not configured. Add SMH_MAIN_CHANNEL_ID to the "
+                "project environment and restart the bot.",
+                self._dashboard_keyboard(),
+            )
+            return
+        self._channel_promo_pending.add(telegram_id)
+        self.api.send_message(
+            chat_id,
+            "CHANNEL PROMO PREVIEW\n"
+            f"Destination channel ID: {self.main_channel_id}\n\n"
+            f"{CHANNEL_PROMO_TEXT}\n\n"
+            "Nothing has been posted yet. Post this one-time message now?",
+            self._admin_navigation(
+                [
+                    [
+                        {
+                            "text": "Post to Channel",
+                            "callback_data": "admin:channel_promo:confirm",
+                        },
+                        {
+                            "text": "Cancel",
+                            "callback_data": "admin:channel_promo:cancel",
+                        },
+                    ]
+                ]
+            ),
+        )
+
+    def _post_channel_promo(self, chat_id: int, telegram_id: int) -> None:
+        if telegram_id not in self._channel_promo_pending:
+            self.api.send_message(
+                chat_id,
+                "There is no pending channel post to confirm. Open the dashboard "
+                "to preview it first.",
+                self._dashboard_keyboard(),
+            )
+            return
+        self._channel_promo_pending.discard(telegram_id)
+        if self.main_channel_id is None:
+            self.api.send_message(
+                chat_id,
+                "Channel posting is not configured. Add SMH_MAIN_CHANNEL_ID to the "
+                "project environment and restart the bot.",
+                self._dashboard_keyboard(),
+            )
+            return
+        try:
+            self.api.send_message(
+                self.main_channel_id,
+                CHANNEL_PROMO_TEXT,
+                {
+                    "inline_keyboard": [
+                        [{"text": "Open Smart Money Hub", "url": CHANNEL_PROMO_URL}]
+                    ]
+                },
+            )
+        except TelegramAPIError:
+            self.api.send_message(
+                chat_id,
+                "Telegram could not post to the channel. Check that the configured "
+                "channel ID is correct and that the bot still has permission to post.",
+                self._dashboard_keyboard(),
+            )
+            return
+        self.api.send_message(
+            chat_id, "The bot introduction was posted to the channel.",
+            self._dashboard_keyboard(),
+        )
+
     def handle_callback(
         self, chat_id: int, telegram_id: int, is_private: bool, data: str
     ) -> None:
@@ -215,8 +315,15 @@ class AdminDashboard:
             "admin:dm_broadcast:confirm",
             "admin:dm_broadcast:cancel",
         }
+        channel_promo_actions = {
+            "admin:channel_promo",
+            "admin:channel_promo:confirm",
+            "admin:channel_promo:cancel",
+        }
         if data not in broadcast_actions:
             self.cancel_broadcast(telegram_id)
+        if data not in channel_promo_actions:
+            self.cancel_channel_promo(telegram_id)
         if data != "admin:search":
             self.cancel_search(telegram_id)
 
@@ -240,6 +347,17 @@ class AdminDashboard:
             self.cancel_broadcast(telegram_id)
             self.api.send_message(
                 chat_id, "One-time DM cancelled.", self._dashboard_keyboard()
+            )
+        elif data == "admin:channel_promo":
+            self._preview_channel_promo(chat_id, telegram_id)
+        elif data == "admin:channel_promo:confirm":
+            self._post_channel_promo(chat_id, telegram_id)
+        elif data == "admin:channel_promo:cancel":
+            self.cancel_channel_promo(telegram_id)
+            self.api.send_message(
+                chat_id,
+                "Channel promo cancelled. Nothing was posted.",
+                self._dashboard_keyboard(),
             )
         elif data == "admin:weak_topics":
             self._show_weak_topics(chat_id)
@@ -372,6 +490,7 @@ class AdminDashboard:
                 ],
                 [{"text": "💬 DM Coach Stats", "callback_data": "admin:dm_coach"}],
                 [{"text": "📨 Send One-Time DM", "callback_data": "admin:dm_broadcast"}],
+                [{"text": "📣 Promote Bot in Channel", "callback_data": "admin:channel_promo"}],
                 [{"text": "🏠 Main Menu", "callback_data": "nav:home"}],
             ]
         }

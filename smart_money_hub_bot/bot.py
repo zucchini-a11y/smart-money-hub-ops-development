@@ -64,20 +64,22 @@ class SmartMoneyHubBot:
         database_path: str,
         *,
         admin_id: int | None = None,
+        main_channel_id: int | None = None,
         reminder_timezone: str = "Africa/Lagos",
         reminder_time: str = "09:00",
     ) -> None:
         self.api = api
         self.store = Repository(database_path)
         self.admin_id = admin_id
-        self.admin_dashboard = AdminDashboard(api, self.store, admin_id)
+        self.admin_dashboard = AdminDashboard(
+            api, self.store, admin_id, main_channel_id
+        )
         self.reminder_zone = ZoneInfo(reminder_timezone)
         self.reminder_time = ClockTime.fromisoformat(reminder_time)
         if self.reminder_time.tzinfo is not None:
             raise ValueError("The reminder time must be local wall time without a UTC offset.")
         # One active conversation per member; saved records live in SQLite.
         self.sessions: dict[int, Conversation] = {}
-        self._channel_id_lookup_pending: set[int] = set()
         self.coach_service: CoachService = RuleBasedCoachService()
 
     def run(self) -> None:
@@ -151,97 +153,20 @@ class SmartMoneyHubBot:
         )
         return telegram_id, chat_id, is_private
 
-    @staticmethod
-    def _forwarded_channel(message: dict[str, Any]) -> dict[str, Any] | None:
-        origin = message.get("forward_origin")
-        channel: Any = None
-        if isinstance(origin, dict) and origin.get("type") == "channel":
-            channel = origin.get("chat")
-        if not isinstance(channel, dict):
-            channel = message.get("forward_from_chat")
-        if (
-            not isinstance(channel, dict)
-            or channel.get("type") != "channel"
-            or not isinstance(channel.get("id"), int)
-        ):
-            return None
-        return channel
-
     def _handle_message(self, message: dict[str, Any]) -> None:
         text = message.get("text")
         sender = message.get("from") or {}
         chat = message.get("chat") or {}
-        sender_id = sender.get("id")
-        if not isinstance(text, str) and sender_id not in self._channel_id_lookup_pending:
-            return
         if not isinstance(text, str):
-            text = ""
+            return
         telegram_id, chat_id, is_private = self._register(sender, chat)
-        clean_text = text.strip()
-        command = (
-            clean_text.split(maxsplit=1)[0].split("@", maxsplit=1)[0].lower()
-            if clean_text
-            else ""
-        )
-
-        if command == "/channelid":
-            if self.admin_id is None or telegram_id != self.admin_id:
-                self.api.send_message(chat_id, "Admin access is restricted.")
-                return
-            if not is_private:
-                self.api.send_message(
-                    chat_id, "Use /channelid in a private chat with this bot."
-                )
-                return
-            self._channel_id_lookup_pending.add(telegram_id)
-            self.api.send_message(
-                chat_id,
-                "Forward a post from your private channel directly to this chat. "
-                "Use Telegram's Forward option; do not copy and paste the post. "
-                "I will reply here with the channel's numeric ID. Send /cancel to exit.",
-            )
-            return
-        if command == "/cancel" and telegram_id in self._channel_id_lookup_pending:
-            self._channel_id_lookup_pending.discard(telegram_id)
-            self.api.send_message(chat_id, "Channel ID lookup cancelled.")
-            return
-        if telegram_id in self._channel_id_lookup_pending:
-            if telegram_id != self.admin_id or not is_private:
-                self._channel_id_lookup_pending.discard(telegram_id)
-                self.api.send_message(
-                    chat_id,
-                    "For privacy, run /channelid and forward the post in a private chat.",
-                )
-                return
-            channel = self._forwarded_channel(message)
-            if channel is None:
-                self.api.send_message(
-                    chat_id,
-                    "I couldn't identify a forwarded channel post. Please forward "
-                    "a post directly from the channel using Telegram's Forward option. "
-                    "Do not copy and paste it. Send /cancel to exit.",
-                )
-                return
-            self._channel_id_lookup_pending.discard(telegram_id)
-            username = (
-                f"@{channel['username']}"
-                if channel.get("username")
-                else "Private channel"
-            )
-            self.api.send_message(
-                chat_id,
-                "Channel identified from the forwarded post.\n"
-                f"Name: {channel.get('title') or 'Not provided'}\n"
-                f"Username: {username}\n"
-                f"Numeric channel ID: {channel['id']}\n\n"
-                "This ID is being sent only in this private chat.",
-            )
-            return
+        command = text.strip().split(maxsplit=1)[0].split("@", maxsplit=1)[0].lower()
 
         if command == "/start":
             self.sessions.pop(telegram_id, None)
             self.admin_dashboard.cancel_search(telegram_id)
             self.admin_dashboard.cancel_broadcast(telegram_id)
+            self.admin_dashboard.cancel_channel_promo(telegram_id)
             self._show_welcome(
                 chat_id,
                 sender.get("first_name"),
@@ -265,6 +190,7 @@ class SmartMoneyHubBot:
             self.sessions.pop(telegram_id, None)
             self.admin_dashboard.cancel_search(telegram_id)
             self.admin_dashboard.cancel_broadcast(telegram_id)
+            self.admin_dashboard.cancel_channel_promo(telegram_id)
             self._show_main_menu(chat_id)
             return
         if command == "/progress":
@@ -325,14 +251,17 @@ class SmartMoneyHubBot:
         if command == "/admin":
             self.admin_dashboard.cancel_search(telegram_id)
             self.admin_dashboard.cancel_broadcast(telegram_id)
+            self.admin_dashboard.cancel_channel_promo(telegram_id)
             self.admin_dashboard.open(chat_id, telegram_id, is_private)
             return
         if command == "/cancel" and (
             self.admin_dashboard.search_is_pending(telegram_id)
             or self.admin_dashboard.has_broadcast_state(telegram_id)
+            or self.admin_dashboard.has_channel_promo_state(telegram_id)
         ):
             self.admin_dashboard.cancel_search(telegram_id)
             self.admin_dashboard.cancel_broadcast(telegram_id)
+            self.admin_dashboard.cancel_channel_promo(telegram_id)
             self.admin_dashboard.open(chat_id, telegram_id, is_private)
             return
 
