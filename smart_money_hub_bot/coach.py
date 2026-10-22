@@ -27,6 +27,7 @@ class CoachProviderError(RuntimeError):
         provider_status: str | None = None,
         provider_message: str | None = None,
         response_headers: dict[str, str] | None = None,
+        rejection_category: str | None = None,
     ) -> None:
         self.failure_kind = failure_kind
         self.status_code = status_code
@@ -35,6 +36,7 @@ class CoachProviderError(RuntimeError):
         self.provider_status = provider_status
         self.provider_message = provider_message
         self.response_headers = dict(response_headers or {})
+        self.rejection_category = rejection_category
         super().__init__(failure_kind)
 
 

@@ -29,10 +29,15 @@ _MIN_RETRY_WINDOW_SECONDS = 0.5
 
 class _GeminiResponseProblem(Exception):
     def __init__(
-        self, failure_kind: str, provider_status: str | None = None
+        self,
+        failure_kind: str,
+        provider_status: str | None = None,
+        *,
+        rejection_category: str,
     ) -> None:
         self.failure_kind = failure_kind
         self.provider_status = provider_status
+        self.rejection_category = rejection_category
 
 
 class GeminiCoachService:
@@ -199,6 +204,7 @@ class GeminiCoachService:
                 elapsed_ms=_elapsed_ms(started_at),
                 provider_status=problem.provider_status,
                 response_headers=response_headers,
+                rejection_category=problem.rejection_category,
             ) from None
 
         if (
@@ -211,6 +217,7 @@ class GeminiCoachService:
                 response_status,
                 elapsed_ms=_elapsed_ms(started_at),
                 response_headers=response_headers,
+                rejection_category="bos_choch_completeness_check_failed",
             )
 
         return CoachReply(

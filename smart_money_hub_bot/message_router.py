@@ -150,8 +150,8 @@ class CoachMessageRouter:
         except CoachProviderError as error:
             logger.warning(
                 "Coach provider failed (kind=%s, http_status=%s, elapsed_ms=%s, "
-                "google_code=%s, google_status=%s, google_message=%s, headers=%s); "
-                "using local fallback. request_id=%s.",
+                "google_code=%s, google_status=%s, google_message=%s, headers=%s, "
+                "rejection_category=%s); using local fallback. request_id=%s.",
                 error.failure_kind,
                 error.status_code,
                 error.elapsed_ms,
@@ -159,6 +159,7 @@ class CoachMessageRouter:
                 error.provider_status,
                 error.provider_message,
                 error.response_headers,
+                error.rejection_category,
                 request_id,
             )
             reply = ai_evaluate_answer(
