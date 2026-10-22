@@ -5,7 +5,7 @@ from email.message import Message
 from io import BytesIO
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 
 from smart_money_hub_bot.bot import SmartMoneyHubBot
 from smart_money_hub_bot.coach import CoachProviderError, RuleBasedCoachService
@@ -20,6 +20,8 @@ from smart_money_hub_bot.telegram_api import TelegramAPI
 
 def _response(answer: str, needs_review: bool = False) -> MagicMock:
     response = MagicMock()
+    response.status = 200
+    response.headers = Message()
     response.__enter__.return_value.read.return_value = json.dumps(
         {
             "candidates": [
@@ -266,6 +268,26 @@ class GeminiCoachTests(unittest.TestCase):
         self.assertEqual(mocked_urlopen.call_count, 1)
         self.assertEqual(routed.response_path, "fallback")
         self.assertIn("kind=network", "\n".join(logs.output))
+
+    def test_authentication_and_http_timeout_errors_are_distinct(self) -> None:
+        cases = (
+            (401, "UNAUTHENTICATED", "Invalid API key.", "authentication"),
+            (504, "DEADLINE_EXCEEDED", "Gateway timed out.", "http_timeout"),
+        )
+        for status_code, provider_status, message, expected_kind in cases:
+            with self.subTest(status_code=status_code):
+                service = GeminiCoachService("test-key")
+                api_error = _provider_error(
+                    status_code, provider_status, message
+                )
+                with patch(
+                    "smart_money_hub_bot.gemini_coach.urlopen",
+                    side_effect=api_error,
+                ):
+                    with self.assertRaises(CoachProviderError) as caught:
+                        service.evaluate("What is BOS?")
+                self.assertEqual(caught.exception.failure_kind, expected_kind)
+                self.assertEqual(caught.exception.status_code, status_code)
 
     def test_ai_uncertainty_is_marked_for_admin_review(self) -> None:
         router = CoachMessageRouter(_UncertainService(), _EmptyKnowledgeStore())
