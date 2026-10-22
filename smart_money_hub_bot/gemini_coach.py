@@ -64,7 +64,12 @@ class GeminiCoachService:
                 data = json.loads(response.read().decode("utf-8"))
         except HTTPError as error:
             status_code = int(error.code)
-            failure_kind = "quota" if status_code == 429 else "http"
+            failure_kind = {
+                408: "timeout",
+                429: "quota",
+                503: "service_unavailable",
+                504: "timeout",
+            }.get(status_code, "authentication" if status_code in {401, 403} else "http")
             raise CoachProviderError(failure_kind, status_code) from None
         except (TimeoutError, URLError, OSError):
             raise CoachProviderError("network") from None

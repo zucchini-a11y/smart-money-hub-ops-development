@@ -1,3 +1,5 @@
 - [Smart Money Hub module boundaries](smart-money-hub-module-boundaries.md) — keep dashboard dependencies one-way from the bot orchestrator.
 - [Verify Telegram command delivery](telegram-command-verification.md) — test new commands through the update handler before reporting them active.
 - [Telegram polling cleanup](telegram-polling-cleanup.md) — check for a leftover poller before treating a Telegram getUpdates conflict as a credential problem.
+- [Gemini free-tier policy](gemini-free-tier-policy.md) — member text/history may go to Google's free tier; keep billing off and never silently use paid models.
+- [Google Gemini docs access](gemini-docs-access.md) — if documentation callbacks return 402, direct fetch from official Google docs may still work.

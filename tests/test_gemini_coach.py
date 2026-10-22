@@ -132,6 +132,29 @@ class GeminiCoachTests(unittest.TestCase):
         self.assertEqual(reply.detected_topic, "BOS")
         self.assertIn("Break of Structure", reply.response)
 
+    def test_service_unavailable_falls_back_locally(self) -> None:
+        service = GeminiCoachService("test-key")
+        api_error = HTTPError(
+            GEMINI_ENDPOINT,
+            503,
+            "service unavailable",
+            hdrs=None,
+            fp=BytesIO(b"temporary service failure"),
+        )
+        with patch(
+            "smart_money_hub_bot.gemini_coach.urlopen", side_effect=api_error
+        ):
+            with self.assertRaises(CoachProviderError) as caught:
+                service.evaluate("What is BOS?")
+        self.assertEqual(caught.exception.failure_kind, "service_unavailable")
+        self.assertEqual(caught.exception.status_code, 503)
+        router = CoachMessageRouter(service, _EmptyKnowledgeStore())
+        with patch(
+            "smart_money_hub_bot.gemini_coach.urlopen", side_effect=api_error
+        ):
+            reply = router.route(124, "What is BOS?").reply
+        self.assertIn("Break of Structure", reply.response)
+
     def test_timeout_uses_the_local_fallback(self) -> None:
         service = GeminiCoachService("test-key")
         router = CoachMessageRouter(service, _EmptyKnowledgeStore())
