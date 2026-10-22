@@ -121,7 +121,7 @@ class GeminiCoachTests(unittest.TestCase):
 
         request = mocked_urlopen.call_args.args[0]
         headers = {key.casefold(): value for key, value in request.header_items()}
-        self.assertEqual(GEMINI_MODEL, "gemini-3.8-flash")
+        self.assertEqual(GEMINI_MODEL, "gemini-3-flash-preview")
         self.assertEqual(request.full_url, GEMINI_ENDPOINT)
         self.assertEqual(headers["x-goog-api-key"], "test-secret-value")
         self.assertNotIn("test-secret-value", request.full_url)
