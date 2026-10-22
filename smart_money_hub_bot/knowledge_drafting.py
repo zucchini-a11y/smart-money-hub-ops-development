@@ -6,7 +6,11 @@ from urllib.parse import urlparse
 
 
 def validate_answer_draft(answer: str) -> str:
-    clean = " ".join(answer.split()).strip()
+    clean = "\n".join(
+        " ".join(line.split()).strip()
+        for line in answer.splitlines()
+        if line.strip()
+    )
     if len(clean) < 40:
         raise ValueError("Please write an answer of at least 40 characters.")
     if len(clean) > 3000:

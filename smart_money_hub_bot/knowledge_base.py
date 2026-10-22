@@ -22,6 +22,11 @@ _CONCEPT_ALIASES = (
     (("point of interest", "points of interest", "poi", "pois"), "poi"),
     (("higher timeframe", "higher time frame", "htf"), "htf"),
     (("lower timeframe", "lower time frame", "ltf"), "ltf"),
+    (("risk/reward ratio", "risk reward ratio", "risk/reward", "risk reward", "risk to reward", "r:r"), "riskreward"),
+    (("stop loss", "stop-loss", "sl"), "stoploss"),
+    (("take profit", "take-profit", "tp"), "takeprofit"),
+    (("fear of missing out", "fomo"), "fomo"),
+    (("revenge trading", "revenge trade"), "revengetrading"),
 )
 
 
@@ -96,10 +101,12 @@ def find_approved_answer(
     ]
     best_item: dict[str, Any] | None = None
     best_score = 0.0
+    best_threshold = threshold
     for item in eligible:
         examples = _item_examples(item)
+        candidates = examples or [str(item.get("topic") or "")]
         lexical_score = max(
-            (question_similarity(question, example) for example in examples),
+            (question_similarity(question, example) for example in candidates),
             default=0.0,
         )
         same_topic = str(item.get("topic") or "").casefold() == topic.casefold()
@@ -107,4 +114,5 @@ def find_approved_answer(
         if score > best_score:
             best_item = item
             best_score = score
-    return best_item if best_item is not None and best_score >= threshold else None
+            best_threshold = threshold if examples else 0.36
+    return best_item if best_item is not None and best_score >= best_threshold else None

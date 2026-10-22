@@ -269,6 +269,19 @@ class Repository:
 
                     CREATE INDEX IF NOT EXISTS knowledge_feedback_item
                     ON knowledge_feedback (item_id, reaction);
+
+                    CREATE TABLE IF NOT EXISTS coach_challenge_history (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        telegram_id INTEGER NOT NULL REFERENCES users(telegram_id)
+                            ON DELETE CASCADE,
+                        challenge_id TEXT NOT NULL,
+                        challenge_kind TEXT NOT NULL
+                            CHECK (challenge_kind IN ('challenge', 'daily')),
+                        presented_at TEXT NOT NULL
+                    );
+
+                    CREATE INDEX IF NOT EXISTS coach_challenge_history_recent
+                    ON coach_challenge_history (telegram_id, presented_at DESC, id DESC);
                     """
                 )
                 self._ensure_user_column(
@@ -1387,8 +1400,30 @@ class Repository:
                     """
                     UPDATE knowledge_items
                     SET proposed_answer = ?, status = 'awaiting_approval', last_seen_at = ?,
-                        source_urls = '', research_notes = '',
-                        last_researched_at = NULL, draft_review_after = NULL
+                        source_urls = CASE
+                            WHEN approved_answer IS NOT NULL
+                              AND (approved_at IS NULL OR last_researched_at IS NULL
+                                   OR last_researched_at <= approved_at)
+                            THEN '' ELSE source_urls
+                        END,
+                        research_notes = CASE
+                            WHEN approved_answer IS NOT NULL
+                              AND (approved_at IS NULL OR last_researched_at IS NULL
+                                   OR last_researched_at <= approved_at)
+                            THEN '' ELSE research_notes
+                        END,
+                        last_researched_at = CASE
+                            WHEN approved_answer IS NOT NULL
+                              AND (approved_at IS NULL OR last_researched_at IS NULL
+                                   OR last_researched_at <= approved_at)
+                            THEN NULL ELSE last_researched_at
+                        END,
+                        draft_review_after = CASE
+                            WHEN approved_answer IS NOT NULL
+                              AND (approved_at IS NULL OR last_researched_at IS NULL
+                                   OR last_researched_at <= approved_at)
+                            THEN NULL ELSE draft_review_after
+                        END
                     WHERE id = ?
                     """,
                     (answer, utc_now(), item_id),
@@ -1451,11 +1486,17 @@ class Repository:
                     )
                 if (
                     item["topic"]
-                    in {"Broker and Platform Questions", "Economic News and Fundamentals"}
-                    and not item["draft_review_after"]
+                    in {
+                        "Broker and Platform Questions",
+                        "Economic News and Fundamentals",
+                        "Current Market Information",
+                    }
+                    or "time-sensitive" in item["review_reason"].casefold()
+                ) and (
+                    not item["draft_review_after"]
                 ):
                     raise ValueError(
-                        "Current broker or economic information needs a REVIEW_BY date."
+                        "Current or time-sensitive information needs a REVIEW_BY date."
                     )
                 versions = [
                     dict(row)
@@ -1519,7 +1560,7 @@ class Repository:
                 if item["approved_answer"]:
                     previous = connection.execute(
                         """
-                        SELECT source_urls, research_notes, review_after
+                        SELECT source_urls, research_notes, review_after, created_at
                         FROM knowledge_versions
                         WHERE item_id = ? ORDER BY version DESC LIMIT 1
                         """,
@@ -1530,7 +1571,7 @@ class Repository:
                     UPDATE knowledge_items
                     SET proposed_answer = NULL, status = ?, last_seen_at = ?,
                         source_urls = ?, research_notes = ?, review_after = ?,
-                        draft_review_after = NULL
+                        last_researched_at = ?, draft_review_after = NULL
                     WHERE id = ?
                     """,
                     (
@@ -1539,6 +1580,7 @@ class Repository:
                         previous["source_urls"] if previous else "",
                         previous["research_notes"] if previous else "",
                         previous["review_after"] if previous else None,
+                        previous["created_at"] if previous else None,
                         item_id,
                     ),
                 )
@@ -1620,6 +1662,47 @@ class Repository:
                         (reason, utc_now(), item_id),
                     )
                 return True
+        finally:
+            connection.close()
+
+    def recent_coach_challenge_ids(
+        self, telegram_id: int, limit: int = 12
+    ) -> list[str]:
+        connection = self._connect()
+        try:
+            rows = connection.execute(
+                """
+                SELECT challenge_id FROM coach_challenge_history
+                WHERE telegram_id = ?
+                ORDER BY presented_at DESC, id DESC
+                LIMIT ?
+                """,
+                (telegram_id, max(1, min(limit, 100))),
+            ).fetchall()
+            return [str(row["challenge_id"]) for row in rows]
+        finally:
+            connection.close()
+
+    def record_coach_challenge_question(
+        self,
+        telegram_id: int,
+        challenge_id: str,
+        challenge_kind: str,
+        at: str | None = None,
+    ) -> None:
+        if challenge_kind not in {"challenge", "daily"}:
+            raise ValueError("Unsupported Coach challenge kind.")
+        connection = self._connect()
+        try:
+            with connection:
+                connection.execute(
+                    """
+                    INSERT INTO coach_challenge_history
+                        (telegram_id, challenge_id, challenge_kind, presented_at)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (telegram_id, challenge_id, challenge_kind, at or utc_now()),
+                )
         finally:
             connection.close()
 

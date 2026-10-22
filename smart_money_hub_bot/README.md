@@ -19,8 +19,8 @@ The bot uses long polling. Run only one process with this token at a time. Teleg
 - **Sunday Preparation:** weekly goal, SMC focus, mistake to avoid, and a plan for missed setups.
 - **My Progress:** assessment history totals and averages, latest score, journaled trades and outcomes, strongest and weakest topics, common mistake, and recent check-ins.
 - **Learn SMC:** short lessons on structure, BOS/CHoCH, liquidity, order blocks, FVG/IFVG, POIs, confirmation, retests, risk, and psychology.
-- **DM Coach:** private conversations respond to greetings, concept questions, trade wins or losses, setup questions, and explicit unrelated requests with different, context-appropriate replies. Recent coaching exchanges and available assessment/progress data are used for follow-ups and topic personalization. Genuine questions can be rated Helpful, Not helpful, or Still unclear. `/coach` opens the coaching menu.
-- **Interactive coaching:** Chat with Coach, adaptive three-question SMC challenges, guided setup and mistake reviews, short lessons, and an optional daily knowledge challenge. Challenges are started by the member; they are not sent as unsolicited DMs.
+- **DM Coach:** private conversations route greetings, thanks, farewells, acknowledgements, SMC keywords, wins or losses, setup questions, and unrelated requests to different responses. Simple replies vary naturally. Recent coaching exchanges and available assessment/progress data personalize follow-ups. Genuine questions can be rated Helpful, Not helpful, or Still unclear. `/coach` opens the coaching menu.
+- **Interactive coaching:** Chat with Coach, adaptive three-question SMC challenges, guided setup and mistake reviews, short lessons, and an optional daily knowledge challenge. Challenges rotate a larger question bank, avoid recent repeats, and adapt difficulty. They are started by the member; they are not sent as unsolicited DMs.
 - **Reminders:** optional weekly Sunday check-in at 09:00 and automatic Monday/Thursday Zoom-class check-ins at 19:00 and 20:00 (`Africa/Lagos` by default). `/stop` turns off all scheduled reminders and `/resume` turns them back on. Members must start the bot in a private chat to receive DMs. A trade journal also returns an immediate review reminder.
 - **Quick commands:** `/menu` opens the main menu, `/coach` opens coaching modes, `/clearcoach` asks to clear your saved Coach conversations, `/progress` shows a private progress summary, and `/reminders` shows the reminder schedule and controls. Progress and reminder details are only shown in a private chat.
 
@@ -62,8 +62,9 @@ Editable content is in:
 - `education.py` — short lesson text.
 - `flows.py` — guided journal and check-in prompts.
 - `grading.py` — deterministic written-answer rubric behind a replaceable evaluator interface. No AI connection is enabled.
-- `coach.py` — rule-based DM Coach behind a provider-neutral service interface; `ai_evaluate_answer()` currently delegates to the local rules.
-- `question_detection.py`, `knowledge_base.py`, and the `knowledge_*.py` modules — question triage, offline retrieval, research/draft validation, approval, versions, and member feedback.
+- `coach.py` — offline SMC topic explanations behind a provider-neutral service interface.
+- `message_router.py` — routes simple conversation intents, approved knowledge matches, and fallback Coach replies.
+- `question_detection.py`, `knowledge_base.py`, and the `knowledge_*.py` modules — question triage, lexical retrieval, research/draft validation, approval, versions, and member feedback.
 
 In-progress conversations are kept in memory and can be restarted if the workflow stops. Completed member records are stored in SQLite.
 
@@ -71,16 +72,17 @@ In-progress conversations are kept in memory and can be restarted if the workflo
 
 ### From Telegram
 
-1. Send `/start`, open **💬 Ask Coach**, test a greeting, “What is liquidity?”, a trade loss, “Gold hit my TP today,” and “Should I buy Gold now?” The bot should not give the same long checklist to every message.
-2. Ask “What is CHOCH?” and reply to its follow-up; the next reply should continue that topic. Open **Challenge Me**, complete the three-question round, and try **Daily Challenge**.
-3. Try **Review My Setup** and **Review My Mistake**. Send `/clearcoach` to see the confirmation, then cancel it or confirm to clear only your Coach history.
-4. Open **Start SMC Assessment**. Answer all 10 questions; check the score, topic feedback, missed answers, and explanations.
-5. Open **Trading Journal** → **New Trade Entry**. Complete all 15 prompts, then use **Review Previous Trades** to retrieve the saved entry.
-6. Complete **Weekly Check-In** and **Sunday Preparation**. Open **My Progress** to confirm the check-in and journal data appear.
-7. Open **Learn SMC** and select a lesson.
-8. In **Reminder Settings**, opt in to the Sunday reminder, then send `/stop` to unsubscribe.
-9. Send `/myid`, configure `ADMIN_TELEGRAM_ID` as a Replit Secret, restart the workflow, and send `/admin`; open **DM Coach Stats**.
-10. Open **Knowledge Improvement**. Test a known concept question and an unsupported or current-information question; inspect the anonymous queue, add researched HTTPS sources, draft an answer, and approve it. Confirm that an approved matching question uses that answer, while a negative member rating creates a review candidate without changing it.
+1. Send `/start`, open **💬 Ask Coach**, test “Hi”, “Good morning”, “Thanks”, “Okay”, and “Bye”. Then compare “What is BOS?”, “Explain break of structure”, and “What does BOS mean?”.
+2. Test a trade loss, “Gold hit my TP today,” an unknown question, and “Should I buy Gold now?”. Unknown/current questions should be flagged rather than guessed.
+3. Ask “What is CHOCH?” and reply to its follow-up; the next reply should continue that topic. Complete **Challenge Me** twice and confirm the questions vary, then try **Daily Challenge**.
+4. Try **Review My Setup** and **Review My Mistake**. Send `/clearcoach` to see the confirmation, then cancel it or confirm to clear only your Coach history.
+5. Open **Start SMC Assessment**. Answer all 10 questions; check the score, topic feedback, missed answers, and explanations.
+6. Open **Trading Journal** → **New Trade Entry**. Complete all 15 prompts, then use **Review Previous Trades** to retrieve the saved entry.
+7. Complete **Weekly Check-In** and **Sunday Preparation**. Open **My Progress** to confirm the check-in and journal data appear.
+8. Open **Learn SMC** and select a lesson.
+9. In **Reminder Settings**, opt in to the Sunday reminder, then send `/stop` to unsubscribe.
+10. Send `/myid`, configure `ADMIN_TELEGRAM_ID` as a Replit Secret, restart the workflow, and send `/admin`; open **DM Coach Stats**.
+11. Open **Knowledge Improvement**. Test a known concept question and an unsupported or current-information question; inspect the anonymous queue, add researched HTTPS sources, draft an answer, and approve it. Confirm that an approved matching question uses that answer, while a negative member rating creates a review candidate without changing it.
 
 ### Offline tests
 

@@ -1,6 +1,7 @@
 """Telegram menus and stateful SMC education, journaling, and assessment flows."""
 
 import logging
+import random
 import re
 import time as time_module
 from dataclasses import dataclass, field
@@ -9,11 +10,10 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from .admin_dashboard import AdminDashboard
-from .coach import CoachService, RuleBasedCoachService, ai_evaluate_answer
+from .coach import CoachService, RuleBasedCoachService
 from .education import EDUCATION
 from .flows import SUNDAY_FIELDS, TRADE_FIELDS, WEEKLY_FIELDS
-from .knowledge_base import find_approved_answer
-from .question_detection import detect_member_question
+from .message_router import CoachMessageRouter
 from .questions import QUESTIONS
 from .scoring import AssessmentResult, grade_answers
 from .storage import Repository
@@ -105,6 +105,225 @@ COACH_CHALLENGES: tuple[dict[str, Any], ...] = (
         "answer": 1,
         "explanation": "A CHoCH can warn that structure is changing, but it does not guarantee a reversal or entry.",
     },
+    {
+        "id": "bos_context",
+        "topic": "BOS",
+        "difficulty": 0,
+        "prompt": "What does a Break of Structure (BOS) describe?",
+        "options": (
+            "A break through a relevant swing in the current move's direction",
+            "Any candle with a long wick",
+            "A guaranteed reversal",
+            "A fixed take-profit level",
+        ),
+        "answer": 0,
+        "explanation": "A BOS is a break of a relevant swing in the direction of the move; context and the close matter.",
+    },
+    {
+        "id": "mss_liquidity",
+        "topic": "MSS",
+        "difficulty": 2,
+        "prompt": "Which sequence gives a Market Structure Shift stronger context?",
+        "options": (
+            "A random wick with no nearby level",
+            "A liquidity event followed by displacement and a structure shift",
+            "An indicator changing colour",
+            "Price touching any moving average",
+        ),
+        "answer": 1,
+        "explanation": "A liquidity event and decisive displacement can add context to a shift, but it is still not a guaranteed entry.",
+    },
+    {
+        "id": "ssl_location",
+        "topic": "Liquidity / SSL / BSL",
+        "difficulty": 0,
+        "prompt": "Where is sell-side liquidity (SSL) commonly watched?",
+        "options": (
+            "Above obvious highs",
+            "Below obvious lows",
+            "Only inside an order block",
+            "At every candle open",
+        ),
+        "answer": 1,
+        "explanation": "SSL is commonly watched below obvious lows; BSL is commonly watched above highs.",
+    },
+    {
+        "id": "order_block_context",
+        "topic": "Order Blocks",
+        "difficulty": 1,
+        "prompt": "How should an order block be treated in a trade plan?",
+        "options": (
+            "As an automatic entry signal",
+            "As a possible area of interest that still needs confirmation",
+            "As proof price must reverse",
+            "As a replacement for a stop loss",
+        ),
+        "answer": 1,
+        "explanation": "An order block is a possible POI, not a guaranteed reaction or entry.",
+    },
+    {
+        "id": "ifvg_invalidation",
+        "topic": "FVG / IFVG",
+        "difficulty": 2,
+        "prompt": "What makes a fair value gap an inverse FVG (IFVG) concept?",
+        "options": (
+            "It has never been revisited",
+            "It is invalidated and may act as an opposing area",
+            "It appears on a higher timeframe",
+            "It contains exactly three candles",
+        ),
+        "answer": 1,
+        "explanation": "An IFVG describes an invalidated gap that may act as an opposing area; it still needs context.",
+    },
+    {
+        "id": "displacement_evidence",
+        "topic": "Displacement",
+        "difficulty": 1,
+        "prompt": "What is the most useful evidence that a move is displacement?",
+        "options": (
+            "A decisive move away from an area that breaks meaningful structure",
+            "Any single candle that is larger than the last",
+            "A price gap with no context",
+            "A series of small candles inside a range",
+        ),
+        "answer": 0,
+        "explanation": "Displacement is a decisive, impulsive move; look at what it moved from and what structure it affected.",
+    },
+    {
+        "id": "poi_role",
+        "topic": "POI",
+        "difficulty": 0,
+        "prompt": "What is a Point of Interest (POI) used for?",
+        "options": (
+            "To mark an area to watch for a planned setup",
+            "To guarantee an entry",
+            "To choose position size without a stop",
+            "To predict the next candle",
+        ),
+        "answer": 0,
+        "explanation": "A POI is an area to watch; it is not an entry trigger by itself.",
+    },
+    {
+        "id": "timeframe_context",
+        "topic": "HTF / LTF Analysis",
+        "difficulty": 1,
+        "prompt": "What is a common role for higher- and lower-timeframe analysis?",
+        "options": (
+            "Use the lower timeframe for bias and ignore the higher timeframe",
+            "Use the higher timeframe for context and lower timeframe for timing",
+            "Use both only after entering",
+            "Treat any timeframe conflict as a guaranteed reversal",
+        ),
+        "answer": 1,
+        "explanation": "The higher timeframe can frame context while the lower timeframe helps with timing and confirmation.",
+    },
+    {
+        "id": "risk_reward_ratio",
+        "topic": "Risk:Reward",
+        "difficulty": 1,
+        "prompt": "A plan risks 10 points to target 20 points. What is its planned risk-to-reward ratio?",
+        "options": ("1:1", "1:2", "2:1", "1:3"),
+        "answer": 1,
+        "explanation": "The target distance is twice the risk distance, so the planned ratio is 1:2. That does not guarantee the outcome.",
+    },
+    {
+        "id": "stop_loss_logic",
+        "topic": "Stop Loss",
+        "difficulty": 1,
+        "prompt": "What should guide a stop-loss level?",
+        "options": (
+            "The setup's invalidation, with position size adjusted to risk",
+            "The amount you hope to make",
+            "A level moved farther away after every loss",
+            "A fixed number unrelated to the setup",
+        ),
+        "answer": 0,
+        "explanation": "Place the stop where the setup is invalidated and size the position to fit your risk limit.",
+    },
+    {
+        "id": "take_profit_plan",
+        "topic": "Take Profit",
+        "difficulty": 1,
+        "prompt": "When is it best to decide your planned take-profit level?",
+        "options": (
+            "Before entry, using the plan and relevant levels",
+            "Only after price starts moving against you",
+            "After seeing another trader's result",
+            "Whenever you feel excited",
+        ),
+        "answer": 0,
+        "explanation": "Planning a target before entry helps avoid decisions driven only by fear or excitement.",
+    },
+    {
+        "id": "fomo_pause",
+        "topic": "FOMO",
+        "difficulty": 0,
+        "prompt": "You feel FOMO after price has already moved. What is the disciplined response?",
+        "options": (
+            "Chase immediately with a larger position",
+            "Pause and check whether a planned setup still exists",
+            "Remove your stop to give the trade room",
+            "Enter because you might miss the move",
+        ),
+        "answer": 1,
+        "explanation": "Pause and check the written rules; being willing to miss a move is part of a disciplined process.",
+    },
+    {
+        "id": "revenge_trading_pause",
+        "topic": "Revenge Trading",
+        "difficulty": 1,
+        "prompt": "What is a useful first step after noticing revenge-trading urges?",
+        "options": (
+            "Increase size to recover the loss faster",
+            "Pause, review your risk limit, and wait for a planned setup",
+            "Take several trades quickly",
+            "Move the next stop farther away",
+        ),
+        "answer": 1,
+        "explanation": "A pause helps prevent a previous loss from dictating the next decision.",
+    },
+    {
+        "id": "breakeven_timing",
+        "topic": "Break-Even",
+        "difficulty": 1,
+        "prompt": "What should determine when you move a stop to break-even?",
+        "options": (
+            "A rule or milestone written in the plan",
+            "The first small candle in profit",
+            "A feeling that the market looks uncertain",
+            "The result of your previous trade",
+        ),
+        "answer": 0,
+        "explanation": "Use a planned milestone so the stop move is not an emotional reaction to normal price noise.",
+    },
+    {
+        "id": "swing_structure",
+        "topic": "Market Structure",
+        "difficulty": 0,
+        "prompt": "Which sequence most commonly describes upward market structure?",
+        "options": (
+            "Lower highs and lower lows",
+            "Higher highs and higher lows",
+            "Equal highs only",
+            "One large candle in either direction",
+        ),
+        "answer": 1,
+        "explanation": "A sequence of higher highs and higher lows commonly indicates upward structure; a range may be less clear.",
+    },
+    {
+        "id": "confirmation_plan",
+        "topic": "Confirmation",
+        "difficulty": 2,
+        "prompt": "Which is a stronger confirmation rule for a setup?",
+        "options": (
+            "Enter whenever price touches the POI",
+            "Wait for the specific structure or displacement event in the plan",
+            "Enter after a social-media signal",
+            "Use the same confirmation on every chart without context",
+        ),
+        "answer": 1,
+        "explanation": "A useful confirmation is defined in advance and fits the setup context; a POI alone is not enough.",
+    },
 )
 CLASS_REMINDER_WEEKDAYS = {0: "Monday", 3: "Thursday"}
 CLASS_REMINDER_TIME = ClockTime(19, 0)
@@ -158,6 +377,7 @@ class SmartMoneyHubBot:
         # One active conversation per member; saved records live in SQLite.
         self.sessions: dict[int, Conversation] = {}
         self.coach_service: CoachService = RuleBasedCoachService()
+        self.message_router = CoachMessageRouter(self.coach_service, self.store)
 
     def run(self) -> None:
         webhook_info = self.api.get_webhook_info()
@@ -466,6 +686,8 @@ class SmartMoneyHubBot:
             "admin:dm_broadcast:cancel",
         }:
             self.admin_dashboard.cancel_broadcast(telegram_id)
+        if not data.startswith("admin:"):
+            self.admin_dashboard.cancel_knowledge_action(telegram_id)
 
         feedback_match = re.fullmatch(
             r"coach:feedback:(\d+):(helpful|unhelpful|unclear)", data
@@ -763,39 +985,54 @@ class SmartMoneyHubBot:
     def _current_coach_challenge(
         self, telegram_id: int, session: Conversation
     ) -> dict[str, Any] | None:
-        used = {str(answer["id"]) for answer in session.answers}
-        if session.kind == "coach_daily":
-            if session.answers:
-                return None
-            day_number = datetime.now(self.reminder_zone).date().toordinal()
-            progress = self.store.progress_for(telegram_id)
-            weak_topic = str(progress.get("weakest_topic") or "").casefold()
-            matching = [
-                question
-                for question in COACH_CHALLENGES
-                if weak_topic and weak_topic in question["topic"].casefold()
-            ]
-            pool = matching or list(COACH_CHALLENGES)
-            return pool[day_number % len(pool)]
-
+        if session.answers and session.answers[-1].get("pending"):
+            pending_id = str(session.answers[-1]["pending"])
+            return next(
+                (
+                    question
+                    for question in COACH_CHALLENGES
+                    if question["id"] == pending_id
+                ),
+                None,
+            )
+        used = {
+            str(answer["id"])
+            for answer in session.answers
+            if answer.get("id")
+        }
         remaining = [
             question for question in COACH_CHALLENGES if question["id"] not in used
         ]
         if not remaining:
             return None
+        recent = set(self.store.recent_coach_challenge_ids(telegram_id, limit=12))
+        fresh = [question for question in remaining if question["id"] not in recent]
+        pool = fresh or remaining
+
+        if session.kind == "coach_daily":
+            if session.answers:
+                return None
+            progress = self.store.progress_for(telegram_id)
+            weak_topic = str(progress.get("weakest_topic") or "").casefold()
+            matching = [
+                question
+                for question in pool
+                if weak_topic and weak_topic in question["topic"].casefold()
+            ]
+            return random.choice(matching or pool)
+
         correct = sum(bool(answer["correct"]) for answer in session.answers)
-        target_difficulty = (
-            1
-            if session.answers and correct / len(session.answers) >= 0.5
-            else 0
+        accuracy = correct / len(session.answers) if session.answers else 0
+        target_difficulty = 2 if accuracy >= 0.75 else 1 if accuracy >= 0.5 else 0
+        closest = min(
+            abs(question["difficulty"] - target_difficulty) for question in pool
         )
-        return min(
-            remaining,
-            key=lambda question: (
-                abs(question["difficulty"] - target_difficulty),
-                question["difficulty"],
-                question["id"],
-            ),
+        return random.choice(
+            [
+                question
+                for question in pool
+                if abs(question["difficulty"] - target_difficulty) == closest
+            ]
         )
 
     def _send_coach_challenge(self, telegram_id: int) -> None:
@@ -810,7 +1047,14 @@ class SmartMoneyHubBot:
         if question is None:
             self._finish_coach_challenge(telegram_id)
             return
-        session.answers.append({"pending": question["id"]})
+        if not session.answers or not session.answers[-1].get("pending"):
+            session.answers.append({"pending": question["id"]})
+            self.store.record_coach_challenge_question(
+                telegram_id,
+                str(question["id"]),
+                "daily" if session.kind == "coach_daily" else "challenge",
+            )
+        completed = sum("correct" in answer for answer in session.answers)
         rows = [
             [
                 {
@@ -824,12 +1068,11 @@ class SmartMoneyHubBot:
             for index, option in enumerate(question["options"])
         ]
         rows.append(self._nav_row())
-        session.answers.pop()
         self.api.send_message(
             session.chat_id,
             (
                 f"{'Daily Challenge' if session.kind == 'coach_daily' else 'Challenge Me'}"
-                f" — {len(session.answers) + 1}/{limit}\n"
+                f" — {completed + 1}/{limit}\n"
                 f"Topic: {question['topic']}\n\n{question['prompt']}"
             ),
             {"inline_keyboard": rows},
@@ -865,9 +1108,11 @@ class SmartMoneyHubBot:
         if not 0 <= answer_index < len(question["options"]):
             return
         is_correct = answer_index == question["answer"]
-        session.answers.append(
-            {"id": question_id, "correct": is_correct, "topic": question["topic"]}
-        )
+        session.answers[-1] = {
+            "id": question_id,
+            "correct": is_correct,
+            "topic": question["topic"],
+        }
         feedback = "That’s right. " if is_correct else "Not quite — that’s okay. "
         feedback += question["explanation"]
         limit = 1 if session.kind == "coach_daily" else 3
@@ -919,32 +1164,15 @@ class SmartMoneyHubBot:
             logger.exception("Could not load saved coaching context.")
             history = []
             profile = {}
-        reply = ai_evaluate_answer(
+        routed = self.message_router.route(
+            telegram_id,
             question,
-            self.coach_service,
             history=history,
             profile=profile,
         )
-        assessment = detect_member_question(question, reply.detected_topic)
-        approved_item = None
-        if assessment:
-            try:
-                approved_item = find_approved_answer(
-                    question,
-                    assessment.topic,
-                    self.store.approved_knowledge_items(),
-                )
-            except Exception:
-                logger.exception("Could not retrieve approved Coach knowledge.")
+        reply = routed.reply
+        assessment = routed.assessment
         response_text = reply.response
-        if approved_item:
-            response_text = approved_item["approved_answer"]
-        elif assessment and assessment.needs_research:
-            response_text = (
-                "I don’t have a vetted answer for this yet, so I won’t guess. "
-                "I’ve flagged the question for administrator review. "
-                "Any answer added to my knowledge will be checked and approved first."
-            )
 
         interaction_id: int | None = None
         question_recorded = False

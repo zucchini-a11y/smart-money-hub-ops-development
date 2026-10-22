@@ -38,10 +38,15 @@ class RuleBasedCoachService:
         ("Retest", ("retest",)),
         ("Confirmation", ("confirmation", "confirm")),
         ("HTF / LTF Analysis", ("higher timeframe", "lower timeframe", "htf", "ltf", "top down")),
-        ("Risk Management", ("risk management", "position size", "risk per trade", "stop loss", "stop-loss")),
+        ("Risk:Reward", ("risk/reward ratio", "risk/reward", "risk reward", "risk to reward", "r:r")),
+        ("Stop Loss", ("stop loss", "stop-loss", "sl")),
+        ("Take Profit", ("take profit", "take-profit", "tp")),
+        ("Risk Management", ("risk management", "position size", "risk per trade")),
         ("Partial Profits", ("partial profit", "partials", "take partials")),
         ("Break-Even", ("break even", "break-even", "breakeven")),
-        ("Trade Psychology", ("psychology", "emotional", "revenge trade", "fear of missing out", "fomo")),
+        ("FOMO", ("fear of missing out", "fomo")),
+        ("Revenge Trading", ("revenge trading", "revenge trade")),
+        ("Trade Psychology", ("psychology", "emotional")),
         ("Trading Discipline", ("discipline", "trading plan", "followed my plan", "followed plan")),
         ("Market Structure", ("market structure", "higher high", "lower low", "swing high", "swing low", "structure")),
     )
@@ -95,6 +100,18 @@ class RuleBasedCoachService:
             "Risk comes first: decide where the setup is invalidated, size the position to a fixed risk limit, and know the loss before entry. A stop should follow the setup logic, not a hoped-for outcome.",
             "Where is your invalidation, and how much of your account would the stop risk?",
         ),
+        "Risk:Reward": (
+            "Risk-to-reward compares the amount you could lose with the planned target. A 1:2 setup risks one unit to target two; it does not make a trade certain or replace a sound setup.",
+            "What is the planned risk and target distance in your setup?",
+        ),
+        "Stop Loss": (
+            "A stop loss marks where your setup is invalidated. Place it from the trade idea and size the position to your fixed risk; don’t widen it just to avoid taking a planned loss.",
+            "What price level would invalidate your setup?",
+        ),
+        "Take Profit": (
+            "A take-profit level should come from your plan and relevant price levels. Decide it before entry, and avoid moving it only because of fear or excitement.",
+            "Which planned level would make you take profit?",
+        ),
         "Partial Profits": (
             "Plan partial profits before entry around meaningful levels and your risk plan. Taking partials should reduce risk by design, not be a reaction to fear.",
             "What level in your plan would justify taking a partial?",
@@ -106,6 +123,14 @@ class RuleBasedCoachService:
         "Trade Psychology": (
             "Notice the emotion without letting it choose the trade. If fear, frustration, or FOMO is driving the decision, pause and compare the setup with your written rules.",
             "Which emotion is strongest right now, and what does your plan say to do?",
+        ),
+        "FOMO": (
+            "FOMO can push you to chase a move that no longer matches your plan. Pause, check whether the setup is still valid, and be willing to let it go.",
+            "What confirmation would your plan require before you act?",
+        ),
+        "Revenge Trading": (
+            "Revenge trading is taking another trade mainly to win back a loss. Step away, review your risk limit, and return only when a planned setup appears.",
+            "Would you take this setup if the previous trade had been a win?",
         ),
         "Trading Discipline": (
             "Discipline means following the written process, including skipping trades that lack confirmation. Review decisions by process, not just by whether they won or lost.",
@@ -439,6 +464,11 @@ class RuleBasedCoachService:
             if cls._contains_any(text, aliases):
                 return topic
         return "General SMC"
+
+    @classmethod
+    def detect_topic(cls, text: str) -> str:
+        """Public local keyword classifier used before any replaceable AI provider."""
+        return cls._detect_topic(" ".join(text.split()).casefold())
 
     @staticmethod
     def _contains_any(text: str, phrases: tuple[str, ...]) -> bool:

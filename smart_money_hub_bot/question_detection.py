@@ -23,12 +23,17 @@ _QUESTION_START = re.compile(
     re.IGNORECASE,
 )
 _NON_QUESTIONS = (
-    re.compile(r"^(?:hey|hello|hi|hiya|yo|yoo|thanks|thank you|cheers)\b", re.I),
+    re.compile(
+        r"^(?:hey|hello|hi|hiya|yo|yoo|thanks|thank you|cheers)"
+        r"(?:\s+(?:bro|sis|there|coach))?[!. ]*$",
+        re.I,
+    ),
     re.compile(r"^(?:setup review|mistake review):", re.I),
     re.compile(
         r"^(?:how are you|how'?s it going|what'?s up|who are you|"
         r"what'?s your name|where are you from|are you a bot|"
-        r"what can you do)\b",
+        r"what can you do|you good|are you okay|how'?s your day|"
+        r"what'?s going on)[?!. ]*$",
         re.I,
     ),
 )
@@ -45,8 +50,13 @@ _SUPPORTED_TOPICS = {
     "Confirmation",
     "HTF / LTF Analysis",
     "Risk Management",
+    "Risk:Reward",
+    "Stop Loss",
+    "Take Profit",
     "Partial Profits",
     "Break-Even",
+    "FOMO",
+    "Revenge Trading",
     "Trade Psychology",
     "Trading Discipline",
     "Market Structure",
@@ -54,7 +64,7 @@ _SUPPORTED_TOPICS = {
 _TIME_SENSITIVE = re.compile(
     r"\b(?:today|right now|current|currently|latest|live price|news today|"
     r"economic release|broker rule|leverage|spread|swap|withdrawal|"
-    r"funding rate|margin requirement)\b",
+    r"funding rate|margin requirement|nfp|cpi|fomc|pce)\b",
     re.I,
 )
 _COMPARISON = re.compile(
@@ -113,12 +123,19 @@ def detect_member_question(
 
 
 def _category_for_topic(topic: str, message: str) -> str:
-    normalized = topic.casefold()
     text = message.casefold()
     if any(word in text for word in ("broker", "platform", "leverage", "spread", "swap", "margin")):
         return "Broker and Platform Questions"
-    if any(word in text for word in ("news", "inflation", "interest rate", "economic release", "fundamental")):
+    if any(
+        word in text
+        for word in (
+            "news", "inflation", "interest rate", "rate decision", "economic",
+            "fundamental", "nfp", "cpi", "fomc", "pce", "payroll", "central bank",
+        )
+    ):
         return "Economic News and Fundamentals"
+    if _TIME_SENSITIVE.search(text):
+        return "Current Market Information"
     if topic in {"CHoCH", "BOS", "MSS"}:
         return "BOS, CHOCH and MSS"
     if topic == "Market Structure":
@@ -135,12 +152,10 @@ def _category_for_topic(topic: str, message: str) -> str:
         return "Displacement and Retests"
     if topic == "Confirmation":
         return "Confirmation"
-    if topic == "Risk Management":
+    if topic in {"Risk Management", "Risk:Reward", "Stop Loss"}:
         return "Risk Management"
-    if topic in {"Trade Psychology", "Trading Discipline"}:
+    if topic in {"Take Profit", "Partial Profits", "Break-Even"}:
+        return "Trade Management"
+    if topic in {"FOMO", "Revenge Trading", "Trade Psychology", "Trading Discipline"}:
         return "Trade Psychology"
-    if topic in {"Partial Profits", "Break-Even"}:
-        return "Trade Management"
-    if "setup" in normalized:
-        return "Trade Management"
     return "General"

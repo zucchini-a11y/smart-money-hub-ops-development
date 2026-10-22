@@ -442,6 +442,58 @@ class BotFlowTests(unittest.TestCase):
             1,
         )
 
+    def test_challenge_questions_vary_between_rounds_and_do_not_repeat_in_a_round(self) -> None:
+        def finish_round() -> list[str]:
+            question_ids: list[str] = []
+            for _ in range(3):
+                markup = self.api.messages[-1]["reply_markup"]["inline_keyboard"]
+                callback_data = markup[0][0]["callback_data"]
+                question_ids.append(callback_data.split("answer:", 1)[1].rsplit(":", 1)[0])
+                self._click(callback_data)
+            return question_ids
+
+        self._click("coach:challenge")
+        first_round = finish_round()
+        self.assertEqual(len(set(first_round)), 3)
+
+        self._click("coach:challenge")
+        second_round = finish_round()
+        self.assertEqual(len(set(second_round)), 3)
+        self.assertTrue(set(first_round).isdisjoint(second_round))
+
+    def test_simple_intents_are_varied_and_do_not_interrupt_active_flows(self) -> None:
+        self._message("Hi")
+        first_greeting = self.api.messages[-1]["text"]
+        self._message("hello")
+        second_greeting = self.api.messages[-1]["text"]
+        self.assertNotEqual(first_greeting, second_greeting)
+        self._message("Good morning")
+        self.assertIn("morning", self.api.messages[-1]["text"].casefold())
+        self._message("Thanks")
+        self.assertNotIn(
+            "I don’t have a vetted answer",
+            self.api.messages[-1]["text"],
+        )
+        self.assertEqual(self.bot.store.knowledge_admin_summary()["awaiting_research"], 0)
+
+        self._click("menu:assessment")
+        self._message("Hi")
+        self.assertIn("Please choose one of the answer buttons", self.api.messages[-1]["text"])
+        self.assertEqual(self.bot.sessions[self.user_id].kind, "assessment")
+
+        self._click("nav:home")
+        self._click("menu:journal")
+        self._click("journal:new")
+        self._text("Thanks")
+        self.assertEqual(self.bot.sessions[self.user_id].step, 1)
+        self.assertNotIn("You’re welcome", self.api.messages[-1]["text"])
+
+    def test_unknown_current_question_is_queued_without_inventing_live_information(self) -> None:
+        self._message("What is the latest inflation report today?")
+        response = self.api.messages[-1]["text"]
+        self.assertIn("I won’t guess", response)
+        self.assertEqual(self.bot.store.knowledge_admin_summary()["awaiting_research"], 1)
+
     def test_guided_setup_review_asks_one_question_at_a_time(self) -> None:
         self._click("coach:setup")
         self.assertIn("Setup Review — 1/4", self.api.messages[-1]["text"])

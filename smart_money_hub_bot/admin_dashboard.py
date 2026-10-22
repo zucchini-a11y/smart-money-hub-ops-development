@@ -213,11 +213,7 @@ class AdminDashboard:
             )
             return
         self.cancel_knowledge_action(telegram_id)
-        self.api.send_message(
-            chat_id,
-            notice,
-            self._knowledge_item_keyboard(item_id),
-        )
+        self._show_knowledge_item(chat_id, item_id, notice=notice)
 
     def _prompt_for_broadcast_text(self, chat_id: int, notice: str | None = None) -> None:
         prefix = f"{notice}\n\n" if notice else ""
@@ -436,10 +432,10 @@ class AdminDashboard:
         elif data.startswith("admin:knowledge:reject:"):
             item_id = self._integer_suffix(data)
             self.store.reject_knowledge_draft(item_id)
-            self.api.send_message(
+            self._show_knowledge_item(
                 chat_id,
-                "Draft rejected. Any previously approved answer remains unchanged.",
-                self._knowledge_item_keyboard(item_id),
+                item_id,
+                notice="Draft rejected. Any previously approved answer remains unchanged.",
             )
         elif data.startswith("admin:knowledge:retire:"):
             item_id = self._integer_suffix(data)
@@ -841,7 +837,9 @@ class AdminDashboard:
             chat_id, "\n".join(lines), self._admin_navigation(rows)
         )
 
-    def _show_knowledge_item(self, chat_id: int, item_id: int) -> None:
+    def _show_knowledge_item(
+        self, chat_id: int, item_id: int, notice: str | None = None
+    ) -> None:
         item = self.store.knowledge_item_detail(item_id)
         if not item:
             self.api.send_message(
@@ -858,6 +856,8 @@ class AdminDashboard:
             f"Review reason: {item['review_reason'] or '—'}",
             f"Last seen: {str(item['last_seen_at'])[:16]}",
         ]
+        if notice:
+            lines[0:0] = [notice, ""]
         if item["last_researched_at"]:
             lines.append(f"Research entered: {str(item['last_researched_at'])[:16]}")
         if item["review_after"]:
@@ -1042,10 +1042,13 @@ class AdminDashboard:
                 self._knowledge_item_keyboard(item_id),
             )
             return
-        self.api.send_message(
+        self._show_knowledge_item(
             chat_id,
-            f"Answer approved as version {version}. The Coach may now reuse it for matching questions.",
-            self._knowledge_item_keyboard(item_id),
+            item_id,
+            notice=(
+                f"Answer approved as version {version}. The Coach may now reuse "
+                "it for matching questions."
+            ),
         )
 
     def _show_knowledge_versions(self, chat_id: int, item_id: int) -> None:

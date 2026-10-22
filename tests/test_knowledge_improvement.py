@@ -1,8 +1,6 @@
-import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 from smart_money_hub_bot.bot import SmartMoneyHubBot
 from smart_money_hub_bot.knowledge_approval import can_approve
@@ -28,6 +26,13 @@ class KnowledgeImprovementTests(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def _interaction(self, telegram_id: int, question: str) -> int:
+        self.store.register_user(
+            telegram_id=telegram_id,
+            username=f"private_user_{telegram_id}",
+            first_name="Test",
+            chat_id=telegram_id,
+            is_private=True,
+        )
         return self.store.save_dm_coaching_interaction(
             telegram_id=telegram_id,
             username=f"private_user_{telegram_id}",
@@ -54,6 +59,7 @@ class KnowledgeImprovementTests(unittest.TestCase):
         self.assertIsNone(detect_member_question("Hey, nice one!", "Conversation"))
         self.assertIsNone(detect_member_question("Gold hit my TP today!", "General SMC"))
         self.assertIsNone(detect_member_question("How are you?", "Conversation"))
+        self.assertIsNone(detect_member_question("You good?", "Conversation"))
 
         unknown = detect_member_question("What is the latest leverage rule today?", "General SMC")
         self.assertIsNotNone(unknown)
@@ -63,6 +69,9 @@ class KnowledgeImprovementTests(unittest.TestCase):
         known = detect_member_question("What is liquidity?", "Liquidity / SSL / BSL")
         self.assertIsNotNone(known)
         self.assertEqual(known.confidence, "high")
+        market = detect_member_question("Should I buy Gold today?", "General SMC")
+        self.assertIsNotNone(market)
+        self.assertEqual(market.topic, "Current Market Information")
 
     def test_duplicate_questions_are_grouped_without_member_identifiers_in_queue(self) -> None:
         first_id = self._candidate(101, "What is the leverage rule?", "Broker and Platform Questions")
@@ -157,6 +166,36 @@ class KnowledgeImprovementTests(unittest.TestCase):
             )["approved_answer"],
             answer_v2,
         )
+        self.store.set_knowledge_status(item_id, "retired")
+        self.assertIsNone(
+            find_approved_answer(
+                "What is liquidity?", "Liquidity", self.store.approved_knowledge_items()
+            )
+        )
+        self.assertTrue(self.store.set_knowledge_status(item_id, "approved"))
+
+    def test_current_topic_requires_a_review_date_before_approval(self) -> None:
+        item_id = self._candidate(
+            351, "What is the current NFP schedule?", "Economic News and Fundamentals"
+        )
+        answer = (
+            "The release schedule can change. Check the official economic calendar "
+            "for the latest publication time in your timezone."
+        )
+        self.store.set_knowledge_draft(item_id, answer)
+        self.store.set_knowledge_research(
+            item_id,
+            **parse_research_material("https://example.com/calendar"),
+        )
+        with self.assertRaisesRegex(ValueError, "REVIEW_BY"):
+            self.store.approve_knowledge_item(item_id, 900)
+        self.store.set_knowledge_research(
+            item_id,
+            **parse_research_material(
+                "https://example.com/calendar\nREVIEW_BY: 2099-01-01"
+            ),
+        )
+        self.assertEqual(self.store.approve_knowledge_item(item_id, 900), 1)
 
     def test_feedback_is_owned_and_clearing_history_removes_its_question_example(self) -> None:
         item_id = self._candidate(401, "What does CHOCH mean?", "BOS, CHOCH and MSS")
@@ -181,13 +220,42 @@ class KnowledgeImprovementTests(unittest.TestCase):
         self.assertIsNone(self.store.knowledge_item_detail(item_id))
         self.assertEqual(self.store.knowledge_admin_summary()["unhelpful"], 0)
 
+    def test_approved_entry_survives_clear_and_remains_retrievable_by_its_category(self) -> None:
+        item_id = self._candidate(451, "What does CHOCH mean?", "BOS, CHOCH and MSS")
+        answer = (
+            "A Change of Character is an early break against the current swing pattern. "
+            "It may warn that order flow is changing, but does not guarantee a reversal."
+        )
+        self.store.set_knowledge_draft(item_id, answer)
+        self.store.set_knowledge_research(
+            item_id,
+            **parse_research_material("https://example.com/market-structure"),
+        )
+        self.store.approve_knowledge_item(item_id, 900)
+
+        self.store.clear_dm_coaching_history(451)
+        detail = self.store.knowledge_item_detail(item_id)
+        self.assertEqual(detail["examples"], [])
+        self.assertEqual(detail["approved_answer"], answer)
+        match = find_approved_answer(
+            "Explain CHOCH", "BOS, CHOCH and MSS", self.store.approved_knowledge_items()
+        )
+        self.assertIsNotNone(match)
+        self.assertEqual(match["approved_answer"], answer)
+
     def test_feedback_buttons_and_admin_knowledge_flow_are_private(self) -> None:
         api = _FakeTelegramAPI()
         admin_id = 8008
-        with patch.dict(os.environ, {"ADMIN_TELEGRAM_ID": str(admin_id)}):
-            bot = SmartMoneyHubBot(api, str(self.database_path))
+        bot = SmartMoneyHubBot(api, str(self.database_path), admin_id=admin_id)
 
         member_id = 505
+        self.store.register_user(
+            telegram_id=member_id,
+            username="member",
+            first_name="Member",
+            chat_id=member_id,
+            is_private=True,
+        )
         bot._answer_coach_message(
             member_id, member_id, "member", "What is the latest leverage rule today?"
         )
@@ -206,7 +274,14 @@ class KnowledgeImprovementTests(unittest.TestCase):
         )
 
         _send_message(bot, admin_id, "/admin")
-        self.assertTrue(any("Knowledge Improvement" in message["text"] for message in api.messages))
+        dashboard = api.messages[-1]["reply_markup"]["inline_keyboard"]
+        self.assertTrue(
+            any(
+                button["text"] == "🧠 Knowledge Improvement"
+                for row in dashboard
+                for button in row
+            )
+        )
         _send_callback(bot, admin_id, "admin:knowledge")
         _send_callback(bot, admin_id, "admin:knowledge:list:awaiting_research")
         _send_callback(bot, admin_id, f"admin:knowledge:item:{item_id}")
@@ -219,6 +294,7 @@ class KnowledgeImprovementTests(unittest.TestCase):
             "Check the broker's current official terms before relying on a limit."
         )
         _send_message(bot, admin_id, answer)
+        self.assertIn(answer, api.messages[-1]["text"])
         _send_callback(bot, admin_id, f"admin:knowledge:sources:{item_id}")
         _send_message(
             bot,
