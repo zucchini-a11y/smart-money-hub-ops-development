@@ -219,6 +219,57 @@ class GeminiCoachTests(unittest.TestCase):
         self.assertNotIn("must-not-be-logged", joined_logs)
         self.assertNotIn("test-key", joined_logs)
 
+    def test_bos_vs_choch_educational_question_reaches_gemini(self) -> None:
+        question = (
+            "What is the difference between a Break of Structure (BOS) and a "
+            "Change of Character (CHOCH)? Explain it simply with a practical "
+            "Gold chart example."
+        )
+        generated_answer = (
+            "A BOS breaks structure in the current direction; a CHOCH may signal "
+            "a shift. For example, a Gold rally making higher highs may show BOS, "
+            "while a break below a meaningful higher low may suggest CHOCH."
+        )
+        service = GeminiCoachService("test-key")
+        router = CoachMessageRouter(service, _EmptyKnowledgeStore())
+
+        with patch(
+            "smart_money_hub_bot.gemini_coach.urlopen",
+            return_value=_response(generated_answer),
+        ) as mocked_urlopen:
+            routed = router.route(124, question)
+
+        self.assertEqual(mocked_urlopen.call_count, 1)
+        self.assertEqual(routed.response_path, "gemini_success")
+        self.assertEqual(routed.reply.response, generated_answer)
+        self.assertIsNotNone(routed.assessment)
+        self.assertEqual(routed.assessment.confidence, "high")
+        payload = json.loads(mocked_urlopen.call_args.args[0].data.decode("utf-8"))
+        self.assertEqual(payload["contents"][-1]["parts"][0]["text"], question)
+
+    def test_bos_vs_choch_provider_failure_uses_local_fallback(self) -> None:
+        service = GeminiCoachService("test-key")
+        router = CoachMessageRouter(service, _EmptyKnowledgeStore())
+        api_error = _provider_error(
+            503,
+            "UNAVAILABLE",
+            "The service is temporarily unavailable.",
+            headers={"Retry-After": "3"},
+        )
+
+        with patch(
+            "smart_money_hub_bot.gemini_coach.urlopen", side_effect=api_error
+        ):
+            routed = router.route(
+                125, "What is the difference between BOS and CHOCH?"
+            )
+
+        self.assertEqual(routed.response_path, "fallback")
+        self.assertIsNotNone(routed.assessment)
+        self.assertEqual(routed.assessment.confidence, "high")
+        self.assertNotIn("I don’t have a vetted answer", routed.reply.response)
+        self.assertTrue(routed.reply.response)
+
     def test_single_503_retry_succeeds_within_existing_deadline(self) -> None:
         service = GeminiCoachService("test-key", timeout_seconds=3)
         first_error = _provider_error(

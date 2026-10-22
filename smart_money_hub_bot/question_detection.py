@@ -67,13 +67,6 @@ _TIME_SENSITIVE = re.compile(
     r"funding rate|margin requirement|nfp|cpi|fomc|pce)\b",
     re.I,
 )
-_COMPARISON = re.compile(
-    r"\b(?:difference between|compare|versus|vs\.?|distinguish|"
-    r"tell .* apart|how .* different)\b",
-    re.I,
-)
-
-
 def detect_member_question(
     message: str, detected_topic: str
 ) -> QuestionAssessment | None:
@@ -106,13 +99,6 @@ def detect_member_question(
             _category_for_topic(detected_topic, question),
             "low",
             "The Coach does not have a vetted answer for this question yet.",
-        )
-    if _COMPARISON.search(lowered):
-        return QuestionAssessment(
-            question,
-            _category_for_topic(detected_topic, question),
-            "low",
-            "This comparison needs a dedicated, reviewed explanation.",
         )
     return QuestionAssessment(
         question,
