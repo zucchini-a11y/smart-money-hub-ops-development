@@ -45,7 +45,7 @@ class GeminiCoachService:
 
     diagnostic_response_path = "gemini_success"
 
-    def __init__(self, api_key: str, timeout_seconds: float = 12) -> None:
+    def __init__(self, api_key: str, timeout_seconds: float = 30) -> None:
         self._api_key = api_key.strip()
         self._timeout_seconds = timeout_seconds
         self._local_coach = RuleBasedCoachService()
