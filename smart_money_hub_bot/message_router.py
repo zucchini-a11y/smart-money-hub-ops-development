@@ -119,9 +119,16 @@ class CoachMessageRouter:
                 response_path = "gemini_success"
         except CoachProviderError as error:
             logger.warning(
-                "Coach provider failed (%s, status=%s); using local fallback.",
+                "Coach provider failed (kind=%s, http_status=%s, elapsed_ms=%s, "
+                "google_code=%s, google_status=%s, google_message=%s, headers=%s); "
+                "using local fallback.",
                 error.failure_kind,
                 error.status_code,
+                error.elapsed_ms,
+                error.provider_code,
+                error.provider_status,
+                error.provider_message,
+                error.response_headers,
             )
             reply = ai_evaluate_answer(
                 message,

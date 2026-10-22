@@ -17,9 +17,24 @@ class CoachReply:
 class CoachProviderError(RuntimeError):
     """A provider call failed without exposing request content or credentials."""
 
-    def __init__(self, failure_kind: str, status_code: int | None = None) -> None:
+    def __init__(
+        self,
+        failure_kind: str,
+        status_code: int | None = None,
+        *,
+        elapsed_ms: int | None = None,
+        provider_code: int | None = None,
+        provider_status: str | None = None,
+        provider_message: str | None = None,
+        response_headers: dict[str, str] | None = None,
+    ) -> None:
         self.failure_kind = failure_kind
         self.status_code = status_code
+        self.elapsed_ms = elapsed_ms
+        self.provider_code = provider_code
+        self.provider_status = provider_status
+        self.provider_message = provider_message
+        self.response_headers = dict(response_headers or {})
         super().__init__(failure_kind)
 
 
