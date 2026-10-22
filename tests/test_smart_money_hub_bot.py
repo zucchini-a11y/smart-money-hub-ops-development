@@ -142,16 +142,66 @@ class CoachTests(unittest.TestCase):
         reply = self.coach.evaluate(
             "POI: 15m bearish FVG\n"
             "Timeframe: 5m\n"
+            "Entry: taken\n"
             "Liquidity: BSL swept\n"
             "Confirmation: none\n"
             "Retest: no\n"
             "Stop loss: above swing\n"
-            "Followed plan: no"
+            "Followed plan: no\n"
+            "My entry model requires a retest"
         )
         self.assertIn("Entry was taken without confirmation", reply.mistakes)
         self.assertIn("Entry was taken before a retest", reply.mistakes)
         self.assertIn("The written plan was not followed", reply.mistakes)
         self.assertIn("possible process issues", reply.response)
+
+    def test_hypothetical_choch_scenario_uses_given_facts_without_trade_verdict(self) -> None:
+        scenario = (
+            "Hypothetically, Gold has a bearish H1 bias. On M5, price sweeps BSL, "
+            "closes below the prior higher low with bearish displacement, then "
+            "retests that level. I have not entered. Explain whether this is a CHOCH, "
+            "what displacement and the retest add, where invalidation and the stop "
+            "belong, and how to assess risk and planned R:R."
+        )
+
+        reply = self.coach.evaluate(scenario)
+
+        self.assertEqual(
+            self.coach.classify_request_context(scenario), "hypothetical_scenario"
+        )
+        self.assertEqual(reply.detected_topic, "CHoCH")
+        self.assertEqual(reply.mistakes, ())
+        self.assertIn("not a trade you placed", reply.response)
+        self.assertIn("The displacement you described", reply.response)
+        self.assertIn("not mandatory for every entry model", reply.response)
+        self.assertIn("H1 higher-timeframe bias, M5 entry", reply.response)
+        self.assertIn("2% risk per trade", reply.response)
+        self.assertIn("minimum 1:3 planned R:R", reply.response)
+        self.assertIn("maximum 3% daily loss", reply.response)
+        self.assertIn("break-even at 1:1 R:R", reply.response)
+        self.assertNotIn("Which swing level broke", reply.response)
+        self.assertNotIn("possible process issues", reply.response)
+
+    def test_missing_confirmation_is_not_a_trade_mistake_without_a_reported_entry(self) -> None:
+        reply = self.coach.evaluate(
+            "POI: 15m bearish FVG\n"
+            "Confirmation: none\n"
+            "Retest: no\n"
+            "Stop loss: above swing"
+        )
+
+        self.assertNotIn("Entry was taken without confirmation", reply.mistakes)
+        self.assertNotIn("Entry was taken before a retest", reply.mistakes)
+
+    def test_request_context_distinguishes_real_trade_and_live_analysis(self) -> None:
+        self.assertEqual(
+            self.coach.classify_request_context("I entered Gold before confirmation."),
+            "real_trade_review",
+        )
+        self.assertEqual(
+            self.coach.classify_request_context("What is Gold doing right now?"),
+            "live_market_analysis",
+        )
 
     def test_coach_replies_to_greetings_wins_entries_and_unrelated_requests(self) -> None:
         greeting = self.coach.evaluate("Hey bro")
@@ -562,7 +612,7 @@ class BotFlowTests(unittest.TestCase):
         review = self.api.messages[-1]["text"]
         self.assertIn("TRADE REVIEW", review)
         self.assertIn("Potential issue:", review)
-        self.assertIn("No confirmation, no entry.", review)
+        self.assertIn("Follow the confirmation and retest rules", review)
         self.assertIn("Trade Review Reminder", review)
         self.assertNotIn(self.user_id, self.bot.sessions)
 
@@ -631,7 +681,7 @@ class BotFlowTests(unittest.TestCase):
         self._click("menu:learn")
         self.assertTrue(self.api.messages[-1]["reply_markup"]["inline_keyboard"])
         self._click("edu:retest")
-        self.assertIn("No retest, no entry.", self.api.messages[-1]["text"])
+        self.assertIn("not required by every entry model", self.api.messages[-1]["text"])
 
         self._click("menu:progress")
         self.assertIn("SMART MONEY HUB PROGRESS", self.api.messages[-1]["text"])

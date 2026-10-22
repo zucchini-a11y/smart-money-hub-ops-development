@@ -308,7 +308,7 @@ class GeminiCoachService:
             "trade is valid; mention them only when relevant. If asked to compare BOS and CHOCH, define both, "
             "give one hypothetical bullish and one hypothetical bearish Gold example, "
             "clarify that CHOCH signals a possible shift rather than a guaranteed reversal, "
-            "and ask one relevant follow-up question. "
+            "and ask a follow-up only if an essential fact is missing. "
             "Return only a JSON object with exactly these fields: answer (string) and "
             "needs_review (boolean). Keep answer brief."
             + verified_note

@@ -497,7 +497,7 @@ class RuleBasedCoachService:
             re.search(
                 r"\b(?:i\s+(?:entered|took|placed|opened|bought|sold|closed|"
                 r"got stopped out|was stopped out)|my\s+(?:trade|entry|position|"
-                r"stop|setup))\b",
+                r"stop))\b",
                 text,
             )
         )
@@ -656,12 +656,21 @@ class RuleBasedCoachService:
         mistakes: list[str] = []
         entry_was_taken = bool(
             re.search(
-                r"\b(?:i\s+(?:entered|took|placed|opened|bought|sold)|"
+                r"\b(?:i\s+(?:entered|took|placed|opened|bought|sold|"
+                r"got stopped out|was stopped out)|my\s+(?:trade|position)|"
                 r"entry\s*(?::|=)\s*(?:taken|entered|opened|filled|yes))\b",
                 text,
             )
         )
-        if entry_was_taken and re.search(
+        retest_was_planned = bool(
+            re.search(
+                r"\b(?:my|the|this)\s+(?:entry\s+)?(?:plan|model)\s+"
+                r"(?:requires?|calls?\s+for|specifies?)\s+(?:a\s+)?retest\b"
+                r"|\bentered?\s+before\s+(?:the\s+)?retest\b",
+                text,
+            )
+        )
+        if entry_was_taken and retest_was_planned and re.search(
             r"\b(?:no|without|missing|lacked)\s+(?:clear\s+)?confirmation\b"
             r"|\bconfirmation\s*(?::|=|was|is)?\s*(?:none|no|missing|absent)\b"
             r"|\bentered\s+before\s+confirmation\b"
