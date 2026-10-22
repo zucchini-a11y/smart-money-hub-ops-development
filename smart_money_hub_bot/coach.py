@@ -82,7 +82,7 @@ class RuleBasedCoachService:
     _topic_guides: dict[str, tuple[str, str]] = {
         "CHoCH": (
             "A Change of Character is an early break against the current swing pattern. It can warn that order flow is changing, but it does not guarantee a reversal.",
-            "Which swing level broke, and did price show displacement and a retest afterward?",
+            "Which confirmation does your chosen entry model require, and what would invalidate the shift?",
         ),
         "BOS": (
             "A Break of Structure is a break through a relevant swing in the direction of the current move. Check the close, displacement, and higher-timeframe context rather than treating every wick as a BOS.",
@@ -90,11 +90,11 @@ class RuleBasedCoachService:
         ),
         "MSS": (
             "A Market Structure Shift is evidence that short-term order flow may have changed, often after a liquidity event and a strong displacement. It is context, not a guaranteed entry.",
-            "What liquidity was taken before the shift, and did price retest your POI?",
+            "What liquidity preceded the shift, and what confirmation does your chosen model require?",
         ),
         "FVG / IFVG": (
             "A Fair Value Gap marks an imbalance from a fast move. It can be a POI, but a gap alone is not confirmation. An IFVG is a gap that has been invalidated and may be treated as an opposing area.",
-            "Did price take liquidity and show confirmation before the retest?",
+            "What confirmation and invalidation does your chosen entry model require?",
         ),
         "Order Blocks": (
             "An Order Block is a possible reaction area around the last opposing candle before a strong displacement. It is a POI to study, not a promise that price will react there.",
@@ -221,6 +221,9 @@ class RuleBasedCoachService:
                 "Turn the review into one practical process adjustment.",
             )
 
+        if self.classify_request_context(text) == "hypothetical_scenario":
+            return self._hypothetical_scenario_reply(text)
+
         if re.fullmatch(
             r"(?:hey|hiya|hello|hi|yo|yoo|what'?s up|what is up|how far)"
             r"(?:\s+(?:bro|sis|there|coach))?[!.? ]*",
@@ -338,8 +341,6 @@ class RuleBasedCoachService:
         if topic in self._topic_guides:
             explanation, check_question = self._topic_guides[topic]
             response = f"Think of it this way: {explanation}\n\n{check_question}"
-            if mistakes:
-                response += "\n\nFrom what you wrote, review: " + "; ".join(mistakes) + "."
             if profile.get("latest_assessment_score") is not None and int(
                 profile["latest_assessment_score"]
             ) <= 5:
@@ -456,6 +457,99 @@ class RuleBasedCoachService:
         has_choch = re.search(r"\b(?:choch|change of character)\b", text)
         return bool(comparison and has_bos and has_choch)
 
+    @classmethod
+    def classify_request_context(cls, message: str) -> str:
+        """Classify request style without inferring facts not in the message."""
+        normalized = " ".join(message.split()).casefold()
+        if cls._is_hypothetical_scenario(normalized):
+            return "hypothetical_scenario"
+        if cls._is_live_market_analysis(normalized):
+            return "live_market_analysis"
+        if cls._describes_real_trade(normalized):
+            return "real_trade_review"
+        return "educational_question"
+
+    @staticmethod
+    def _is_hypothetical_scenario(text: str) -> bool:
+        return bool(
+            re.search(
+                r"\b(?:hypothetical(?:ly)?|scenario|suppose|imagine|assume|"
+                r"what if|let['’]?s say|for example|as an example|in this setup)\b",
+                text,
+            )
+        )
+
+    @staticmethod
+    def _is_live_market_analysis(text: str) -> bool:
+        return bool(
+            re.search(
+                r"\b(?:live\s+(?:market|chart|price|analysis)|current(?:ly)?\s+"
+                r"(?:market|chart|price|conditions)|right\s+now|latest\s+"
+                r"(?:price|market|news)|what(?:'s| is)\s+(?:gold|xauusd|the market)"
+                r"\s+doing\s+now)\b",
+                text,
+            )
+        )
+
+    @staticmethod
+    def _describes_real_trade(text: str) -> bool:
+        return bool(
+            re.search(
+                r"\b(?:i\s+(?:entered|took|placed|opened|bought|sold|closed|"
+                r"got stopped out|was stopped out)|my\s+(?:trade|entry|position|"
+                r"stop|setup))\b",
+                text,
+            )
+        )
+
+    def _hypothetical_scenario_reply(self, message: str) -> CoachReply:
+        normalized = message.casefold()
+        topic = self._detect_topic(normalized)
+        explanation, _ = self._topic_guides.get(
+            topic,
+            (
+                "Use only the scenario details provided; a hypothetical does not "
+                "confirm a live trade.",
+                "",
+            ),
+        )
+        parts = [
+            "I’ll treat this as a hypothetical teaching example, not a trade you "
+            "placed or a live signal.",
+            explanation,
+        ]
+        if "displacement" in normalized:
+            parts.append(
+                "The displacement you described adds evidence about the move, but "
+                "does not guarantee continuation or reversal."
+            )
+        if "retest" in normalized:
+            parts.append(
+                "A retest can be part of the entry trigger when your chosen model "
+                "requires it; it is not mandatory for every entry model."
+            )
+        if any(
+            term in normalized
+            for term in ("risk", "stop", "invalidation", "risk/reward", "r:r")
+        ):
+            parts.append(
+                "Your configured preferences are H1 higher-timeframe bias, M5 entry, "
+                "2% risk per trade, minimum 1:3 planned R:R, maximum 3% daily loss, "
+                "and break-even at 1:1 R:R. Use them as plan rules, not as proof that "
+                "a setup is valid."
+            )
+        if any(term in normalized for term in ("stop", "invalidation")):
+            parts.append(
+                "Set invalidation where the setup premise fails and place the stop "
+                "from that level; no exact price can be inferred without chart levels."
+            )
+        return CoachReply(
+            "\n\n".join(parts),
+            topic,
+            (),
+            "Reason from the stated hypothetical; do not infer an executed trade.",
+        )
+
     @staticmethod
     def _continue_conversation(text: str, topic: str) -> str:
         if topic == "CHoCH":
@@ -560,7 +654,14 @@ class RuleBasedCoachService:
     @staticmethod
     def _identify_mistakes(text: str) -> tuple[str, ...]:
         mistakes: list[str] = []
-        if re.search(
+        entry_was_taken = bool(
+            re.search(
+                r"\b(?:i\s+(?:entered|took|placed|opened|bought|sold)|"
+                r"entry\s*(?::|=)\s*(?:taken|entered|opened|filled|yes))\b",
+                text,
+            )
+        )
+        if entry_was_taken and re.search(
             r"\b(?:no|without|missing|lacked)\s+(?:clear\s+)?confirmation\b"
             r"|\bconfirmation\s*(?::|=|was|is)?\s*(?:none|no|missing|absent)\b"
             r"|\bentered\s+before\s+confirmation\b"
@@ -568,7 +669,7 @@ class RuleBasedCoachService:
             text,
         ):
             mistakes.append("Entry was taken without confirmation")
-        if re.search(
+        if entry_was_taken and re.search(
             r"\bno\s+retest\b|\bwithout\s+(?:a\s+)?retest\b"
             r"|\b(?:didn['’]?t|did\s+not)\s+wait\s+for\s+(?:a\s+)?retest\b"
             r"|\bentered\s+before\s+(?:the\s+)?retest\b"
@@ -621,7 +722,7 @@ class RuleBasedCoachService:
             "2. What timeframe?\n"
             "3. What liquidity was taken?\n"
             "4. What confirmation did you see?\n"
-            "5. Did price retest?\n"
+            "5. Did your entry model require a retest, and did price return to the level?\n"
             "6. Where was your stop loss?\n"
             "7. Did you follow your plan?\n\n"
             "I’ll help identify possible process mistakes. A loss by itself does not mean the setup was wrong."
@@ -634,7 +735,8 @@ class RuleBasedCoachService:
                 "Based on what you shared, these are possible process issues to review:\n"
                 + "\n".join(f"• {mistake}" for mistake in mistakes)
                 + "\n\nCompare each one with your written plan; don't judge the setup from the loss alone. "
-                "No confirmation, no entry. No retest, no entry. Don't chase missed trades. "
+                "Use the confirmation and retest rules in your chosen entry model; a retest "
+                "is not required by every model. Don't chase a missed setup. "
                 "Risk management first.\n\nWhich rule would you change or reinforce next time?"
             )
             lesson = "A repeatable process matters more than the outcome of one trade."

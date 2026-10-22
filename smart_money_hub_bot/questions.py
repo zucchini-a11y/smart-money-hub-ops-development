@@ -149,7 +149,7 @@ QUESTIONS: tuple[Question, ...] = (
     ),
     Question(
         topic="Retest and confirmation",
-        prompt="Under Smart Money Hub's rules, what should happen after a breakout before entry?",
+        prompt="In a retest-based entry model, what should happen after a breakout before entry?",
         options=(
             "Enter immediately so the move is not missed",
             "Wait for price to retest the relevant level or POI and show a response",
@@ -158,13 +158,14 @@ QUESTIONS: tuple[Question, ...] = (
         ),
         correct_index=1,
         explanation=(
-            "No retest, no entry. Wait for price to return to the relevant level "
-            "or POI and look for a response; do not chase a move that has already left."
+            "This model waits for price to return to the relevant level or POI and "
+            "show a response. If the move leaves first, skip this setup rather than "
+            "chase it; other entry models may use different triggers."
         ),
     ),
     Question(
         topic="Confirmation and risk management",
-        prompt="Which plan best follows Smart Money Hub's entry and risk principles?",
+        prompt="Which plan best follows a retest-based Smart Money Hub entry model and sound risk management?",
         options=(
             "Enter as soon as price touches any POI and decide the stop later",
             "After relevant liquidity and displacement, wait for a POI retest and entry confirmation; define risk before entering",
@@ -173,7 +174,7 @@ QUESTIONS: tuple[Question, ...] = (
         ),
         correct_index=1,
         explanation=(
-            "No confirmation, no entry. A setup should have a valid POI, relevant "
+            "For this model, a setup uses a valid POI, relevant "
             "liquidity and displacement, then a retest and an entry trigger. Define "
             "the stop and acceptable risk first; skip the trade if the risk is not sound."
         ),

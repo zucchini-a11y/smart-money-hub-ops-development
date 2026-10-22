@@ -27,11 +27,11 @@ EDUCATION: dict[str, tuple[str, str]] = {
     ),
     "confirmation": (
         "Confirmation",
-        "Confirmation is evidence your setup is behaving as planned, such as a response after a liquidity event and a structural shift. No confirmation, no entry. A setup label does not guarantee an outcome.",
+        "Confirmation is evidence your setup is behaving as planned, such as a response after a liquidity event and a structural shift. Require the confirmation specified by your chosen entry model; a setup label does not guarantee an outcome.",
     ),
     "retest": (
         "Retests",
-        "After a relevant break, wait for price to return to the level or POI and show a response. No retest, no entry. If price leaves without one, do not chase the missed trade.",
+        "In a retest-based model, wait for price to return to the level or POI and show the planned response. A retest is not required by every entry model. If your model's setup is missed, do not chase it.",
     ),
     "risk": (
         "Risk management",

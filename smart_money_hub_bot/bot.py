@@ -78,10 +78,10 @@ COACH_CHALLENGES: tuple[dict[str, Any], ...] = (
         "id": "retest",
         "topic": "Retest",
         "difficulty": 1,
-        "prompt": "Price breaks a relevant swing and runs without a retest. What is the disciplined choice?",
+        "prompt": "In a retest-based entry model, price breaks a relevant swing and runs without returning. What is the disciplined choice?",
         "options": ("Chase the move", "Increase size", "Wait for another setup", "Move the stop closer"),
         "answer": 2,
-        "explanation": "If the planned retest never comes, skipping is better than chasing a missed setup.",
+        "explanation": "If the chosen model requires a retest and it never comes, skip that setup rather than chase it; other models may use different entry triggers.",
     },
     {
         "id": "risk",
@@ -1667,14 +1667,14 @@ class SmartMoneyHubBot:
         }:
             potential_issues.append("You recorded no confirmation.")
         if not data["waited_for_retest"]:
-            potential_issues.append("You recorded no retest; review whether you entered before it.")
+            potential_issues.append("You recorded no retest; check whether your entry model required one.")
         if not data["followed_plan"]:
             potential_issues.append("You noted that the written plan was not followed.")
         if not data["liquidity_swept"]:
             potential_issues.append("No liquidity sweep was recorded; consider whether it mattered to your setup.")
         lines.append("\nPotential issue:")
         lines.extend(potential_issues or ["No process issue was reported in this entry."])
-        lines.append("\nReminder: No confirmation, no entry. No retest, no entry. Do not chase.")
+        lines.append("\nReminder: Follow the confirmation and retest rules of your chosen entry model. Do not chase a missed setup.")
         return "\n".join(lines)
 
     @staticmethod
@@ -1712,7 +1712,7 @@ class SmartMoneyHubBot:
             f"SMC focus: {data['concept_focus']}\n"
             f"Mistake to avoid: {data['mistake_to_avoid']}\n"
             f"If you miss a setup: {data['missed_setup_plan']}\n\n"
-            "No confirmation, no entry. No retest, no entry. Do not chase."
+            "Follow your chosen entry model's confirmation and retest rules. Do not chase a missed setup."
         )
 
     def _show_trade_history(self, chat_id: int, telegram_id: int) -> None:
