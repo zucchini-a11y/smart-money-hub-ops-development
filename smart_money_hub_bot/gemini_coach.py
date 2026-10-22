@@ -430,22 +430,54 @@ def _has_complete_bos_choch_answer(answer: str) -> bool:
     normalized = answer.casefold()
     has_bos = "bos" in normalized or "break of structure" in normalized
     has_choch = "choch" in normalized or "change of character" in normalized
+    mentions_gold = bool(
+        re.search(r"\b(?:gold|xauusd|xau\s*/\s*usd)\b", normalized)
+    )
+    has_bullish_example = bool(
+        re.search(r"\b(?:bullish|upward|uptrend|upside|higher highs?)\b", normalized)
+    )
+    has_bearish_example = bool(
+        re.search(r"\b(?:bearish|downward|downtrend|downside|lower lows?)\b", normalized)
+    )
     has_both_examples = (
-        "bullish" in normalized and "bearish" in normalized and "gold" in normalized
+        mentions_gold and has_bullish_example and has_bearish_example
     )
-    mentions_possible_shift = (
-        "possible shift" in normalized
-        or "may signal" in normalized
-        or "can signal" in normalized
-    )
-    avoids_reversal_guarantee = any(
-        phrase in normalized
-        for phrase in (
-            "not a guaranteed reversal",
-            "does not guarantee a reversal",
-            "doesn't guarantee a reversal",
-            "not guaranteed to reverse",
+    mentions_possible_shift = bool(
+        re.search(
+            r"\b(?:possible|potential)\b.{0,80}\b(?:shift|change|turn|reversal)\b",
+            normalized,
         )
+        or re.search(
+            r"\b(?:may|might|could|can|suggests?|indicates?|signals?)\b"
+            r".{0,80}\b(?:shift|change|turn|reversal)\b",
+            normalized,
+        )
+    )
+    avoids_reversal_guarantee = bool(
+        re.search(
+            r"\b(?:not|never|doesn't|does not|isn't|is not|cannot|can't|"
+            r"won't|will not)\b.{0,80}\b(?:guarantee(?:d)?|certain|sure|"
+            r"necessarily|automatically|always|must|will)\b.{0,80}"
+            r"\b(?:reverse|reversal)\b",
+            normalized,
+        )
+        or "not necessarily a reversal" in normalized
+        or "not a certain reversal" in normalized
+        or "not a sure reversal" in normalized
+    )
+    question_count = answer.count("?")
+    final_sentence = re.split(r"(?<=[.!?])\s+", answer.strip())[-1]
+    follow_up_without_punctuation = bool(
+        re.match(
+            r"^(?:(?:follow[- ]?up|question)\s*:\s*)?"
+            r"(?:which|what|how|where|when|do|does|did|would|could|can|"
+            r"are|is)\b",
+            final_sentence,
+            re.I,
+        )
+    )
+    has_one_follow_up = question_count == 1 or (
+        question_count == 0 and follow_up_without_punctuation
     )
     return bool(
         has_bos
@@ -453,36 +485,51 @@ def _has_complete_bos_choch_answer(answer: str) -> bool:
         and has_both_examples
         and mentions_possible_shift
         and avoids_reversal_guarantee
-        and answer.count("?") == 1
+        and question_count <= 1
+        and has_one_follow_up
     )
 
 
 def _extract_candidate_text(data: Any) -> str:
     if not isinstance(data, dict):
-        raise _GeminiResponseProblem("invalid_response")
+        raise _GeminiResponseProblem(
+            "invalid_response", rejection_category="response_shape_invalid"
+        )
 
     prompt_feedback = data.get("promptFeedback")
     if prompt_feedback is not None:
         if not isinstance(prompt_feedback, dict):
-            raise _GeminiResponseProblem("invalid_response")
+            raise _GeminiResponseProblem(
+                "invalid_response", rejection_category="prompt_feedback_invalid"
+            )
         block_reason = prompt_feedback.get("blockReason")
         if block_reason not in (None, "", "BLOCK_REASON_UNSPECIFIED"):
             safe_reason = _safe_provider_enum(block_reason)
-            raise _GeminiResponseProblem("blocked_response", safe_reason)
+            raise _GeminiResponseProblem(
+                "blocked_response",
+                safe_reason,
+                rejection_category="finish_reason_rejected",
+            )
 
     candidates = data.get("candidates")
     if not isinstance(candidates, list) or not candidates:
-        raise _GeminiResponseProblem("invalid_response")
+        raise _GeminiResponseProblem(
+            "invalid_response", rejection_category="candidate_missing"
+        )
     candidate = candidates[0]
     if not isinstance(candidate, dict):
-        raise _GeminiResponseProblem("invalid_response")
+        raise _GeminiResponseProblem(
+            "invalid_response", rejection_category="candidate_shape_invalid"
+        )
 
     safe_finish_reason: str | None = None
     finish_reason = candidate.get("finishReason")
     if finish_reason is not None:
         safe_finish_reason = _safe_provider_enum(finish_reason)
         if safe_finish_reason is None:
-            raise _GeminiResponseProblem("invalid_response")
+            raise _GeminiResponseProblem(
+                "invalid_response", rejection_category="finish_reason_invalid"
+            )
         if safe_finish_reason not in {"STOP", "FINISH_REASON_UNSPECIFIED"}:
             failure_kind = (
                 "incomplete_response"
@@ -503,14 +550,26 @@ def _extract_candidate_text(data: Any) -> str:
                 }
                 else "invalid_response"
             )
-            raise _GeminiResponseProblem(failure_kind, safe_finish_reason)
+            raise _GeminiResponseProblem(
+                failure_kind,
+                safe_finish_reason,
+                rejection_category="finish_reason_rejected",
+            )
 
     content = candidate.get("content")
     if not isinstance(content, dict):
-        raise _GeminiResponseProblem("invalid_response", safe_finish_reason)
+        raise _GeminiResponseProblem(
+            "invalid_response",
+            safe_finish_reason,
+            rejection_category="candidate_content_invalid",
+        )
     parts = content.get("parts")
     if not isinstance(parts, list):
-        raise _GeminiResponseProblem("invalid_response", safe_finish_reason)
+        raise _GeminiResponseProblem(
+            "invalid_response",
+            safe_finish_reason,
+            rejection_category="candidate_parts_invalid",
+        )
 
     text_parts = [
         part["text"]
@@ -522,14 +581,20 @@ def _extract_candidate_text(data: Any) -> str:
     ]
     text = "".join(text_parts).strip()
     if not text:
-        raise _GeminiResponseProblem("invalid_response", safe_finish_reason)
+        raise _GeminiResponseProblem(
+            "invalid_response",
+            safe_finish_reason,
+            rejection_category="missing_text",
+        )
     return text
 
 
 def _parse_answer_text(raw_text: str) -> tuple[str, bool]:
     text = _strip_markdown_fence(raw_text)
     if not text:
-        raise _GeminiResponseProblem("invalid_response")
+        raise _GeminiResponseProblem(
+            "invalid_response", rejection_category="missing_text"
+        )
 
     try:
         parsed = json.loads(text)
@@ -544,7 +609,9 @@ def _parse_answer_text(raw_text: str) -> tuple[str, bool]:
                 answer = value.strip()
                 break
         if answer is None:
-            raise _GeminiResponseProblem("invalid_response")
+            raise _GeminiResponseProblem(
+                "invalid_response", rejection_category="schema_mismatch"
+            )
         needs_review = parsed.get("needs_review")
         return (
             answer[:_MAX_RESPONSE_CHARACTERS],
@@ -556,11 +623,17 @@ def _parse_answer_text(raw_text: str) -> tuple[str, bool]:
     if isinstance(parsed, str) and parsed.strip():
         answer = parsed.strip()
         return answer[:_MAX_RESPONSE_CHARACTERS], _text_indicates_uncertainty(answer)
+    if isinstance(parsed, str):
+        raise _GeminiResponseProblem(
+            "invalid_response", rejection_category="missing_text"
+        )
     if isinstance(parsed, (int, float)) and not isinstance(parsed, bool):
         answer = str(parsed)
         return answer[:_MAX_RESPONSE_CHARACTERS], False
 
-    raise _GeminiResponseProblem("invalid_response")
+    raise _GeminiResponseProblem(
+        "invalid_response", rejection_category="schema_mismatch"
+    )
 
 
 def _strip_markdown_fence(text: str) -> str:
