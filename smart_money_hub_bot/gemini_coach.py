@@ -13,10 +13,19 @@ from urllib.request import Request, urlopen
 from .coach import CoachProviderError, CoachReply, RuleBasedCoachService
 
 GEMINI_MODEL = "gemini-3.5-flash-lite"
+GEMINI_FALLBACK_MODELS = (
+    "gemini-3.1-flash-lite",
+    "gemini-3-flash-preview",
+)
 GEMINI_ENDPOINT = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
     f"{GEMINI_MODEL}:generateContent"
 )
+_GEMINI_THINKING_LEVELS = {
+    GEMINI_MODEL: "LOW",
+    "gemini-3.1-flash-lite": "MINIMAL",
+    "gemini-3-flash-preview": "LOW",
+}
 logger = logging.getLogger(__name__)
 _MAX_HISTORY_TURNS = 6
 _MAX_TURN_CHARACTERS = 1200
@@ -25,6 +34,13 @@ _MAX_OUTPUT_TOKENS = 1024
 _RETRY_BACKOFF_SECONDS = 0.25
 _MAX_RETRY_AFTER_SECONDS = 1.0
 _MIN_RETRY_WINDOW_SECONDS = 0.5
+
+
+def _endpoint_for_model(model: str) -> str:
+    return (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{model}:generateContent"
+    )
 
 
 class _GeminiResponseProblem(Exception):
@@ -41,7 +57,7 @@ class _GeminiResponseProblem(Exception):
 
 
 class GeminiCoachService:
-    """Uses one fixed free-tier model; provider failures are handled by the router."""
+    """Uses a fixed free-tier model order; exhausted failures go to the router."""
 
     diagnostic_response_path = "gemini_success"
 
@@ -65,6 +81,74 @@ class GeminiCoachService:
         if not self._api_key:
             raise CoachProviderError("missing_api_key")
 
+        models = (GEMINI_MODEL, *GEMINI_FALLBACK_MODELS)
+        started_at = time.monotonic()
+        deadline = started_at + self._timeout_seconds * 2
+        last_error: CoachProviderError | None = None
+        for model_index, model in enumerate(models):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            attempt_timeout = min(self._timeout_seconds, remaining)
+            logger.info(
+                "Gemini model attempt started (model=%s, request_id=%s).",
+                model,
+                request_id,
+            )
+            try:
+                reply = self._evaluate_for_model(
+                    message,
+                    history=history,
+                    profile=profile,
+                    request_id=request_id,
+                    model=model,
+                    timeout_seconds=attempt_timeout,
+                    retry_503=model_index == 0,
+                )
+            except CoachProviderError as error:
+                last_error = error
+                logger.warning(
+                    "Gemini model attempt failed (model=%s, kind=%s, "
+                    "http_status=%s, rejection_category=%s, request_id=%s).",
+                    model,
+                    error.failure_kind,
+                    error.status_code,
+                    error.rejection_category,
+                    request_id,
+                )
+                if (
+                    not _can_fail_over(error)
+                    or model_index == len(models) - 1
+                    or time.monotonic() >= deadline
+                ):
+                    raise
+                continue
+
+            logger.info(
+                "Gemini model attempt succeeded (model=%s, request_id=%s).",
+                model,
+                request_id,
+            )
+            return reply
+
+        if last_error is not None:
+            raise last_error
+        raise CoachProviderError(
+            "client_timeout",
+            elapsed_ms=_elapsed_ms(started_at),
+        )
+
+    def _evaluate_for_model(
+        self,
+        message: str,
+        *,
+        history: list[dict[str, Any]] | None,
+        profile: dict[str, Any] | None,
+        request_id: str,
+        model: str,
+        timeout_seconds: float,
+        retry_503: bool,
+    ) -> CoachReply:
         local_reply = self._local_coach.evaluate(
             message, history=history, profile=profile
         )
@@ -78,12 +162,14 @@ class GeminiCoachService:
                 "temperature": 0.45,
                 "maxOutputTokens": _MAX_OUTPUT_TOKENS,
                 "responseMimeType": "application/json",
-                "thinkingConfig": {"thinkingLevel": "LOW"},
+                "thinkingConfig": {
+                    "thinkingLevel": _GEMINI_THINKING_LEVELS[model]
+                },
             },
         }
         request_body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         started_at = time.monotonic()
-        deadline = started_at + self._timeout_seconds
+        deadline = started_at + timeout_seconds
         attempts = 0
         response_status: int | None = None
         response_headers: dict[str, str] = {}
@@ -97,7 +183,7 @@ class GeminiCoachService:
                     response_headers=response_headers,
                 )
             request = Request(
-                GEMINI_ENDPOINT,
+                _endpoint_for_model(model),
                 data=request_body,
                 headers={
                     "Content-Type": "application/json",
@@ -114,9 +200,10 @@ class GeminiCoachService:
                     data = json.loads(response.read().decode("utf-8"))
                 finish_reason, token_usage = _safe_response_diagnostics(data)
                 logger.info(
-                    "Gemini HTTP response status=%s elapsed_ms=%s headers=%s "
+                    "Gemini HTTP response model=%s status=%s elapsed_ms=%s headers=%s "
                     "request_id=%s finish_reason=%s max_output_tokens=%s "
                     "token_usage=%s.",
+                    model,
                     response_status,
                     _elapsed_ms(started_at),
                     response_headers,
@@ -135,7 +222,7 @@ class GeminiCoachService:
                 remaining = deadline - time.monotonic()
                 retry_delay = (
                     _retry_delay(error.headers, remaining)
-                    if response_status == 503 and attempts == 0
+                    if retry_503 and response_status == 503 and attempts == 0
                     else None
                 )
                 if retry_delay is not None:
@@ -334,6 +421,19 @@ def _http_failure_kind(status_code: int) -> str:
     if status_code in {408, 504}:
         return "http_timeout"
     return "http"
+
+
+def _can_fail_over(error: CoachProviderError) -> bool:
+    if error.status_code in {404, 408, 429, 500, 502, 503, 504}:
+        return True
+    return error.failure_kind in {
+        "client_timeout",
+        "http_timeout",
+        "invalid_response",
+        "network",
+        "rate_limit",
+        "service_unavailable",
+    }
 
 
 def _is_timeout_reason(reason: object) -> bool:
