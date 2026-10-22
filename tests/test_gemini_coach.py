@@ -476,9 +476,67 @@ class GeminiCoachTests(unittest.TestCase):
         self.assertIn("do not ask for", instruction)
         self.assertIn("not by every model", instruction)
         self.assertIn("minimum 1:3 planned r:r", instruction)
+        self.assertIn("for a single-concept question, be concise", instruction)
+        self.assertIn("concise numbered walkthrough", instruction)
+        self.assertIn("do not merely list terms", instruction)
+        self.assertNotIn("keep answer brief", instruction)
         self.assertNotIn("did you follow your plan", json.dumps(payload).casefold())
         self.assertNotIn("which swing level broke", routed.reply.response.casefold())
         self.assertNotIn("from what you wrote, review", routed.reply.response.casefold())
+
+    def test_rate_limited_hypothetical_fallback_explains_each_setup_step(self) -> None:
+        question = (
+            "Hypothetically, Gold has a bullish H1 bias at an H1 demand zone. On M5, "
+            "price swept sell-side liquidity below prior lows, then bullish displacement "
+            "closed above the last M5 lower high, forming a bullish CHOCH. Explain how "
+            "the context, sweep, displacement and CHOCH connect; whether to wait for a "
+            "retest; where invalidation and the stop belong; and how to manage risk and "
+            "planned R:R."
+        )
+        router = CoachMessageRouter(
+            GeminiCoachService("test-key"), _EmptyKnowledgeStore()
+        )
+
+        with patch(
+            "smart_money_hub_bot.gemini_coach.urlopen",
+            side_effect=_provider_error(
+                429, "RESOURCE_EXHAUSTED", "Quota exceeded."
+            ),
+        ):
+            routed = router.route(324, question)
+
+        answer = routed.reply.response.casefold()
+        self.assertEqual(routed.response_path, "fallback")
+        self.assertIn("1. h1 context:", answer)
+        self.assertIn("not an entry signal by itself", answer)
+        self.assertIn("2. m5 liquidity sweep:", answer)
+        self.assertIn("sweep below prior lows took sell-side liquidity", answer)
+        self.assertIn("3. displacement:", answer)
+        self.assertIn("closes through a meaningful swing", answer)
+        self.assertIn("4. choch:", answer)
+        self.assertIn("possible short-term shift", answer)
+        self.assertIn("5. confirmation and standing aside:", answer)
+        self.assertIn("skipping preserves the plan", answer)
+        self.assertIn("6. retest and entry:", answer)
+        self.assertIn("not mandatory for every model", answer)
+        self.assertIn("7. invalidation and stop:", answer)
+        self.assertIn("8. risk plan:", answer)
+        self.assertIn("2% risk per trade", answer)
+        self.assertIn("minimum 1:3 planned r:r", answer)
+        self.assertIn("compare the planned target with that risk", answer)
+        self.assertIn("no exact chart price to calculate", answer)
+        self.assertIn("not proof that the setup is valid", answer)
+
+    def test_current_message_is_not_truncated_at_history_turn_limit(self) -> None:
+        message = (
+            "Hypothetically, explain this setup. "
+            + "H1 bias and M5 confirmation details. " * 50
+            + "Final requested point: explain where invalidation belongs."
+        )
+        contents = GeminiCoachService._contents(message, [])
+
+        self.assertGreater(len(message), 1200)
+        self.assertEqual(contents[-1]["parts"][0]["text"], message)
 
     def test_incomplete_bos_choch_generation_uses_complete_local_fallback(self) -> None:
         service = GeminiCoachService("test-key")

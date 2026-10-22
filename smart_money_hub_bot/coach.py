@@ -474,7 +474,7 @@ class RuleBasedCoachService:
         return bool(
             re.search(
                 r"\b(?:hypothetical(?:ly)?|scenario|suppose|imagine|assume|"
-                r"what if|let['’]?s say|for example|as an example|in this setup)\b",
+                r"what if|let['’]?s say|for example|as an example)\b",
                 text,
             )
         )
@@ -496,7 +496,7 @@ class RuleBasedCoachService:
         return bool(
             re.search(
                 r"\b(?:i\s+(?:entered|took|placed|opened|bought|sold|closed|"
-                r"got stopped out|was stopped out)|my\s+(?:trade|entry|position|"
+                r"got stopped out|was stopped out)|my\s+(?:trade|position|"
                 r"stop))\b",
                 text,
             )
@@ -505,44 +505,212 @@ class RuleBasedCoachService:
     def _hypothetical_scenario_reply(self, message: str) -> CoachReply:
         normalized = message.casefold()
         topic = self._detect_topic(normalized)
-        explanation, _ = self._topic_guides.get(
-            topic,
-            (
-                "Use only the scenario details provided; a hypothetical does not "
-                "confirm a live trade.",
-                "",
-            ),
+        steps: list[tuple[str, str]] = []
+        has_h1 = bool(re.search(r"\bh1\b|higher[- ]timeframe", normalized))
+        h1_bullish = has_h1 and "bullish" in normalized
+        h1_bearish = has_h1 and "bearish" in normalized
+        bullish_choch = bool(
+            re.search(r"\b(?:bullish|upward)\s+(?:m5\s+)?choch\b", normalized)
+            or re.search(
+                r"\bchoch\s+(?:is\s+)?(?:bullish|upward)\b", normalized
+            )
+            or re.search(
+                r"\b(?:closed|closes|closing)\s+above\b[^.?!]{0,60}"
+                r"\b(?:prior|last|previous)\s+(?:m5\s+)?lower high\b",
+                normalized,
+            )
         )
-        parts = [
-            "I’ll treat this as a hypothetical teaching example, not a trade you "
-            "placed or a live signal.",
-            explanation,
-        ]
+        bearish_choch = bool(
+            re.search(r"\b(?:bearish|downward)\s+(?:m5\s+)?choch\b", normalized)
+            or re.search(
+                r"\bchoch\s+(?:is\s+)?(?:bearish|downward)\b", normalized
+            )
+            or re.search(
+                r"\b(?:closed|closes|closing)\s+below\b[^.?!]{0,60}"
+                r"\b(?:prior|last|previous)\s+(?:m5\s+)?higher low\b",
+                normalized,
+            )
+        )
+
+        if has_h1 and any(
+            term in normalized for term in ("bias", "demand", "supply")
+        ):
+            if h1_bullish and "demand" in normalized:
+                context = (
+                    "The bullish H1 bias and H1 demand zone align the higher-timeframe "
+                    "context for looking for a long. The zone is a place to assess a "
+                    "setup, not an entry signal by itself."
+                )
+            elif h1_bearish and "supply" in normalized:
+                context = (
+                    "The bearish H1 bias and H1 supply zone align the higher-timeframe "
+                    "context for looking for a short. The zone is a place to assess a "
+                    "setup, not an entry signal by itself."
+                )
+            else:
+                context = (
+                    "Use the H1 bias and zone to frame direction and location; neither "
+                    "proves that a lower-timeframe entry is valid."
+                )
+            steps.append(("H1 context", context))
+
+        if "sweep" in normalized or "swept" in normalized:
+            swept_sell_side = bool(
+                re.search(
+                    r"\b(?:ssl|sell[- ]side|below\s+(?:the\s+)?(?:prior\s+)?lows?)\b",
+                    normalized,
+                )
+            )
+            swept_buy_side = bool(
+                re.search(
+                    r"\b(?:bsl|buy[- ]side|above\s+(?:the\s+)?(?:prior\s+)?highs?)\b",
+                    normalized,
+                )
+            )
+            if swept_sell_side and h1_bullish:
+                sweep_text = (
+                    "The M5 sweep below prior lows took sell-side liquidity. In the "
+                    "H1 demand context, that can set up a reaction, but the sweep alone "
+                    "does not confirm a long."
+                )
+            elif swept_sell_side and h1_bearish:
+                sweep_text = (
+                    "The M5 sweep took sell-side liquidity below prior lows. That is "
+                    "not automatically aligned with a bearish H1 idea; the response "
+                    "after the sweep matters more than the sweep alone."
+                )
+            elif swept_buy_side:
+                if h1_bearish:
+                    sweep_text = (
+                        "The M5 sweep took buy-side liquidity above prior highs. In a "
+                        "bearish H1 context it can precede a bearish reaction, but the "
+                        "sweep alone does not confirm a short."
+                    )
+                else:
+                    sweep_text = (
+                        "The scenario specifies a buy-side sweep. Interpret the move "
+                        "from the reaction after that sweep; the sweep itself is not "
+                        "confirmation in either direction."
+                    )
+            else:
+                sweep_text = (
+                    "A liquidity sweep can provide context for a reaction, but the "
+                    "scenario does not specify which side was swept. That distinction "
+                    "affects the read; the sweep alone is not confirmation."
+                )
+            steps.append(("M5 liquidity sweep", sweep_text))
+
         if "displacement" in normalized:
-            parts.append(
-                "The displacement you described adds evidence about the move, but "
-                "does not guarantee continuation or reversal."
+            direction = "bullish " if "bullish" in normalized else ""
+            steps.append(
+                (
+                    "Displacement",
+                    f"The {direction}displacement is evidence of an impulsive response "
+                    "after the sweep. It strengthens the idea when price closes through "
+                    "a meaningful swing; it does not prove continuation or reversal.",
+                )
             )
+
+        if "choch" in normalized or "change of character" in normalized:
+            if bullish_choch:
+                choch_text = (
+                    "A bullish M5 CHOCH is a close through a meaningful prior lower "
+                    "high after a bearish M5 swing sequence. That suggests a possible "
+                    "short-term shift, not a guaranteed reversal; the H1 context can "
+                    "support the read but cannot guarantee it."
+                )
+            elif bearish_choch:
+                choch_text = (
+                    "A bearish M5 CHOCH is a close through a meaningful prior higher "
+                    "low after a bullish M5 swing sequence. That suggests a possible "
+                    "short-term shift, not a guaranteed reversal; the H1 context can "
+                    "support the read but cannot guarantee it."
+                )
+            else:
+                choch_text = (
+                    "A CHOCH is a close through the meaningful swing opposing the "
+                    "previous short-term structure: above a prior lower high for a "
+                    "bullish shift, or below a prior higher low for a bearish shift. "
+                    "Either signals a possible shift, not a guaranteed reversal."
+                )
+            steps.append(("CHOCH", choch_text))
+
+        if any(
+            term in normalized for term in ("confirmation", "entry", "choch")
+        ):
+            steps.append(
+                (
+                    "Confirmation and standing aside",
+                    "Use the confirmation trigger required by the chosen entry model; "
+                    "a sweep, displacement, or CHOCH alone is not automatically an entry. "
+                    "If the required trigger is absent, skipping preserves the plan and "
+                    "avoids taking an unconfirmed setup. Skipping that setup is not a "
+                    "process mistake.",
+                )
+            )
+
         if "retest" in normalized:
-            parts.append(
-                "A retest can be part of the entry trigger when your chosen model "
-                "requires it; it is not mandatory for every entry model."
+            steps.append(
+                (
+                    "Retest and entry",
+                    "A retest can let you assess the reaction at the broken level or "
+                    "POI when your chosen entry model requires one. It is not mandatory "
+                    "for every model; use that model's planned confirmation either way.",
+                )
             )
+
+        if any(term in normalized for term in ("invalidation", "stop")):
+            if bullish_choch or (h1_bullish and not bearish_choch):
+                invalidation_text = (
+                    "For a long idea, define invalidation at the structural low that "
+                    "would negate the setup, such as the relevant sweep or demand swing "
+                    "low. Place the stop from that invalidation; the scenario gives no "
+                    "exact chart price to calculate."
+                )
+            elif bearish_choch or h1_bearish:
+                invalidation_text = (
+                    "For a short idea, define invalidation at the structural high that "
+                    "would negate the setup, such as the relevant sweep or supply swing "
+                    "high. Place the stop from that invalidation; the scenario gives no "
+                    "exact chart price to calculate."
+                )
+            else:
+                invalidation_text = (
+                    "Set invalidation at the structural level that would negate the "
+                    "stated setup, then place the stop from that level. The scenario "
+                    "gives no exact chart price to calculate."
+                )
+            steps.append(("Invalidation and stop", invalidation_text))
+
         if any(
             term in normalized
-            for term in ("risk", "stop", "invalidation", "risk/reward", "r:r")
+            for term in ("risk", "risk/reward", "r:r", "position size", "daily loss")
         ):
-            parts.append(
-                "Your configured preferences are H1 higher-timeframe bias, M5 entry, "
-                "2% risk per trade, minimum 1:3 planned R:R, maximum 3% daily loss, "
-                "and break-even at 1:1 R:R. Use them as plan rules, not as proof that "
-                "a setup is valid."
+            steps.append(
+                (
+                    "Risk plan",
+                    "Set risk from the stop distance, then compare the planned target "
+                    "with that risk. Apply the configured preferences: H1 bias, M5 "
+                    "entry, 2% risk per trade, minimum 1:3 planned R:R, maximum 3% daily "
+                    "loss, and break-even at 1:1 R:R. These are plan limits, not proof "
+                    "that the setup is valid or will win.",
+                )
             )
-        if any(term in normalized for term in ("stop", "invalidation")):
-            parts.append(
-                "Set invalidation where the setup premise fails and place the stop "
-                "from that level; no exact price can be inferred without chart levels."
+
+        if not steps:
+            explanation, _ = self._topic_guides.get(
+                topic,
+                ("Use only the details supplied; a hypothetical is not a live signal.", ""),
             )
+            steps.append(("Concept", explanation))
+
+        parts = [
+            "Hypothetical walkthrough — not a live signal:",
+            *(
+                f"{index}. {title}: {explanation}"
+                for index, (title, explanation) in enumerate(steps, start=1)
+            ),
+        ]
         return CoachReply(
             "\n\n".join(parts),
             topic,
@@ -656,21 +824,26 @@ class RuleBasedCoachService:
         mistakes: list[str] = []
         entry_was_taken = bool(
             re.search(
-                r"\b(?:i\s+(?:entered|took|placed|opened|bought|sold|"
-                r"got stopped out|was stopped out)|my\s+(?:trade|position)|"
-                r"entry\s*(?::|=)\s*(?:taken|entered|opened|filled|yes))\b",
+                r"\bi\s+entered\b"
+                r"|\bi\s+took\s+(?:a\s+|the\s+)?(?:trade|position|long|short|entry)\b"
+                r"|\bi\s+placed\s+(?:a\s+|the\s+)?(?:trade|order|position|entry)\b"
+                r"|\bi\s+opened\s+(?:a\s+|the\s+)?(?:trade|position|long|short|entry)\b"
+                r"|\bi\s+(?:bought|sold)\b"
+                r"|\bi\s+(?:got|was)\s+stopped\s+out\b"
+                r"|\bentered\s+(?:before|without)\s+(?:confirmation|(?:the\s+)?retest)\b"
+                r"|"
+                r"entry\s*(?::|=)\s*(?:taken|entered|opened|filled|yes)\b",
                 text,
             )
         )
         retest_was_planned = bool(
             re.search(
                 r"\b(?:my|the|this)\s+(?:entry\s+)?(?:plan|model)\s+"
-                r"(?:requires?|calls?\s+for|specifies?)\s+(?:a\s+)?retest\b"
-                r"|\bentered?\s+before\s+(?:the\s+)?retest\b",
+                r"(?:requires?|calls?\s+for|specifies?)\s+(?:a\s+)?retest\b",
                 text,
             )
         )
-        if entry_was_taken and retest_was_planned and re.search(
+        if entry_was_taken and re.search(
             r"\b(?:no|without|missing|lacked)\s+(?:clear\s+)?confirmation\b"
             r"|\bconfirmation\s*(?::|=|was|is)?\s*(?:none|no|missing|absent)\b"
             r"|\bentered\s+before\s+confirmation\b"
@@ -678,7 +851,7 @@ class RuleBasedCoachService:
             text,
         ):
             mistakes.append("Entry was taken without confirmation")
-        if entry_was_taken and re.search(
+        if entry_was_taken and retest_was_planned and re.search(
             r"\bno\s+retest\b|\bwithout\s+(?:a\s+)?retest\b"
             r"|\b(?:didn['’]?t|did\s+not)\s+wait\s+for\s+(?:a\s+)?retest\b"
             r"|\bentered\s+before\s+(?:the\s+)?retest\b"

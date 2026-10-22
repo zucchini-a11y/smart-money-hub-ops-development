@@ -257,7 +257,7 @@ class GeminiCoachService:
         contents.append(
             {
                 "role": "user",
-                "parts": [{"text": message[:_MAX_TURN_CHARACTERS]}],
+                "parts": [{"text": message}],
             }
         )
         return contents
@@ -310,7 +310,12 @@ class GeminiCoachService:
             "clarify that CHOCH signals a possible shift rather than a guaranteed reversal, "
             "and ask a follow-up only if an essential fact is missing. "
             "Return only a JSON object with exactly these fields: answer (string) and "
-            "needs_review (boolean). Keep answer brief."
+            "needs_review (boolean). For a single-concept question, be concise. For a "
+            "multi-part hypothetical teaching request, give a concise numbered walkthrough "
+            "matching every requested point. Explain how each supplied fact leads to the "
+            "next and what limits the conclusion; do not merely list terms, omit reasoning "
+            "for brevity, or add generic filler. If a fact needed for a precise conclusion "
+            "is missing, identify it and continue conditionally with the supplied facts."
             + verified_note
         )
 

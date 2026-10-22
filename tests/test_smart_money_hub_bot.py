@@ -122,6 +122,7 @@ class CoachTests(unittest.TestCase):
         self.assertIn("Change of Character", reply.response)
         self.assertIn("does not guarantee a reversal", reply.response)
         self.assertIn("Which confirmation does your chosen entry model require", reply.response)
+        self.assertLessEqual(len(reply.response), 450)
 
     def test_fvg_entry_without_waiting_for_context_flags_possible_mistake(self) -> None:
         reply = self.coach.evaluate("I saw an FVG and entered immediately.")
@@ -154,6 +155,9 @@ class CoachTests(unittest.TestCase):
         self.assertIn("Entry was taken before a retest", reply.mistakes)
         self.assertIn("The written plan was not followed", reply.mistakes)
         self.assertIn("possible process issues", reply.response)
+        self.assertIn("confirmation as absent", reply.response)
+        self.assertIn("specific trigger", reply.response)
+        self.assertIn("retest required by your stated model", reply.response)
 
     def test_hypothetical_choch_scenario_uses_given_facts_without_trade_verdict(self) -> None:
         scenario = (
@@ -171,10 +175,11 @@ class CoachTests(unittest.TestCase):
         )
         self.assertEqual(reply.detected_topic, "CHoCH")
         self.assertEqual(reply.mistakes, ())
-        self.assertIn("not a trade you placed", reply.response)
-        self.assertIn("The displacement you described", reply.response)
-        self.assertIn("not mandatory for every entry model", reply.response)
-        self.assertIn("H1 higher-timeframe bias, M5 entry", reply.response)
+        self.assertIn("Hypothetical walkthrough", reply.response)
+        self.assertIn("M5 liquidity sweep", reply.response)
+        self.assertIn("Displacement", reply.response)
+        self.assertIn("not mandatory for every model", reply.response)
+        self.assertIn("H1 context", reply.response)
         self.assertIn("2% risk per trade", reply.response)
         self.assertIn("minimum 1:3 planned R:R", reply.response)
         self.assertIn("maximum 3% daily loss", reply.response)
@@ -187,11 +192,48 @@ class CoachTests(unittest.TestCase):
             "POI: 15m bearish FVG\n"
             "Confirmation: none\n"
             "Retest: no\n"
-            "Stop loss: above swing"
+            "Stop loss: above swing\n"
+            "I took notes about the setup"
         )
 
         self.assertNotIn("Entry was taken without confirmation", reply.mistakes)
         self.assertNotIn("Entry was taken before a retest", reply.mistakes)
+
+    def test_missing_confirmation_is_flagged_for_reported_entry_without_retest_plan(self) -> None:
+        reply = self.coach.evaluate(
+            "POI: 15m bearish FVG\n"
+            "Entry: taken\n"
+            "Confirmation: none\n"
+            "Retest: no"
+        )
+
+        self.assertIn("Entry was taken without confirmation", reply.mistakes)
+        self.assertNotIn("Entry was taken before a retest", reply.mistakes)
+
+    def test_missing_retest_requires_entry_and_explicit_model_requirement(self) -> None:
+        required = self.coach.evaluate(
+            "POI: 15m bearish FVG\n"
+            "Entry: taken\n"
+            "Confirmation: yes\n"
+            "Retest: no\n"
+            "My entry model requires a retest"
+        )
+        no_model_requirement = self.coach.evaluate(
+            "POI: 15m bearish FVG\n"
+            "Entry: taken\n"
+            "Confirmation: yes\n"
+            "Retest: no"
+        )
+        no_entry = self.coach.evaluate(
+            "POI: 15m bearish FVG\n"
+            "Confirmation: yes\n"
+            "Retest: no\n"
+            "My entry model requires a retest"
+        )
+
+        self.assertIn("Entry was taken before a retest", required.mistakes)
+        self.assertNotIn("Entry was taken before a retest", no_model_requirement.mistakes)
+        self.assertNotIn("Entry was taken before a retest", no_entry.mistakes)
 
     def test_request_context_distinguishes_real_trade_and_live_analysis(self) -> None:
         self.assertEqual(
@@ -658,7 +700,7 @@ class BotFlowTests(unittest.TestCase):
         self._text("Chasing missed trades")
         self._text("Wait for another setup")
         sunday = self.api.messages[-1]["text"]
-        self.assertIn("Do not chase.", sunday)
+        self.assertIn("Do not chase a missed setup.", sunday)
 
         progress = self.bot.store.progress_for(self.user_id)
         self.assertEqual(progress["weekly_checkins_count"], 1)
