@@ -264,6 +264,13 @@ class KnowledgeImprovementTests(unittest.TestCase):
         feedback_buttons = member_reply["reply_markup"]["inline_keyboard"][0]
         feedback_data = feedback_buttons[1]["callback_data"]
         self.assertTrue(feedback_data.startswith("coach:feedback:"))
+        all_buttons = [
+            button["text"]
+            for row in member_reply["reply_markup"]["inline_keyboard"]
+            for button in row
+        ]
+        self.assertNotIn("Coaching Modes", all_buttons)
+        self.assertIn("🏠 Main Menu", all_buttons)
         item_id = self.store.knowledge_queue("awaiting_research")[1][0]["id"]
 
         bot.handle_update(_callback_update(member_id, feedback_data))

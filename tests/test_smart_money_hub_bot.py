@@ -534,6 +534,12 @@ class BotFlowTests(unittest.TestCase):
             len(Repository(self.database_path).recent_dm_coaching_interactions(909091)),
             1,
         )
+        coach_keyboard = self.api.messages[-1]["reply_markup"]["inline_keyboard"]
+        coach_buttons = [
+            button["text"] for row in coach_keyboard for button in row
+        ]
+        self.assertNotIn("Coaching Modes", coach_buttons)
+        self.assertIn("🏠 Main Menu", coach_buttons)
 
         self._message("/clearcoach")
         self.assertIn("Clear your saved Coach conversation history", self.api.messages[-1]["text"])

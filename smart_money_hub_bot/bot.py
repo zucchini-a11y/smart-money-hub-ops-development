@@ -1279,7 +1279,6 @@ class SmartMoneyHubBot:
                     {"text": "👎 Not helpful", "callback_data": f"coach:feedback:{interaction_id}:unhelpful"},
                     {"text": "❓ Still unclear", "callback_data": f"coach:feedback:{interaction_id}:unclear"},
                 ],
-                [{"text": "Coaching Modes", "callback_data": "menu:coach"}],
                 [{"text": "🏠 Main Menu", "callback_data": "nav:home"}],
             ]
         }
@@ -1288,7 +1287,6 @@ class SmartMoneyHubBot:
     def _coach_keyboard() -> dict[str, Any]:
         return {
             "inline_keyboard": [
-                [{"text": "Coaching Modes", "callback_data": "menu:coach"}],
                 [{"text": "🏠 Main Menu", "callback_data": "nav:home"}],
             ]
         }
