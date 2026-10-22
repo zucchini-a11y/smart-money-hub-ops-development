@@ -6,6 +6,8 @@ from pathlib import Path
 from zoneinfo import ZoneInfoNotFoundError
 
 from .bot import SmartMoneyHubBot
+from .coach import RuleBasedCoachService
+from .gemini_coach import GeminiCoachService, GEMINI_MODEL
 from .storage import DEFAULT_DATABASE_PATH
 from .telegram_api import TelegramAPI
 
@@ -42,6 +44,20 @@ def main() -> None:
 
     reminder_timezone = os.getenv("SMH_REMINDER_TIMEZONE", "Africa/Lagos").strip()
     reminder_time = os.getenv("SMH_SUNDAY_REMINDER_TIME", "09:00").strip()
+    gemini_api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    coach_service = (
+        GeminiCoachService(gemini_api_key)
+        if gemini_api_key
+        else RuleBasedCoachService()
+    )
+    if gemini_api_key:
+        logging.getLogger(__name__).info(
+            "Gemini Coach enabled with the fixed free-tier model %s.", GEMINI_MODEL
+        )
+    else:
+        logging.getLogger(__name__).info(
+            "GEMINI_API_KEY is not configured; using the local Coach."
+        )
     try:
         bot = SmartMoneyHubBot(
             TelegramAPI(token),
@@ -50,6 +66,7 @@ def main() -> None:
             main_channel_id=main_channel_id,
             reminder_timezone=reminder_timezone,
             reminder_time=reminder_time,
+            coach_service=coach_service,
         )
     except (ValueError, ZoneInfoNotFoundError):
         raise SystemExit(

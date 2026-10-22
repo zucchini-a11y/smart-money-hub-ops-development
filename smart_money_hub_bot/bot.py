@@ -363,6 +363,7 @@ class SmartMoneyHubBot:
         main_channel_id: int | None = None,
         reminder_timezone: str = "Africa/Lagos",
         reminder_time: str = "09:00",
+        coach_service: CoachService | None = None,
     ) -> None:
         self.api = api
         self.store = Repository(database_path)
@@ -376,7 +377,7 @@ class SmartMoneyHubBot:
             raise ValueError("The reminder time must be local wall time without a UTC offset.")
         # One active conversation per member; saved records live in SQLite.
         self.sessions: dict[int, Conversation] = {}
-        self.coach_service: CoachService = RuleBasedCoachService()
+        self.coach_service: CoachService = coach_service or RuleBasedCoachService()
         self.message_router = CoachMessageRouter(self.coach_service, self.store)
 
     def run(self) -> None:

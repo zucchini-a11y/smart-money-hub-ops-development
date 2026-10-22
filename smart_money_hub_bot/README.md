@@ -19,7 +19,7 @@ The bot uses long polling. Run only one process with this token at a time. Teleg
 - **Sunday Preparation:** weekly goal, SMC focus, mistake to avoid, and a plan for missed setups.
 - **My Progress:** assessment history totals and averages, latest score, journaled trades and outcomes, strongest and weakest topics, common mistake, and recent check-ins.
 - **Learn SMC:** short lessons on structure, BOS/CHoCH, liquidity, order blocks, FVG/IFVG, POIs, confirmation, retests, risk, and psychology.
-- **DM Coach:** private conversations route greetings, thanks, farewells, acknowledgements, SMC keywords, wins or losses, setup questions, and unrelated requests to different responses. Simple replies vary naturally. Recent coaching exchanges and available assessment/progress data personalize follow-ups. Genuine questions can be rated Helpful, Not helpful, or Still unclear. `/coach` opens the coaching menu.
+- **DM Coach:** private conversations route greetings, thanks, farewells, acknowledgements, SMC keywords, wins or losses, setup questions, and unrelated requests to different responses. Simple replies stay local and fast. When configured, Gemini provides natural responses using a bounded history retrieved only for that member. Genuine questions can be rated Helpful, Not helpful, or Still unclear. `/coach` opens the coaching menu.
 - **Interactive coaching:** Chat with Coach, adaptive three-question SMC challenges, guided setup and mistake reviews, short lessons, and an optional daily knowledge challenge. Challenges rotate a larger question bank, avoid recent repeats, and adapt difficulty. They are started by the member; they are not sent as unsolicited DMs.
 - **Reminders:** optional weekly Sunday check-in at 09:00 and automatic Monday/Thursday Zoom-class check-ins at 19:00 and 20:00 (`Africa/Lagos` by default). `/stop` turns off all scheduled reminders and `/resume` turns them back on. Members must start the bot in a private chat to receive DMs. A trade journal also returns an immediate review reminder.
 - **Quick commands:** `/menu` opens the main menu, `/coach` opens coaching modes, `/clearcoach` asks to clear your saved Coach conversations, `/progress` shows a private progress summary, and `/reminders` shows the reminder schedule and controls. Progress and reminder details are only shown in a private chat.
@@ -35,7 +35,14 @@ The coach is a deterministic, offline rule-based system, not a general conversat
 3. Restart **Smart Money Hub Bot**.
 4. Send `/admin` to view the admin-only member, activity, assessment, journal, weekly participation totals, DM Coach statistics, Knowledge Improvement queue, one-time DM tool, and channel-promo tool.
 
-The dashboard's **DM Coach Stats** page shows members using the coach, repeated questions, topics associated with reported process gaps, common mistakes, and recent activity. **Knowledge Improvement** groups repeated question examples, shows low-confidence items and negative feedback, and lets the admin research, draft, edit, approve, reject, version, or disable answers. The question queue does not show member usernames or IDs. Only the configured administrator can manage entries. The Coach uses only approved answers; question matching is offline and based on wording/category, not semantic AI.
+The dashboard's **DM Coach Stats** page shows members using the coach, repeated questions, topics associated with reported process gaps, common mistakes, and recent activity. **Knowledge Improvement** groups repeated question examples, shows low-confidence items and negative feedback, and lets the admin research, draft, edit, approve, reject, version, or disable answers. The question queue does not show member usernames or IDs. Only the configured administrator can manage entries. Approved-answer retrieval is local and based on wording/category; Gemini is used for generated Coach replies, not to replace the approved-answer workflow.
+
+### Optional Gemini Coach
+
+- Add `GEMINI_API_KEY` as a Replit Secret using a Google AI Studio project that remains on the free tier with billing disabled. Never put the key in code or chat.
+- The bot is pinned to Google's stable free-tier model `gemini-3.8-flash`. It does not switch models or enable billing. On missing credentials, quota exhaustion, timeouts, or provider errors, the local Coach is used instead.
+- Google says free-tier prompts may be used to improve its products. Only enable this if members' messages and their recent conversation context may be sent to Google under those terms.
+- Up to six recent turns are loaded by Telegram user ID from the existing SQLite database. Telegram IDs and usernames are not sent to Gemini.
 
 There is no automated web-research provider in the bot runtime. Selecting **Request more research** explicitly leaves an item awaiting research. The admin must research it outside the bot, then enter HTTPS source links, publication dates or limits as `NOTE:` lines, optional conflict notes, and an optional `REVIEW_BY: YYYY-MM-DD`. The bot stores links but does not fetch or verify page contents. Approval requires an answer and at least one HTTPS source; broker/platform and economic information also require a review date. Nothing becomes reusable knowledge until approved. Member feedback can reopen an item for review but never changes an approved answer automatically.
 
@@ -62,7 +69,8 @@ Editable content is in:
 - `education.py` — short lesson text.
 - `flows.py` — guided journal and check-in prompts.
 - `grading.py` — deterministic written-answer rubric behind a replaceable evaluator interface. No AI connection is enabled.
-- `coach.py` — offline SMC topic explanations behind a provider-neutral service interface.
+- `coach.py` — local SMC explanations, the provider interface, and deterministic fallback.
+- `gemini_coach.py` — direct Gemini API client pinned to the free-tier model, with bounded history and sanitized error handling.
 - `message_router.py` — routes simple conversation intents, approved knowledge matches, and fallback Coach replies.
 - `question_detection.py`, `knowledge_base.py`, and the `knowledge_*.py` modules — question triage, lexical retrieval, research/draft validation, approval, versions, and member feedback.
 

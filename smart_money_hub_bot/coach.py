@@ -11,6 +11,16 @@ class CoachReply:
     detected_topic: str
     mistakes: tuple[str, ...]
     lesson_learned: str
+    requires_review: bool = False
+
+
+class CoachProviderError(RuntimeError):
+    """A provider call failed without exposing request content or credentials."""
+
+    def __init__(self, failure_kind: str, status_code: int | None = None) -> None:
+        self.failure_kind = failure_kind
+        self.status_code = status_code
+        super().__init__(failure_kind)
 
 
 class CoachService(Protocol):

@@ -6,7 +6,13 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from .coach import CoachReply, CoachService, RuleBasedCoachService, ai_evaluate_answer
+from .coach import (
+    CoachProviderError,
+    CoachReply,
+    CoachService,
+    RuleBasedCoachService,
+    ai_evaluate_answer,
+)
 from .knowledge_base import find_approved_answer
 from .question_detection import QuestionAssessment, detect_member_question
 
@@ -24,8 +30,14 @@ class RoutedCoachMessage:
 class CoachMessageRouter:
     """Keyword-first router with an injectable coach provider and SQLite repository."""
 
-    def __init__(self, coach_service: CoachService, store: Any) -> None:
+    def __init__(
+        self,
+        coach_service: CoachService,
+        store: Any,
+        fallback_service: CoachService | None = None,
+    ) -> None:
         self.coach_service = coach_service
+        self.fallback_service = fallback_service or RuleBasedCoachService()
         self.store = store
         self._last_simple_reply: dict[tuple[int, str], str] = {}
 
@@ -75,27 +87,75 @@ class CoachMessageRouter:
                 approved_item,
             )
 
-        reply = ai_evaluate_answer(
-            message,
-            self.coach_service,
-            history=history,
-            profile=profile,
-        )
+        if assessment and assessment.needs_research:
+            reply = ai_evaluate_answer(
+                message,
+                self.fallback_service,
+                history=history,
+                profile=profile,
+            )
+            return RoutedCoachMessage(
+                "question",
+                self._needs_review_reply(reply),
+                assessment,
+            )
+
+        try:
+            reply = ai_evaluate_answer(
+                message,
+                self.coach_service,
+                history=history,
+                profile=profile,
+            )
+        except CoachProviderError as error:
+            logger.warning(
+                "Coach provider failed (%s, status=%s); using local fallback.",
+                error.failure_kind,
+                error.status_code,
+            )
+            reply = ai_evaluate_answer(
+                message,
+                self.fallback_service,
+                history=history,
+                profile=profile,
+            )
         if assessment and reply.detected_topic != topic:
             assessment = detect_member_question(message, reply.detected_topic) or assessment
-        if assessment and assessment.needs_research:
-            reply = CoachReply(
-                "I don’t have a vetted answer for this yet, so I won’t guess. "
-                "I’ve flagged the question for administrator review. "
-                "Any answer added to my knowledge will be checked and approved first.",
-                reply.detected_topic,
-                reply.mistakes,
-                reply.lesson_learned,
-            )
+        if reply.requires_review:
+            if assessment is None:
+                assessment = detect_member_question(message, reply.detected_topic)
+            if assessment:
+                from dataclasses import replace
+
+                assessment = replace(
+                    assessment,
+                    confidence="low",
+                    review_reason="The Coach could not provide a reliable answer.",
+                )
+                reply = self._needs_review_reply(reply)
+            else:
+                reply = ai_evaluate_answer(
+                    message,
+                    self.fallback_service,
+                    history=history,
+                    profile=profile,
+                )
         return RoutedCoachMessage(
             "question" if assessment else "coaching",
             reply,
             assessment,
+        )
+
+    @staticmethod
+    def _needs_review_reply(reply: CoachReply) -> CoachReply:
+        return CoachReply(
+            "I don’t have a vetted answer for this yet, so I won’t guess. "
+            "I’ve flagged the question for administrator review. "
+            "Any answer added to my knowledge will be checked and approved first.",
+            reply.detected_topic,
+            reply.mistakes,
+            reply.lesson_learned,
+            requires_review=True,
         )
 
     def _varied_reply(
