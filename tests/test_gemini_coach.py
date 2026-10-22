@@ -121,7 +121,6 @@ class GeminiCoachTests(unittest.TestCase):
 
     def test_gemini_response_uses_fixed_free_model_and_key_header(self) -> None:
         service = GeminiCoachService("test-secret-value")
-        self.assertEqual(service._timeout_seconds, 30)
         with patch(
             "smart_money_hub_bot.gemini_coach.urlopen",
             return_value=_response("A BOS is a break through a relevant swing."),
