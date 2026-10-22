@@ -1,6 +1,7 @@
 import unittest
+from unittest.mock import Mock, patch
 
-from smart_money_hub_bot.coach import RuleBasedCoachService
+from smart_money_hub_bot.coach import CoachReply, RuleBasedCoachService
 from smart_money_hub_bot.message_router import CoachMessageRouter
 
 
@@ -66,6 +67,39 @@ class MessageRouterTests(unittest.TestCase):
         self.assertIsNotNone(result.assessment)
         self.assertEqual(result.assessment.topic, "Economic News and Fundamentals")
         self.assertIn("I won’t guess", result.reply.response)
+
+    def test_approved_knowledge_answers_before_gemini(self) -> None:
+        provider = Mock()
+        router = CoachMessageRouter(provider, _EmptyKnowledgeStore())
+        approved_item = {
+            "approved_answer": "Administrator-approved liquidity explanation."
+        }
+        with patch(
+            "smart_money_hub_bot.message_router.find_approved_answer",
+            return_value=approved_item,
+        ):
+            routed = router.route(505, "What is liquidity?")
+
+        self.assertEqual(routed.response_path, "approved_knowledge")
+        self.assertEqual(routed.reply.response, approved_item["approved_answer"])
+        provider.evaluate.assert_not_called()
+
+    def test_configured_provider_answer_is_labeled_for_diagnostics(self) -> None:
+        class _GeminiProvider:
+            diagnostic_response_path = "gemini_success"
+
+            def evaluate(self, message, *, history=None, profile=None):
+                return CoachReply(
+                    "Generated provider answer.",
+                    "Liquidity / SSL / BSL",
+                    (),
+                    "",
+                )
+
+        router = CoachMessageRouter(_GeminiProvider(), _EmptyKnowledgeStore())
+        routed = router.route(606, "What is liquidity?")
+        self.assertEqual(routed.response_path, "gemini_success")
+        self.assertEqual(routed.reply.response, "Generated provider answer.")
 
 
 if __name__ == "__main__":

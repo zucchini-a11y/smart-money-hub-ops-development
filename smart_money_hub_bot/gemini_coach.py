@@ -20,6 +20,8 @@ _MAX_RESPONSE_CHARACTERS = 3500
 class GeminiCoachService:
     """Uses one fixed free-tier model; provider failures are handled by the router."""
 
+    diagnostic_response_path = "gemini_success"
+
     def __init__(self, api_key: str, timeout_seconds: float = 12) -> None:
         self._api_key = api_key.strip()
         self._timeout_seconds = timeout_seconds

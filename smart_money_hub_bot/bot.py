@@ -578,16 +578,19 @@ class SmartMoneyHubBot:
             return
 
         if self.admin_dashboard.search_is_pending(telegram_id):
+            logger.info("Coach bypassed: pending admin search flow.")
             self.admin_dashboard.handle_search_message(
                 chat_id, telegram_id, is_private, text
             )
             return
         if self.admin_dashboard.broadcast_is_pending(telegram_id):
+            logger.info("Coach bypassed: pending admin broadcast flow.")
             self.admin_dashboard.handle_broadcast_message(
                 chat_id, telegram_id, is_private, text
             )
             return
         if self.admin_dashboard.knowledge_is_pending(telegram_id):
+            logger.info("Coach bypassed: pending admin knowledge flow.")
             self.admin_dashboard.handle_knowledge_message(
                 chat_id, telegram_id, is_private, text
             )
@@ -595,6 +598,10 @@ class SmartMoneyHubBot:
 
         session = self.sessions.get(telegram_id)
         if session and session.chat_id == chat_id:
+            logger.info(
+                "Coach bypassed: active conversation state kind=%s.",
+                session.kind,
+            )
             if session.kind == "assessment":
                 self.api.send_message(
                     chat_id,
@@ -1213,6 +1220,10 @@ class SmartMoneyHubBot:
             else self._coach_keyboard()
         )
         self.api.send_message(chat_id, response, markup)
+        logger.info(
+            "Coach reply sent to Telegram (path=%s).",
+            routed.response_path,
+        )
 
     def _handle_coach_feedback(
         self,

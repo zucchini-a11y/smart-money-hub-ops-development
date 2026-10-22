@@ -25,6 +25,7 @@ class RoutedCoachMessage:
     reply: CoachReply
     assessment: QuestionAssessment | None
     approved_item: dict[str, Any] | None = None
+    response_path: str = "local_response"
 
 
 class CoachMessageRouter:
@@ -52,10 +53,11 @@ class CoachMessageRouter:
         simple_intent, greeting = _simple_intent(message)
         if simple_intent:
             response = self._varied_reply(telegram_id, simple_intent, greeting)
-            return RoutedCoachMessage(
+            return self._routed(
                 simple_intent,
                 CoachReply(response, "Conversation", (), ""),
                 None,
+                "local_response",
             )
 
         # Topic identification and approved-knowledge lookup are local and run
@@ -75,7 +77,7 @@ class CoachMessageRouter:
                 logger.exception("Could not retrieve approved Coach knowledge.")
                 approved_item = None
         if approved_item:
-            return RoutedCoachMessage(
+            return self._routed(
                 "approved_knowledge",
                 CoachReply(
                     str(approved_item["approved_answer"]),
@@ -84,7 +86,8 @@ class CoachMessageRouter:
                     "Answered with administrator-approved knowledge.",
                 ),
                 assessment,
-                approved_item,
+                "approved_knowledge",
+                approved_item=approved_item,
             )
 
         if assessment and assessment.needs_research:
@@ -94,12 +97,14 @@ class CoachMessageRouter:
                 history=history,
                 profile=profile,
             )
-            return RoutedCoachMessage(
+            return self._routed(
                 "question",
                 self._needs_review_reply(reply),
                 assessment,
+                "local_response",
             )
 
+        response_path = "local_response"
         try:
             reply = ai_evaluate_answer(
                 message,
@@ -107,6 +112,11 @@ class CoachMessageRouter:
                 history=history,
                 profile=profile,
             )
+            if (
+                getattr(self.coach_service, "diagnostic_response_path", None)
+                == "gemini_success"
+            ):
+                response_path = "gemini_success"
         except CoachProviderError as error:
             logger.warning(
                 "Coach provider failed (%s, status=%s); using local fallback.",
@@ -119,9 +129,11 @@ class CoachMessageRouter:
                 history=history,
                 profile=profile,
             )
+            response_path = "fallback"
         if assessment and reply.detected_topic != topic:
             assessment = detect_member_question(message, reply.detected_topic) or assessment
         if reply.requires_review:
+            response_path = "fallback"
             if assessment is None:
                 assessment = detect_member_question(message, reply.detected_topic)
             if assessment:
@@ -140,10 +152,30 @@ class CoachMessageRouter:
                     history=history,
                     profile=profile,
                 )
-        return RoutedCoachMessage(
+        return self._routed(
             "question" if assessment else "coaching",
             reply,
             assessment,
+            response_path,
+        )
+
+    @staticmethod
+    def _routed(
+        intent: str,
+        reply: CoachReply,
+        assessment: QuestionAssessment | None,
+        response_path: str,
+        *,
+        approved_item: dict[str, Any] | None = None,
+    ) -> RoutedCoachMessage:
+        # Do not log message text, response text, member IDs, or usernames.
+        logger.info("Coach response path=%s.", response_path)
+        return RoutedCoachMessage(
+            intent,
+            reply,
+            assessment,
+            approved_item,
+            response_path,
         )
 
     @staticmethod

@@ -1,9 +1,12 @@
 import json
+import tempfile
 import unittest
 from io import BytesIO
+from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 from urllib.error import HTTPError
 
+from smart_money_hub_bot.bot import SmartMoneyHubBot
 from smart_money_hub_bot.coach import CoachProviderError, RuleBasedCoachService
 from smart_money_hub_bot.gemini_coach import (
     GEMINI_ENDPOINT,
@@ -11,6 +14,7 @@ from smart_money_hub_bot.gemini_coach import (
     GeminiCoachService,
 )
 from smart_money_hub_bot.message_router import CoachMessageRouter
+from smart_money_hub_bot.telegram_api import TelegramAPI
 
 
 def _response(answer: str, needs_review: bool = False) -> MagicMock:
@@ -60,9 +64,11 @@ class GeminiCoachTests(unittest.TestCase):
     def test_missing_key_falls_back_without_attempting_a_network_request(self) -> None:
         service = GeminiCoachService("")
         router = CoachMessageRouter(service, _EmptyKnowledgeStore())
-        reply = router.route(321, "What is BOS?").reply
+        routed = router.route(321, "What is BOS?")
+        reply = routed.reply
         self.assertEqual(reply.detected_topic, "BOS")
         self.assertIn("Break of Structure", reply.response)
+        self.assertEqual(routed.response_path, "fallback")
 
     def test_gemini_response_uses_fixed_free_model_and_key_header(self) -> None:
         service = GeminiCoachService("test-secret-value")
@@ -152,8 +158,10 @@ class GeminiCoachTests(unittest.TestCase):
         with patch(
             "smart_money_hub_bot.gemini_coach.urlopen", side_effect=api_error
         ):
-            reply = router.route(124, "What is BOS?").reply
+            routed = router.route(124, "What is BOS?")
+        reply = routed.reply
         self.assertIn("Break of Structure", reply.response)
+        self.assertEqual(routed.response_path, "fallback")
 
     def test_timeout_uses_the_local_fallback(self) -> None:
         service = GeminiCoachService("test-key")
@@ -173,14 +181,73 @@ class GeminiCoachTests(unittest.TestCase):
         self.assertEqual(routed.assessment.confidence, "low")
         self.assertTrue(routed.assessment.needs_research)
         self.assertIn("flagged", routed.reply.response)
+        self.assertEqual(routed.response_path, "fallback")
 
     def test_simple_and_unvetted_messages_do_not_call_the_gemini_provider(self) -> None:
         provider = Mock()
         router = CoachMessageRouter(provider, _EmptyKnowledgeStore())
         self.assertEqual(router.route(987, "Hi").intent, "greeting")
+        self.assertEqual(router.route(987, "Thanks").response_path, "local_response")
         unknown = router.route(987, "What is the latest inflation report today?")
         self.assertTrue(unknown.assessment.needs_research)
         provider.evaluate.assert_not_called()
+        self.assertEqual(unknown.response_path, "local_response")
+
+    def test_private_telegram_update_sends_gemini_answer_from_provider(self) -> None:
+        synthetic_key = "test-key-never-log"
+        synthetic_question = "What is liquidity?"
+        generated_answer = "Gemini test answer: liquidity is resting orders around obvious highs and lows."
+        api = TelegramAPI("synthetic-test-token")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            bot = SmartMoneyHubBot(
+                api,
+                str(Path(temp_dir) / "test.sqlite3"),
+                coach_service=GeminiCoachService(synthetic_key),
+            )
+            update = {
+                "update_id": 99,
+                "message": {
+                    "text": synthetic_question,
+                    "chat": {"id": 654321, "type": "private"},
+                    "from": {
+                        "id": 123456,
+                        "username": "synthetic_member",
+                        "first_name": "Synthetic",
+                    },
+                },
+            }
+            with patch(
+                "smart_money_hub_bot.gemini_coach.urlopen",
+                return_value=_response(generated_answer),
+            ) as mocked_urlopen:
+                with patch.object(api, "_request") as mocked_telegram_request:
+                    with self.assertLogs("smart_money_hub_bot", level="INFO") as logs:
+                        bot.handle_update(update)
+
+        self.assertEqual(mocked_urlopen.call_count, 1)
+        self.assertEqual(mocked_telegram_request.call_count, 1)
+        method, payload = mocked_telegram_request.call_args.args
+        self.assertEqual(method, "sendMessage")
+        self.assertEqual(payload["chat_id"], 654321)
+        self.assertEqual(payload["text"], generated_answer)
+        self.assertIn("Coach response path=gemini_success.", "\n".join(logs.output))
+        self.assertIn(
+            "Coach reply sent to Telegram (path=gemini_success).",
+            "\n".join(logs.output),
+        )
+        self.assertNotIn(synthetic_question, "\n".join(logs.output))
+        self.assertNotIn(synthetic_key, "\n".join(logs.output))
+        self.assertNotIn("synthetic_member", "\n".join(logs.output))
+        self.assertNotIn("654321", "\n".join(logs.output))
+
+        request = mocked_urlopen.call_args.args[0]
+        payload = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(
+            payload["contents"][-1]["parts"][0]["text"], synthetic_question
+        )
+        headers = {key.casefold(): value for key, value in request.header_items()}
+        self.assertEqual(headers["x-goog-api-key"], synthetic_key)
+        self.assertNotIn(synthetic_key, request.full_url)
 
 
 if __name__ == "__main__":

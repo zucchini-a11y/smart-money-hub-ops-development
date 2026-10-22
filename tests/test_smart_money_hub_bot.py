@@ -4,6 +4,7 @@ import unittest
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from unittest.mock import Mock
 from zoneinfo import ZoneInfo
 
 from smart_money_hub_bot.bot import SmartMoneyHubBot
@@ -369,6 +370,26 @@ class BotFlowTests(unittest.TestCase):
             chat_id=self.user_id + 1,
         )
         self.assertIn("restricted", self.api.messages[-1]["text"])
+
+    def test_active_assessment_consumes_text_before_coach_routing(self) -> None:
+        provider = Mock()
+        self.bot.message_router.coach_service = provider
+        self._click("menu:assessment")
+
+        with self.assertLogs("smart_money_hub_bot.bot", level="INFO") as logs:
+            self._text("What is liquidity?")
+
+        provider.evaluate.assert_not_called()
+        self.assertIn(
+            "Please choose one of the answer buttons", self.api.messages[-1]["text"]
+        )
+        self.assertTrue(
+            any(
+                "Coach bypassed: active conversation state kind=assessment."
+                in message
+                for message in logs.output
+            )
+        )
 
     def test_coach_modes_and_private_clear_history(self) -> None:
         self._click("menu:coach")
