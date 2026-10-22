@@ -259,6 +259,9 @@ class GeminiCoachTests(unittest.TestCase):
                         service.evaluate("What is liquidity?")
                 self.assertEqual(caught.exception.failure_kind, failure_kind)
                 self.assertEqual(caught.exception.provider_status, finish_reason)
+                self.assertEqual(
+                    caught.exception.rejection_category, "finish_reason_rejected"
+                )
 
     def test_max_tokens_logs_safe_usage_and_uses_fallback(self) -> None:
         router = CoachMessageRouter(
@@ -299,6 +302,7 @@ class GeminiCoachTests(unittest.TestCase):
         self.assertIn("max_output_tokens=1024", joined_logs)
         self.assertIn("'candidate_tokens': 1024", joined_logs)
         self.assertIn("'thought_tokens': 840", joined_logs)
+        self.assertIn("rejection_category=finish_reason_rejected", joined_logs)
         self.assertNotIn("partial answer must not leak", joined_logs)
         self.assertNotIn("unsafe_extra", joined_logs)
 
@@ -333,6 +337,7 @@ class GeminiCoachTests(unittest.TestCase):
                     with self.assertRaises(CoachProviderError) as caught:
                         service.evaluate("What is liquidity?")
                 self.assertEqual(caught.exception.failure_kind, failure_kind)
+                self.assertIsNotNone(caught.exception.rejection_category)
 
     def test_empty_candidate_response_uses_local_fallback(self) -> None:
         router = CoachMessageRouter(
