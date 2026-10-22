@@ -469,6 +469,39 @@ class BotFlowTests(unittest.TestCase):
         self._callback("admin:open", sender_id=self.user_id + 1, chat_id=self.chat_id + 1)
         self.assertIn("restricted", self.api.messages[-1]["text"])
 
+    def test_member_quick_commands_keep_personal_details_private(self) -> None:
+        self._message("/help")
+        help_text = self.api.messages[-1]["text"]
+        for command in ("/menu", "/progress", "/reminders", "/resume", "/stop"):
+            self.assertIn(command, help_text)
+
+        self._message("/progress")
+        self.assertIn("SMART MONEY HUB PROGRESS", self.api.messages[-1]["text"])
+
+        self._message("/reminders")
+        reminder_text = self.api.messages[-1]["text"]
+        self.assertIn("Zoom class check-ins: Automatic", reminder_text)
+        self.assertIn("All scheduled reminders: Active", reminder_text)
+
+        self._message("/stop")
+        self.assertTrue(self.bot.store.reminders_stopped(self.user_id))
+        self._message("/resume")
+        self.assertFalse(self.bot.store.reminders_stopped(self.user_id))
+        self.assertIn("All scheduled reminders: Active", self.api.messages[-1]["text"])
+
+        self._message("/progress", user_id=self.user_id + 1, chat_id=-100123, chat_type="supergroup")
+        self.assertIn("For privacy", self.api.messages[-1]["text"])
+        self.assertNotIn("SMART MONEY HUB PROGRESS", self.api.messages[-1]["text"])
+
+        self._message("/reminders", user_id=self.user_id + 1, chat_id=-100123, chat_type="supergroup")
+        self.assertIn("private chat", self.api.messages[-1]["text"])
+
+        self._message("/menu")
+        self.assertEqual(
+            self.api.messages[-1]["reply_markup"]["inline_keyboard"][0][0]["text"],
+            "Start SMC Assessment",
+        )
+
     def test_admin_can_preview_confirm_and_cancel_one_time_dm(self) -> None:
         admin_id = self.user_id
         active_member_id = 770101

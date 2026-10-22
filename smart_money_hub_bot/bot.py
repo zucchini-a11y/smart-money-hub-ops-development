@@ -174,8 +174,51 @@ class SmartMoneyHubBot:
                 "Use 💬 Ask Coach to discuss SMC in a private chat, or use the "
                 "buttons to assess your knowledge, journal trades, review progress, "
                 "and prepare for the week. This is educational, not a promise or "
-                "prediction of trading results.",
+                "prediction of trading results.\n\n"
+                "Quick commands: /menu for the main menu, /progress for your "
+                "private progress summary, /reminders to check your schedule, "
+                "/resume to turn scheduled reminders back on, and /stop to turn "
+                "them off.",
                 self._nav_keyboard(),
+            )
+            return
+        if command == "/menu":
+            self.sessions.pop(telegram_id, None)
+            self.admin_dashboard.cancel_search(telegram_id)
+            self.admin_dashboard.cancel_broadcast(telegram_id)
+            self._show_main_menu(chat_id)
+            return
+        if command == "/progress":
+            self.sessions.pop(telegram_id, None)
+            self.admin_dashboard.cancel_search(telegram_id)
+            self.admin_dashboard.cancel_broadcast(telegram_id)
+            if not is_private:
+                self.api.send_message(
+                    chat_id,
+                    "For privacy, open a private chat with this bot to view your progress.",
+                    self._nav_keyboard(),
+                )
+                return
+            self._show_progress(chat_id, telegram_id)
+            return
+        if command == "/reminders":
+            self.sessions.pop(telegram_id, None)
+            self.admin_dashboard.cancel_search(telegram_id)
+            self.admin_dashboard.cancel_broadcast(telegram_id)
+            if not is_private:
+                self._reminder_private_chat_required(chat_id)
+                return
+            self._show_reminder_settings(chat_id, telegram_id)
+            return
+        if command == "/resume":
+            self.sessions.pop(telegram_id, None)
+            self.admin_dashboard.cancel_search(telegram_id)
+            self.admin_dashboard.cancel_broadcast(telegram_id)
+            if not is_private:
+                self._reminder_private_chat_required(chat_id)
+                return
+            self._change_reminder_setting(
+                chat_id, telegram_id, is_private, "reminders:on"
             )
             return
         if command == "/coach":
