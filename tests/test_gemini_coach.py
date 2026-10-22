@@ -12,6 +12,7 @@ from smart_money_hub_bot.bot import SmartMoneyHubBot
 from smart_money_hub_bot.coach import CoachProviderError, RuleBasedCoachService
 from smart_money_hub_bot.gemini_coach import (
     GEMINI_ENDPOINT,
+    GEMINI_FALLBACK_MODELS,
     GEMINI_MODEL,
     GeminiCoachService,
 )
@@ -145,6 +146,90 @@ class GeminiCoachTests(unittest.TestCase):
             {"thinkingLevel": "LOW"},
         )
         self.assertEqual(payload["generationConfig"]["maxOutputTokens"], 1024)
+        self.assertEqual(mocked_urlopen.call_count, 1)
+
+    def test_rate_limit_fails_over_with_same_member_context(self) -> None:
+        service = GeminiCoachService("test-key")
+        question = "Explain liquidity using my earlier Gold example."
+        history = [
+            {
+                "question": "I am studying Gold structure.",
+                "coach_response": "We discussed swing highs and lows.",
+            }
+        ]
+        fallback_answer = "Liquidity is a pool of resting orders near obvious levels."
+        request_id = "a" * 32
+        rate_limit = _provider_error(
+            429, "RESOURCE_EXHAUSTED", "Quota temporarily exhausted."
+        )
+
+        with patch(
+            "smart_money_hub_bot.gemini_coach.urlopen",
+            side_effect=[rate_limit, _response(fallback_answer)],
+        ) as mocked_urlopen, self.assertLogs(
+            "smart_money_hub_bot", level="INFO"
+        ) as logs:
+            reply = service.evaluate(
+                question, history=history, request_id=request_id
+            )
+
+        self.assertEqual(reply.response, fallback_answer)
+        self.assertEqual(mocked_urlopen.call_count, 2)
+        requests = [
+            call.args[0] for call in mocked_urlopen.call_args_list
+        ]
+        self.assertEqual(
+            [request.full_url for request in requests],
+            [
+                GEMINI_ENDPOINT,
+                (
+                    "https://generativelanguage.googleapis.com/v1beta/models/"
+                    f"{GEMINI_FALLBACK_MODELS[0]}:generateContent"
+                ),
+            ],
+        )
+        payloads = [
+            json.loads(request.data.decode("utf-8")) for request in requests
+        ]
+        self.assertEqual(payloads[0]["contents"], payloads[1]["contents"])
+        self.assertEqual(
+            payloads[0]["systemInstruction"],
+            payloads[1]["systemInstruction"],
+        )
+        self.assertEqual(
+            payloads[0]["generationConfig"]["responseMimeType"],
+            payloads[1]["generationConfig"]["responseMimeType"],
+        )
+        self.assertEqual(
+            payloads[0]["generationConfig"]["thinkingConfig"],
+            {"thinkingLevel": "LOW"},
+        )
+        self.assertEqual(
+            payloads[1]["generationConfig"]["thinkingConfig"],
+            {"thinkingLevel": "MINIMAL"},
+        )
+        self.assertIn(f"request_id={request_id}", "\n".join(logs.output))
+        self.assertIn(GEMINI_FALLBACK_MODELS[0], "\n".join(logs.output))
+        self.assertNotIn(question, "\n".join(logs.output))
+        self.assertNotIn(fallback_answer, "\n".join(logs.output))
+
+    def test_missing_model_fails_over_to_next_configured_model(self) -> None:
+        service = GeminiCoachService("test-key")
+        not_found = _provider_error(
+            404, "NOT_FOUND", "Requested model is unavailable."
+        )
+        with patch(
+            "smart_money_hub_bot.gemini_coach.urlopen",
+            side_effect=[not_found, _response("Fallback model answered.")],
+        ) as mocked_urlopen:
+            reply = service.evaluate("What is a fair value gap?")
+
+        self.assertEqual(reply.response, "Fallback model answered.")
+        self.assertEqual(mocked_urlopen.call_count, 2)
+        self.assertIn(
+            GEMINI_FALLBACK_MODELS[0],
+            mocked_urlopen.call_args_list[1].args[0].full_url,
+        )
 
     def test_plain_text_candidate_parts_are_returned_without_json_decoding(self) -> None:
         service = GeminiCoachService("test-key")
@@ -499,7 +584,7 @@ class GeminiCoachTests(unittest.TestCase):
 
         with patch(
             "smart_money_hub_bot.gemini_coach.urlopen",
-            side_effect=_provider_error(
+            side_effect=lambda *_args, **_kwargs: _provider_error(
                 429, "RESOURCE_EXHAUSTED", "Quota exceeded."
             ),
         ):
@@ -686,18 +771,19 @@ class GeminiCoachTests(unittest.TestCase):
 
     def test_quota_error_is_sanitized_and_router_falls_back_locally(self) -> None:
         service = GeminiCoachService("do-not-log-this-key")
-        api_errors = [
-            _provider_error(429, "RESOURCE_EXHAUSTED", "Quota exceeded."),
-            _provider_error(429, "RESOURCE_EXHAUSTED", "Quota exceeded."),
-        ]
         with patch(
-            "smart_money_hub_bot.gemini_coach.urlopen", side_effect=api_errors
+            "smart_money_hub_bot.gemini_coach.urlopen",
+            side_effect=lambda *_args, **_kwargs: _provider_error(
+                429, "RESOURCE_EXHAUSTED", "Quota exceeded."
+            ),
         ) as mocked_urlopen, patch("smart_money_hub_bot.gemini_coach.time.sleep") as sleep:
             with self.assertRaises(CoachProviderError) as caught:
                 service.evaluate("What is BOS?")
             router = CoachMessageRouter(service, _EmptyKnowledgeStore())
             reply = router.route(123, "What is BOS?").reply
-        self.assertEqual(mocked_urlopen.call_count, 2)
+        self.assertEqual(
+            mocked_urlopen.call_count, 2 * (len(GEMINI_FALLBACK_MODELS) + 1)
+        )
         sleep.assert_not_called()
         self.assertEqual(caught.exception.failure_kind, "rate_limit")
         self.assertEqual(caught.exception.status_code, 429)
@@ -732,6 +818,12 @@ class GeminiCoachTests(unittest.TestCase):
                 "The model is overloaded. Prompt: What is BOS?",
                 headers={"Retry-After": "3"},
             ),
+            _provider_error(
+                503,
+                "UNAVAILABLE",
+                "The model is overloaded. Prompt: What is BOS?",
+                headers={"Retry-After": "3"},
+            ),
         ]
         with patch(
             "smart_money_hub_bot.gemini_coach.urlopen", side_effect=api_errors
@@ -740,7 +832,7 @@ class GeminiCoachTests(unittest.TestCase):
         ) as sleep, self.assertLogs("smart_money_hub_bot", level="WARNING") as logs:
             routed = router.route(124, "What is BOS?")
         reply = routed.reply
-        self.assertEqual(mocked_urlopen.call_count, 2)
+        self.assertEqual(mocked_urlopen.call_count, 3)
         sleep.assert_called_once_with(0.0)
         self.assertIn("Break of Structure", reply.response)
         self.assertEqual(routed.response_path, "fallback")
@@ -791,20 +883,20 @@ class GeminiCoachTests(unittest.TestCase):
     def test_bos_vs_choch_provider_failure_uses_local_fallback(self) -> None:
         service = GeminiCoachService("test-key")
         router = CoachMessageRouter(service, _EmptyKnowledgeStore())
-        api_error = _provider_error(
-            503,
-            "UNAVAILABLE",
-            "The service is temporarily unavailable.",
-            headers={"Retry-After": "3"},
-        )
-
         with patch(
-            "smart_money_hub_bot.gemini_coach.urlopen", side_effect=api_error
-        ):
+            "smart_money_hub_bot.gemini_coach.urlopen",
+            side_effect=lambda *_args, **_kwargs: _provider_error(
+                503,
+                "UNAVAILABLE",
+                "The service is temporarily unavailable.",
+                headers={"Retry-After": "3"},
+            ),
+        ) as mocked_urlopen:
             routed = router.route(
                 125, "What is the difference between BOS and CHOCH?"
             )
 
+        self.assertEqual(mocked_urlopen.call_count, len(GEMINI_FALLBACK_MODELS) + 1)
         self.assertEqual(routed.response_path, "fallback")
         self.assertIsNotNone(routed.assessment)
         self.assertEqual(routed.assessment.confidence, "high")
@@ -850,7 +942,7 @@ class GeminiCoachTests(unittest.TestCase):
         self.assertEqual(routed.response_path, "fallback")
         self.assertIn("kind=client_timeout", "\n".join(logs.output))
 
-    def test_network_failure_is_not_retried(self) -> None:
+    def test_network_failure_attempts_each_model_once(self) -> None:
         service = GeminiCoachService("test-key")
         router = CoachMessageRouter(service, _EmptyKnowledgeStore())
         with patch(
@@ -861,7 +953,11 @@ class GeminiCoachTests(unittest.TestCase):
         ) as logs:
             routed = router.route(457, "What is liquidity?")
 
-        self.assertEqual(mocked_urlopen.call_count, 1)
+        self.assertEqual(mocked_urlopen.call_count, len(GEMINI_FALLBACK_MODELS) + 1)
+        attempted_urls = [
+            call.args[0].full_url for call in mocked_urlopen.call_args_list
+        ]
+        self.assertEqual(len(attempted_urls), len(set(attempted_urls)))
         self.assertEqual(routed.response_path, "fallback")
         self.assertIn("kind=network", "\n".join(logs.output))
 
@@ -878,12 +974,18 @@ class GeminiCoachTests(unittest.TestCase):
                 )
                 with patch(
                     "smart_money_hub_bot.gemini_coach.urlopen",
-                    side_effect=api_error,
-                ):
+                    side_effect=lambda *_args, **_kwargs: _provider_error(
+                        status_code, provider_status, message
+                    ),
+                ) as mocked_urlopen:
                     with self.assertRaises(CoachProviderError) as caught:
                         service.evaluate("What is BOS?")
                 self.assertEqual(caught.exception.failure_kind, expected_kind)
                 self.assertEqual(caught.exception.status_code, status_code)
+                expected_attempts = (
+                    1 if status_code == 401 else len(GEMINI_FALLBACK_MODELS) + 1
+                )
+                self.assertEqual(mocked_urlopen.call_count, expected_attempts)
 
     def test_ai_uncertainty_is_marked_for_admin_review(self) -> None:
         router = CoachMessageRouter(_UncertainService(), _EmptyKnowledgeStore())
@@ -987,6 +1089,41 @@ class GeminiCoachTests(unittest.TestCase):
         headers = {key.casefold(): value for key, value in request.header_items()}
         self.assertEqual(headers["x-goog-api-key"], synthetic_key)
         self.assertNotIn(synthetic_key, request.full_url)
+
+    def test_telegram_sends_only_one_reply_after_model_failover(self) -> None:
+        synthetic_question = "Explain liquidity in one sentence."
+        fallback_answer = "Liquidity is resting orders around watched price levels."
+        api = TelegramAPI("synthetic-test-token")
+        rate_limit = _provider_error(
+            429, "RESOURCE_EXHAUSTED", "Quota temporarily exhausted."
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            bot = SmartMoneyHubBot(
+                api,
+                str(Path(temp_dir) / "test.sqlite3"),
+                coach_service=GeminiCoachService("test-key"),
+            )
+            update = {
+                "update_id": 100,
+                "message": {
+                    "text": synthetic_question,
+                    "chat": {"id": 654321, "type": "private"},
+                    "from": {"id": 123456, "first_name": "Synthetic"},
+                },
+            }
+            with patch(
+                "smart_money_hub_bot.gemini_coach.urlopen",
+                side_effect=[rate_limit, _response(fallback_answer)],
+            ) as mocked_urlopen, patch.object(
+                api, "_request"
+            ) as mocked_telegram_request:
+                bot.handle_update(update)
+
+        self.assertEqual(mocked_urlopen.call_count, 2)
+        mocked_telegram_request.assert_called_once()
+        method, payload = mocked_telegram_request.call_args.args
+        self.assertEqual(method, "sendMessage")
+        self.assertEqual(payload["text"], fallback_answer)
 
 
 if __name__ == "__main__":
