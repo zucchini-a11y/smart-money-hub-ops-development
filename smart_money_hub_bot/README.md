@@ -40,7 +40,7 @@ The dashboard's **DM Coach Stats** page shows members using the coach, repeated 
 ### Optional Gemini Coach
 
 - Add `GEMINI_API_KEY` as a Replit Secret using a Google AI Studio project that remains on the free tier with billing disabled. Never put the key in code or chat.
-- The bot is pinned to Google's free-tier preview model `gemini-3-flash-preview`. It does not switch models or enable billing. On missing credentials, quota exhaustion, timeouts, or provider errors, the local Coach is used instead.
+- The bot is pinned to Google's free-tier stable model `gemini-3.5-flash-lite`. It does not switch models or enable billing. On missing credentials, quota exhaustion, timeouts, or provider errors, the local Coach is used instead.
 - Google says free-tier prompts may be used to improve its products. Only enable this if members' messages and their recent conversation context may be sent to Google under those terms.
 - Up to six recent turns are loaded by Telegram user ID from the existing SQLite database. Telegram IDs and usernames are not sent to Gemini.
 

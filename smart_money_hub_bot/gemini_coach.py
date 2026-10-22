@@ -12,7 +12,7 @@ from urllib.request import Request, urlopen
 
 from .coach import CoachProviderError, CoachReply, RuleBasedCoachService
 
-GEMINI_MODEL = "gemini-3-flash-preview"
+GEMINI_MODEL = "gemini-3.5-flash-lite"
 GEMINI_ENDPOINT = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
     f"{GEMINI_MODEL}:generateContent"
