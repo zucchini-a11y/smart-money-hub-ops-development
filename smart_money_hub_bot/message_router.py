@@ -18,6 +18,22 @@ from .question_detection import QuestionAssessment, detect_member_question
 
 logger = logging.getLogger(__name__)
 
+_DIRECT_EDUCATION_START = re.compile(
+    r"^(?:what is|what are|define|teach me|explain|compare|difference between)\b",
+    re.I,
+)
+_EXPLICIT_FOLLOW_UP_START = re.compile(
+    r"^(?:what about|how about|and then|then|so|in that case|"
+    r"does that|would that|is that|what does that mean|why did you|"
+    r"explain (?:that|it|this)|say more about (?:that|it|this)|"
+    r"based on that)\b",
+    re.I,
+)
+_BRIEF_FOLLOW_UP_QUESTION = re.compile(
+    r"^(?:why|how|which one|what next|what then|and why)[?! .]*$",
+    re.I,
+)
+
 
 @dataclass(frozen=True)
 class RoutedCoachMessage:
@@ -60,6 +76,10 @@ class CoachMessageRouter:
                 "local_response",
             )
 
+        context_history, context_profile = _relevant_conversation_context(
+            message, history, profile
+        )
+
         # Topic identification and approved-knowledge lookup are local and run
         # before the replaceable Coach provider is asked to draft a reply.
         topic = RuleBasedCoachService.detect_topic(message)
@@ -94,8 +114,8 @@ class CoachMessageRouter:
             reply = ai_evaluate_answer(
                 message,
                 self.fallback_service,
-                history=history,
-                profile=profile,
+                history=context_history,
+                profile=context_profile,
             )
             return self._routed(
                 "question",
@@ -109,8 +129,8 @@ class CoachMessageRouter:
             reply = ai_evaluate_answer(
                 message,
                 self.coach_service,
-                history=history,
-                profile=profile,
+                history=context_history,
+                profile=context_profile,
             )
             if (
                 getattr(self.coach_service, "diagnostic_response_path", None)
@@ -133,8 +153,8 @@ class CoachMessageRouter:
             reply = ai_evaluate_answer(
                 message,
                 self.fallback_service,
-                history=history,
-                profile=profile,
+                history=context_history,
+                profile=context_profile,
             )
             response_path = "fallback"
         if assessment and reply.detected_topic != topic:
@@ -156,8 +176,8 @@ class CoachMessageRouter:
                 reply = ai_evaluate_answer(
                     message,
                     self.fallback_service,
-                    history=history,
-                    profile=profile,
+                    history=context_history,
+                    profile=context_profile,
                 )
         return self._routed(
             "question" if assessment else "coaching",
@@ -299,3 +319,34 @@ def _simple_intent(message: str) -> tuple[str | None, str]:
     if _ACKNOWLEDGEMENT.fullmatch(text):
         return "acknowledgement", "default"
     return None, "default"
+
+
+def _relevant_conversation_context(
+    message: str,
+    history: list[dict[str, Any]] | None,
+    profile: dict[str, Any] | None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Keep prior turns for clear follow-ups, not self-contained questions."""
+    if not history:
+        return [], {}
+
+    normalized = " ".join(message.split()).strip()
+    if _EXPLICIT_FOLLOW_UP_START.match(normalized):
+        return history[:1], profile or {}
+    if _DIRECT_EDUCATION_START.match(normalized):
+        return [], {}
+
+    previous_response = str(history[0].get("coach_response") or "").rstrip()
+    if previous_response.endswith("?") and _BRIEF_FOLLOW_UP_QUESTION.fullmatch(
+        normalized
+    ):
+        return history[:1], profile or {}
+    is_short_answer_to_coach = (
+        previous_response.endswith("?")
+        and len(normalized.split()) <= 12
+        and not normalized.endswith("?")
+    )
+    if is_short_answer_to_coach:
+        return history[:1], profile or {}
+
+    return [], {}

@@ -266,6 +266,26 @@ class RuleBasedCoachService:
             )
 
         topic = self._detect_topic(normalized)
+        if self.is_bos_choch_comparison(normalized):
+            return CoachReply(
+                "A BOS (Break of Structure) breaks a key swing level in the "
+                "direction of the current structure. A CHOCH (Change of Character) "
+                "is a meaningful break against the current swing sequence and can "
+                "signal a possible shift.\n\n"
+                "Bullish Gold example: after lower highs and lower lows, Gold closes "
+                "above a prior lower high—possible bullish CHOCH. A later break above "
+                "the next swing high can be bullish BOS.\n\n"
+                "Bearish Gold example: after higher highs and higher lows, Gold closes "
+                "below a prior higher low—possible bearish CHOCH. A later break below "
+                "the next swing low can be bearish BOS.\n\n"
+                "CHOCH is a warning of a possible change, not a guaranteed reversal. "
+                "Which direction are you studying: a bullish shift after lower highs, "
+                "or a bearish shift after higher lows?",
+                "Market Structure",
+                (),
+                "Compare structure breaks in context; CHOCH signals possibility, not certainty.",
+            )
+
         if topic == "General SMC" and history and self._looks_like_follow_up(text):
             previous = history[0]
             previous_topic = str(previous.get("detected_topic") or "General SMC")
@@ -422,6 +442,15 @@ class RuleBasedCoachService:
             text.casefold(),
             ("what is", "what's", "define", "explain", "teach me", "should i"),
         )
+
+    @staticmethod
+    def is_bos_choch_comparison(text: str) -> bool:
+        comparison = re.search(
+            r"\b(?:difference|compare|versus|vs\.?|distinguish)\b", text
+        )
+        has_bos = re.search(r"\b(?:bos|break of structure)\b", text)
+        has_choch = re.search(r"\b(?:choch|change of character)\b", text)
+        return bool(comparison and has_bos and has_choch)
 
     @staticmethod
     def _continue_conversation(text: str, topic: str) -> str:

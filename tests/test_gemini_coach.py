@@ -22,6 +22,8 @@ def _response(answer: str, needs_review: bool = False) -> MagicMock:
     response = MagicMock()
     response.status = 200
     response.headers = Message()
+    response.__enter__.return_value.status = 200
+    response.__enter__.return_value.headers = Message()
     response.__enter__.return_value.read.return_value = json.dumps(
         {
             "candidates": [
@@ -147,6 +149,123 @@ class GeminiCoachTests(unittest.TestCase):
         self.assertNotIn("telegram_id", first.casefold())
         self.assertNotIn("telegram_id", second.casefold())
 
+    def test_standalone_educational_question_does_not_receive_old_context(self) -> None:
+        question = (
+            "What is the difference between BOS and CHOCH? Explain it simply "
+            "with a practical Gold chart example."
+        )
+        old_history = [
+            {
+                "question": "I chased after displacement and felt FOMO.",
+                "coach_response": "What rule will help you avoid chasing next time?",
+                "detected_topic": "FOMO",
+            }
+        ]
+        old_profile = {"learning_goal": "Avoid FOMO and wait for a retest"}
+        service = GeminiCoachService("test-key")
+        router = CoachMessageRouter(service, _EmptyKnowledgeStore())
+
+        with patch(
+            "smart_money_hub_bot.gemini_coach.urlopen",
+            return_value=_response(
+                "A BOS breaks a key swing in the current direction; a CHOCH is a "
+                "break against it. Bullish Gold example: after lower highs, a close "
+                "above a lower high may signal a bullish shift. Bearish Gold example: "
+                "after higher lows, a close below a higher low may signal a bearish "
+                "shift. CHOCH is a possible shift, not a guaranteed reversal. Which "
+                "swing are you studying?"
+            ),
+        ) as mocked_urlopen:
+            routed = router.route(
+                321, question, history=old_history, profile=old_profile
+            )
+
+        payload = json.loads(mocked_urlopen.call_args.args[0].data.decode("utf-8"))
+        contents = payload["contents"]
+        self.assertEqual(
+            contents,
+            [{"role": "user", "parts": [{"text": question}]}],
+        )
+        payload_text = json.dumps(payload).casefold()
+        self.assertNotIn("fomo", payload_text)
+        self.assertNotIn("avoid fomo", payload_text)
+        self.assertEqual(routed.response_path, "gemini_success")
+        self.assertIn("hypothetical bullish", payload["systemInstruction"]["parts"][0]["text"])
+        self.assertIn("hypothetical bearish", payload["systemInstruction"]["parts"][0]["text"])
+
+    def test_incomplete_bos_choch_generation_uses_complete_local_fallback(self) -> None:
+        service = GeminiCoachService("test-key")
+        router = CoachMessageRouter(service, _EmptyKnowledgeStore())
+
+        with patch(
+            "smart_money_hub_bot.gemini_coach.urlopen",
+            return_value=_response("CHOCH may signal a change in trend."),
+        ):
+            routed = router.route(
+                322, "What is the difference between BOS and CHOCH?"
+            )
+
+        self.assertEqual(routed.response_path, "fallback")
+        self.assertIn("A BOS (Break of Structure)", routed.reply.response)
+        self.assertIn("A CHOCH (Change of Character)", routed.reply.response)
+        self.assertIn("Bullish Gold example", routed.reply.response)
+        self.assertIn("Bearish Gold example", routed.reply.response)
+        self.assertIn("not a guaranteed reversal", routed.reply.response)
+        self.assertEqual(routed.reply.response.count("?"), 1)
+
+    def test_genuine_follow_ups_keep_only_the_current_members_history(self) -> None:
+        service = GeminiCoachService("test-key")
+        router = CoachMessageRouter(service, _EmptyKnowledgeStore())
+        history_a = [
+            {
+                "question": "What happened at the CHOCH level?",
+                "coach_response": "Which swing high did Gold close above?",
+                "detected_topic": "CHoCH",
+            },
+            {
+                "question": "I chased after displacement and felt FOMO.",
+                "coach_response": "What rule will help you avoid FOMO?",
+                "detected_topic": "FOMO",
+            },
+        ]
+        history_b = [
+            {
+                "question": "How did I manage the FVG trade?",
+                "coach_response": "Did you wait for your retest?",
+                "detected_topic": "FVG / IFVG",
+            },
+            {
+                "question": "What is CHOCH?",
+                "coach_response": "Which swing level broke?",
+                "detected_topic": "CHoCH",
+            },
+        ]
+
+        with patch(
+            "smart_money_hub_bot.gemini_coach.urlopen",
+            side_effect=[
+                _response("That swing high could be the confirmation level."),
+                _response("The retest is the next thing to review."),
+            ],
+        ) as mocked_urlopen:
+            router.route(401, "The 15m high.", history=history_a)
+            router.route(402, "The 15m retest.", history=history_b)
+
+        payloads = [
+            json.loads(call.args[0].data.decode("utf-8"))
+            for call in mocked_urlopen.call_args_list
+        ]
+        payload_a = json.dumps(payloads[0])
+        payload_b = json.dumps(payloads[1])
+        self.assertIn("What happened at the CHOCH level?", payload_a)
+        self.assertIn("Which swing high did Gold close above?", payload_a)
+        self.assertNotIn("FVG trade", payload_a)
+        self.assertNotIn("FOMO", payload_a)
+        self.assertIn("How did I manage the FVG trade?", payload_b)
+        self.assertIn("Did you wait for your retest?", payload_b)
+        self.assertNotIn("CHOCH level", payload_b)
+        self.assertNotIn("What is CHOCH?", payload_b)
+
     def test_quota_error_is_sanitized_and_router_falls_back_locally(self) -> None:
         service = GeminiCoachService("do-not-log-this-key")
         api_errors = [
@@ -226,9 +345,13 @@ class GeminiCoachTests(unittest.TestCase):
             "Gold chart example."
         )
         generated_answer = (
-            "A BOS breaks structure in the current direction; a CHOCH may signal "
-            "a shift. For example, a Gold rally making higher highs may show BOS, "
-            "while a break below a meaningful higher low may suggest CHOCH."
+            "A BOS breaks a key swing in the current direction; a CHOCH is a "
+            "break against the current swing sequence. Bullish Gold example: "
+            "after lower highs, a close above a prior lower high may signal a "
+            "bullish shift. Bearish Gold example: after higher lows, a close "
+            "below a prior higher low may signal a bearish shift. A CHOCH is a "
+            "possible shift, not a guaranteed reversal. Which swing level are "
+            "you studying?"
         )
         service = GeminiCoachService("test-key")
         router = CoachMessageRouter(service, _EmptyKnowledgeStore())
@@ -267,8 +390,12 @@ class GeminiCoachTests(unittest.TestCase):
         self.assertEqual(routed.response_path, "fallback")
         self.assertIsNotNone(routed.assessment)
         self.assertEqual(routed.assessment.confidence, "high")
-        self.assertNotIn("I don’t have a vetted answer", routed.reply.response)
-        self.assertTrue(routed.reply.response)
+        self.assertIn("A BOS (Break of Structure)", routed.reply.response)
+        self.assertIn("A CHOCH (Change of Character)", routed.reply.response)
+        self.assertIn("Bullish Gold example", routed.reply.response)
+        self.assertIn("Bearish Gold example", routed.reply.response)
+        self.assertIn("not a guaranteed reversal", routed.reply.response)
+        self.assertEqual(routed.reply.response.count("?"), 1)
 
     def test_single_503_retry_succeeds_within_existing_deadline(self) -> None:
         service = GeminiCoachService("test-key", timeout_seconds=3)
