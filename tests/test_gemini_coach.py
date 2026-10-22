@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+from email.message import Message
 from io import BytesIO
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
@@ -40,6 +41,34 @@ def _response(answer: str, needs_review: bool = False) -> MagicMock:
         }
     ).encode("utf-8")
     return response
+
+
+def _provider_error(
+    status_code: int,
+    provider_status: str,
+    message: str,
+    *,
+    headers: dict[str, str] | None = None,
+) -> HTTPError:
+    response_headers = Message()
+    for name, value in (headers or {}).items():
+        response_headers[name] = value
+    body = json.dumps(
+        {
+            "error": {
+                "code": status_code,
+                "status": provider_status,
+                "message": message,
+            }
+        }
+    ).encode("utf-8")
+    return HTTPError(
+        GEMINI_ENDPOINT,
+        status_code,
+        "provider error",
+        response_headers,
+        BytesIO(body),
+    )
 
 
 class _EmptyKnowledgeStore:
@@ -118,50 +147,97 @@ class GeminiCoachTests(unittest.TestCase):
 
     def test_quota_error_is_sanitized_and_router_falls_back_locally(self) -> None:
         service = GeminiCoachService("do-not-log-this-key")
-        api_error = HTTPError(
-            GEMINI_ENDPOINT,
-            429,
-            "quota exceeded",
-            hdrs=None,
-            fp=BytesIO(b"quota details"),
-        )
+        api_errors = [
+            _provider_error(429, "RESOURCE_EXHAUSTED", "Quota exceeded."),
+            _provider_error(429, "RESOURCE_EXHAUSTED", "Quota exceeded."),
+        ]
         with patch(
-            "smart_money_hub_bot.gemini_coach.urlopen", side_effect=api_error
-        ):
+            "smart_money_hub_bot.gemini_coach.urlopen", side_effect=api_errors
+        ) as mocked_urlopen, patch("smart_money_hub_bot.gemini_coach.time.sleep") as sleep:
             with self.assertRaises(CoachProviderError) as caught:
                 service.evaluate("What is BOS?")
             router = CoachMessageRouter(service, _EmptyKnowledgeStore())
             reply = router.route(123, "What is BOS?").reply
-        self.assertEqual(caught.exception.failure_kind, "quota")
+        self.assertEqual(mocked_urlopen.call_count, 2)
+        sleep.assert_not_called()
+        self.assertEqual(caught.exception.failure_kind, "rate_limit")
         self.assertEqual(caught.exception.status_code, 429)
+        self.assertEqual(caught.exception.provider_status, "RESOURCE_EXHAUSTED")
+        self.assertEqual(
+            caught.exception.provider_message,
+            "Google reports a rate limit or quota restriction.",
+        )
+        self.assertIsNotNone(caught.exception.elapsed_ms)
         self.assertNotIn("do-not-log-this-key", str(caught.exception))
         self.assertEqual(reply.detected_topic, "BOS")
         self.assertIn("Break of Structure", reply.response)
 
     def test_service_unavailable_falls_back_locally(self) -> None:
         service = GeminiCoachService("test-key")
-        api_error = HTTPError(
-            GEMINI_ENDPOINT,
-            503,
-            "service unavailable",
-            hdrs=None,
-            fp=BytesIO(b"temporary service failure"),
-        )
-        with patch(
-            "smart_money_hub_bot.gemini_coach.urlopen", side_effect=api_error
-        ):
-            with self.assertRaises(CoachProviderError) as caught:
-                service.evaluate("What is BOS?")
-        self.assertEqual(caught.exception.failure_kind, "service_unavailable")
-        self.assertEqual(caught.exception.status_code, 503)
         router = CoachMessageRouter(service, _EmptyKnowledgeStore())
+        api_errors = [
+            _provider_error(
+                503,
+                "UNAVAILABLE",
+                "The model is overloaded. Prompt: What is BOS?",
+                headers={
+                    "Date": "Thu, 22 Oct 2026 08:00:00 GMT",
+                    "Retry-After": "0",
+                    "Content-Type": "application/json",
+                    "X-Private-Diagnostic": "must-not-be-logged",
+                },
+            ),
+            _provider_error(
+                503,
+                "UNAVAILABLE",
+                "The model is overloaded. Prompt: What is BOS?",
+                headers={"Retry-After": "3"},
+            ),
+        ]
         with patch(
-            "smart_money_hub_bot.gemini_coach.urlopen", side_effect=api_error
-        ):
+            "smart_money_hub_bot.gemini_coach.urlopen", side_effect=api_errors
+        ) as mocked_urlopen, patch(
+            "smart_money_hub_bot.gemini_coach.time.sleep"
+        ) as sleep, self.assertLogs("smart_money_hub_bot", level="WARNING") as logs:
             routed = router.route(124, "What is BOS?")
         reply = routed.reply
+        self.assertEqual(mocked_urlopen.call_count, 2)
+        sleep.assert_called_once_with(0.0)
         self.assertIn("Break of Structure", reply.response)
         self.assertEqual(routed.response_path, "fallback")
+        joined_logs = "\n".join(logs.output)
+        self.assertIn("http_status=503", joined_logs)
+        self.assertIn("google_status=UNAVAILABLE", joined_logs)
+        self.assertIn(
+            "Google reports the generation service is temporarily unavailable.",
+            joined_logs,
+        )
+        self.assertIn("retry-after", joined_logs)
+        self.assertNotIn("Prompt: What is BOS?", joined_logs)
+        self.assertNotIn("must-not-be-logged", joined_logs)
+        self.assertNotIn("test-key", joined_logs)
+
+    def test_single_503_retry_succeeds_within_existing_deadline(self) -> None:
+        service = GeminiCoachService("test-key", timeout_seconds=3)
+        first_error = _provider_error(
+            503, "UNAVAILABLE", "The model is overloaded."
+        )
+        with patch(
+            "smart_money_hub_bot.gemini_coach.urlopen",
+            side_effect=[first_error, _response("Recovered after one retry.")],
+        ) as mocked_urlopen, patch(
+            "smart_money_hub_bot.gemini_coach.time.sleep"
+        ) as sleep:
+            reply = service.evaluate("What is liquidity?")
+
+        self.assertEqual(reply.response, "Recovered after one retry.")
+        self.assertEqual(mocked_urlopen.call_count, 2)
+        sleep.assert_called_once_with(0.25)
+        first_timeout = mocked_urlopen.call_args_list[0].kwargs["timeout"]
+        second_timeout = mocked_urlopen.call_args_list[1].kwargs["timeout"]
+        self.assertLessEqual(first_timeout, 3)
+        self.assertLessEqual(second_timeout, first_timeout)
+        self.assertGreater(second_timeout, 0)
 
     def test_timeout_uses_the_local_fallback(self) -> None:
         service = GeminiCoachService("test-key")
@@ -169,10 +245,27 @@ class GeminiCoachTests(unittest.TestCase):
         with patch(
             "smart_money_hub_bot.gemini_coach.urlopen",
             side_effect=TimeoutError("request timeout"),
-        ):
+        ), self.assertLogs("smart_money_hub_bot", level="WARNING") as logs:
             routed = router.route(456, "Explain break of structure")
         self.assertEqual(routed.reply.detected_topic, "BOS")
         self.assertIn("Break of Structure", routed.reply.response)
+        self.assertEqual(routed.response_path, "fallback")
+        self.assertIn("kind=client_timeout", "\n".join(logs.output))
+
+    def test_network_failure_is_not_retried(self) -> None:
+        service = GeminiCoachService("test-key")
+        router = CoachMessageRouter(service, _EmptyKnowledgeStore())
+        with patch(
+            "smart_money_hub_bot.gemini_coach.urlopen",
+            side_effect=URLError("temporary DNS failure"),
+        ) as mocked_urlopen, self.assertLogs(
+            "smart_money_hub_bot", level="WARNING"
+        ) as logs:
+            routed = router.route(457, "What is liquidity?")
+
+        self.assertEqual(mocked_urlopen.call_count, 1)
+        self.assertEqual(routed.response_path, "fallback")
+        self.assertIn("kind=network", "\n".join(logs.output))
 
     def test_ai_uncertainty_is_marked_for_admin_review(self) -> None:
         router = CoachMessageRouter(_UncertainService(), _EmptyKnowledgeStore())
