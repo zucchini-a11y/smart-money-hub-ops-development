@@ -65,6 +65,7 @@ class GeminiCoachService:
                 "temperature": 0.45,
                 "maxOutputTokens": 600,
                 "responseMimeType": "application/json",
+                "thinkingConfig": {"thinkingLevel": "LOW"},
             },
         }
         request_body = json.dumps(payload, ensure_ascii=False).encode("utf-8")

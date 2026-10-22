@@ -132,6 +132,10 @@ class GeminiCoachTests(unittest.TestCase):
         self.assertEqual(
             payload["generationConfig"]["responseMimeType"], "application/json"
         )
+        self.assertEqual(
+            payload["generationConfig"]["thinkingConfig"],
+            {"thinkingLevel": "LOW"},
+        )
 
     def test_plain_text_candidate_parts_are_returned_without_json_decoding(self) -> None:
         service = GeminiCoachService("test-key")
