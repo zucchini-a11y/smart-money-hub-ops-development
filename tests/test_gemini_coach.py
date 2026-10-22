@@ -427,18 +427,91 @@ class GeminiCoachTests(unittest.TestCase):
         with patch(
             "smart_money_hub_bot.gemini_coach.urlopen",
             return_value=_response("CHOCH may signal a change in trend."),
-        ):
+        ), self.assertLogs("smart_money_hub_bot", level="WARNING") as logs:
             routed = router.route(
                 322, "What is the difference between BOS and CHOCH?"
             )
 
         self.assertEqual(routed.response_path, "fallback")
+        self.assertIn(
+            "rejection_category=bos_choch_completeness_check_failed",
+            "\n".join(logs.output),
+        )
         self.assertIn("A BOS (Break of Structure)", routed.reply.response)
         self.assertIn("A CHOCH (Change of Character)", routed.reply.response)
         self.assertIn("Bullish Gold example", routed.reply.response)
         self.assertIn("Bearish Gold example", routed.reply.response)
         self.assertIn("not a guaranteed reversal", routed.reply.response)
         self.assertEqual(routed.reply.response.count("?"), 1)
+
+    def test_valid_plain_text_bos_choch_paraphrase_is_accepted(self) -> None:
+        answer = (
+            "A Break of Structure (BOS) confirms direction when price breaks a key "
+            "swing; a Change of Character (CHOCH) warns the swing sequence may be "
+            "changing. Bullish XAUUSD example: after lower highs, a close above the "
+            "last lower high can point to a potential upside turn. Bearish XAUUSD "
+            "example: after higher lows, a close below the last higher low may "
+            "indicate a possible downside change. This is not proof or a guaranteed "
+            "reversal; price can resume its prior move. Which timeframe are you "
+            "reviewing?"
+        )
+        router = CoachMessageRouter(
+            GeminiCoachService("test-key"), _EmptyKnowledgeStore()
+        )
+
+        with patch(
+            "smart_money_hub_bot.gemini_coach.urlopen",
+            return_value=_provider_response(
+                {
+                    "candidates": [
+                        {
+                            "content": {"parts": [{"text": answer}]},
+                            "finishReason": "STOP",
+                        }
+                    ]
+                }
+            ),
+        ):
+            routed = router.route(
+                323, "What is the difference between BOS and CHOCH on XAUUSD?"
+            )
+
+        self.assertEqual(routed.response_path, "gemini_success")
+        self.assertEqual(routed.reply.response, answer)
+
+    def test_schema_mismatch_category_is_logged_without_response_content(self) -> None:
+        router = CoachMessageRouter(
+            GeminiCoachService("test-key"), _EmptyKnowledgeStore()
+        )
+        private_response_text = "synthetic generated text must not enter logs"
+        response = _provider_response(
+            {
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {
+                                    "text": json.dumps(
+                                        {"unexpected": private_response_text}
+                                    )
+                                }
+                            ]
+                        },
+                        "finishReason": "STOP",
+                    }
+                ]
+            }
+        )
+
+        with patch(
+            "smart_money_hub_bot.gemini_coach.urlopen", return_value=response
+        ), self.assertLogs("smart_money_hub_bot", level="WARNING") as logs:
+            routed = router.route(324, "What is liquidity?")
+
+        joined_logs = "\n".join(logs.output)
+        self.assertEqual(routed.response_path, "fallback")
+        self.assertIn("rejection_category=schema_mismatch", joined_logs)
+        self.assertNotIn(private_response_text, joined_logs)
 
     def test_genuine_follow_ups_keep_only_the_current_members_history(self) -> None:
         service = GeminiCoachService("test-key")

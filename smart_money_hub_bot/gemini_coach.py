@@ -192,6 +192,7 @@ class GeminiCoachService:
                     response_status,
                     elapsed_ms=_elapsed_ms(started_at),
                     response_headers=response_headers,
+                    rejection_category="provider_json_parse_error",
                 ) from None
 
         try:
