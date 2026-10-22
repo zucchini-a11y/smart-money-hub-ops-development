@@ -852,8 +852,9 @@ class SmartMoneyHubBot:
             return
         self.api.send_message(
             chat_id,
-            "Choose how you want to work today. Challenges and guided reviews are "
-            "optional; the bot won’t send extra challenge messages on its own.",
+            "Choose how you want to learn today. Challenges are optional and earn "
+            "Learning Points for practice, not just correct answers. Stop whenever "
+            "you like—there are no streaks to protect or points to lose.",
             self._coach_menu_keyboard(),
         )
 
@@ -1122,30 +1123,82 @@ class SmartMoneyHubBot:
             "correct": is_correct,
             "topic": question["topic"],
         }
-        feedback = "That’s right. " if is_correct else "Not quite — that’s okay. "
+        feedback = (
+            "Nice work—you got it. "
+            if is_correct
+            else "Not quite, and that’s okay. Every answer is practice. "
+        )
         feedback += question["explanation"]
         limit = 1 if session.kind == "coach_daily" else 3
         if len(session.answers) == limit:
             score = sum(bool(answer["correct"]) for answer in session.answers)
-            self.sessions.pop(telegram_id, None)
-            feedback += (
-                f"\n\nChallenge complete: {score}/{limit}. "
-                "You can try another round whenever you like."
+            feedback += self._coach_challenge_reward_summary(
+                telegram_id,
+                score=score,
+                limit=limit,
+                questions_answered=limit,
+                completed=True,
+                daily=session.kind == "coach_daily",
             )
+            self.sessions.pop(telegram_id, None)
             self.api.send_message(chat_id, feedback, self._coach_menu_keyboard())
             return
         self.api.send_message(chat_id, feedback, self._coach_keyboard())
         self._send_coach_challenge(telegram_id)
+
+    def _coach_challenge_reward_summary(
+        self,
+        telegram_id: int,
+        *,
+        score: int,
+        limit: int,
+        questions_answered: int,
+        completed: bool,
+        daily: bool,
+    ) -> str:
+        if questions_answered <= 0:
+            return "\n\nNo new questions were available. You can come back to practice later."
+        progress = self.store.award_coach_learning_practice(
+            telegram_id,
+            questions_answered,
+            score,
+            completed=completed,
+        )
+        if score == questions_answered:
+            encouragement = "Great recall—your practice is paying off."
+        elif score:
+            encouragement = "Nice progress; each explanation gives you something to build on."
+        else:
+            encouragement = "Good work practicing. The explanations are a useful next step."
+        if completed:
+            label = "Daily challenge complete" if daily else "Challenge complete"
+        else:
+            label = "Practice round ended"
+        return (
+            f"\n\n{label}: {score}/{limit}. {encouragement}\n"
+            f"+{progress['points_awarded']} Learning Points "
+            f"(total: {progress['learning_points']}). "
+            "Points reward practice, not only correct answers."
+        )
 
     def _finish_coach_challenge(self, telegram_id: int) -> None:
         session = self.sessions.pop(telegram_id, None)
         if not session:
             return
         limit = 1 if session.kind == "coach_daily" else 3
+        answered = sum("correct" in answer for answer in session.answers)
         score = sum(bool(answer.get("correct")) for answer in session.answers)
+        summary = self._coach_challenge_reward_summary(
+            telegram_id,
+            score=score,
+            limit=limit,
+            questions_answered=answered,
+            completed=answered == limit,
+            daily=session.kind == "coach_daily",
+        )
         self.api.send_message(
             session.chat_id,
-            f"Challenge complete: {score}/{limit}. Nice work showing up to practise.",
+            summary.lstrip("\n") if summary else "",
             self._coach_menu_keyboard(),
         )
 
@@ -1760,6 +1813,7 @@ class SmartMoneyHubBot:
 
     def _show_progress(self, chat_id: int, telegram_id: int) -> None:
         progress = self.store.progress_for(telegram_id)
+        learning = self.store.coach_learning_progress_for(telegram_id)
         weekly = self.store.recent_checkins(telegram_id, 3)
         sunday_plan = self.store.latest_sunday_preparation(telegram_id)
         current_focus = "Set a focus in Sunday Preparation"
@@ -1787,6 +1841,8 @@ class SmartMoneyHubBot:
             f"Weakest SMC topic: {progress.get('weakest_topic') or 'Complete an assessment to see this'}",
             f"Current focus: {current_focus}",
             f"Weekly check-ins: {progress.get('weekly_checkins_count', 0)}",
+            f"Learning points: {learning['learning_points']} "
+            f"({learning['questions_practiced']} questions practised)",
         ]
         if weekly:
             lines.append("\nRecent weekly check-ins:")

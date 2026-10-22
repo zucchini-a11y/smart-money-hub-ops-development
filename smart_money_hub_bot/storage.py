@@ -282,6 +282,20 @@ class Repository:
 
                     CREATE INDEX IF NOT EXISTS coach_challenge_history_recent
                     ON coach_challenge_history (telegram_id, presented_at DESC, id DESC);
+
+                    CREATE TABLE IF NOT EXISTS coach_learning_rewards (
+                        telegram_id INTEGER PRIMARY KEY REFERENCES users(telegram_id)
+                            ON DELETE CASCADE,
+                        learning_points INTEGER NOT NULL DEFAULT 0
+                            CHECK (learning_points >= 0),
+                        questions_practiced INTEGER NOT NULL DEFAULT 0
+                            CHECK (questions_practiced >= 0),
+                        correct_answers INTEGER NOT NULL DEFAULT 0
+                            CHECK (correct_answers >= 0),
+                        challenges_completed INTEGER NOT NULL DEFAULT 0
+                            CHECK (challenges_completed >= 0),
+                        updated_at TEXT NOT NULL
+                    );
                     """
                 )
                 self._ensure_user_column(
@@ -1703,6 +1717,97 @@ class Repository:
                     """,
                     (telegram_id, challenge_id, challenge_kind, at or utc_now()),
                 )
+        finally:
+            connection.close()
+
+    def award_coach_learning_practice(
+        self,
+        telegram_id: int,
+        questions_answered: int,
+        correct_answers: int,
+        *,
+        completed: bool,
+    ) -> dict[str, int]:
+        if (
+            questions_answered < 0
+            or correct_answers < 0
+            or correct_answers > questions_answered
+        ):
+            raise ValueError("Challenge answer counts must be valid non-negative totals.")
+        points_awarded = questions_answered + (2 if completed else 0)
+        connection = self._connect()
+        try:
+            with connection:
+                if questions_answered:
+                    connection.execute(
+                        """
+                        INSERT INTO coach_learning_rewards
+                            (telegram_id, learning_points, questions_practiced,
+                             correct_answers, challenges_completed, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(telegram_id) DO UPDATE SET
+                            learning_points = learning_points + excluded.learning_points,
+                            questions_practiced =
+                                questions_practiced + excluded.questions_practiced,
+                            correct_answers = correct_answers + excluded.correct_answers,
+                            challenges_completed =
+                                challenges_completed + excluded.challenges_completed,
+                            updated_at = excluded.updated_at
+                        """,
+                        (
+                            telegram_id,
+                            points_awarded,
+                            questions_answered,
+                            correct_answers,
+                            int(completed),
+                            utc_now(),
+                        ),
+                    )
+                row = connection.execute(
+                    """
+                    SELECT learning_points, questions_practiced, correct_answers,
+                           challenges_completed
+                    FROM coach_learning_rewards
+                    WHERE telegram_id = ?
+                    """,
+                    (telegram_id,),
+                ).fetchone()
+                connection.commit()
+                result = (
+                    {
+                        "learning_points": 0,
+                        "questions_practiced": 0,
+                        "correct_answers": 0,
+                        "challenges_completed": 0,
+                    }
+                    if row is None
+                    else {key: int(row[key]) for key in row.keys()}
+                )
+                result["points_awarded"] = points_awarded
+                return result
+        finally:
+            connection.close()
+
+    def coach_learning_progress_for(self, telegram_id: int) -> dict[str, int]:
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                """
+                SELECT learning_points, questions_practiced, correct_answers,
+                       challenges_completed
+                FROM coach_learning_rewards
+                WHERE telegram_id = ?
+                """,
+                (telegram_id,),
+            ).fetchone()
+            if row is None:
+                return {
+                    "learning_points": 0,
+                    "questions_practiced": 0,
+                    "correct_answers": 0,
+                    "challenges_completed": 0,
+                }
+            return {key: int(row[key]) for key in row.keys()}
         finally:
             connection.close()
 

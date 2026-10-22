@@ -117,26 +117,6 @@ class CoachMessageRouter:
                 request_id=request_id,
             )
 
-        if (
-            assessment
-            and assessment.needs_research
-            and assessment.topic != "General"
-        ):
-            reply = ai_evaluate_answer(
-                message,
-                self.fallback_service,
-                history=context_history,
-                profile=context_profile,
-                request_id=request_id,
-            )
-            return self._routed(
-                "question",
-                self._needs_review_reply(reply),
-                assessment,
-                "local_response",
-                request_id=request_id,
-            )
-
         response_path = "local_response"
         try:
             reply = ai_evaluate_answer(
@@ -176,8 +156,8 @@ class CoachMessageRouter:
             response_path = "fallback"
         if assessment and reply.detected_topic != topic:
             assessment = detect_member_question(message, reply.detected_topic) or assessment
-        if assessment and assessment.needs_research and assessment.topic == "General":
-            if response_path == "gemini_success" and not reply.requires_review:
+        if assessment and assessment.needs_research and not reply.requires_review:
+            if response_path == "gemini_success":
                 from dataclasses import replace
 
                 assessment = replace(
@@ -185,11 +165,14 @@ class CoachMessageRouter:
                     confidence="high",
                     review_reason="Answered by the configured Coach provider.",
                 )
-            elif response_path != "gemini_success" and not reply.requires_review:
-                reply = self._needs_review_reply(reply)
+            else:
+                reply = self._needs_review_reply(
+                    reply, topic=assessment.topic
+                )
                 response_path = "fallback"
         if reply.requires_review:
-            response_path = "fallback"
+            include_ai_note = response_path == "gemini_success"
+            response_path = "gemini_review" if include_ai_note else "fallback"
             if assessment is None:
                 assessment = detect_member_question(message, reply.detected_topic)
             if assessment:
@@ -200,7 +183,11 @@ class CoachMessageRouter:
                     confidence="low",
                     review_reason="The Coach could not provide a reliable answer.",
                 )
-                reply = self._needs_review_reply(reply)
+                reply = self._needs_review_reply(
+                    reply,
+                    topic=assessment.topic,
+                    include_ai_note=include_ai_note,
+                )
             else:
                 reply = ai_evaluate_answer(
                     message,
@@ -239,11 +226,44 @@ class CoachMessageRouter:
         )
 
     @staticmethod
-    def _needs_review_reply(reply: CoachReply) -> CoachReply:
+    def _needs_review_reply(
+        reply: CoachReply,
+        *,
+        topic: str | None = None,
+        include_ai_note: bool = False,
+    ) -> CoachReply:
+        review_guidance = {
+            "Current Market Information": (
+                "I don’t have a live chart or price feed, so I can’t verify the current "
+                "move. Share the symbol, timeframe, and chart or price you’re looking at, "
+                "and I can explain those details without guessing."
+            ),
+            "Economic News and Fundamentals": (
+                "I can explain what the report measures, but I can’t verify its latest "
+                "release here. Share the headline or figures and I’ll help interpret them."
+            ),
+            "Broker and Platform Questions": (
+                "Broker and platform rules can vary or change. Share the platform name "
+                "and the wording of the rule—not account details—and I’ll explain the "
+                "general terms."
+            ),
+        }
+        guidance = review_guidance.get(
+            topic or reply.detected_topic,
+            "I couldn’t confirm a dependable answer this time. Narrow it to one term or "
+            "share the specific example you want explained, and I’ll take another pass.",
+        )
+        review_notice = "I’ve sent this to an administrator to check."
+        answer = reply.response.strip()
+        if include_ai_note and answer:
+            response = (
+                f"Coach note — not verified yet:\n{answer}\n\n"
+                f"{guidance} {review_notice}"
+            )
+        else:
+            response = f"{guidance} {review_notice}"
         return CoachReply(
-            "I don’t have a vetted answer for this yet, so I won’t guess. "
-            "I’ve flagged the question for administrator review. "
-            "Any answer added to my knowledge will be checked and approved first.",
+            response,
             reply.detected_topic,
             reply.mistakes,
             reply.lesson_learned,

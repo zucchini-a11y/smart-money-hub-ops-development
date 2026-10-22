@@ -66,9 +66,10 @@ class MessageRouterTests(unittest.TestCase):
         self.assertEqual(result.intent, "question")
         self.assertIsNotNone(result.assessment)
         self.assertEqual(result.assessment.topic, "Economic News and Fundamentals")
-        self.assertIn("I won’t guess", result.reply.response)
-        self.assertIn("flagged", result.reply.response)
-        self.assertEqual(result.response_path, "local_response")
+        self.assertIn("latest release", result.reply.response)
+        self.assertIn("Share the headline or figures", result.reply.response)
+        self.assertIn("administrator", result.reply.response)
+        self.assertEqual(result.response_path, "fallback")
 
     def test_approved_knowledge_answers_before_gemini(self) -> None:
         provider = Mock()

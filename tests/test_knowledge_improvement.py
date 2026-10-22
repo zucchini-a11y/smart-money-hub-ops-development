@@ -260,7 +260,8 @@ class KnowledgeImprovementTests(unittest.TestCase):
             member_id, member_id, "member", "What is the latest leverage rule today?"
         )
         member_reply = api.messages[-1]
-        self.assertIn("I don’t have a vetted answer", member_reply["text"])
+        self.assertIn("Broker and platform rules can vary or change", member_reply["text"])
+        self.assertIn("administrator", member_reply["text"])
         feedback_buttons = member_reply["reply_markup"]["inline_keyboard"][0]
         feedback_data = feedback_buttons[1]["callback_data"]
         self.assertTrue(feedback_data.startswith("coach:feedback:"))

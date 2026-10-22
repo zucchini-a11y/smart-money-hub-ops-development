@@ -9,7 +9,11 @@ from unittest.mock import MagicMock, Mock, patch
 from urllib.error import HTTPError, URLError
 
 from smart_money_hub_bot.bot import SmartMoneyHubBot
-from smart_money_hub_bot.coach import CoachProviderError, RuleBasedCoachService
+from smart_money_hub_bot.coach import (
+    CoachProviderError,
+    CoachReply,
+    RuleBasedCoachService,
+)
 from smart_money_hub_bot.gemini_coach import (
     GEMINI_ENDPOINT,
     GEMINI_FALLBACK_MODELS,
@@ -224,6 +228,20 @@ class GeminiCoachTests(unittest.TestCase):
         self.assertIn(GEMINI_FALLBACK_MODELS[0], "\n".join(logs.output))
         self.assertNotIn(question, "\n".join(logs.output))
         self.assertNotIn(fallback_answer, "\n".join(logs.output))
+
+    def test_coach_prompt_is_warm_without_pressure_or_forced_praise(self) -> None:
+        local_reply = RuleBasedCoachService().evaluate("What is liquidity?")
+        instruction = GeminiCoachService._system_instruction(
+            local_reply, "educational_question"
+        )
+
+        self.assertIn("warm, friendly, concise, conversational", instruction)
+        self.assertIn("praise effort or reasoning specifically", instruction)
+        self.assertIn("Never use guilt, pressure, artificial urgency", instruction)
+        self.assertIn("vary your phrasing", instruction)
+        self.assertIn("general educational questions about economic releases", instruction)
+        self.assertIn("broker terms, and platform features", instruction)
+        self.assertIn("do not send them to review just because of their category", instruction)
 
     def test_missing_model_fails_over_to_next_configured_model(self) -> None:
         service = GeminiCoachService("test-key")
@@ -1008,24 +1026,64 @@ class GeminiCoachTests(unittest.TestCase):
         self.assertIsNotNone(routed.assessment)
         self.assertEqual(routed.assessment.confidence, "low")
         self.assertTrue(routed.assessment.needs_research)
-        self.assertIn("flagged", routed.reply.response)
+        self.assertIn("sent this to an administrator", routed.reply.response)
         self.assertEqual(routed.response_path, "fallback")
 
-    def test_simple_and_unvetted_messages_do_not_call_the_gemini_provider(self) -> None:
+    def test_simple_messages_skip_gemini_but_live_questions_can_use_it(self) -> None:
         provider = Mock()
+        provider.diagnostic_response_path = "gemini_success"
+        provider.evaluate.return_value = CoachReply(
+            "I can explain inflation reports generally, but I cannot verify today’s release.",
+            "Economic News and Fundamentals",
+            (),
+            "",
+            requires_review=True,
+        )
         router = CoachMessageRouter(provider, _EmptyKnowledgeStore())
         self.assertEqual(router.route(987, "Hi").intent, "greeting")
         self.assertEqual(router.route(987, "Thanks").response_path, "local_response")
         unknown = router.route(987, "What is the latest inflation report today?")
         self.assertTrue(unknown.assessment.needs_research)
-        provider.evaluate.assert_not_called()
-        self.assertEqual(unknown.response_path, "local_response")
+        provider.evaluate.assert_called_once()
+        self.assertEqual(unknown.response_path, "gemini_review")
+        self.assertIn("I can explain inflation reports generally", unknown.reply.response)
+        self.assertIn("sent this to an administrator", unknown.reply.response)
+
+    def test_economic_and_broker_education_reaches_gemini(self) -> None:
+        questions = (
+            (
+                "What is NFP and why can it move markets?",
+                "NFP is a monthly US employment report that can affect expectations.",
+            ),
+            (
+                "How does leverage work in forex?",
+                "Leverage controls a larger position with a smaller margin deposit.",
+            ),
+        )
+        service = GeminiCoachService("test-key")
+        router = CoachMessageRouter(service, _EmptyKnowledgeStore())
+        with patch(
+            "smart_money_hub_bot.gemini_coach.urlopen",
+            side_effect=[_response(answer) for _, answer in questions],
+        ) as mocked_urlopen:
+            routed = [
+                router.route(990 + index, question)
+                for index, (question, _) in enumerate(questions)
+            ]
+
+        self.assertEqual(mocked_urlopen.call_count, len(questions))
+        for result, (_, answer) in zip(routed, questions):
+            self.assertEqual(result.response_path, "gemini_success")
+            self.assertEqual(result.reply.response, answer)
+            self.assertIsNotNone(result.assessment)
+            self.assertEqual(result.assessment.confidence, "high")
+            self.assertFalse(result.assessment.needs_research)
 
     def test_unvetted_educational_question_reaches_gemini(self) -> None:
-        question = "What does SMT divergence mean in trading?"
+        question = "How does leverage work in forex?"
         answer = (
-            "SMT divergence compares related markets for different swing behavior. "
-            "It can suggest relative weakness or strength, but is not an entry signal alone."
+            "Leverage lets a trader control a position larger than the margin deposited. "
+            "It magnifies both gains and losses, so position size and risk still matter."
         )
         service = GeminiCoachService("test-key")
         router = CoachMessageRouter(service, _EmptyKnowledgeStore())
@@ -1062,7 +1120,7 @@ class GeminiCoachTests(unittest.TestCase):
         self.assertEqual(routed.response_path, "fallback")
         self.assertTrue(routed.reply.requires_review)
         self.assertTrue(routed.assessment.needs_research)
-        self.assertIn("flagged", routed.reply.response)
+        self.assertIn("sent this to an administrator", routed.reply.response)
 
     def test_private_telegram_update_sends_gemini_answer_from_provider(self) -> None:
         synthetic_key = "test-key-never-log"

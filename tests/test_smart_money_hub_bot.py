@@ -514,7 +514,9 @@ class BotFlowTests(unittest.TestCase):
             "callback_data"
         ]
         self._callback(answer_callback, sender_id=self.user_id, chat_id=self.chat_id)
-        self.assertIn("Challenge complete:", self.api.messages[-1]["text"])
+        self.assertIn(
+            "challenge complete:", self.api.messages[-1]["text"].casefold()
+        )
         self.assertIn("/1", self.api.messages[-1]["text"])
 
         self._click("coach:mistake")
@@ -580,6 +582,47 @@ class BotFlowTests(unittest.TestCase):
         self.assertEqual(len(set(second_round)), 3)
         self.assertTrue(set(first_round).isdisjoint(second_round))
 
+    def test_optional_challenges_reward_practice_and_persist_per_member(self) -> None:
+        self._message("/start")
+        self._click("menu:coach")
+        menu_text = self.api.messages[-1]["text"].casefold()
+        self.assertIn("optional", menu_text)
+        self.assertIn("no streaks to protect", menu_text)
+
+        self._click("coach:challenge")
+        for _ in range(3):
+            session = self.bot.sessions[self.user_id]
+            question = self.bot._current_coach_challenge(self.user_id, session)
+            self.assertIsNotNone(question)
+            wrong_index = (question["answer"] + 1) % len(question["options"])
+            self._click(
+                f"coach:challenge:answer:{question['id']}:{wrong_index}"
+            )
+
+        completion = self.api.messages[-1]["text"]
+        self.assertIn("Challenge complete: 0/3", completion)
+        self.assertIn("+5 Learning Points (total: 5)", completion)
+        self.assertIn("Points reward practice, not only correct answers", completion)
+
+        repository = Repository(self.database_path)
+        reward = repository.coach_learning_progress_for(self.user_id)
+        self.assertEqual(reward["learning_points"], 5)
+        self.assertEqual(reward["questions_practiced"], 3)
+        self.assertEqual(reward["correct_answers"], 0)
+        self.assertEqual(reward["challenges_completed"], 1)
+        self.assertEqual(
+            repository.coach_learning_progress_for(self.user_id + 1)[
+                "learning_points"
+            ],
+            0,
+        )
+
+        self._message("/progress")
+        self.assertIn(
+            "Learning points: 5 (3 questions practised)",
+            self.api.messages[-1]["text"],
+        )
+
     def test_simple_intents_are_varied_and_do_not_interrupt_active_flows(self) -> None:
         self._message("Hi")
         first_greeting = self.api.messages[-1]["text"]
@@ -610,7 +653,8 @@ class BotFlowTests(unittest.TestCase):
     def test_unknown_current_question_is_queued_without_inventing_live_information(self) -> None:
         self._message("What is the latest inflation report today?")
         response = self.api.messages[-1]["text"]
-        self.assertIn("I won’t guess", response)
+        self.assertIn("latest release", response)
+        self.assertIn("Share the headline or figures", response)
         self.assertEqual(self.bot.store.knowledge_admin_summary()["awaiting_research"], 1)
 
     def test_guided_setup_review_asks_one_question_at_a_time(self) -> None:
