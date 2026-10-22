@@ -25,6 +25,14 @@ _MAX_RETRY_AFTER_SECONDS = 1.0
 _MIN_RETRY_WINDOW_SECONDS = 0.5
 
 
+class _GeminiResponseProblem(Exception):
+    def __init__(
+        self, failure_kind: str, provider_status: str | None = None
+    ) -> None:
+        self.failure_kind = failure_kind
+        self.provider_status = provider_status
+
+
 class GeminiCoachService:
     """Uses one fixed free-tier model; provider failures are handled by the router."""
 
@@ -165,23 +173,14 @@ class GeminiCoachService:
                 ) from None
 
         try:
-            parts = data["candidates"][0]["content"]["parts"]
-            raw_text = "".join(
-                str(part.get("text", "")) for part in parts if isinstance(part, dict)
-            ).strip()
-            result = json.loads(raw_text)
-            raw_answer = result["answer"]
-            needs_review = result["needs_review"]
-            if not isinstance(raw_answer, str) or not isinstance(needs_review, bool):
-                raise ValueError("Invalid answer fields.")
-            answer = raw_answer.strip()
-            if not answer:
-                raise ValueError("Missing answer or review flag.")
-        except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError):
+            raw_text = _extract_candidate_text(data)
+            answer, needs_review = _parse_answer_text(raw_text)
+        except _GeminiResponseProblem as problem:
             raise CoachProviderError(
-                "invalid_response",
+                problem.failure_kind,
                 response_status,
                 elapsed_ms=_elapsed_ms(started_at),
+                provider_status=problem.provider_status,
                 response_headers=response_headers,
             ) from None
 
@@ -400,4 +399,143 @@ def _has_complete_bos_choch_answer(answer: str) -> bool:
         and mentions_possible_shift
         and avoids_reversal_guarantee
         and answer.count("?") == 1
+    )
+
+
+def _extract_candidate_text(data: Any) -> str:
+    if not isinstance(data, dict):
+        raise _GeminiResponseProblem("invalid_response")
+
+    prompt_feedback = data.get("promptFeedback")
+    if prompt_feedback is not None:
+        if not isinstance(prompt_feedback, dict):
+            raise _GeminiResponseProblem("invalid_response")
+        block_reason = prompt_feedback.get("blockReason")
+        if block_reason not in (None, "", "BLOCK_REASON_UNSPECIFIED"):
+            safe_reason = _safe_provider_enum(block_reason)
+            raise _GeminiResponseProblem("blocked_response", safe_reason)
+
+    candidates = data.get("candidates")
+    if not isinstance(candidates, list) or not candidates:
+        raise _GeminiResponseProblem("invalid_response")
+    candidate = candidates[0]
+    if not isinstance(candidate, dict):
+        raise _GeminiResponseProblem("invalid_response")
+
+    safe_finish_reason: str | None = None
+    finish_reason = candidate.get("finishReason")
+    if finish_reason is not None:
+        safe_finish_reason = _safe_provider_enum(finish_reason)
+        if safe_finish_reason is None:
+            raise _GeminiResponseProblem("invalid_response")
+        if safe_finish_reason not in {"STOP", "FINISH_REASON_UNSPECIFIED"}:
+            failure_kind = (
+                "incomplete_response"
+                if safe_finish_reason in {"MAX_TOKENS", "CONTINUATION"}
+                else "blocked_response"
+                if safe_finish_reason
+                in {
+                    "SAFETY",
+                    "RECITATION",
+                    "LANGUAGE",
+                    "BLOCKLIST",
+                    "PROHIBITED_CONTENT",
+                    "SPII",
+                    "IMAGE_SAFETY",
+                    "IMAGE_PROHIBITED_CONTENT",
+                    "IMAGE_RECITATION",
+                    "ESCALATION",
+                }
+                else "invalid_response"
+            )
+            raise _GeminiResponseProblem(failure_kind, safe_finish_reason)
+
+    content = candidate.get("content")
+    if not isinstance(content, dict):
+        raise _GeminiResponseProblem("invalid_response", safe_finish_reason)
+    parts = content.get("parts")
+    if not isinstance(parts, list):
+        raise _GeminiResponseProblem("invalid_response", safe_finish_reason)
+
+    text_parts = [
+        part["text"]
+        for part in parts
+        if isinstance(part, dict)
+        and part.get("thought") is not True
+        and isinstance(part.get("text"), str)
+        and part["text"].strip()
+    ]
+    text = "".join(text_parts).strip()
+    if not text:
+        raise _GeminiResponseProblem("invalid_response", safe_finish_reason)
+    return text
+
+
+def _parse_answer_text(raw_text: str) -> tuple[str, bool]:
+    text = _strip_markdown_fence(raw_text)
+    if not text:
+        raise _GeminiResponseProblem("invalid_response")
+
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return text[:_MAX_RESPONSE_CHARACTERS], _text_indicates_uncertainty(text)
+
+    if isinstance(parsed, dict):
+        answer: Any = None
+        for key in ("answer", "text", "response", "message"):
+            value = parsed.get(key)
+            if isinstance(value, str) and value.strip():
+                answer = value.strip()
+                break
+        if answer is None:
+            raise _GeminiResponseProblem("invalid_response")
+        needs_review = parsed.get("needs_review")
+        return (
+            answer[:_MAX_RESPONSE_CHARACTERS],
+            needs_review
+            if isinstance(needs_review, bool)
+            else _text_indicates_uncertainty(answer),
+        )
+
+    if isinstance(parsed, str) and parsed.strip():
+        answer = parsed.strip()
+        return answer[:_MAX_RESPONSE_CHARACTERS], _text_indicates_uncertainty(answer)
+    if isinstance(parsed, (int, float)) and not isinstance(parsed, bool):
+        answer = str(parsed)
+        return answer[:_MAX_RESPONSE_CHARACTERS], False
+
+    raise _GeminiResponseProblem("invalid_response")
+
+
+def _strip_markdown_fence(text: str) -> str:
+    normalized = text.strip()
+    match = re.fullmatch(
+        r"```(?:json|text)?\s*(.*?)\s*```", normalized, re.I | re.S
+    )
+    return match.group(1).strip() if match else normalized
+
+
+def _safe_provider_enum(value: Any) -> str | None:
+    if isinstance(value, str) and re.fullmatch(r"[A-Z][A-Z0-9_]{0,49}", value):
+        return value
+    return None
+
+
+def _text_indicates_uncertainty(text: str) -> bool:
+    normalized = text.casefold()
+    return any(
+        phrase in normalized
+        for phrase in (
+            "i don't know",
+            "i do not know",
+            "i'm not sure",
+            "i am not sure",
+            "i cannot answer reliably",
+            "i can't answer reliably",
+            "i do not have enough information",
+            "i don't have enough information",
+            "i cannot verify",
+            "i can't verify",
+        )
     )
