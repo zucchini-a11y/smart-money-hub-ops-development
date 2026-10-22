@@ -801,6 +801,30 @@ class BotFlowTests(unittest.TestCase):
             "Start SMC Assessment",
         )
 
+    def test_text_main_menu_aliases_are_case_insensitive_and_trimmed(self) -> None:
+        for text in ("menu", "  MENU  ", "main menu", "  MaIn MeNu  "):
+            with self.subTest(text=text):
+                self._message(text)
+                menu = self.api.messages[-1]
+                self.assertEqual(menu["text"], "Choose an option:")
+                self.assertEqual(
+                    menu["reply_markup"]["inline_keyboard"][0][0]["text"],
+                    "Start SMC Assessment",
+                )
+
+    def test_ordinary_coaching_message_still_reaches_the_coach(self) -> None:
+        self._message("What is liquidity?")
+        reply = self.api.messages[-1]
+        self.assertNotEqual(reply["text"], "Choose an option:")
+        self.assertIn(
+            "liquidity",
+            reply["text"].casefold(),
+        )
+        self.assertEqual(
+            len(Repository(self.database_path).recent_dm_coaching_interactions(self.user_id)),
+            1,
+        )
+
     def test_admin_can_preview_confirm_and_cancel_one_time_channel_promo(self) -> None:
         channel_id = -1004481197912
         self.bot.admin_id = self.user_id

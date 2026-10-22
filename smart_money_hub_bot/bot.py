@@ -487,7 +487,7 @@ class SmartMoneyHubBot:
                 self._nav_keyboard(),
             )
             return
-        if command == "/menu":
+        if command == "/menu" or text.strip().casefold() in {"menu", "main menu"}:
             self.sessions.pop(telegram_id, None)
             self.admin_dashboard.cancel_search(telegram_id)
             self.admin_dashboard.cancel_broadcast(telegram_id)
