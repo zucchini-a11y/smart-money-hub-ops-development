@@ -4,6 +4,7 @@ import logging
 import random
 import re
 import time as time_module
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, time as ClockTime, timedelta, timezone
 from typing import Any
@@ -1155,6 +1156,8 @@ class SmartMoneyHubBot:
         username: str | None,
         question: str,
     ) -> None:
+        request_id = uuid.uuid4().hex
+        logger.info("Coach request received. request_id=%s.", request_id)
         try:
             history = self.store.recent_dm_coaching_interactions(telegram_id)
             profile = self.store.progress_for(telegram_id)
@@ -1177,6 +1180,7 @@ class SmartMoneyHubBot:
             question,
             history=history,
             profile=profile,
+            request_id=request_id,
         )
         reply = routed.reply
         assessment = routed.assessment
@@ -1219,10 +1223,15 @@ class SmartMoneyHubBot:
             if question_recorded and interaction_id is not None
             else self._coach_keyboard()
         )
-        self.api.send_message(chat_id, response, markup)
+        try:
+            self.api.send_message(chat_id, response, markup)
+        except TelegramAPIError:
+            logger.warning("Coach Telegram send failed. request_id=%s.", request_id)
+            raise
         logger.info(
-            "Coach reply sent to Telegram (path=%s).",
+            "Coach reply sent to Telegram (path=%s). request_id=%s.",
             routed.response_path,
+            request_id,
         )
 
     def _handle_coach_feedback(

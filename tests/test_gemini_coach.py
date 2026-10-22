@@ -1,4 +1,5 @@
 import json
+import re
 import tempfile
 import unittest
 from email.message import Message
@@ -28,7 +29,12 @@ def _http_response(body: bytes) -> MagicMock:
     return response
 
 
-def _response(answer: str, needs_review: bool = False) -> MagicMock:
+def _response(
+    answer: str,
+    needs_review: bool = False,
+    *,
+    usage_metadata: dict | None = None,
+) -> MagicMock:
     data = {
         "candidates": [
             {
@@ -48,6 +54,8 @@ def _response(answer: str, needs_review: bool = False) -> MagicMock:
             }
         ]
     }
+    if usage_metadata is not None:
+        data["usageMetadata"] = usage_metadata
     return _http_response(json.dumps(data).encode("utf-8"))
 
 
@@ -89,7 +97,7 @@ class _EmptyKnowledgeStore:
 
 
 class _UncertainService:
-    def evaluate(self, message, *, history=None, profile=None):
+    def evaluate(self, message, *, history=None, profile=None, request_id=None):
         from smart_money_hub_bot.coach import CoachReply
 
         return CoachReply(
@@ -136,6 +144,7 @@ class GeminiCoachTests(unittest.TestCase):
             payload["generationConfig"]["thinkingConfig"],
             {"thinkingLevel": "LOW"},
         )
+        self.assertEqual(payload["generationConfig"]["maxOutputTokens"], 1024)
 
     def test_plain_text_candidate_parts_are_returned_without_json_decoding(self) -> None:
         service = GeminiCoachService("test-key")
@@ -250,6 +259,48 @@ class GeminiCoachTests(unittest.TestCase):
                         service.evaluate("What is liquidity?")
                 self.assertEqual(caught.exception.failure_kind, failure_kind)
                 self.assertEqual(caught.exception.provider_status, finish_reason)
+
+    def test_max_tokens_logs_safe_usage_and_uses_fallback(self) -> None:
+        router = CoachMessageRouter(
+            GeminiCoachService("test-key"), _EmptyKnowledgeStore()
+        )
+        request_id = "a" * 32
+        response = _provider_response(
+            {
+                "candidates": [
+                    {
+                        "content": {"parts": [{"text": "partial answer must not leak"}]},
+                        "finishReason": "MAX_TOKENS",
+                    }
+                ],
+                "usageMetadata": {
+                    "promptTokenCount": 123,
+                    "candidatesTokenCount": 1024,
+                    "thoughtsTokenCount": 840,
+                    "totalTokenCount": 1147,
+                    "unsafe_extra": "not logged",
+                },
+            }
+        )
+
+        with patch(
+            "smart_money_hub_bot.gemini_coach.urlopen", return_value=response
+        ), self.assertLogs("smart_money_hub_bot", level="INFO") as logs:
+            routed = router.route(
+                321,
+                "What is liquidity?",
+                request_id=request_id,
+            )
+
+        joined_logs = "\n".join(logs.output)
+        self.assertEqual(routed.response_path, "fallback")
+        self.assertEqual(routed.request_id, request_id)
+        self.assertIn("finish_reason=MAX_TOKENS", joined_logs)
+        self.assertIn("max_output_tokens=1024", joined_logs)
+        self.assertIn("'candidate_tokens': 1024", joined_logs)
+        self.assertIn("'thought_tokens': 840", joined_logs)
+        self.assertNotIn("partial answer must not leak", joined_logs)
+        self.assertNotIn("unsafe_extra", joined_logs)
 
     def test_prompt_block_and_empty_or_malformed_responses_fail_safely(self) -> None:
         cases = (
@@ -687,7 +738,15 @@ class GeminiCoachTests(unittest.TestCase):
             }
             with patch(
                 "smart_money_hub_bot.gemini_coach.urlopen",
-                return_value=_response(generated_answer),
+                return_value=_response(
+                    generated_answer,
+                    usage_metadata={
+                        "promptTokenCount": 90,
+                        "candidatesTokenCount": 32,
+                        "thoughtsTokenCount": 18,
+                        "totalTokenCount": 122,
+                    },
+                ),
             ) as mocked_urlopen:
                 with patch.object(api, "_request") as mocked_telegram_request:
                     with self.assertLogs("smart_money_hub_bot", level="INFO") as logs:
@@ -704,6 +763,26 @@ class GeminiCoachTests(unittest.TestCase):
             "Coach reply sent to Telegram (path=gemini_success).",
             "\n".join(logs.output),
         )
+        log_lines = logs.output
+        request_ids = {
+            match
+            for line in log_lines
+            for match in re.findall(r"request_id=([0-9a-f]{32})", line)
+        }
+        self.assertEqual(len(request_ids), 1)
+        request_id = request_ids.pop()
+        for expected_log in (
+            "Coach request received",
+            "Gemini HTTP response",
+            "Coach response path=gemini_success",
+            "Coach reply sent to Telegram",
+        ):
+            self.assertTrue(
+                any(expected_log in line and request_id in line for line in log_lines),
+                expected_log,
+            )
+        self.assertIn("max_output_tokens=1024", "\n".join(log_lines))
+        self.assertIn("'candidate_tokens': 32", "\n".join(log_lines))
         self.assertNotIn(synthetic_question, "\n".join(logs.output))
         self.assertNotIn(synthetic_key, "\n".join(logs.output))
         self.assertNotIn("synthetic_member", "\n".join(logs.output))

@@ -45,6 +45,7 @@ class CoachService(Protocol):
         *,
         history: list[dict[str, Any]] | None = None,
         profile: dict[str, Any] | None = None,
+        request_id: str | None = None,
     ) -> CoachReply: ...
 
 
@@ -173,6 +174,7 @@ class RuleBasedCoachService:
         *,
         history: list[dict[str, Any]] | None = None,
         profile: dict[str, Any] | None = None,
+        request_id: str | None = None,
     ) -> CoachReply:
         text = " ".join(message.split())
         normalized = text.casefold()
@@ -650,6 +652,12 @@ def ai_evaluate_answer(
     *,
     history: list[dict[str, Any]] | None = None,
     profile: dict[str, Any] | None = None,
+    request_id: str | None = None,
 ) -> CoachReply:
     """Provider seam; this version delegates to a local deterministic service."""
-    return service.evaluate(message, history=history, profile=profile)
+    return service.evaluate(
+        message,
+        history=history,
+        profile=profile,
+        request_id=request_id,
+    )

@@ -5,6 +5,7 @@ import logging
 import re
 import socket
 import time
+import uuid
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -20,6 +21,7 @@ logger = logging.getLogger(__name__)
 _MAX_HISTORY_TURNS = 6
 _MAX_TURN_CHARACTERS = 1200
 _MAX_RESPONSE_CHARACTERS = 3500
+_MAX_OUTPUT_TOKENS = 1024
 _RETRY_BACKOFF_SECONDS = 0.25
 _MAX_RETRY_AFTER_SECONDS = 1.0
 _MIN_RETRY_WINDOW_SECONDS = 0.5
@@ -49,7 +51,12 @@ class GeminiCoachService:
         *,
         history: list[dict[str, Any]] | None = None,
         profile: dict[str, Any] | None = None,
+        request_id: str | None = None,
     ) -> CoachReply:
+        if not isinstance(request_id, str) or not re.fullmatch(
+            r"[0-9a-f]{32}", request_id
+        ):
+            request_id = uuid.uuid4().hex
         if not self._api_key:
             raise CoachProviderError("missing_api_key")
 
@@ -63,7 +70,7 @@ class GeminiCoachService:
             "contents": contents,
             "generationConfig": {
                 "temperature": 0.45,
-                "maxOutputTokens": 600,
+                "maxOutputTokens": _MAX_OUTPUT_TOKENS,
                 "responseMimeType": "application/json",
                 "thinkingConfig": {"thinkingLevel": "LOW"},
             },
@@ -99,11 +106,18 @@ class GeminiCoachService:
                         getattr(response, "headers", None)
                     )
                     data = json.loads(response.read().decode("utf-8"))
+                finish_reason, token_usage = _safe_response_diagnostics(data)
                 logger.info(
-                    "Gemini HTTP response status=%s elapsed_ms=%s headers=%s.",
+                    "Gemini HTTP response status=%s elapsed_ms=%s headers=%s "
+                    "request_id=%s finish_reason=%s max_output_tokens=%s "
+                    "token_usage=%s.",
                     response_status,
                     _elapsed_ms(started_at),
                     response_headers,
+                    request_id,
+                    finish_reason,
+                    _MAX_OUTPUT_TOKENS,
+                    token_usage,
                 )
                 break
             except HTTPError as error:
@@ -121,11 +135,13 @@ class GeminiCoachService:
                 if retry_delay is not None:
                     logger.warning(
                         "Gemini returned HTTP 503 (elapsed_ms=%s, provider_status=%s, "
-                        "provider_message=%s, headers=%s); retrying once.",
+                        "provider_message=%s, headers=%s); retrying once. "
+                        "request_id=%s.",
                         elapsed_ms,
                         provider_status,
                         provider_message,
                         response_headers,
+                        request_id,
                     )
                     time.sleep(retry_delay)
                     attempts += 1
@@ -322,6 +338,37 @@ def _safe_response_headers(headers: Any) -> dict[str, str]:
         if re.fullmatch(r"[A-Za-z0-9 ,:./;=+-]{1,100}", normalized):
             safe[name] = normalized
     return safe
+
+
+def _safe_response_diagnostics(data: Any) -> tuple[str | None, dict[str, int]]:
+    if not isinstance(data, dict):
+        return None, {}
+
+    finish_reason: str | None = None
+    candidates = data.get("candidates")
+    if isinstance(candidates, list) and candidates and isinstance(candidates[0], dict):
+        finish_reason = _safe_provider_enum(candidates[0].get("finishReason"))
+
+    usage_metadata = data.get("usageMetadata")
+    if not isinstance(usage_metadata, dict):
+        return finish_reason, {}
+
+    fields = {
+        "prompt_tokens": "promptTokenCount",
+        "candidate_tokens": "candidatesTokenCount",
+        "thought_tokens": "thoughtsTokenCount",
+        "total_tokens": "totalTokenCount",
+    }
+    usage: dict[str, int] = {}
+    for label, source in fields.items():
+        value = usage_metadata.get(source)
+        if (
+            isinstance(value, int)
+            and not isinstance(value, bool)
+            and 0 <= value <= 1_000_000_000
+        ):
+            usage[label] = value
+    return finish_reason, usage
 
 
 def _read_provider_error(

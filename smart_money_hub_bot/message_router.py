@@ -3,6 +3,7 @@
 import logging
 import random
 import re
+import uuid
 from dataclasses import dataclass
 from typing import Any
 
@@ -42,6 +43,7 @@ class RoutedCoachMessage:
     assessment: QuestionAssessment | None
     approved_item: dict[str, Any] | None = None
     response_path: str = "local_response"
+    request_id: str = ""
 
 
 class CoachMessageRouter:
@@ -65,7 +67,10 @@ class CoachMessageRouter:
         *,
         history: list[dict[str, Any]] | None = None,
         profile: dict[str, Any] | None = None,
+        request_id: str | None = None,
     ) -> RoutedCoachMessage:
+        if not isinstance(request_id, str) or not re.fullmatch(r"[0-9a-f]{32}", request_id):
+            request_id = uuid.uuid4().hex
         simple_intent, greeting = _simple_intent(message)
         if simple_intent:
             response = self._varied_reply(telegram_id, simple_intent, greeting)
@@ -74,6 +79,7 @@ class CoachMessageRouter:
                 CoachReply(response, "Conversation", (), ""),
                 None,
                 "local_response",
+                request_id=request_id,
             )
 
         context_history, context_profile = _relevant_conversation_context(
@@ -108,6 +114,7 @@ class CoachMessageRouter:
                 assessment,
                 "approved_knowledge",
                 approved_item=approved_item,
+                request_id=request_id,
             )
 
         if assessment and assessment.needs_research:
@@ -116,12 +123,14 @@ class CoachMessageRouter:
                 self.fallback_service,
                 history=context_history,
                 profile=context_profile,
+                request_id=request_id,
             )
             return self._routed(
                 "question",
                 self._needs_review_reply(reply),
                 assessment,
                 "local_response",
+                request_id=request_id,
             )
 
         response_path = "local_response"
@@ -131,6 +140,7 @@ class CoachMessageRouter:
                 self.coach_service,
                 history=context_history,
                 profile=context_profile,
+                request_id=request_id,
             )
             if (
                 getattr(self.coach_service, "diagnostic_response_path", None)
@@ -141,7 +151,7 @@ class CoachMessageRouter:
             logger.warning(
                 "Coach provider failed (kind=%s, http_status=%s, elapsed_ms=%s, "
                 "google_code=%s, google_status=%s, google_message=%s, headers=%s); "
-                "using local fallback.",
+                "using local fallback. request_id=%s.",
                 error.failure_kind,
                 error.status_code,
                 error.elapsed_ms,
@@ -149,12 +159,14 @@ class CoachMessageRouter:
                 error.provider_status,
                 error.provider_message,
                 error.response_headers,
+                request_id,
             )
             reply = ai_evaluate_answer(
                 message,
                 self.fallback_service,
                 history=context_history,
                 profile=context_profile,
+                request_id=request_id,
             )
             response_path = "fallback"
         if assessment and reply.detected_topic != topic:
@@ -178,12 +190,14 @@ class CoachMessageRouter:
                     self.fallback_service,
                     history=context_history,
                     profile=context_profile,
+                    request_id=request_id,
                 )
         return self._routed(
             "question" if assessment else "coaching",
             reply,
             assessment,
             response_path,
+            request_id=request_id,
         )
 
     @staticmethod
@@ -194,15 +208,17 @@ class CoachMessageRouter:
         response_path: str,
         *,
         approved_item: dict[str, Any] | None = None,
+        request_id: str,
     ) -> RoutedCoachMessage:
         # Do not log message text, response text, member IDs, or usernames.
-        logger.info("Coach response path=%s.", response_path)
+        logger.info("Coach response path=%s. request_id=%s.", response_path, request_id)
         return RoutedCoachMessage(
             intent,
             reply,
             assessment,
             approved_item,
             response_path,
+            request_id,
         )
 
     @staticmethod

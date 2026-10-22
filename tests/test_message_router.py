@@ -90,7 +90,9 @@ class MessageRouterTests(unittest.TestCase):
         class _GeminiProvider:
             diagnostic_response_path = "gemini_success"
 
-            def evaluate(self, message, *, history=None, profile=None):
+            def evaluate(
+                self, message, *, history=None, profile=None, request_id=None
+            ):
                 return CoachReply(
                     "Generated provider answer.",
                     "Liquidity / SSL / BSL",
