@@ -177,7 +177,12 @@ class SmartMoneyHubBot:
         if not isinstance(text, str):
             text = ""
         telegram_id, chat_id, is_private = self._register(sender, chat)
-        command = text.strip().split(maxsplit=1)[0].split("@", maxsplit=1)[0].lower()
+        clean_text = text.strip()
+        command = (
+            clean_text.split(maxsplit=1)[0].split("@", maxsplit=1)[0].lower()
+            if clean_text
+            else ""
+        )
 
         if command == "/channelid":
             if self.admin_id is None or telegram_id != self.admin_id:
