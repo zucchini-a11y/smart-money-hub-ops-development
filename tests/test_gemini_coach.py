@@ -596,7 +596,7 @@ class GeminiCoachTests(unittest.TestCase):
 
         with patch(
             "smart_money_hub_bot.gemini_coach.urlopen",
-            side_effect=lambda *_args, **_kwargs: _provider_error(
+            side_effect=lambda *_args, **_kwargs: _raise_provider_error(
                 429, "RESOURCE_EXHAUSTED", "Quota exceeded."
             ),
         ):
@@ -785,7 +785,7 @@ class GeminiCoachTests(unittest.TestCase):
         service = GeminiCoachService("do-not-log-this-key")
         with patch(
             "smart_money_hub_bot.gemini_coach.urlopen",
-            side_effect=lambda *_args, **_kwargs: _provider_error(
+            side_effect=lambda *_args, **_kwargs: _raise_provider_error(
                 429, "RESOURCE_EXHAUSTED", "Quota exceeded."
             ),
         ) as mocked_urlopen, patch("smart_money_hub_bot.gemini_coach.time.sleep") as sleep:
@@ -897,7 +897,7 @@ class GeminiCoachTests(unittest.TestCase):
         router = CoachMessageRouter(service, _EmptyKnowledgeStore())
         with patch(
             "smart_money_hub_bot.gemini_coach.urlopen",
-            side_effect=lambda *_args, **_kwargs: _provider_error(
+            side_effect=lambda *_args, **_kwargs: _raise_provider_error(
                 503,
                 "UNAVAILABLE",
                 "The service is temporarily unavailable.",
@@ -981,12 +981,9 @@ class GeminiCoachTests(unittest.TestCase):
         for status_code, provider_status, message, expected_kind in cases:
             with self.subTest(status_code=status_code):
                 service = GeminiCoachService("test-key")
-                api_error = _provider_error(
-                    status_code, provider_status, message
-                )
                 with patch(
                     "smart_money_hub_bot.gemini_coach.urlopen",
-                    side_effect=lambda *_args, **_kwargs: _provider_error(
+                    side_effect=lambda *_args, **_kwargs: _raise_provider_error(
                         status_code, provider_status, message
                     ),
                 ) as mocked_urlopen:
