@@ -836,6 +836,12 @@ class GeminiCoachTests(unittest.TestCase):
                 "The model is overloaded. Prompt: What is BOS?",
                 headers={"Retry-After": "3"},
             ),
+            _provider_error(
+                503,
+                "UNAVAILABLE",
+                "The model is overloaded. Prompt: What is BOS?",
+                headers={"Retry-After": "3"},
+            ),
         ]
         with patch(
             "smart_money_hub_bot.gemini_coach.urlopen", side_effect=api_errors
@@ -844,7 +850,7 @@ class GeminiCoachTests(unittest.TestCase):
         ) as sleep, self.assertLogs("smart_money_hub_bot", level="WARNING") as logs:
             routed = router.route(124, "What is BOS?")
         reply = routed.reply
-        self.assertEqual(mocked_urlopen.call_count, 3)
+        self.assertEqual(mocked_urlopen.call_count, 4)
         sleep.assert_called_once_with(0.0)
         self.assertIn("Break of Structure", reply.response)
         self.assertEqual(routed.response_path, "fallback")
