@@ -121,7 +121,7 @@ class CoachTests(unittest.TestCase):
         self.assertEqual(reply.detected_topic, "CHoCH")
         self.assertIn("Change of Character", reply.response)
         self.assertIn("does not guarantee a reversal", reply.response)
-        self.assertIn("Which swing level broke", reply.response)
+        self.assertIn("Which confirmation does your chosen entry model require", reply.response)
 
     def test_fvg_entry_without_waiting_for_context_flags_possible_mistake(self) -> None:
         reply = self.coach.evaluate("I saw an FVG and entered immediately.")

@@ -740,9 +740,24 @@ class RuleBasedCoachService:
     @staticmethod
     def _review_feedback(topic: str, mistakes: tuple[str, ...]) -> CoachReply:
         if mistakes:
+            details: list[str] = []
+            for mistake in mistakes:
+                if mistake == "Entry was taken without confirmation":
+                    details.append(
+                        "• Entry was taken without confirmation. Your report records "
+                        "confirmation as absent; the specific trigger is the one your "
+                        "entry model requires, so I won't guess which trigger was missing."
+                    )
+                elif mistake == "Entry was taken before a retest":
+                    details.append(
+                        "• Entry was taken before the retest required by your stated "
+                        "model; that model's planned return-and-response step was missing."
+                    )
+                else:
+                    details.append(f"• {mistake}")
             response = (
                 "Based on what you shared, these are possible process issues to review:\n"
-                + "\n".join(f"• {mistake}" for mistake in mistakes)
+                + "\n".join(details)
                 + "\n\nCompare each one with your written plan; don't judge the setup from the loss alone. "
                 "Use the confirmation and retest rules in your chosen entry model; a retest "
                 "is not required by every model. Don't chase a missed setup. "

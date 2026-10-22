@@ -425,6 +425,61 @@ class GeminiCoachTests(unittest.TestCase):
         self.assertIn("hypothetical bullish", payload["systemInstruction"]["parts"][0]["text"])
         self.assertIn("hypothetical bearish", payload["systemInstruction"]["parts"][0]["text"])
 
+    def test_hypothetical_choch_scenario_uses_given_facts_and_answers_each_part(self) -> None:
+        question = (
+            "Hypothetically, Gold has a bearish H1 bias. On M5, price sweeps BSL, "
+            "closes below the prior higher low with bearish displacement, then "
+            "retests that level. I have not entered. Explain whether this is a CHOCH, "
+            "what displacement and the retest add, where invalidation and the stop "
+            "belong, and how to assess risk and planned R:R."
+        )
+        answer = (
+            "1. If the prior M5 sequence was higher lows, a close below the prior "
+            "higher low after the BSL sweep can be a bearish CHOCH; it signals a "
+            "possible shift, not a guaranteed reversal.\n"
+            "2. The bearish displacement adds evidence of intent but is not proof.\n"
+            "3. The stated retest can provide an entry opportunity in a model that "
+            "uses retests; other models may use a different trigger.\n"
+            "4. Invalidate the idea where its structural premise fails and place the "
+            "stop from that level; no exact price is available from the text.\n"
+            "5. Apply the configured H1/M5 plan, 2% risk per trade, minimum 1:3 "
+            "planned R:R, 3% daily loss limit, and break-even at 1:1. These rules do "
+            "not guarantee a valid trade."
+        )
+        router = CoachMessageRouter(
+            GeminiCoachService("test-key"), _EmptyKnowledgeStore()
+        )
+        old_history = [
+            {
+                "question": "I chased after displacement and felt FOMO.",
+                "coach_response": "Did you follow your plan?",
+                "detected_topic": "FOMO",
+            }
+        ]
+
+        with patch(
+            "smart_money_hub_bot.gemini_coach.urlopen",
+            return_value=_response(answer),
+        ) as mocked_urlopen:
+            routed = router.route(324, question, history=old_history)
+
+        payload = json.loads(mocked_urlopen.call_args.args[0].data.decode("utf-8"))
+        instruction = payload["systemInstruction"]["parts"][0]["text"].casefold()
+        self.assertEqual(routed.response_path, "gemini_success")
+        self.assertEqual(routed.reply.response, answer)
+        self.assertEqual(
+            payload["contents"],
+            [{"role": "user", "parts": [{"text": question}]}],
+        )
+        self.assertIn("classified as hypothetical_scenario", instruction)
+        self.assertIn("answer each requested point directly", instruction)
+        self.assertIn("do not ask for", instruction)
+        self.assertIn("not by every model", instruction)
+        self.assertIn("minimum 1:3 planned r:r", instruction)
+        self.assertNotIn("did you follow your plan", json.dumps(payload).casefold())
+        self.assertNotIn("which swing level broke", routed.reply.response.casefold())
+        self.assertNotIn("from what you wrote, review", routed.reply.response.casefold())
+
     def test_incomplete_bos_choch_generation_uses_complete_local_fallback(self) -> None:
         service = GeminiCoachService("test-key")
         router = CoachMessageRouter(service, _EmptyKnowledgeStore())
