@@ -548,7 +548,12 @@ class Repository:
         try:
             row = connection.execute(
                 """
-                SELECT state.last_recovery_at, state.last_recovery_gap_seconds
+                SELECT state.last_recovery_at, state.last_recovery_gap_seconds,
+                       (
+                           SELECT COUNT(*)
+                           FROM bot_recovery_notices AS sent
+                           WHERE sent.telegram_id = ?
+                       ) AS previous_notice_count
                 FROM bot_runtime_state AS state
                 LEFT JOIN bot_recovery_notices AS notice
                   ON notice.recovery_at = state.last_recovery_at
@@ -557,7 +562,7 @@ class Repository:
                   AND state.last_recovery_at IS NOT NULL
                   AND notice.telegram_id IS NULL
                 """,
-                (telegram_id,),
+                (telegram_id, telegram_id),
             ).fetchone()
             return dict(row) if row else None
         finally:

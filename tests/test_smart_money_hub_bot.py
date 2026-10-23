@@ -8,6 +8,7 @@ from unittest.mock import Mock, patch
 from zoneinfo import ZoneInfo
 
 from smart_money_hub_bot.bot import (
+    BOT_RECOVERY_NOTICES,
     BOT_RECOVERY_NOTICE_AFTER_SECONDS,
     POLLING_HEARTBEAT_INTERVAL_SECONDS,
     SmartMoneyHubBot,
@@ -683,8 +684,7 @@ class BotFlowTests(unittest.TestCase):
         self._message("Hi")
         self.assertEqual(
             self.api.messages[-2]["text"],
-            "Sorry for the delay. I was tied up with a few things, but I’m "
-            "back now and available to assist. Thanks for your patience.",
+            BOT_RECOVERY_NOTICES[0],
         )
 
         self._message("Thanks")
@@ -693,7 +693,23 @@ class BotFlowTests(unittest.TestCase):
         )
 
         self._message("Hi", user_id=self.user_id + 1)
-        self.assertIn("Sorry for the delay", self.api.messages[-2]["text"])
+        self.assertEqual(self.api.messages[-2]["text"], BOT_RECOVERY_NOTICES[0])
+
+    def test_recovery_notice_rotates_between_outages_for_each_member(self) -> None:
+        self._record_poll_recovery(timedelta(hours=1))
+        self._message("Hi")
+        first_notice = self.api.messages[-2]["text"]
+
+        self.bot.store.record_successful_bot_poll(
+            at="2026-10-24T00:00:00+00:00",
+            started_at="2026-10-23T23:59:00+00:00",
+        )
+        self._message("Hi")
+        second_notice = self.api.messages[-2]["text"]
+
+        self.assertEqual(first_notice, BOT_RECOVERY_NOTICES[0])
+        self.assertEqual(second_notice, BOT_RECOVERY_NOTICES[1])
+        self.assertNotEqual(first_notice, second_notice)
 
     def test_recovery_notice_does_not_trigger_for_a_short_poll_gap(self) -> None:
         self._record_poll_recovery(timedelta(minutes=29))

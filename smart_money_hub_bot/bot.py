@@ -32,6 +32,17 @@ POLLING_HEARTBEAT_INTERVAL_SECONDS = 30
 POLLING_STALE_AFTER_SECONDS = 60
 TYPING_ACTION_REFRESH_SECONDS = 4
 BOT_RECOVERY_NOTICE_AFTER_SECONDS = 30 * 60
+BOT_RECOVERY_NOTICES = (
+    "Sorry for the delay. I was tied up with a few things, but I’m back now "
+    "and available to assist. Thanks for your patience.",
+    "Thanks for your patience. I’m back online and ready to help you now.",
+    "Apologies for the interruption. I’m active again and available to assist.",
+    "I appreciate you waiting. I’m back now and ready to help with your request.",
+    "Sorry I wasn’t available earlier. I’m here now and ready to assist.",
+    "Thanks for bearing with me. I’m available again and ready to continue.",
+    "Apologies for the wait. I’m back and ready to help whenever you are.",
+    "Thank you for your patience. I’m available now and happy to help.",
+)
 MAIN_MENU: tuple[tuple[str, str], ...] = (
     ("Start SMC Assessment", "menu:assessment"),
     ("💬 Ask Coach", "menu:coach"),
@@ -526,10 +537,8 @@ class SmartMoneyHubBot:
             recovery = self.store.pending_bot_recovery_notice(telegram_id)
             if not recovery:
                 return
-            notice = (
-                "Sorry for the delay. I was tied up with a few things, but I’m "
-                "back now and available to assist. Thanks for your patience."
-            )
+            variant = int(recovery["previous_notice_count"]) % len(BOT_RECOVERY_NOTICES)
+            notice = BOT_RECOVERY_NOTICES[variant]
             self.api.send_message(chat_id, notice)
             self.store.mark_bot_recovery_notice_sent(
                 telegram_id, str(recovery["last_recovery_at"])
