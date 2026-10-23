@@ -4,7 +4,7 @@ import unittest
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from zoneinfo import ZoneInfo
 
 from smart_money_hub_bot.bot import (
@@ -982,6 +982,19 @@ class BotFlowTests(unittest.TestCase):
             len(Repository(self.database_path).recent_dm_coaching_interactions(self.user_id)),
             1,
         )
+
+    def test_bot_marks_only_configured_admin_for_coach_context(self) -> None:
+        self.bot.admin_id = self.user_id
+        with patch.object(
+            self.bot.message_router,
+            "route",
+            wraps=self.bot.message_router.route,
+        ) as route:
+            self._message("What is liquidity?")
+            self.assertIs(route.call_args.kwargs["profile"]["is_admin"], True)
+
+            self._message("What is liquidity?", user_id=self.user_id + 1)
+            self.assertIs(route.call_args.kwargs["profile"]["is_admin"], False)
 
     def test_menu_words_in_ordinary_message_do_not_open_a_screen(self) -> None:
         self._message("I keep a trading journal to learn from my decisions.")

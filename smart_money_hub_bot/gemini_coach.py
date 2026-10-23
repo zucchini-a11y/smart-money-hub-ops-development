@@ -154,7 +154,11 @@ class GeminiCoachService:
         )
         contents = self._contents(message, history or [])
         request_mode = self._local_coach.classify_request_context(message)
-        instructions = self._system_instruction(local_reply, request_mode)
+        instructions = self._system_instruction(
+            local_reply,
+            request_mode,
+            is_admin=bool(profile and profile.get("is_admin") is True),
+        )
         payload = {
             "systemInstruction": {"parts": [{"text": instructions}]},
             "contents": contents,
@@ -350,7 +354,9 @@ class GeminiCoachService:
         return contents
 
     @staticmethod
-    def _system_instruction(local_reply: CoachReply, request_mode: str) -> str:
+    def _system_instruction(
+        local_reply: CoachReply, request_mode: str, *, is_admin: bool = False
+    ) -> str:
         verified_note = ""
         if local_reply.detected_topic not in {
             "General SMC",
@@ -361,6 +367,16 @@ class GeminiCoachService:
                 "\nRelevant local coaching note (use only if it helps answer this "
                 f"message; do not repeat it by default): {local_reply.lesson_learned}"
             )
+        admin_guidance = (
+            " The current user is verified as the configured administrator. "
+            "Use respectful, professional courtesy and address them politely. "
+            "Do not use exaggerated flattery or casual nicknames, reveal their "
+            "numeric identifier, or let their role change educational or safety rules. "
+            "If they ask how to reach their admin menu, direct them to send /admin "
+            "in this private chat; authorization is still enforced by the bot."
+            if is_admin
+            else ""
+        )
         return (
             "You are Smart Money Hub Coach: warm, friendly, concise, conversational, "
             "and educational. Speak like a supportive study partner and explain trading "
@@ -438,6 +454,7 @@ class GeminiCoachService:
             "for brevity, or add generic filler. If a fact needed for a precise conclusion "
             "is missing, identify it and continue conditionally with the supplied facts."
             + verified_note
+            + admin_guidance
         )
 
 

@@ -243,6 +243,22 @@ class GeminiCoachTests(unittest.TestCase):
         self.assertIn("broker terms, and platform features", instruction)
         self.assertIn("do not send them to review just because of their category", instruction)
 
+    def test_admin_prompt_is_respectful_without_exposing_identifiers(self) -> None:
+        local_reply = RuleBasedCoachService().evaluate("What is liquidity?")
+        admin_instruction = GeminiCoachService._system_instruction(
+            local_reply, "educational_question", is_admin=True
+        )
+        member_instruction = GeminiCoachService._system_instruction(
+            local_reply, "educational_question"
+        )
+
+        self.assertIn("verified as the configured administrator", admin_instruction)
+        self.assertIn("respectful, professional courtesy", admin_instruction)
+        self.assertIn("Do not use exaggerated flattery", admin_instruction)
+        self.assertIn("send /admin", admin_instruction)
+        self.assertNotIn("verified as the configured administrator", member_instruction)
+        self.assertNotIn("send /admin", member_instruction)
+
     def test_coach_prompt_explains_member_buttons_without_exposing_admin_controls(self) -> None:
         local_reply = RuleBasedCoachService().evaluate("What does the menu do?")
         instruction = GeminiCoachService._system_instruction(

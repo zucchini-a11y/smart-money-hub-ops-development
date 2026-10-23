@@ -4,7 +4,7 @@ import logging
 import random
 import re
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from .coach import (
@@ -71,9 +71,12 @@ class CoachMessageRouter:
     ) -> RoutedCoachMessage:
         if not isinstance(request_id, str) or not re.fullmatch(r"[0-9a-f]{32}", request_id):
             request_id = uuid.uuid4().hex
+        is_admin = bool(profile and profile.get("is_admin") is True)
         simple_intent, greeting = _simple_intent(message)
         if simple_intent:
-            response = self._varied_reply(telegram_id, simple_intent, greeting)
+            response = self._varied_reply(
+                telegram_id, simple_intent, greeting, is_admin=is_admin
+            )
             return self._routed(
                 simple_intent,
                 CoachReply(response, "Conversation", (), ""),
@@ -103,10 +106,13 @@ class CoachMessageRouter:
                 logger.exception("Could not retrieve approved Coach knowledge.")
                 approved_item = None
         if approved_item:
+            approved_answer = str(approved_item["approved_answer"])
+            if is_admin:
+                approved_answer = f"Certainly — {approved_answer}"
             return self._routed(
                 "approved_knowledge",
                 CoachReply(
-                    str(approved_item["approved_answer"]),
+                    approved_answer,
                     topic,
                     (),
                     "Answered with administrator-approved knowledge.",
@@ -158,8 +164,6 @@ class CoachMessageRouter:
             assessment = detect_member_question(message, reply.detected_topic) or assessment
         if assessment and assessment.needs_research and not reply.requires_review:
             if response_path == "gemini_success":
-                from dataclasses import replace
-
                 assessment = replace(
                     assessment,
                     confidence="high",
@@ -176,8 +180,6 @@ class CoachMessageRouter:
             if assessment is None:
                 assessment = detect_member_question(message, reply.detected_topic)
             if assessment:
-                from dataclasses import replace
-
                 assessment = replace(
                     assessment,
                     confidence="low",
@@ -196,6 +198,8 @@ class CoachMessageRouter:
                     profile=context_profile,
                     request_id=request_id,
                 )
+        if is_admin and response_path == "fallback" and not reply.requires_review:
+            reply = replace(reply, response=f"Certainly — {reply.response}")
         return self._routed(
             "question" if assessment else "coaching",
             reply,
@@ -271,9 +275,10 @@ class CoachMessageRouter:
         )
 
     def _varied_reply(
-        self, telegram_id: int, intent: str, greeting: str
+        self, telegram_id: int, intent: str, greeting: str, *, is_admin: bool = False
     ) -> str:
-        options = _SIMPLE_REPLIES[intent][greeting]
+        reply_library = _ADMIN_SIMPLE_REPLIES if is_admin else _SIMPLE_REPLIES
+        options = reply_library[intent][greeting]
         previous = self._last_simple_reply.get((telegram_id, intent))
         choices = [response for response in options if response != previous] or options
         response = random.choice(choices)
@@ -325,6 +330,44 @@ _SIMPLE_REPLIES: dict[str, dict[str, tuple[str, ...]]] = {
             "Alright, sounds good.",
             "Okay. No rush.",
             "Understood.",
+        )
+    },
+}
+_ADMIN_SIMPLE_REPLIES: dict[str, dict[str, tuple[str, ...]]] = {
+    "greeting": {
+        "morning": (
+            "Good morning. How may I assist you today?",
+            "Good morning. What can I help you with?",
+        ),
+        "afternoon": (
+            "Good afternoon. How may I assist you today?",
+            "Good afternoon. What can I help you with?",
+        ),
+        "evening": (
+            "Good evening. How may I assist you today?",
+            "Good evening. What can I help you with?",
+        ),
+        "general": (
+            "Hello. How may I assist you today?",
+            "Hi. What can I help you with?",
+        ),
+    },
+    "thanks": {
+        "default": (
+            "You’re very welcome. I’m glad I could help.",
+            "Of course. I’m pleased that was useful.",
+        )
+    },
+    "farewell": {
+        "default": (
+            "Goodbye. Wishing you a good day.",
+            "Take care. I’ll be here if you need further help.",
+        )
+    },
+    "acknowledgement": {
+        "default": (
+            "Understood.",
+            "Certainly. I’ll keep that in mind.",
         )
     },
 }
@@ -380,26 +423,27 @@ def _relevant_conversation_context(
     profile: dict[str, Any] | None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Keep prior turns for clear follow-ups, not self-contained questions."""
+    role_context = {"is_admin": True} if profile and profile.get("is_admin") is True else {}
     if not history:
-        return [], {}
+        return [], role_context
 
     normalized = " ".join(message.split()).strip()
     if _EXPLICIT_FOLLOW_UP_START.match(normalized):
-        return history[:1], profile or {}
+        return history[:1], {**(profile or {}), **role_context}
     if _DIRECT_EDUCATION_START.match(normalized):
-        return [], {}
+        return [], role_context
 
     previous_response = str(history[0].get("coach_response") or "").rstrip()
     if previous_response.endswith("?") and _BRIEF_FOLLOW_UP_QUESTION.fullmatch(
         normalized
     ):
-        return history[:1], profile or {}
+        return history[:1], {**(profile or {}), **role_context}
     is_short_answer_to_coach = (
         previous_response.endswith("?")
         and len(normalized.split()) <= 12
         and not normalized.endswith("?")
     )
     if is_short_answer_to_coach:
-        return history[:1], profile or {}
+        return history[:1], {**(profile or {}), **role_context}
 
-    return [], {}
+    return [], role_context

@@ -1,7 +1,11 @@
 import unittest
 from unittest.mock import Mock, patch
 
-from smart_money_hub_bot.coach import CoachReply, RuleBasedCoachService
+from smart_money_hub_bot.coach import (
+    CoachProviderError,
+    CoachReply,
+    RuleBasedCoachService,
+)
 from smart_money_hub_bot.message_router import CoachMessageRouter
 
 
@@ -33,6 +37,38 @@ class MessageRouterTests(unittest.TestCase):
         self.assertIsNone(acknowledgement.assessment)
         self.assertEqual(self.router.route(101, "Alright").intent, "acknowledgement")
         self.assertEqual(self.router.route(101, "What’s up?").intent, "greeting")
+
+    def test_admin_greetings_use_a_more_formal_tone(self) -> None:
+        response = self.router.route(
+            101, "Good morning", profile={"is_admin": True}
+        ).reply.response
+
+        self.assertIn("Good morning.", response)
+        self.assertTrue(
+            any(phrase in response for phrase in ("assist you today", "help you with"))
+        )
+
+    def test_admin_context_reaches_provider_without_history(self) -> None:
+        provider = Mock()
+        provider.diagnostic_response_path = "gemini_success"
+        provider.evaluate.return_value = CoachReply(
+            "A respectful educational answer.", "Liquidity / SSL / BSL", (), ""
+        )
+        router = CoachMessageRouter(provider, _EmptyKnowledgeStore())
+
+        router.route(102, "Explain liquidity", profile={"is_admin": True})
+
+        self.assertIs(provider.evaluate.call_args.kwargs["profile"]["is_admin"], True)
+
+    def test_admin_local_fallback_keeps_a_professional_tone(self) -> None:
+        provider = Mock()
+        provider.evaluate.side_effect = CoachProviderError("client_timeout")
+        router = CoachMessageRouter(provider, _EmptyKnowledgeStore())
+
+        routed = router.route(103, "What is liquidity?", profile={"is_admin": True})
+
+        self.assertEqual(routed.response_path, "fallback")
+        self.assertTrue(routed.reply.response.startswith("Certainly — "))
 
     def test_alias_phrasings_route_to_the_same_trading_topic(self) -> None:
         phrasings = (

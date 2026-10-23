@@ -1509,6 +1509,7 @@ class SmartMoneyHubBot:
             logger.exception("Could not load saved coaching context.")
             history = []
             profile = {}
+        profile["is_admin"] = self.admin_id is not None and telegram_id == self.admin_id
         routed = self.message_router.route(
             telegram_id,
             question,
