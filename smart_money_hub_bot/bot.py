@@ -452,6 +452,18 @@ class SmartMoneyHubBot:
         )
         return telegram_id, chat_id, is_private
 
+    @staticmethod
+    def _is_pro_channel_access_request(text: str) -> bool:
+        normalized = re.sub(r"[^a-z0-9]+", " ", text.casefold()).strip()
+        return bool(
+            re.search(r"\bpro\b", normalized)
+            and re.search(r"\bchannel\b", normalized)
+            and re.search(
+                r"\b(join|access|enter|invite|invitation|link|subscribe)\b",
+                normalized,
+            )
+        )
+
     def _handle_message(self, message: dict[str, Any]) -> None:
         text = message.get("text")
         sender = message.get("from") or {}
@@ -625,6 +637,15 @@ class SmartMoneyHubBot:
                 )
             else:
                 self._accept_text_answer(session, text)
+            return
+        if is_private and self._is_pro_channel_access_request(text):
+            self.api.send_message(
+                chat_id,
+                "To request access to the Pro channel, message "
+                "@SMHProSignalsassistantbot. That bot can help with joining; "
+                "this Coach cannot grant access directly.",
+                self._nav_keyboard(),
+            )
             return
         if is_private:
             self._answer_coach_message(

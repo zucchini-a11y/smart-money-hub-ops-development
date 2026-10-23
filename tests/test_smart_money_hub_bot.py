@@ -827,6 +827,20 @@ class BotFlowTests(unittest.TestCase):
             "SMART MONEY HUB — ADMIN DASHBOARD", self.api.messages[-1]["text"]
         )
 
+    def test_pro_channel_access_request_returns_other_bot_username(self) -> None:
+        self._message("How can I join the Pro channel?")
+        self.assertIn("@SMHProSignalsassistantbot", self.api.messages[-1]["text"])
+        self.assertIn("request access", self.api.messages[-1]["text"])
+
+        self._message("Explain liquidity in a Pro trading channel.")
+        self.assertNotIn("@SMHProSignalsassistantbot", self.api.messages[-1]["text"])
+
+    def test_pro_channel_access_shortcut_does_not_interrupt_active_quiz(self) -> None:
+        self._click("menu:assessment")
+        self._message("How can I join the Pro channel?")
+        self.assertNotIn("@SMHProSignalsassistantbot", self.api.messages[-1]["text"])
+        self.assertIn("choose one of the answer buttons", self.api.messages[-1]["text"])
+
     def test_member_quick_commands_keep_personal_details_private(self) -> None:
         self._message("/help")
         help_text = self.api.messages[-1]["text"]
