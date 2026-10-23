@@ -888,6 +888,65 @@ class BotFlowTests(unittest.TestCase):
                     "Start SMC Assessment",
                 )
 
+    def test_explicit_text_requests_open_existing_member_screens(self) -> None:
+        self._message("Please open my trading journal")
+        journal = self.api.messages[-1]
+        self.assertEqual(journal["text"], "Trading Journal\n\nCreate a trade entry or review a previous one.")
+        journal_buttons = [
+            button["text"]
+            for row in journal["reply_markup"]["inline_keyboard"]
+            for button in row
+        ]
+        self.assertIn("New Trade Entry", journal_buttons)
+        self.assertIn("Review Previous Trades", journal_buttons)
+
+        self._message("Show me my progress")
+        self.assertIn("SMART MONEY HUB PROGRESS", self.api.messages[-1]["text"])
+
+        self._message("Can you open reminder settings?")
+        self.assertIn("Weekly Sunday check-in:", self.api.messages[-1]["text"])
+        self.assertIn("Zoom class check-ins: Automatic", self.api.messages[-1]["text"])
+
+        self._message("Open Ask Coach")
+        self.assertIn("Choose how you want to learn today", self.api.messages[-1]["text"])
+        coach_buttons = [
+            button["text"]
+            for row in self.api.messages[-1]["reply_markup"]["inline_keyboard"]
+            for button in row
+        ]
+        self.assertIn("💬 Chat with Coach", coach_buttons)
+
+        self._message("Open Clear My Coach History")
+        self.assertIn("Clear your saved Coach conversation history?", self.api.messages[-1]["text"])
+        self.assertEqual(
+            self.api.messages[-1]["reply_markup"]["inline_keyboard"][0][0]["callback_data"],
+            "coach:clear:confirm",
+        )
+
+    def test_explicit_open_request_does_not_interrupt_an_active_assessment(self) -> None:
+        self._click("menu:assessment")
+        session_before = self.bot.sessions[self.user_id]
+
+        self._message("Open my trading journal")
+
+        self.assertIs(self.bot.sessions[self.user_id], session_before)
+        self.assertEqual(session_before.step, 0)
+        self.assertIn("current activity is still open", self.api.messages[-1]["text"])
+        self.assertIn("Question 1/10", self.api.messages[-2]["text"])
+        self._click(f"answer:0:{QUESTIONS[0].correct_index}")
+        self.assertEqual(self.bot.sessions[self.user_id].step, 1)
+
+    def test_text_navigation_keeps_personal_journal_details_private(self) -> None:
+        self._message(
+            "Open my trade history",
+            chat_id=-100123,
+            chat_type="supergroup",
+        )
+        self.assertIn("For privacy, open a private chat", self.api.messages[-1]["text"])
+        self.assertNotIn(
+            "Your recent trade entries", self.api.messages[-1]["text"]
+        )
+
     def test_ordinary_coaching_message_still_reaches_the_coach(self) -> None:
         self._message("What is liquidity?")
         reply = self.api.messages[-1]
@@ -899,6 +958,13 @@ class BotFlowTests(unittest.TestCase):
         self.assertEqual(
             len(Repository(self.database_path).recent_dm_coaching_interactions(self.user_id)),
             1,
+        )
+
+    def test_menu_words_in_ordinary_message_do_not_open_a_screen(self) -> None:
+        self._message("I keep a trading journal to learn from my decisions.")
+        self.assertNotEqual(
+            self.api.messages[-1]["text"],
+            "Trading Journal\n\nCreate a trade entry or review a previous one.",
         )
 
     def test_admin_can_preview_confirm_and_cancel_one_time_channel_promo(self) -> None:

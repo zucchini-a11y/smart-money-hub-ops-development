@@ -499,6 +499,155 @@ class SmartMoneyHubBot:
             )
         )
 
+    @staticmethod
+    def _requested_member_action(text: str) -> str | None:
+        normalized = " ".join(text.casefold().split())
+        direct_aliases = {
+            "menu": "main_menu",
+            "main menu": "main_menu",
+            "/menu": "main_menu",
+            "/coach": "coach_menu",
+            "/progress": "progress",
+            "/reminders": "reminders",
+        }
+        if normalized in direct_aliases:
+            return direct_aliases[normalized]
+        if normalized.startswith("/") or re.search(r"\badmin\b", normalized):
+            return None
+        if not re.match(
+            r"^(?:(?:please|can|could|would|you|i|want|to|need|like)\s+){0,5}"
+            r"(?:open|show|display|take me to|go to|bring up|launch|start|begin|"
+            r"view|navigate to)\b",
+            normalized,
+        ):
+            return None
+
+        if re.search(r"\b(?:daily challenge|daily quiz)\b", normalized):
+            return "daily_challenge"
+        if re.search(r"\b(?:challenge me|open challenge|start challenge)\b", normalized):
+            return "challenge"
+        if re.search(r"\b(?:chat with coach|coach chat)\b", normalized):
+            return "coach_chat"
+        if re.search(r"\b(?:ask coach|coach menu|coaching modes)\b", normalized):
+            return "coach_menu"
+        if re.search(r"\b(?:clear my coach history|coach history|clear history)\b", normalized):
+            return "clear_coach_history"
+        if re.search(r"\b(?:review my setup|setup review|my setup)\b", normalized):
+            return "setup_review"
+        if re.search(r"\b(?:review my mistake|mistake review)\b", normalized):
+            return "mistake_review"
+        if re.search(r"\b(?:teach me something|learn smc|smc lessons?|lessons)\b", normalized):
+            return "learn"
+        if re.search(r"\b(?:new trade entry|new journal entry)\b", normalized):
+            return "new_trade_entry"
+        if re.search(r"\b(?:review previous trades|trade history)\b", normalized):
+            return "trade_history"
+        if re.search(r"\b(?:trading journal|journal)\b", normalized):
+            return "journal"
+        if re.search(r"\bweekly check[ -]?in\b", normalized):
+            return "weekly_checkin"
+        if re.search(r"\bsunday preparation\b", normalized):
+            return "sunday_preparation"
+        if re.search(r"\b(?:my progress|progress)\b", normalized):
+            return "progress"
+        if re.search(r"\b(?:reminder settings|reminders)\b", normalized):
+            return "reminders"
+        if re.search(r"\b(?:smc assessment|assessment|test|quiz)\b", normalized):
+            return "assessment"
+        if re.search(r"\bmain menu\b|\bmenu\b", normalized):
+            return "main_menu"
+        if re.search(r"\bcoach\b", normalized):
+            return "coach_menu"
+        return None
+
+    def _open_requested_member_action(
+        self,
+        action: str,
+        telegram_id: int,
+        chat_id: int,
+        sender: dict[str, Any],
+        is_private: bool,
+    ) -> None:
+        if action == "main_menu":
+            self.admin_dashboard.cancel_search(telegram_id)
+            self.admin_dashboard.cancel_broadcast(telegram_id)
+            self.admin_dashboard.cancel_channel_promo(telegram_id)
+            self._show_main_menu(chat_id)
+        elif action == "assessment":
+            self._begin_assessment(
+                telegram_id,
+                chat_id,
+                sender.get("username"),
+                sender.get("first_name"),
+            )
+        elif action == "coach_menu":
+            self._show_coach_menu(chat_id, is_private)
+        elif action == "coach_chat":
+            self._enter_coach(chat_id, telegram_id, is_private)
+        elif action == "challenge":
+            self._start_coach_challenge(telegram_id, chat_id, sender, is_private)
+        elif action == "daily_challenge":
+            self._start_coach_challenge(
+                telegram_id, chat_id, sender, is_private, daily=True
+            )
+        elif action in {"setup_review", "mistake_review"}:
+            kind = "coach_setup" if action == "setup_review" else "coach_mistake"
+            self._begin_guided_coach_session(
+                kind, telegram_id, chat_id, sender, is_private
+            )
+        elif action == "clear_coach_history":
+            self._confirm_clear_coach_history(chat_id, is_private=is_private)
+        elif action == "learn":
+            self._show_education_menu(chat_id)
+        elif action == "journal":
+            if is_private:
+                self._show_journal_menu(chat_id)
+            else:
+                self._private_member_screen_required(chat_id, "your journal")
+        elif action == "new_trade_entry":
+            if is_private:
+                self._begin_flow("journal", telegram_id, chat_id, sender)
+            else:
+                self._private_member_screen_required(chat_id, "a journal entry")
+        elif action == "trade_history":
+            if is_private:
+                self._show_trade_history(chat_id, telegram_id)
+            else:
+                self._private_member_screen_required(chat_id, "your trade history")
+        elif action == "weekly_checkin":
+            if is_private:
+                self._begin_flow("weekly", telegram_id, chat_id, sender)
+            else:
+                self._private_member_screen_required(chat_id, "your weekly check-in")
+        elif action == "sunday_preparation":
+            if is_private:
+                self._begin_flow("sunday", telegram_id, chat_id, sender)
+            else:
+                self._private_member_screen_required(
+                    chat_id, "your Sunday preparation"
+                )
+        elif action == "progress":
+            if not is_private:
+                self.api.send_message(
+                    chat_id,
+                    "For privacy, open a private chat with this bot to view your progress.",
+                    self._nav_keyboard(),
+                )
+            else:
+                self._show_progress(chat_id, telegram_id)
+        elif action == "reminders":
+            if not is_private:
+                self._reminder_private_chat_required(chat_id)
+            else:
+                self._show_reminder_settings(chat_id, telegram_id)
+
+    def _private_member_screen_required(self, chat_id: int, feature: str) -> None:
+        self.api.send_message(
+            chat_id,
+            f"For privacy, open a private chat with this bot to access {feature}.",
+            self._main_menu_keyboard(),
+        )
+
     def _handle_message(self, message: dict[str, Any]) -> None:
         text = message.get("text")
         sender = message.get("from") or {}
@@ -507,6 +656,27 @@ class SmartMoneyHubBot:
             return
         telegram_id, chat_id, is_private = self._register(sender, chat)
         command = text.strip().split(maxsplit=1)[0].split("@", maxsplit=1)[0].lower()
+        requested_action = self._requested_member_action(text)
+        session = self.sessions.get(telegram_id)
+        has_pending_admin_action = (
+            self.admin_dashboard.search_is_pending(telegram_id)
+            or self.admin_dashboard.broadcast_is_pending(telegram_id)
+            or self.admin_dashboard.knowledge_is_pending(telegram_id)
+            or self.admin_dashboard.has_channel_promo_state(telegram_id)
+        )
+        if (
+            requested_action
+            and session
+            and session.chat_id == chat_id
+            and not has_pending_admin_action
+        ):
+            self.api.send_message(
+                chat_id,
+                "Your current activity is still open. Finish this step or use its "
+                "Back/Main Menu buttons; opening another screen here would interrupt it.",
+                self._nav_keyboard(),
+            )
+            return
         if command.startswith("/") and command != "/cancel":
             self.admin_dashboard.cancel_knowledge_action(telegram_id)
 
@@ -647,6 +817,16 @@ class SmartMoneyHubBot:
             logger.info("Coach bypassed: pending admin knowledge flow.")
             self.admin_dashboard.handle_knowledge_message(
                 chat_id, telegram_id, is_private, text
+            )
+            return
+
+        if requested_action:
+            self._open_requested_member_action(
+                requested_action,
+                telegram_id,
+                chat_id,
+                sender,
+                is_private,
             )
             return
 

@@ -265,7 +265,11 @@ class GeminiCoachTests(unittest.TestCase):
             "💬 Chat with Coach",
         ):
             self.assertIn(member_button, instruction)
-        self.assertIn("Do not claim you can press buttons or change settings", instruction)
+        self.assertIn(
+            "The bot can open supported member screens when a member clearly asks it",
+            instruction,
+        )
+        self.assertIn("do not claim to change settings or submit answers", instruction)
         self.assertIn("Do not describe admin-dashboard controls", instruction)
         self.assertNotIn("All Members", instruction)
         self.assertNotIn("Send One-Time DM", instruction)
