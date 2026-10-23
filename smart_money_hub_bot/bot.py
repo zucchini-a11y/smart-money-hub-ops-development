@@ -526,16 +526,9 @@ class SmartMoneyHubBot:
             recovery = self.store.pending_bot_recovery_notice(telegram_id)
             if not recovery:
                 return
-            downtime_seconds = int(recovery["last_recovery_gap_seconds"] or 0)
-            if downtime_seconds >= 60 * 60:
-                hours = max(1, round(downtime_seconds / 3600))
-                duration = f"about {hours} hour" + ("" if hours == 1 else "s")
-            else:
-                minutes = max(30, downtime_seconds // 60)
-                duration = f"about {minutes} minutes"
             notice = (
-                "Apologies for the delay. The bot was temporarily unavailable for "
-                f"{duration}, but it is active again now. I’m ready to help."
+                "Sorry for the delay. I was tied up with a few things, but I’m "
+                "back now and available to assist. Thanks for your patience."
             )
             self.api.send_message(chat_id, notice)
             self.store.mark_bot_recovery_notice_sent(

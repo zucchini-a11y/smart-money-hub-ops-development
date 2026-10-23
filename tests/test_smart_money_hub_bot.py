@@ -681,16 +681,19 @@ class BotFlowTests(unittest.TestCase):
         self._record_poll_recovery(timedelta(hours=1))
 
         self._message("Hi")
-        self.assertIn("unavailable for about 1 hour", self.api.messages[-2]["text"])
-        self.assertIn("active again now", self.api.messages[-2]["text"])
+        self.assertEqual(
+            self.api.messages[-2]["text"],
+            "Sorry for the delay. I was tied up with a few things, but I’m "
+            "back now and available to assist. Thanks for your patience.",
+        )
 
         self._message("Thanks")
         self.assertFalse(
-            any("Apologies for the delay" in item["text"] for item in self.api.messages[2:])
+            any("Sorry for the delay" in item["text"] for item in self.api.messages[2:])
         )
 
         self._message("Hi", user_id=self.user_id + 1)
-        self.assertIn("Apologies for the delay", self.api.messages[-2]["text"])
+        self.assertIn("Sorry for the delay", self.api.messages[-2]["text"])
 
     def test_recovery_notice_does_not_trigger_for_a_short_poll_gap(self) -> None:
         self._record_poll_recovery(timedelta(minutes=29))
@@ -698,7 +701,7 @@ class BotFlowTests(unittest.TestCase):
         self._message("Hi")
 
         self.assertEqual(len(self.api.messages), 1)
-        self.assertNotIn("Apologies for the delay", self.api.messages[0]["text"])
+        self.assertNotIn("Sorry for the delay", self.api.messages[0]["text"])
 
     def test_long_poll_wait_does_not_count_as_bot_downtime(self) -> None:
         self.bot.store.record_successful_bot_poll(
@@ -717,7 +720,7 @@ class BotFlowTests(unittest.TestCase):
 
         self._message("I’m back")
 
-        self.assertIn("Apologies for the delay", self.api.messages[-2]["text"])
+        self.assertIn("Sorry for the delay", self.api.messages[-2]["text"])
         self.assertIn(
             "Please choose one of the answer buttons",
             self.api.messages[-1]["text"],
