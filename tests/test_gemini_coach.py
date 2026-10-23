@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 from urllib.error import HTTPError, URLError
 
-from smart_money_hub_bot.bot import SmartMoneyHubBot
+from smart_money_hub_bot.bot import MAIN_MENU, SmartMoneyHubBot
 from smart_money_hub_bot.coach import (
     CoachProviderError,
     CoachReply,
@@ -242,6 +242,33 @@ class GeminiCoachTests(unittest.TestCase):
         self.assertIn("general educational questions about economic releases", instruction)
         self.assertIn("broker terms, and platform features", instruction)
         self.assertIn("do not send them to review just because of their category", instruction)
+
+    def test_coach_prompt_explains_member_buttons_without_exposing_admin_controls(self) -> None:
+        local_reply = RuleBasedCoachService().evaluate("What does the menu do?")
+        instruction = GeminiCoachService._system_instruction(
+            local_reply, "educational_question"
+        )
+
+        for label, _callback_data in MAIN_MENU:
+            self.assertIn(label, instruction)
+        for member_button in (
+            "New Trade Entry",
+            "Review Previous Trades",
+            "🧹 Clear My Coach History",
+            "Clear Coach History",
+            "Cancel",
+            "✅ Helpful",
+            "👎 Not helpful",
+            "❓ Still unclear",
+            "⬅️ Back",
+            "🏠 Main Menu",
+            "💬 Chat with Coach",
+        ):
+            self.assertIn(member_button, instruction)
+        self.assertIn("Do not claim you can press buttons or change settings", instruction)
+        self.assertIn("Do not describe admin-dashboard controls", instruction)
+        self.assertNotIn("All Members", instruction)
+        self.assertNotIn("Send One-Time DM", instruction)
 
     def test_missing_model_fails_over_to_next_configured_model(self) -> None:
         service = GeminiCoachService("test-key")
