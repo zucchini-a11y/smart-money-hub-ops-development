@@ -50,6 +50,23 @@ class Repository:
                         reminders_stopped INTEGER NOT NULL DEFAULT 0
                     );
 
+                    CREATE TABLE IF NOT EXISTS bot_runtime_state (
+                        id INTEGER PRIMARY KEY CHECK (id = 1),
+                        last_successful_poll_at TEXT,
+                        last_recovery_at TEXT,
+                        last_recovery_gap_seconds INTEGER
+                    );
+
+                    INSERT OR IGNORE INTO bot_runtime_state (id)
+                    VALUES (1);
+
+                    CREATE TABLE IF NOT EXISTS bot_recovery_notices (
+                        recovery_at TEXT NOT NULL,
+                        telegram_id INTEGER NOT NULL,
+                        sent_at TEXT NOT NULL,
+                        PRIMARY KEY (recovery_at, telegram_id)
+                    );
+
                     CREATE TABLE IF NOT EXISTS assessment_results (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         telegram_id INTEGER NOT NULL,
@@ -457,6 +474,108 @@ class Repository:
                 connection.execute(
                     "INSERT OR IGNORE INTO progress (telegram_id, updated_at) VALUES (?, ?)",
                     (telegram_id, timestamp),
+                )
+        finally:
+            connection.close()
+
+    def record_successful_bot_poll(
+        self,
+        *,
+        at: str | None = None,
+        started_at: str | None = None,
+        recovery_threshold_seconds: int = 30 * 60,
+    ) -> float | None:
+        """Persist polling health and record a recovery after a long outage."""
+        timestamp = at or utc_now()
+        poll_started_at = started_at or timestamp
+        connection = self._connect()
+        try:
+            with connection:
+                row = connection.execute(
+                    """
+                    SELECT last_successful_poll_at
+                    FROM bot_runtime_state
+                    WHERE id = 1
+                    """
+                ).fetchone()
+                gap_seconds: float | None = None
+                previous = row["last_successful_poll_at"] if row else None
+                if isinstance(previous, str) and previous:
+                    try:
+                        previous_at = datetime.fromisoformat(previous)
+                        current_at = datetime.fromisoformat(poll_started_at)
+                        if previous_at.tzinfo is None:
+                            previous_at = previous_at.replace(tzinfo=timezone.utc)
+                        if current_at.tzinfo is None:
+                            current_at = current_at.replace(tzinfo=timezone.utc)
+                        gap_seconds = max(
+                            0.0, (current_at - previous_at).total_seconds()
+                        )
+                    except ValueError:
+                        gap_seconds = None
+
+                if (
+                    gap_seconds is not None
+                    and gap_seconds >= max(0, recovery_threshold_seconds)
+                ):
+                    connection.execute(
+                        """
+                        UPDATE bot_runtime_state
+                        SET last_successful_poll_at = ?,
+                            last_recovery_at = ?,
+                            last_recovery_gap_seconds = ?
+                        WHERE id = 1
+                        """,
+                        (timestamp, timestamp, int(gap_seconds)),
+                    )
+                else:
+                    connection.execute(
+                        """
+                        UPDATE bot_runtime_state
+                        SET last_successful_poll_at = ?
+                        WHERE id = 1
+                        """,
+                        (timestamp,),
+                    )
+                return gap_seconds
+        finally:
+            connection.close()
+
+    def pending_bot_recovery_notice(
+        self, telegram_id: int
+    ) -> dict[str, Any] | None:
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                """
+                SELECT state.last_recovery_at, state.last_recovery_gap_seconds
+                FROM bot_runtime_state AS state
+                LEFT JOIN bot_recovery_notices AS notice
+                  ON notice.recovery_at = state.last_recovery_at
+                 AND notice.telegram_id = ?
+                WHERE state.id = 1
+                  AND state.last_recovery_at IS NOT NULL
+                  AND notice.telegram_id IS NULL
+                """,
+                (telegram_id,),
+            ).fetchone()
+            return dict(row) if row else None
+        finally:
+            connection.close()
+
+    def mark_bot_recovery_notice_sent(
+        self, telegram_id: int, recovery_at: str, *, at: str | None = None
+    ) -> None:
+        connection = self._connect()
+        try:
+            with connection:
+                connection.execute(
+                    """
+                    INSERT OR IGNORE INTO bot_recovery_notices
+                        (recovery_at, telegram_id, sent_at)
+                    VALUES (?, ?, ?)
+                    """,
+                    (recovery_at, telegram_id, at or utc_now()),
                 )
         finally:
             connection.close()

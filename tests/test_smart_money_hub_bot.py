@@ -8,6 +8,7 @@ from unittest.mock import Mock, patch
 from zoneinfo import ZoneInfo
 
 from smart_money_hub_bot.bot import (
+    BOT_RECOVERY_NOTICE_AFTER_SECONDS,
     POLLING_HEARTBEAT_INTERVAL_SECONDS,
     SmartMoneyHubBot,
 )
@@ -676,44 +677,47 @@ class BotFlowTests(unittest.TestCase):
         self.assertEqual(self.bot.sessions[self.user_id].step, 1)
         self.assertNotIn("You’re welcome", self.api.messages[-1]["text"])
 
-    def test_return_after_thirty_minutes_gets_professional_welcome(self) -> None:
-        self._set_last_interaction_ago(timedelta(minutes=45))
-
-        self._message("What is liquidity?")
-
-        self.assertEqual(
-            self.api.messages[0]["text"],
-            "Welcome back. Take your time—we can continue whenever you’re ready.",
-        )
-        self.assertIn("liquidity", self.api.messages[1]["text"].casefold())
-
-    def test_return_after_one_hour_gets_longer_welcome_without_guessing_reason(self) -> None:
-        self._set_last_interaction_ago(timedelta(hours=1))
+    def test_recovery_notice_follows_a_long_outage_once_per_private_member(self) -> None:
+        self._record_poll_recovery(timedelta(hours=1))
 
         self._message("Hi")
+        self.assertIn("unavailable for about 1 hour", self.api.messages[-2]["text"])
+        self.assertIn("active again now", self.api.messages[-2]["text"])
 
-        self.assertEqual(
-            self.api.messages[0]["text"],
-            "Welcome back. I hope you were able to attend to what you needed. "
-            "We can continue at your pace.",
+        self._message("Thanks")
+        self.assertFalse(
+            any("Apologies for the delay" in item["text"] for item in self.api.messages[2:])
         )
-        self.assertIn("Hi", self.api.messages[1]["text"])
 
-    def test_short_gap_does_not_trigger_returning_welcome(self) -> None:
-        self._set_last_interaction_ago(timedelta(minutes=29))
+        self._message("Hi", user_id=self.user_id + 1)
+        self.assertIn("Apologies for the delay", self.api.messages[-2]["text"])
+
+    def test_recovery_notice_does_not_trigger_for_a_short_poll_gap(self) -> None:
+        self._record_poll_recovery(timedelta(minutes=29))
 
         self._message("Hi")
 
         self.assertEqual(len(self.api.messages), 1)
-        self.assertNotIn("Welcome back", self.api.messages[0]["text"])
+        self.assertNotIn("Apologies for the delay", self.api.messages[0]["text"])
 
-    def test_returning_welcome_does_not_interrupt_active_assessment(self) -> None:
+    def test_long_poll_wait_does_not_count_as_bot_downtime(self) -> None:
+        self.bot.store.record_successful_bot_poll(
+            at="2026-10-23T19:00:00+00:00"
+        )
+        self.bot.store.record_successful_bot_poll(
+            at="2026-10-23T19:30:00+00:00",
+            started_at="2026-10-23T19:29:00+00:00",
+        )
+
+        self.assertIsNone(self.bot.store.pending_bot_recovery_notice(self.user_id))
+
+    def test_recovery_notice_does_not_interrupt_an_active_assessment(self) -> None:
         self._click("menu:assessment")
-        self._set_last_interaction_ago(timedelta(hours=1))
+        self._record_poll_recovery(timedelta(minutes=30))
 
         self._message("I’m back")
 
-        self.assertIn("Welcome back", self.api.messages[-2]["text"])
+        self.assertIn("Apologies for the delay", self.api.messages[-2]["text"])
         self.assertIn(
             "Please choose one of the answer buttons",
             self.api.messages[-1]["text"],
@@ -1702,6 +1706,25 @@ class BotFlowTests(unittest.TestCase):
         with self.assertRaisesRegex(SystemExit, "will not change it automatically"):
             self.bot.run()
 
+    def test_run_persists_each_successful_telegram_poll(self) -> None:
+        self.api.get_updates = Mock(side_effect=[[], KeyboardInterrupt()])
+        with patch("smart_money_hub_bot.bot.threading.Thread") as thread_factory:
+            with patch.object(
+                self.bot.store, "record_successful_bot_poll"
+            ) as record_poll:
+                record_poll.return_value = None
+                with self.assertRaises(KeyboardInterrupt):
+                    self.bot.run()
+
+        thread_factory.return_value.start.assert_called_once()
+        self.assertEqual(record_poll.call_count, 1)
+        self.assertEqual(
+            record_poll.call_args.kwargs["recovery_threshold_seconds"],
+            BOT_RECOVERY_NOTICE_AFTER_SECONDS,
+        )
+        self.assertIn("at", record_poll.call_args.kwargs)
+        self.assertIn("started_at", record_poll.call_args.kwargs)
+
     def test_polling_heartbeat_reports_active_and_stale_poll_age(self) -> None:
         self.assertEqual(POLLING_HEARTBEAT_INTERVAL_SECONDS, 30)
         self.bot._last_successful_poll_at = 100.0
@@ -1742,16 +1765,11 @@ class BotFlowTests(unittest.TestCase):
             }
         )
 
-    def _set_last_interaction_ago(self, duration: timedelta) -> None:
-        at = (datetime.now(timezone.utc) - duration).isoformat(timespec="seconds")
-        self.bot.store.register_user(
-            telegram_id=self.user_id,
-            username=self.username,
-            first_name=self.first_name,
-            chat_id=self.chat_id,
-            is_private=True,
-            at=at,
-        )
+    def _record_poll_recovery(self, gap: timedelta) -> None:
+        recovered_at = datetime(2026, 10, 23, 19, 0, tzinfo=timezone.utc)
+        started_at = recovered_at - gap
+        self.bot.store.record_successful_bot_poll(at=started_at.isoformat())
+        self.bot.store.record_successful_bot_poll(at=recovered_at.isoformat())
 
     def _text(self, text: str) -> None:
         self._message(text)
