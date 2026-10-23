@@ -559,7 +559,13 @@ class SmartMoneyHubBot:
                 self._nav_keyboard(),
             )
             return
-        if command == "/admin":
+        if command == "/admin" or text.strip().casefold() in {
+            "admin menu",
+            "show admin menu",
+            "show me the admin menu",
+            "i want to see the admin menu",
+            "i wanna see the admin menu",
+        }:
             self.admin_dashboard.cancel_search(telegram_id)
             self.admin_dashboard.cancel_broadcast(telegram_id)
             self.admin_dashboard.cancel_channel_promo(telegram_id)

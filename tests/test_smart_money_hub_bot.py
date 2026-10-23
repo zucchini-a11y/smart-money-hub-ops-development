@@ -812,6 +812,21 @@ class BotFlowTests(unittest.TestCase):
         self._callback("admin:open", sender_id=self.user_id + 1, chat_id=self.chat_id + 1)
         self.assertIn("restricted", self.api.messages[-1]["text"])
 
+    def test_admin_menu_text_opens_dashboard_only_for_configured_admin(self) -> None:
+        self.bot.admin_id = self.user_id
+        self.bot.admin_dashboard.admin_id = self.user_id
+
+        self._message("  I WANNA SEE THE ADMIN MENU  ")
+        self.assertIn(
+            "SMART MONEY HUB — ADMIN DASHBOARD", self.api.messages[-1]["text"]
+        )
+
+        self._message("show me the admin menu", user_id=self.user_id + 1)
+        self.assertIn("Admin access is restricted", self.api.messages[-1]["text"])
+        self.assertNotIn(
+            "SMART MONEY HUB — ADMIN DASHBOARD", self.api.messages[-1]["text"]
+        )
+
     def test_member_quick_commands_keep_personal_details_private(self) -> None:
         self._message("/help")
         help_text = self.api.messages[-1]["text"]
