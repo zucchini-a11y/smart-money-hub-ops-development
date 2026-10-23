@@ -43,10 +43,13 @@ class MessageRouterTests(unittest.TestCase):
             101, "Good morning", profile={"is_admin": True}
         ).reply.response
 
-        self.assertIn("Good morning.", response)
+        self.assertIn("CEO", response)
+        self.assertIn("Good morning, CEO.", response)
         self.assertTrue(
             any(phrase in response for phrase in ("assist you today", "help you with"))
         )
+        member_response = self.router.route(104, "Good morning").reply.response
+        self.assertNotIn("CEO", member_response)
 
     def test_admin_context_reaches_provider_without_history(self) -> None:
         provider = Mock()
@@ -68,7 +71,7 @@ class MessageRouterTests(unittest.TestCase):
         routed = router.route(103, "What is liquidity?", profile={"is_admin": True})
 
         self.assertEqual(routed.response_path, "fallback")
-        self.assertTrue(routed.reply.response.startswith("Certainly — "))
+        self.assertTrue(routed.reply.response.startswith("Certainly, CEO — "))
 
     def test_alias_phrasings_route_to_the_same_trading_topic(self) -> None:
         phrasings = (

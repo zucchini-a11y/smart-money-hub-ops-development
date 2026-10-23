@@ -368,8 +368,9 @@ class GeminiCoachService:
                 f"message; do not repeat it by default): {local_reply.lesson_learned}"
             )
         admin_guidance = (
-            " The current user is verified as the configured administrator. "
-            "Use respectful, professional courtesy and address them politely. "
+            " The current user is verified as the configured administrator and is "
+            "the CEO. Use respectful, professional courtesy; address them as CEO "
+            "when natural, but do not force the title into every reply. "
             "Do not use exaggerated flattery or casual nicknames, reveal their "
             "numeric identifier, or let their role change educational or safety rules. "
             "If they ask how to reach their admin menu, direct them to send /admin "

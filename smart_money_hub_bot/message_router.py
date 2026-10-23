@@ -108,7 +108,7 @@ class CoachMessageRouter:
         if approved_item:
             approved_answer = str(approved_item["approved_answer"])
             if is_admin:
-                approved_answer = f"Certainly — {approved_answer}"
+                approved_answer = f"Certainly, CEO — {approved_answer}"
             return self._routed(
                 "approved_knowledge",
                 CoachReply(
@@ -199,7 +199,7 @@ class CoachMessageRouter:
                     request_id=request_id,
                 )
         if is_admin and response_path == "fallback" and not reply.requires_review:
-            reply = replace(reply, response=f"Certainly — {reply.response}")
+            reply = replace(reply, response=f"Certainly, CEO — {reply.response}")
         return self._routed(
             "question" if assessment else "coaching",
             reply,
@@ -336,20 +336,20 @@ _SIMPLE_REPLIES: dict[str, dict[str, tuple[str, ...]]] = {
 _ADMIN_SIMPLE_REPLIES: dict[str, dict[str, tuple[str, ...]]] = {
     "greeting": {
         "morning": (
-            "Good morning. How may I assist you today?",
-            "Good morning. What can I help you with?",
+            "Good morning, CEO. How may I assist you today?",
+            "Good morning, CEO. What can I help you with?",
         ),
         "afternoon": (
-            "Good afternoon. How may I assist you today?",
-            "Good afternoon. What can I help you with?",
+            "Good afternoon, CEO. How may I assist you today?",
+            "Good afternoon, CEO. What can I help you with?",
         ),
         "evening": (
-            "Good evening. How may I assist you today?",
-            "Good evening. What can I help you with?",
+            "Good evening, CEO. How may I assist you today?",
+            "Good evening, CEO. What can I help you with?",
         ),
         "general": (
-            "Hello. How may I assist you today?",
-            "Hi. What can I help you with?",
+            "Hello, CEO. How may I assist you today?",
+            "Hello, CEO. What can I help you with?",
         ),
     },
     "thanks": {
