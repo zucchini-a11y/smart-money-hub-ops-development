@@ -695,6 +695,15 @@ class BotFlowTests(unittest.TestCase):
         self._message("Hi", user_id=self.user_id + 1)
         self.assertEqual(self.api.messages[-2]["text"], BOT_RECOVERY_NOTICES[0])
 
+    def test_recovery_notice_is_followed_by_an_answer_to_the_original_message(self) -> None:
+        self._record_poll_recovery(timedelta(hours=1))
+
+        self._message("What is liquidity?")
+
+        self.assertEqual(self.api.messages[0]["text"], BOT_RECOVERY_NOTICES[0])
+        self.assertIn("liquidity", self.api.messages[1]["text"].lower())
+        self.assertNotIn("Sorry for the delay", self.api.messages[1]["text"])
+
     def test_recovery_notice_rotates_between_outages_for_each_member(self) -> None:
         self._record_poll_recovery(timedelta(hours=1))
         self._message("Hi")
