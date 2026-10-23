@@ -3,6 +3,7 @@
 import logging
 import random
 import re
+import threading
 import time as time_module
 import uuid
 from dataclasses import dataclass, field
@@ -22,6 +23,8 @@ from .telegram_api import TelegramAPI, TelegramAPIError
 
 
 logger = logging.getLogger(__name__)
+POLLING_HEARTBEAT_INTERVAL_SECONDS = 30
+POLLING_STALE_AFTER_SECONDS = 60
 MAIN_MENU: tuple[tuple[str, str], ...] = (
     ("Start SMC Assessment", "menu:assessment"),
     ("💬 Ask Coach", "menu:coach"),
@@ -378,6 +381,7 @@ class SmartMoneyHubBot:
             raise ValueError("The reminder time must be local wall time without a UTC offset.")
         # One active conversation per member; saved records live in SQLite.
         self.sessions: dict[int, Conversation] = {}
+        self._last_successful_poll_at: float | None = None
         self.coach_service: CoachService = coach_service or RuleBasedCoachService()
         self.message_router = CoachMessageRouter(self.coach_service, self.store)
 
@@ -395,12 +399,19 @@ class SmartMoneyHubBot:
             "Polling started for Smart Money Hub bot @%s.",
             bot_info.get("username", "unknown"),
         )
+        self._last_successful_poll_at = time_module.monotonic()
+        threading.Thread(
+            target=self._polling_heartbeat_loop,
+            name="telegram-polling-heartbeat",
+            daemon=True,
+        ).start()
         offset: int | None = None
         retry_delay = 1
 
         while True:
             try:
                 updates = self.api.get_updates(offset=offset)
+                self._last_successful_poll_at = time_module.monotonic()
                 retry_delay = 1
             except TelegramAPIError as error:
                 logger.error(
@@ -424,6 +435,30 @@ class SmartMoneyHubBot:
                 except Exception:
                     logger.exception("Could not process a Telegram update.")
             self._dispatch_due_reminders()
+
+    def _polling_heartbeat_loop(self) -> None:
+        while True:
+            time_module.sleep(POLLING_HEARTBEAT_INTERVAL_SECONDS)
+            self._log_polling_heartbeat()
+
+    def _log_polling_heartbeat(self, *, now: float | None = None) -> None:
+        observed_at = time_module.monotonic() if now is None else now
+        last_success = self._last_successful_poll_at
+        if last_success is None:
+            poll_age = None
+        else:
+            poll_age = max(0, int(observed_at - last_success))
+        polling_status = (
+            "active"
+            if poll_age is not None and poll_age <= POLLING_STALE_AFTER_SECONDS
+            else "stale"
+        )
+        logger.info(
+            "Bot heartbeat (polling_status=%s, "
+            "seconds_since_successful_poll=%s).",
+            polling_status,
+            poll_age if poll_age is not None else "unknown",
+        )
 
     def handle_update(self, update: dict[str, Any]) -> None:
         message = update.get("message")

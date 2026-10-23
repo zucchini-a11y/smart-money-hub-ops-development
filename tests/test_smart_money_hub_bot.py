@@ -7,7 +7,10 @@ from typing import Any
 from unittest.mock import Mock
 from zoneinfo import ZoneInfo
 
-from smart_money_hub_bot.bot import SmartMoneyHubBot
+from smart_money_hub_bot.bot import (
+    POLLING_HEARTBEAT_INTERVAL_SECONDS,
+    SmartMoneyHubBot,
+)
 from smart_money_hub_bot.coach import RuleBasedCoachService
 from smart_money_hub_bot.grading import RuleBasedWrittenAnswerEvaluator
 from smart_money_hub_bot.questions import QUESTIONS, validate_questions
@@ -1421,6 +1424,20 @@ class BotFlowTests(unittest.TestCase):
         self.api.webhook_info = {"url": "https://example.invalid/webhook"}
         with self.assertRaisesRegex(SystemExit, "will not change it automatically"):
             self.bot.run()
+
+    def test_polling_heartbeat_reports_active_and_stale_poll_age(self) -> None:
+        self.assertEqual(POLLING_HEARTBEAT_INTERVAL_SECONDS, 30)
+        self.bot._last_successful_poll_at = 100.0
+
+        with self.assertLogs("smart_money_hub_bot.bot", level="INFO") as logs:
+            self.bot._log_polling_heartbeat(now=130.0)
+        self.assertIn("polling_status=active", logs.output[0])
+        self.assertIn("seconds_since_successful_poll=30", logs.output[0])
+
+        with self.assertLogs("smart_money_hub_bot.bot", level="INFO") as logs:
+            self.bot._log_polling_heartbeat(now=161.0)
+        self.assertIn("polling_status=stale", logs.output[0])
+        self.assertIn("seconds_since_successful_poll=61", logs.output[0])
 
     def _message(
         self,
