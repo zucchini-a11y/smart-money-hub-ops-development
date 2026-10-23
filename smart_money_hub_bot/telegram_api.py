@@ -91,6 +91,13 @@ class TelegramAPI:
             payload["reply_markup"] = reply_markup
         self._request("sendMessage", payload)
 
+    def send_chat_action(self, chat_id: int, action: str = "typing") -> None:
+        self._request(
+            "sendChatAction",
+            {"chat_id": chat_id, "action": action},
+            timeout=3,
+        )
+
     def answer_callback_query(
         self,
         callback_query_id: str,

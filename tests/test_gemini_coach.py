@@ -1193,11 +1193,23 @@ class GeminiCoachTests(unittest.TestCase):
                         bot.handle_update(update)
 
         self.assertEqual(mocked_urlopen.call_count, 1)
-        self.assertEqual(mocked_telegram_request.call_count, 1)
-        method, payload = mocked_telegram_request.call_args.args
+        telegram_calls = [
+            call.args
+            for call in mocked_telegram_request.call_args_list
+            if call.args[0] == "sendMessage"
+        ]
+        self.assertEqual(len(telegram_calls), 1)
+        method, payload = telegram_calls[0]
         self.assertEqual(method, "sendMessage")
         self.assertEqual(payload["chat_id"], 654321)
         self.assertEqual(payload["text"], generated_answer)
+        self.assertTrue(
+            any(
+                call.args[0] == "sendChatAction"
+                and call.args[1] == {"chat_id": 654321, "action": "typing"}
+                for call in mocked_telegram_request.call_args_list
+            )
+        )
         self.assertIn("Coach response path=gemini_success.", "\n".join(logs.output))
         self.assertIn(
             "Coach reply sent to Telegram (path=gemini_success).",
@@ -1267,8 +1279,13 @@ class GeminiCoachTests(unittest.TestCase):
                 bot.handle_update(update)
 
         self.assertEqual(mocked_urlopen.call_count, 2)
-        mocked_telegram_request.assert_called_once()
-        method, payload = mocked_telegram_request.call_args.args
+        message_calls = [
+            call.args
+            for call in mocked_telegram_request.call_args_list
+            if call.args[0] == "sendMessage"
+        ]
+        self.assertEqual(len(message_calls), 1)
+        method, payload = message_calls[0]
         self.assertEqual(method, "sendMessage")
         self.assertEqual(payload["text"], fallback_answer)
 

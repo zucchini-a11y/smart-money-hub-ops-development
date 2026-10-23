@@ -23,6 +23,7 @@ class FakeTelegramAPI:
     def __init__(self) -> None:
         self.messages: list[dict[str, Any]] = []
         self.answered_callbacks: list[dict[str, Any]] = []
+        self.chat_actions: list[dict[str, Any]] = []
         self.webhook_info: dict[str, Any] = {}
         self.callback_ack_error: TelegramAPIError | None = None
 
@@ -41,6 +42,9 @@ class FakeTelegramAPI:
         self.messages.append(
             {"chat_id": chat_id, "text": text, "reply_markup": reply_markup}
         )
+
+    def send_chat_action(self, chat_id: int, action: str = "typing") -> None:
+        self.chat_actions.append({"chat_id": chat_id, "action": action})
 
     def answer_callback_query(
         self,
@@ -378,6 +382,25 @@ class BotFlowTests(unittest.TestCase):
         )
         self._click("menu:progress")
         self.assertIn("SMART MONEY HUB PROGRESS", self.api.messages[-1]["text"])
+
+    def test_coach_shows_typing_action_while_generating_reply(self) -> None:
+        self._text("What is liquidity?")
+
+        self.assertEqual(
+            self.api.chat_actions[0],
+            {"chat_id": self.chat_id, "action": "typing"},
+        )
+        self.assertIn("liquidity", self.api.messages[-1]["text"].casefold())
+
+    def test_typing_action_failure_does_not_block_coach_reply(self) -> None:
+        def fail_typing_action(_chat_id: int, _action: str = "typing") -> None:
+            raise TelegramAPIError("synthetic chat-action failure")
+
+        self.api.send_chat_action = fail_typing_action  # type: ignore[method-assign]
+
+        self._text("What is liquidity?")
+
+        self.assertIn("liquidity", self.api.messages[-1]["text"].casefold())
 
     def test_dm_coach_saves_interactions_and_shows_private_admin_statistics(self) -> None:
         self._message("/start")

@@ -25,6 +25,7 @@ from .telegram_api import TelegramAPI, TelegramAPIError
 logger = logging.getLogger(__name__)
 POLLING_HEARTBEAT_INTERVAL_SECONDS = 30
 POLLING_STALE_AFTER_SECONDS = 60
+TYPING_ACTION_REFRESH_SECONDS = 4
 MAIN_MENU: tuple[tuple[str, str], ...] = (
     ("Start SMC Assessment", "menu:assessment"),
     ("💬 Ask Coach", "menu:coach"),
@@ -1445,6 +1446,44 @@ class SmartMoneyHubBot:
         )
 
     def _answer_coach_message(
+        self,
+        chat_id: int,
+        telegram_id: int,
+        username: str | None,
+        question: str,
+    ) -> None:
+        self._send_typing_action(chat_id)
+        stop_typing = threading.Event()
+        typing_thread = threading.Thread(
+            target=self._refresh_typing_action,
+            args=(chat_id, stop_typing),
+            name="telegram-coach-typing",
+            daemon=True,
+        )
+        typing_thread.start()
+        try:
+            self._process_coach_message(chat_id, telegram_id, username, question)
+        finally:
+            stop_typing.set()
+            typing_thread.join(timeout=1)
+
+    def _send_typing_action(self, chat_id: int) -> None:
+        send_chat_action = getattr(self.api, "send_chat_action", None)
+        if send_chat_action is None:
+            return
+        try:
+            send_chat_action(chat_id, "typing")
+        except TelegramAPIError:
+            # A transient status-action failure must not prevent the Coach reply.
+            pass
+
+    def _refresh_typing_action(
+        self, chat_id: int, stop_typing: threading.Event
+    ) -> None:
+        while not stop_typing.wait(TYPING_ACTION_REFRESH_SECONDS):
+            self._send_typing_action(chat_id)
+
+    def _process_coach_message(
         self,
         chat_id: int,
         telegram_id: int,
