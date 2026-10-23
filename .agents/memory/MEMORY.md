@@ -7,3 +7,4 @@
 - [Coach reply navigation](coach-reply-navigation.md) — keep repeated Coaching Modes buttons off replies while preserving main-menu access.
 - [Telegram typing indicator](telegram-typing-indicator.md) — the Coach's refreshed `sendChatAction` indicator was confirmed visible in Telegram.
 - [Personal reminder scope](personal-reminder-scope.md) — only the configured CEO can create one-time personal reminders; recurring stays out unless requested.
+- [Returning-member greeting](returning-member-greeting.md) — acknowledge 30+ minutes of inactivity professionally without interrupting active flows.

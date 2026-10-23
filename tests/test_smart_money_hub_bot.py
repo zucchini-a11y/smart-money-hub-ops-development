@@ -1,7 +1,7 @@
 import sqlite3
 import tempfile
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock, patch
@@ -675,6 +675,50 @@ class BotFlowTests(unittest.TestCase):
         self._text("Thanks")
         self.assertEqual(self.bot.sessions[self.user_id].step, 1)
         self.assertNotIn("You’re welcome", self.api.messages[-1]["text"])
+
+    def test_return_after_thirty_minutes_gets_professional_welcome(self) -> None:
+        self._set_last_interaction_ago(timedelta(minutes=45))
+
+        self._message("What is liquidity?")
+
+        self.assertEqual(
+            self.api.messages[0]["text"],
+            "Welcome back. Take your time—we can continue whenever you’re ready.",
+        )
+        self.assertIn("liquidity", self.api.messages[1]["text"].casefold())
+
+    def test_return_after_one_hour_gets_longer_welcome_without_guessing_reason(self) -> None:
+        self._set_last_interaction_ago(timedelta(hours=1))
+
+        self._message("Hi")
+
+        self.assertEqual(
+            self.api.messages[0]["text"],
+            "Welcome back. I hope you were able to attend to what you needed. "
+            "We can continue at your pace.",
+        )
+        self.assertIn("Hi", self.api.messages[1]["text"])
+
+    def test_short_gap_does_not_trigger_returning_welcome(self) -> None:
+        self._set_last_interaction_ago(timedelta(minutes=29))
+
+        self._message("Hi")
+
+        self.assertEqual(len(self.api.messages), 1)
+        self.assertNotIn("Welcome back", self.api.messages[0]["text"])
+
+    def test_returning_welcome_does_not_interrupt_active_assessment(self) -> None:
+        self._click("menu:assessment")
+        self._set_last_interaction_ago(timedelta(hours=1))
+
+        self._message("I’m back")
+
+        self.assertIn("Welcome back", self.api.messages[-2]["text"])
+        self.assertIn(
+            "Please choose one of the answer buttons",
+            self.api.messages[-1]["text"],
+        )
+        self.assertEqual(self.bot.sessions[self.user_id].kind, "assessment")
 
     def test_unknown_current_question_is_queued_without_inventing_live_information(self) -> None:
         self._message("What is the latest inflation report today?")
@@ -1696,6 +1740,17 @@ class BotFlowTests(unittest.TestCase):
                     },
                 }
             }
+        )
+
+    def _set_last_interaction_ago(self, duration: timedelta) -> None:
+        at = (datetime.now(timezone.utc) - duration).isoformat(timespec="seconds")
+        self.bot.store.register_user(
+            telegram_id=self.user_id,
+            username=self.username,
+            first_name=self.first_name,
+            chat_id=self.chat_id,
+            is_private=True,
+            at=at,
         )
 
     def _text(self, text: str) -> None:

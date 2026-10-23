@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 POLLING_HEARTBEAT_INTERVAL_SECONDS = 30
 POLLING_STALE_AFTER_SECONDS = 60
 TYPING_ACTION_REFRESH_SECONDS = 4
+RETURNING_AFTER_GAP_SECONDS = 30 * 60
 MAIN_MENU: tuple[tuple[str, str], ...] = (
     ("Start SMC Assessment", "menu:assessment"),
     ("💬 Ask Coach", "menu:coach"),
@@ -387,6 +388,7 @@ class SmartMoneyHubBot:
             raise ValueError("The reminder time must be local wall time without a UTC offset.")
         # One active conversation per member; saved records live in SQLite.
         self.sessions: dict[int, Conversation] = {}
+        self._last_activity_gaps: dict[int, float | None] = {}
         self._last_successful_poll_at: float | None = None
         self.coach_service: CoachService = coach_service or RuleBasedCoachService()
         self.message_router = CoachMessageRouter(self.coach_service, self.store)
@@ -484,14 +486,57 @@ class SmartMoneyHubBot:
         if not isinstance(telegram_id, int) or not isinstance(chat_id, int):
             raise ValueError("Telegram update is missing member or chat information.")
         is_private = chat.get("type") == "private"
+        now = datetime.now(timezone.utc)
+        previous_user = self.store.get_user(telegram_id)
+        last_interaction_at = (
+            previous_user.get("last_interaction_at") if previous_user else None
+        )
+        gap_seconds: float | None = None
+        if isinstance(last_interaction_at, str):
+            try:
+                previous_at = datetime.fromisoformat(last_interaction_at)
+                if previous_at.tzinfo is None:
+                    previous_at = previous_at.replace(tzinfo=timezone.utc)
+                gap_seconds = (now - previous_at).total_seconds()
+            except ValueError:
+                gap_seconds = None
+        self._last_activity_gaps[telegram_id] = gap_seconds
         self.store.register_user(
             telegram_id=telegram_id,
             username=sender.get("username"),
             first_name=sender.get("first_name"),
             chat_id=chat_id,
             is_private=is_private,
+            at=now.isoformat(timespec="seconds"),
         )
         return telegram_id, chat_id, is_private
+
+    def _send_returning_acknowledgement(
+        self,
+        chat_id: int,
+        telegram_id: int,
+        is_private: bool,
+        *,
+        suppress: bool = False,
+    ) -> None:
+        gap_seconds = self._last_activity_gaps.pop(telegram_id, None)
+        if (
+            suppress
+            or not is_private
+            or gap_seconds is None
+            or gap_seconds < RETURNING_AFTER_GAP_SECONDS
+        ):
+            return
+        if gap_seconds >= 60 * 60:
+            message = (
+                "Welcome back. I hope you were able to attend to what you needed. "
+                "We can continue at your pace."
+            )
+        else:
+            message = (
+                "Welcome back. Take your time—we can continue whenever you’re ready."
+            )
+        self.api.send_message(chat_id, message)
 
     @staticmethod
     def _is_pro_channel_access_request(text: str) -> bool:
@@ -662,6 +707,9 @@ class SmartMoneyHubBot:
             return
         telegram_id, chat_id, is_private = self._register(sender, chat)
         command = text.strip().split(maxsplit=1)[0].split("@", maxsplit=1)[0].lower()
+        self._send_returning_acknowledgement(
+            chat_id, telegram_id, is_private, suppress=command == "/start"
+        )
         requested_action = self._requested_member_action(text)
         session = self.sessions.get(telegram_id)
         has_pending_admin_action = (
@@ -946,6 +994,7 @@ class SmartMoneyHubBot:
             return
 
         telegram_id, chat_id, is_private = self._register(sender, chat)
+        self._send_returning_acknowledgement(chat_id, telegram_id, is_private)
         if data.startswith("quiz:answer:") or data.startswith("answer:"):
             match = re.fullmatch(r"(?:quiz:)?answer:(\d+):(\d+)", data)
             if match:
