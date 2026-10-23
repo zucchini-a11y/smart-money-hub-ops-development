@@ -374,7 +374,9 @@ class GeminiCoachService:
             "Do not use exaggerated flattery or casual nicknames, reveal their "
             "numeric identifier, or let their role change educational or safety rules. "
             "If they ask how to reach their admin menu, direct them to send /admin "
-            "in this private chat; authorization is still enforced by the bot."
+            "in this private chat; authorization is still enforced by the bot. "
+            "They may set one-time personal reminders by sending the task and a clear "
+            "date and time, such as “Remind me to review my journal tomorrow at 9am.”"
             if is_admin
             else ""
         )
@@ -429,6 +431,8 @@ class GeminiCoachService:
             "coaching progress. Reminder Settings shows reminder status and lets the "
             "member manage the Sunday check-in or stop/resume all scheduled reminders; "
             "the Zoom class check-ins are automatic, and /stop stops scheduled reminders. "
+            "Personal one-time reminders are not a member-facing feature; do not "
+            "suggest creating one or claim that members can set them. "
             "The Coach menu also has 💬 Chat with Coach, Challenge Me, Review My Setup, "
             "Review My Mistake, Teach Me Something, Daily Challenge, and 🧹 Clear My Coach "
             "History. Clear Coach History requires a separate confirmation; Cancel backs "

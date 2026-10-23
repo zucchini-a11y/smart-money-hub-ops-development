@@ -257,8 +257,10 @@ class GeminiCoachTests(unittest.TestCase):
         self.assertIn("respectful, professional courtesy", admin_instruction)
         self.assertIn("Do not use exaggerated flattery", admin_instruction)
         self.assertIn("send /admin", admin_instruction)
+        self.assertIn("one-time personal reminders", admin_instruction)
+        self.assertIn("not a member-facing feature", member_instruction)
         self.assertNotIn("verified as the configured administrator", member_instruction)
-        self.assertNotIn("CEO", member_instruction)
+        self.assertNotIn("They may set one-time personal reminders", member_instruction)
         self.assertNotIn("send /admin", member_instruction)
 
     def test_coach_prompt_explains_member_buttons_without_exposing_admin_controls(self) -> None:

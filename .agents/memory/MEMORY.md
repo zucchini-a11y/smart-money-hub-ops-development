@@ -6,3 +6,4 @@
 - [Google Gemini docs access](gemini-docs-access.md) — if documentation callbacks return 402, direct fetch from official Google docs may still work.
 - [Coach reply navigation](coach-reply-navigation.md) — keep repeated Coaching Modes buttons off replies while preserving main-menu access.
 - [Telegram typing indicator](telegram-typing-indicator.md) — the Coach's refreshed `sendChatAction` indicator was confirmed visible in Telegram.
+- [Personal reminder scope](personal-reminder-scope.md) — only the configured CEO can create one-time personal reminders; recurring stays out unless requested.

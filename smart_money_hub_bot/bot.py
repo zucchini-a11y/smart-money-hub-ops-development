@@ -16,6 +16,11 @@ from .coach import CoachService, RuleBasedCoachService
 from .education import EDUCATION
 from .flows import SUNDAY_FIELDS, TRADE_FIELDS, WEEKLY_FIELDS
 from .message_router import CoachMessageRouter
+from .personal_reminders import (
+    ReminderRequest,
+    parse_personal_reminder_request,
+    parse_reminder_timing,
+)
 from .questions import QUESTIONS
 from .scoring import AssessmentResult, grade_answers
 from .storage import Repository
@@ -692,8 +697,7 @@ class SmartMoneyHubBot:
             )
             return
         if command == "/help":
-            self.api.send_message(
-                chat_id,
+            help_text = (
                 "Use 💬 Ask Coach to discuss SMC in a private chat, or use the "
                 "buttons to assess your knowledge, journal trades, review progress, "
                 "and prepare for the week. This is educational, not a promise or "
@@ -701,7 +705,16 @@ class SmartMoneyHubBot:
                 "Quick commands: /menu for the main menu, /progress for your "
                 "private progress summary, /reminders to check your schedule, "
                 "/resume to turn scheduled reminders back on, and /stop to turn "
-                "them off. Use /clearcoach to review and clear your saved Coach chats.",
+                "them off. Use /clearcoach to review and clear your saved Coach chats."
+            )
+            if is_private and self.admin_id is not None and telegram_id == self.admin_id:
+                help_text += (
+                    "\n\nCEO reminder: send a message such as “Remind me to review "
+                    "my journal tomorrow at 9am” to set a one-time personal reminder."
+                )
+            self.api.send_message(
+                chat_id,
+                help_text,
                 self._nav_keyboard(),
             )
             return
@@ -761,10 +774,22 @@ class SmartMoneyHubBot:
         if command in {"/stop", "/unsubscribe"}:
             self.admin_dashboard.cancel_broadcast(telegram_id)
             self.store.set_reminders_stopped(telegram_id, True)
+            session = self.sessions.get(telegram_id)
+            if session and session.kind == "personal_reminder":
+                self.sessions.pop(telegram_id, None)
+            stop_message = (
+                "All scheduled Sunday and Zoom class reminders are off. You can still "
+                "use the bot; open Reminder Settings to resume them."
+            )
+            if self.admin_id is not None and telegram_id == self.admin_id:
+                stop_message = (
+                    "Scheduled Sunday and Zoom class reminders are off, and pending "
+                    "one-time reminders have been cancelled. You can still use the bot; "
+                    "send /resume before setting another reminder."
+                )
             self.api.send_message(
                 chat_id,
-                "All scheduled Sunday and Zoom class reminders are off. You can still "
-                "use the bot; open Reminder Settings to resume them.",
+                stop_message,
                 self._nav_keyboard(),
             )
             return
@@ -800,6 +825,11 @@ class SmartMoneyHubBot:
             self.admin_dashboard.cancel_channel_promo(telegram_id)
             self.admin_dashboard.cancel_knowledge_action(telegram_id)
             self.admin_dashboard.open(chat_id, telegram_id, is_private)
+            return
+        session = self.sessions.get(telegram_id)
+        if command == "/cancel" and session and session.kind == "personal_reminder":
+            self.sessions.pop(telegram_id, None)
+            self.api.send_message(chat_id, "Okay, I cancelled that reminder setup.")
             return
 
         if self.admin_dashboard.search_is_pending(telegram_id):
@@ -837,7 +867,11 @@ class SmartMoneyHubBot:
                 "Coach bypassed: active conversation state kind=%s.",
                 session.kind,
             )
-            if session.kind == "assessment":
+            if session.kind == "personal_reminder":
+                self._accept_personal_reminder_answer(
+                    telegram_id, chat_id, text
+                )
+            elif session.kind == "assessment":
                 self.api.send_message(
                     chat_id,
                     "Please choose one of the answer buttons, or use Back or Main Menu.",
@@ -853,6 +887,25 @@ class SmartMoneyHubBot:
                 )
             else:
                 self._accept_text_answer(session, text)
+            return
+        reminder_request = parse_personal_reminder_request(
+            text, datetime.now(timezone.utc), self.reminder_zone
+        )
+        if reminder_request:
+            if not is_private:
+                self._reminder_private_chat_required(chat_id)
+                return
+            if self.admin_id is None or telegram_id != self.admin_id:
+                self.api.send_message(
+                    chat_id,
+                    "Personal reminders aren’t available for this account. "
+                    "Scheduled class reminders are managed separately in Reminder Settings.",
+                    self._nav_keyboard(),
+                )
+                return
+            self._begin_personal_reminder(
+                telegram_id, chat_id, sender, reminder_request
+            )
             return
         if is_private and self._is_pro_channel_access_request(text):
             self.api.send_message(
@@ -2166,6 +2219,21 @@ class SmartMoneyHubBot:
     def _show_reminder_settings(self, chat_id: int, telegram_id: int) -> None:
         weekly_enabled = self.store.reminders_enabled(telegram_id)
         reminders_stopped = self.store.reminders_stopped(telegram_id)
+        is_ceo = (
+            self.admin_id is not None
+            and telegram_id == self.admin_id
+            and chat_id == telegram_id
+        )
+        personal_reminders = (
+            self.store.pending_personal_reminders(telegram_id) if is_ceo else []
+        )
+        personal_note = ""
+        if is_ceo:
+            personal_note = (
+                f"Pending one-time reminders: {len(personal_reminders)}.\n"
+                "Send “Remind me to … tomorrow at 9am” to create one. "
+                "Use /stop to cancel pending one-time reminders.\n"
+            )
         weekly_state = "On" if weekly_enabled else "Off"
         all_state = "Stopped" if reminders_stopped else "Active"
         settings_rows = []
@@ -2196,8 +2264,7 @@ class SmartMoneyHubBot:
                 }
             ]
         )
-        self.api.send_message(
-            chat_id,
+        settings_text = (
             f"Weekly Sunday check-in: {weekly_state} — "
             f"{self.reminder_time.strftime('%H:%M')} ({self.reminder_zone.key}).\n"
             f"Zoom class check-ins: Automatic — Monday and Thursday at "
@@ -2205,9 +2272,166 @@ class SmartMoneyHubBot:
             f"{CLASS_START_TIME.strftime('%H:%M')} "
             f"({self.reminder_zone.key}).\n"
             f"All scheduled reminders: {all_state}.\n\n"
+            f"{personal_note}"
             "Only members who have started the bot in a private chat receive DMs. "
-            "Use /stop to turn all scheduled reminders off.",
-            self._menu_keyboard(settings_rows),
+            "Use /stop to turn scheduled reminders off."
+        )
+        self.api.send_message(
+            chat_id, settings_text, self._menu_keyboard(settings_rows)
+        )
+
+    def _begin_personal_reminder(
+        self,
+        telegram_id: int,
+        chat_id: int,
+        sender: dict[str, Any],
+        request: ReminderRequest,
+    ) -> None:
+        task = request.task.strip()
+        if len(task) > 300:
+            self.api.send_message(
+                chat_id,
+                "Please keep the reminder text under 300 characters so it fits in one message.",
+                self._nav_keyboard(),
+            )
+            return
+        draft = {"task": task, "due_at": request.due_at}
+        if request.due_at and task and not request.error:
+            self._save_personal_reminder(telegram_id, chat_id, draft)
+            return
+        self.sessions[telegram_id] = Conversation(
+            kind="personal_reminder",
+            chat_id=chat_id,
+            username=sender.get("username"),
+            first_name=sender.get("first_name"),
+            answers=[draft],
+        )
+        self._prompt_for_personal_reminder_details(chat_id, draft, request)
+
+    def _accept_personal_reminder_answer(
+        self, telegram_id: int, chat_id: int, text: str
+    ) -> None:
+        session = self.sessions.get(telegram_id)
+        if not session or session.kind != "personal_reminder" or not session.answers:
+            return
+        draft = session.answers[0]
+        now = datetime.now(timezone.utc)
+
+        if not draft.get("task"):
+            request = parse_personal_reminder_request(
+                text, now, self.reminder_zone
+            )
+            timing = parse_reminder_timing(text, now, self.reminder_zone)
+            if request and request.task:
+                draft["task"] = request.task
+                draft["due_at"] = request.due_at or draft.get("due_at")
+            elif timing and timing.due_at:
+                draft["due_at"] = timing.due_at
+            elif timing and timing.needs:
+                draft["task"] = text[: timing.start].strip()
+            else:
+                draft["task"] = text.strip()
+
+        if draft.get("task") and not draft.get("due_at"):
+            timing = parse_reminder_timing(text, now, self.reminder_zone)
+            if timing and timing.due_at:
+                draft["due_at"] = timing.due_at
+            else:
+                self._prompt_for_personal_reminder_details(
+                    chat_id,
+                    draft,
+                    ReminderRequest(
+                        task=str(draft.get("task", "")),
+                        due_at=None,
+                        needs=timing.needs if timing else "time",
+                        error=timing.error if timing else None,
+                    ),
+                )
+                return
+
+        task = str(draft.get("task", "")).strip()
+        if len(task) > 300:
+            draft["task"] = ""
+            self.api.send_message(
+                chat_id,
+                "That reminder is a bit long. Please summarize it in 300 characters or fewer.",
+                self._nav_keyboard(),
+            )
+            return
+        if not task or not draft.get("due_at"):
+            self._prompt_for_personal_reminder_details(
+                chat_id,
+                draft,
+                ReminderRequest(task=task, due_at=draft.get("due_at")),
+            )
+            return
+        self._save_personal_reminder(telegram_id, chat_id, draft)
+
+    def _prompt_for_personal_reminder_details(
+        self,
+        chat_id: int,
+        draft: dict[str, Any],
+        request: ReminderRequest,
+    ) -> None:
+        if not draft.get("task"):
+            prompt = "What should I remind you about?"
+        elif request.error == "not_future":
+            prompt = (
+                "That time has already passed. What future date and time should I use? "
+                "For example, “tomorrow at 9am.”"
+            )
+        elif request.error in {"too_far", "invalid_date", "invalid_time"}:
+            prompt = (
+                "I couldn’t confirm that date or time. Please send a future date and "
+                "time such as “tomorrow at 9am” or “in 2 hours.”"
+            )
+        elif request.needs == "time":
+            prompt = (
+                "What time should I remind you? For example, “tomorrow at 9am” "
+                "or “in 2 hours.”"
+            )
+        elif request.needs == "date":
+            prompt = (
+                "What day should I use? Please include a date and time, such as "
+                "“tomorrow at 9am.”"
+            )
+        else:
+            prompt = (
+                "When should I remind you? Send a future date and time, such as "
+                "“tomorrow at 9am” or “in 2 hours.”"
+            )
+        self.api.send_message(
+            chat_id,
+            f"{prompt} Times use {self.reminder_zone.key}.",
+            self._nav_keyboard(),
+        )
+
+    def _save_personal_reminder(
+        self, telegram_id: int, chat_id: int, draft: dict[str, Any]
+    ) -> None:
+        due_at = draft.get("due_at")
+        task = str(draft.get("task", "")).strip()
+        if not isinstance(due_at, datetime) or not task:
+            return
+        reminder_id = self.store.create_personal_reminder(
+            telegram_id, task, due_at
+        )
+        self.sessions.pop(telegram_id, None)
+        if reminder_id is None:
+            self.api.send_message(
+                chat_id,
+                "Your scheduled reminders are stopped. Send /resume first, then ask me "
+                "to set the one-time reminder again.",
+                self._nav_keyboard(),
+            )
+            return
+        local_due = due_at.astimezone(self.reminder_zone)
+        self.api.send_message(
+            chat_id,
+            f"✅ Reminder saved: {task}\n"
+            f"When: {local_due.strftime('%A, %B %d at %I:%M %p')} "
+            f"({self.reminder_zone.key}).",
+            self._nav_keyboard(),
         )
 
     def _change_reminder_setting(
@@ -2280,6 +2504,7 @@ class SmartMoneyHubBot:
         class_day = CLASS_REMINDER_WEEKDAYS.get(local_now.weekday())
         if class_day:
             self._dispatch_class_reminders(local_now, class_day)
+        self._dispatch_personal_reminders(current)
 
     def _dispatch_weekly_checkin(self, local_now: datetime) -> None:
         schedule_key = local_now.date().isoformat()
@@ -2360,6 +2585,26 @@ class SmartMoneyHubBot:
                 self.store.record_reminder_sent(
                     telegram_id, reminder_type, schedule_key
                 )
+
+    def _dispatch_personal_reminders(self, now: datetime) -> None:
+        for reminder in self.store.due_personal_reminders(now):
+            if (
+                self.admin_id is None
+                or int(reminder["telegram_id"]) != self.admin_id
+            ):
+                continue
+            try:
+                self.api.send_message(
+                    int(reminder["chat_id"]),
+                    f"⏰ Reminder: {reminder['reminder_text']}",
+                    self._nav_keyboard(),
+                )
+            except TelegramAPIError as error:
+                self._handle_reminder_send_error(
+                    int(reminder["telegram_id"]), error
+                )
+                continue
+            self.store.mark_personal_reminder_sent(int(reminder["id"]))
 
     def _handle_reminder_send_error(
         self, telegram_id: int, error: TelegramAPIError

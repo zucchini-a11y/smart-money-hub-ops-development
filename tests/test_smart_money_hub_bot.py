@@ -1425,6 +1425,137 @@ class BotFlowTests(unittest.TestCase):
         ]
         self.assertEqual(len(scheduled), 1)
 
+    def test_configured_admin_can_set_one_time_reminder_in_natural_language(self) -> None:
+        self.bot.admin_id = self.user_id
+        self._message("Remind me to review my journal tomorrow at 9am")
+
+        self.assertIn("Reminder saved: review my journal", self.api.messages[-1]["text"])
+        self.assertIn("Africa/Lagos", self.api.messages[-1]["text"])
+        reminders = self.bot.store.pending_personal_reminders(self.user_id)
+        self.assertEqual(len(reminders), 1)
+        self.assertEqual(reminders[0]["reminder_text"], "review my journal")
+
+    def test_personal_reminder_collects_missing_time_then_saves(self) -> None:
+        self.bot.admin_id = self.user_id
+        self._message("Remind me to review my journal")
+        self.assertIn("What time should I remind you?", self.api.messages[-1]["text"])
+        self.assertEqual(self.bot.sessions[self.user_id].kind, "personal_reminder")
+
+        self._message("tomorrow at 9am")
+
+        self.assertIn("Reminder saved: review my journal", self.api.messages[-1]["text"])
+        self.assertNotIn(self.user_id, self.bot.sessions)
+        self.assertEqual(
+            len(self.bot.store.pending_personal_reminders(self.user_id)), 1
+        )
+
+    def test_due_personal_reminder_sends_only_once(self) -> None:
+        self.bot.admin_id = self.user_id
+        self._message("/start")
+        lagos = ZoneInfo("Africa/Lagos")
+        reminder_id = self.bot.store.create_personal_reminder(
+            self.user_id,
+            "Review my journal",
+            datetime(2026, 10, 27, 10, 0, tzinfo=lagos),
+        )
+        self.assertIsNotNone(reminder_id)
+
+        due_check = datetime(2026, 10, 27, 10, 1, tzinfo=lagos)
+        self.bot._dispatch_due_reminders(due_check)
+        self.bot._dispatch_due_reminders(due_check)
+
+        sent = [
+            item for item in self.api.messages
+            if item["text"] == "⏰ Reminder: Review my journal"
+        ]
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(sent[0]["chat_id"], self.chat_id)
+        self.assertEqual(
+            self.bot.store.pending_personal_reminders(self.user_id), []
+        )
+
+    def test_stop_cancels_pending_personal_reminders(self) -> None:
+        self.bot.admin_id = self.user_id
+        self._message("/start")
+        self.bot.store.create_personal_reminder(
+            self.user_id,
+            "Review my journal",
+            datetime(2026, 10, 27, 10, 0, tzinfo=ZoneInfo("Africa/Lagos")),
+        )
+
+        self._message("/stop")
+
+        self.assertIn("pending one-time reminders have been cancelled", self.api.messages[-1]["text"])
+        self.assertEqual(
+            self.bot.store.pending_personal_reminders(self.user_id), []
+        )
+
+    def test_personal_reminder_requires_private_chat(self) -> None:
+        self.bot.admin_id = self.user_id
+        self._message(
+            "Remind me to review my journal tomorrow at 9am",
+            user_id=707,
+            chat_id=-707,
+            chat_type="supergroup",
+        )
+
+        self.assertIn("private chat", self.api.messages[-1]["text"])
+        self.assertEqual(self.bot.store.pending_personal_reminders(707), [])
+
+    def test_personal_reminder_request_does_not_interrupt_active_assessment(self) -> None:
+        self.bot.admin_id = self.user_id
+        self._click("menu:assessment")
+
+        self._message("Remind me to review my journal tomorrow at 9am")
+
+        self.assertIn("Please choose one of the answer buttons", self.api.messages[-1]["text"])
+        self.assertEqual(self.bot.sessions[self.user_id].kind, "assessment")
+        self.assertEqual(
+            self.bot.store.pending_personal_reminders(self.user_id), []
+        )
+
+    def test_personal_reminders_are_exclusive_to_configured_admin(self) -> None:
+        self.bot.admin_id = 999
+        self._message("Remind me to review my journal tomorrow at 9am")
+
+        self.assertIn("aren’t available for this account", self.api.messages[-1]["text"])
+        self.assertEqual(
+            self.bot.store.pending_personal_reminders(self.user_id), []
+        )
+
+        self._message("/help", user_id=self.user_id + 1)
+        self.assertNotIn("CEO reminder", self.api.messages[-1]["text"])
+        self._message("/reminders", user_id=self.user_id + 1)
+        self.assertNotIn("Pending one-time reminders", self.api.messages[-1]["text"])
+
+    def test_personal_reminder_is_not_sent_to_non_admin(self) -> None:
+        self.bot.admin_id = self.user_id
+        other_user = self.user_id + 1
+        self.bot.store.register_user(
+            telegram_id=other_user,
+            username=None,
+            first_name=None,
+            chat_id=other_user,
+            is_private=True,
+        )
+        self.bot.store.create_personal_reminder(
+            other_user,
+            "A reminder created before the access restriction",
+            datetime(2026, 10, 27, 10, 0, tzinfo=ZoneInfo("Africa/Lagos")),
+        )
+
+        self.bot._dispatch_due_reminders(
+            datetime(2026, 10, 27, 10, 1, tzinfo=ZoneInfo("Africa/Lagos"))
+        )
+
+        self.assertFalse(
+            any(
+                item["chat_id"] == other_user
+                and item["text"].startswith("⏰ Reminder:")
+                for item in self.api.messages
+            )
+        )
+
     def test_zoom_class_checkins_are_automatic_and_honor_stop(self) -> None:
         self.bot.store.register_user(
             telegram_id=303,

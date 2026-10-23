@@ -170,6 +170,20 @@ class Repository:
                         UNIQUE (telegram_id, reminder_type, schedule_key)
                     );
 
+                    CREATE TABLE IF NOT EXISTS personal_reminders (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        telegram_id INTEGER NOT NULL REFERENCES users(telegram_id),
+                        reminder_text TEXT NOT NULL,
+                        due_at TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        status TEXT NOT NULL DEFAULT 'pending'
+                            CHECK (status IN ('pending', 'sent', 'cancelled')),
+                        sent_at TEXT
+                    );
+
+                    CREATE INDEX IF NOT EXISTS personal_reminders_due
+                    ON personal_reminders (status, due_at);
+
                     CREATE TABLE IF NOT EXISTS dm_coaching_interactions (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         telegram_id INTEGER NOT NULL REFERENCES users(telegram_id),
@@ -539,7 +553,114 @@ class Repository:
                         telegram_id,
                     ),
                 )
+                if stopped:
+                    connection.execute(
+                        """
+                        UPDATE personal_reminders
+                        SET status = 'cancelled'
+                        WHERE telegram_id = ? AND status = 'pending'
+                        """,
+                        (telegram_id,),
+                    )
                 return cursor.rowcount > 0
+        finally:
+            connection.close()
+
+    def create_personal_reminder(
+        self,
+        telegram_id: int,
+        reminder_text: str,
+        due_at: datetime,
+        *,
+        created_at: str | None = None,
+    ) -> int | None:
+        """Create a private one-time reminder for an active member."""
+        connection = self._connect()
+        try:
+            with connection:
+                user = connection.execute(
+                    """
+                    SELECT is_private, chat_id, reminders_stopped
+                    FROM users WHERE telegram_id = ?
+                    """,
+                    (telegram_id,),
+                ).fetchone()
+                if (
+                    not user
+                    or not user["is_private"]
+                    or not user["chat_id"]
+                    or user["reminders_stopped"]
+                ):
+                    return None
+                cursor = connection.execute(
+                    """
+                    INSERT INTO personal_reminders
+                        (telegram_id, reminder_text, due_at, created_at)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (
+                        telegram_id,
+                        reminder_text,
+                        due_at.astimezone(timezone.utc).isoformat(timespec="seconds"),
+                        created_at or utc_now(),
+                    ),
+                )
+                return int(cursor.lastrowid)
+        finally:
+            connection.close()
+
+    def due_personal_reminders(self, now: datetime) -> list[dict[str, Any]]:
+        due_at = now.astimezone(timezone.utc).isoformat(timespec="seconds")
+        connection = self._connect()
+        try:
+            rows = connection.execute(
+                """
+                SELECT r.id, r.telegram_id, r.reminder_text, r.due_at, u.chat_id
+                FROM personal_reminders AS r
+                JOIN users AS u ON u.telegram_id = r.telegram_id
+                WHERE r.status = 'pending' AND r.due_at <= ?
+                  AND u.is_private = 1 AND u.chat_id IS NOT NULL
+                ORDER BY r.due_at, r.id
+                """,
+                (due_at,),
+            ).fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            connection.close()
+
+    def mark_personal_reminder_sent(
+        self, reminder_id: int, *, sent_at: str | None = None
+    ) -> bool:
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE personal_reminders
+                    SET status = 'sent', sent_at = ?
+                    WHERE id = ? AND status = 'pending'
+                    """,
+                    (sent_at or utc_now(), reminder_id),
+                )
+                return cursor.rowcount > 0
+        finally:
+            connection.close()
+
+    def pending_personal_reminders(
+        self, telegram_id: int, limit: int = 5
+    ) -> list[dict[str, Any]]:
+        connection = self._connect()
+        try:
+            rows = connection.execute(
+                """
+                SELECT reminder_text, due_at
+                FROM personal_reminders
+                WHERE telegram_id = ? AND status = 'pending'
+                ORDER BY due_at, id LIMIT ?
+                """,
+                (telegram_id, max(1, min(limit, 20))),
+            ).fetchall()
+            return [dict(row) for row in rows]
         finally:
             connection.close()
 
