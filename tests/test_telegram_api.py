@@ -42,6 +42,74 @@ class TelegramUpdateSubscriptionTests(unittest.TestCase):
             },
         )
 
+    def test_send_message_can_target_a_forum_topic(self) -> None:
+        api = TelegramAPI("synthetic-test-token")
+        with patch.object(api, "_request") as request:
+            api.send_message(
+                -100123,
+                "A topic reply.",
+                message_thread_id=456,
+            )
+
+        request.assert_called_once_with(
+            "sendMessage",
+            {
+                "chat_id": -100123,
+                "text": "A topic reply.",
+                "message_thread_id": 456,
+            },
+        )
+
+    def test_send_poll_uses_anonymous_quiz_and_topic(self) -> None:
+        api = TelegramAPI("synthetic-test-token")
+        with patch.object(
+            api,
+            "_request",
+            return_value={"message_id": 88},
+        ) as request:
+            result = api.send_poll(
+                -100123,
+                "Hypothetical SMC question?",
+                ["Correct", "Incorrect"],
+                0,
+                "Wait for confirmation.",
+                message_thread_id=456,
+            )
+
+        self.assertEqual(result, {"message_id": 88})
+        request.assert_called_once_with(
+            "sendPoll",
+            {
+                "chat_id": -100123,
+                "question": "Hypothetical SMC question?",
+                "options": ["Correct", "Incorrect"],
+                "type": "quiz",
+                "is_anonymous": True,
+                "correct_option_id": 0,
+                "explanation": "Wait for confirmation.",
+                "message_thread_id": 456,
+            },
+        )
+
+    def test_send_chat_action_can_target_a_forum_topic(self) -> None:
+        api = TelegramAPI("synthetic-test-token")
+        with patch.object(api, "_request") as request:
+            api.send_chat_action(
+                -100123,
+                "typing",
+                message_thread_id=456,
+            )
+
+        request.assert_called_once_with(
+            "sendChatAction",
+            {
+                "chat_id": -100123,
+                "action": "typing",
+                "message_thread_id": 456,
+            },
+            timeout=3,
+        )
+
     def test_poll_subscription_includes_channel_posts_and_edits(self) -> None:
         captured = {}
 

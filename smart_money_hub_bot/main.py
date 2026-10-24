@@ -9,6 +9,7 @@ from .bot import SmartMoneyHubBot
 from .channel_gemini import GeminiChannelContentService
 from .coach import RuleBasedCoachService
 from .gemini_coach import GeminiCoachService, GEMINI_MODEL
+from .group_features import DEFAULT_EDUCATION_GROUP_ID
 from .storage import DEFAULT_DATABASE_PATH
 from .telegram_api import TelegramAPI
 
@@ -41,6 +42,16 @@ def main() -> None:
     except ValueError:
         raise SystemExit(
             "SMH_MAIN_CHANNEL_ID must contain a numeric Telegram channel ID."
+        ) from None
+
+    education_group_value = os.getenv(
+        "SMH_EDUCATION_GROUP_ID", str(DEFAULT_EDUCATION_GROUP_ID)
+    ).strip()
+    try:
+        education_group_id = int(education_group_value)
+    except ValueError:
+        raise SystemExit(
+            "SMH_EDUCATION_GROUP_ID must contain a numeric Telegram group ID."
         ) from None
 
     reminder_timezone = os.getenv("SMH_REMINDER_TIMEZONE", "Africa/Lagos").strip()
@@ -77,6 +88,7 @@ def main() -> None:
             reminder_time=reminder_time,
             coach_service=coach_service,
             channel_writer=channel_writer,
+            education_group_id=education_group_id,
         )
     except (ValueError, ZoneInfoNotFoundError):
         raise SystemExit(

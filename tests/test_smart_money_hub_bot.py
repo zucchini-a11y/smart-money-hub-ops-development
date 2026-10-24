@@ -30,6 +30,7 @@ from smart_money_hub_bot.telegram_api import TelegramAPIError
 class FakeTelegramAPI:
     def __init__(self) -> None:
         self.messages: list[dict[str, Any]] = []
+        self.polls: list[dict[str, Any]] = []
         self.answered_callbacks: list[dict[str, Any]] = []
         self.chat_actions: list[dict[str, Any]] = []
         self.webhook_info: dict[str, Any] = {}
@@ -48,14 +49,48 @@ class FakeTelegramAPI:
         reply_markup: dict[str, Any] | None = None,
         *,
         parse_mode: str | None = None,
+        message_thread_id: int | None = None,
     ) -> None:
         message = {"chat_id": chat_id, "text": text, "reply_markup": reply_markup}
         if parse_mode is not None:
             message["parse_mode"] = parse_mode
+        if message_thread_id is not None:
+            message["message_thread_id"] = message_thread_id
         self.messages.append(message)
 
-    def send_chat_action(self, chat_id: int, action: str = "typing") -> None:
-        self.chat_actions.append({"chat_id": chat_id, "action": action})
+    def send_chat_action(
+        self,
+        chat_id: int,
+        action: str = "typing",
+        *,
+        message_thread_id: int | None = None,
+    ) -> None:
+        chat_action = {"chat_id": chat_id, "action": action}
+        if message_thread_id is not None:
+            chat_action["message_thread_id"] = message_thread_id
+        self.chat_actions.append(chat_action)
+
+    def send_poll(
+        self,
+        chat_id: int,
+        question: str,
+        options: list[str],
+        correct_option_id: int,
+        explanation: str,
+        *,
+        message_thread_id: int | None = None,
+    ) -> dict[str, Any]:
+        poll = {
+            "chat_id": chat_id,
+            "question": question,
+            "options": options,
+            "correct_option_id": correct_option_id,
+            "explanation": explanation,
+        }
+        if message_thread_id is not None:
+            poll["message_thread_id"] = message_thread_id
+        self.polls.append(poll)
+        return {"message_id": len(self.polls)}
 
     def answer_callback_query(
         self,
@@ -444,6 +479,192 @@ class BotFlowTests(unittest.TestCase):
             "not detected. Send /groupid inside the Announcements topic",
             self.api.messages[0]["text"],
         )
+
+    def test_ordinary_message_in_education_group_does_not_show_a_menu(self) -> None:
+        self.bot.handle_update(
+            {
+                "message": {
+                    "text": "Good morning everyone",
+                    "chat": {
+                        "id": -1003916437804,
+                        "type": "supergroup",
+                    },
+                    "from": {"id": self.user_id},
+                }
+            }
+        )
+
+        self.assertEqual(self.api.messages, [])
+
+    def test_explicit_menu_command_still_works_in_education_group(self) -> None:
+        self.bot.handle_update(
+            {
+                "message": {
+                    "text": " MAIN MENU ",
+                    "chat": {
+                        "id": -1003916437804,
+                        "type": "supergroup",
+                    },
+                    "from": {"id": self.user_id},
+                }
+            }
+        )
+
+        self.assertEqual(len(self.api.messages), 1)
+        self.assertEqual(self.api.messages[0]["text"], "Choose an option:")
+        self.assertIsNotNone(self.api.messages[0]["reply_markup"])
+
+    def test_group_help_explains_opt_in_topic_commands(self) -> None:
+        self.bot.handle_update(
+            {
+                "message": {
+                    "text": "/help",
+                    "chat": {
+                        "id": -1003916437804,
+                        "type": "supergroup",
+                    },
+                    "message_thread_id": 7654,
+                    "from": {"id": self.user_id},
+                }
+            }
+        )
+
+        self.assertEqual(len(self.api.messages), 1)
+        self.assertIn("/ask What is a liquidity sweep?", self.api.messages[0]["text"])
+        self.assertIn("/scenario", self.api.messages[0]["text"])
+        self.assertEqual(self.api.messages[0]["message_thread_id"], 7654)
+        self.assertIsNone(self.api.messages[0]["reply_markup"])
+
+    def test_group_ask_uses_no_private_history_and_replies_in_same_topic(self) -> None:
+        routed = Mock(
+            reply=Mock(response="Liquidity may gather around obvious highs and lows."),
+            response_path="approved_knowledge",
+        )
+        with (
+            patch.object(
+                self.bot.message_router,
+                "route",
+                return_value=routed,
+            ) as route,
+            patch.object(
+                self.bot.store,
+                "recent_dm_coaching_interactions",
+                side_effect=AssertionError("Group Q&A must not read private history."),
+            ),
+        ):
+            self.bot.handle_update(
+                {
+                    "message": {
+                        "text": "/ask@SmartMoneyHubSignalsBot What is liquidity?",
+                        "chat": {
+                            "id": -1003916437804,
+                            "type": "supergroup",
+                        },
+                        "message_thread_id": 7654,
+                        "from": {"id": self.user_id},
+                    }
+                }
+            )
+
+        args, kwargs = route.call_args
+        self.assertEqual(args, (self.user_id, "What is liquidity?"))
+        self.assertEqual(kwargs["history"], [])
+        self.assertEqual(kwargs["profile"], {})
+        self.assertRegex(kwargs["request_id"], r"^[0-9a-f]{32}$")
+        self.assertEqual(len(self.api.messages), 1)
+        self.assertEqual(
+            self.api.messages[0]["text"],
+            "Liquidity may gather around obvious highs and lows.",
+        )
+        self.assertEqual(self.api.messages[0]["message_thread_id"], 7654)
+        self.assertIsNone(self.api.messages[0]["reply_markup"])
+
+    def test_group_ask_requires_a_question(self) -> None:
+        self.bot.handle_update(
+            {
+                "message": {
+                    "text": "/ask",
+                    "chat": {
+                        "id": -1003916437804,
+                        "type": "supergroup",
+                    },
+                    "message_thread_id": 7654,
+                    "from": {"id": self.user_id},
+                }
+            }
+        )
+
+        self.assertIn("Add your SMC question after /ask", self.api.messages[0]["text"])
+        self.assertEqual(self.api.messages[0]["message_thread_id"], 7654)
+
+    def test_admin_can_start_hypothetical_quiz_poll_in_current_topic(self) -> None:
+        bot = SmartMoneyHubBot(
+            self.api,
+            str(self.database_path),
+            admin_id=self.user_id,
+        )
+        bot.handle_update(
+            {
+                "message": {
+                    "message_id": 14,
+                    "text": "/scenario",
+                    "chat": {
+                        "id": -1003916437804,
+                        "type": "supergroup",
+                    },
+                    "message_thread_id": 7654,
+                    "from": {"id": self.user_id},
+                }
+            }
+        )
+
+        self.assertEqual(len(self.api.polls), 1)
+        poll = self.api.polls[0]
+        self.assertEqual(poll["chat_id"], -1003916437804)
+        self.assertEqual(poll["message_thread_id"], 7654)
+        self.assertIn("Hypothetical SMC scenario:", poll["question"])
+        self.assertEqual(len(poll["options"]), 4)
+        self.assertIn("NO CONFIRMATION, NO ENTRY.", poll["explanation"])
+        self.assertEqual(self.api.messages, [])
+
+    def test_only_configured_admin_can_start_group_scenario_polls(self) -> None:
+        bot = SmartMoneyHubBot(
+            self.api,
+            str(self.database_path),
+            admin_id=987654321,
+        )
+        bot.handle_update(
+            {
+                "message": {
+                    "message_id": 14,
+                    "text": "/scenario",
+                    "chat": {
+                        "id": -1003916437804,
+                        "type": "supergroup",
+                    },
+                    "from": {"id": self.user_id},
+                }
+            }
+        )
+
+        self.assertEqual(self.api.polls, [])
+        self.assertIn("Only the group admin", self.api.messages[0]["text"])
+
+    def test_group_learning_commands_are_limited_to_configured_group(self) -> None:
+        self.bot.handle_update(
+            {
+                "message": {
+                    "text": "/ask What is liquidity?",
+                    "chat": {
+                        "id": -1008888888888,
+                        "type": "supergroup",
+                    },
+                    "from": {"id": self.user_id},
+                }
+            }
+        )
+
+        self.assertEqual(self.api.messages, [])
 
     def test_group_id_command_is_silent_for_non_admins(self) -> None:
         bot = SmartMoneyHubBot(

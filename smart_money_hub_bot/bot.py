@@ -16,6 +16,10 @@ from .channel_gemini import GeminiChannelContentService
 from .coach import CoachService, RuleBasedCoachService
 from .education import EDUCATION
 from .flows import SUNDAY_FIELDS, TRADE_FIELDS, WEEKLY_FIELDS
+from .group_features import (
+    DEFAULT_EDUCATION_GROUP_ID,
+    scenario_for_message_id,
+)
 from .message_router import CoachMessageRouter
 from .personal_reminders import (
     ReminderRequest,
@@ -388,10 +392,12 @@ class SmartMoneyHubBot:
         reminder_time: str = "09:00",
         coach_service: CoachService | None = None,
         channel_writer: GeminiChannelContentService | None = None,
+        education_group_id: int | None = DEFAULT_EDUCATION_GROUP_ID,
     ) -> None:
         self.api = api
         self.store = Repository(database_path)
         self.admin_id = admin_id
+        self.education_group_id = education_group_id
         self.admin_dashboard = AdminDashboard(
             api, self.store, admin_id, main_channel_id, channel_writer
         )
@@ -585,6 +591,20 @@ class SmartMoneyHubBot:
             logger.warning("Could not send the bot recovery notice; continuing.")
         except Exception:
             logger.exception("Could not process the bot recovery notice.")
+
+    def _is_education_group(self, chat_id: int, is_private: bool) -> bool:
+        return (
+            not is_private
+            and self.education_group_id is not None
+            and chat_id == self.education_group_id
+        )
+
+    @staticmethod
+    def _message_thread_id(message: dict[str, Any]) -> int | None:
+        thread_id = message.get("message_thread_id")
+        if isinstance(thread_id, int) and not isinstance(thread_id, bool):
+            return thread_id
+        return None
 
     @staticmethod
     def _is_pro_channel_access_request(text: str) -> bool:
@@ -854,6 +874,17 @@ class SmartMoneyHubBot:
             )
             return
         if command == "/help":
+            if self._is_education_group(chat_id, is_private):
+                self.api.send_message(
+                    chat_id,
+                    "📚 Smart Money Hub group learning\n\n"
+                    "Ask an SMC question in this topic with:\n"
+                    "/ask What is a liquidity sweep?\n\n"
+                    "The admin can start a hypothetical quiz poll with /scenario. "
+                    "Ordinary group messages do not trigger Coach replies.",
+                    message_thread_id=self._message_thread_id(message),
+                )
+                return
             help_text = (
                 "Use 💬 Ask Coach to discuss SMC in a private chat, or use the "
                 "buttons to assess your knowledge, journal trades, review progress, "
@@ -1045,6 +1076,56 @@ class SmartMoneyHubBot:
             else:
                 self._accept_text_answer(session, text)
             return
+        if command in {"/ask", "/scenario"}:
+            if not self._is_education_group(chat_id, is_private):
+                return
+            thread_id = self._message_thread_id(message)
+            if command == "/ask":
+                parts = text.strip().split(maxsplit=1)
+                question = parts[1].strip() if len(parts) > 1 else ""
+                if not question:
+                    self.api.send_message(
+                        chat_id,
+                        "Add your SMC question after /ask, for example: "
+                        "/ask What is a liquidity sweep?",
+                        message_thread_id=thread_id,
+                    )
+                    return
+                self._answer_group_question(
+                    chat_id,
+                    telegram_id,
+                    question,
+                    message_thread_id=thread_id,
+                )
+                return
+
+            if self.admin_id is None or telegram_id != self.admin_id:
+                self.api.send_message(
+                    chat_id,
+                    "Only the group admin can start a scenario poll.",
+                    message_thread_id=thread_id,
+                )
+                return
+            scenario = scenario_for_message_id(message.get("message_id", 0))
+            try:
+                self.api.send_poll(
+                    chat_id,
+                    scenario.question,
+                    list(scenario.options),
+                    scenario.correct_option_id,
+                    scenario.explanation,
+                    message_thread_id=thread_id,
+                )
+            except TelegramAPIError:
+                logger.warning("Could not send an education-group scenario poll.")
+                self.api.send_message(
+                    chat_id,
+                    "I couldn't open the scenario poll right now. Please try again later.",
+                    message_thread_id=thread_id,
+                )
+            else:
+                logger.info("Education-group scenario poll sent.")
+            return
         reminder_request = parse_personal_reminder_request(
             text, datetime.now(timezone.utc), self.reminder_zone
         )
@@ -1081,12 +1162,13 @@ class SmartMoneyHubBot:
                 text,
             )
         else:
-            self.api.send_message(
-                chat_id,
-                "DM Coach is private. Open a private chat with this bot and send "
-                "/start or /coach to begin.",
-                self._main_menu_keyboard(),
-            )
+            if not self._is_education_group(chat_id, is_private):
+                self.api.send_message(
+                    chat_id,
+                    "DM Coach is private. Open a private chat with this bot and send "
+                    "/start or /coach to begin.",
+                    self._main_menu_keyboard(),
+                )
 
     def _handle_callback(self, callback: dict[str, Any]) -> None:
         callback_id = callback.get("id")
@@ -1678,21 +1760,82 @@ class SmartMoneyHubBot:
             stop_typing.set()
             typing_thread.join(timeout=1)
 
-    def _send_typing_action(self, chat_id: int) -> None:
+    def _answer_group_question(
+        self,
+        chat_id: int,
+        telegram_id: int,
+        question: str,
+        *,
+        message_thread_id: int | None,
+    ) -> None:
+        request_id = uuid.uuid4().hex
+        logger.info("Education-group question received. request_id=%s.", request_id)
+        self._send_typing_action(chat_id, message_thread_id=message_thread_id)
+        stop_typing = threading.Event()
+        typing_thread = threading.Thread(
+            target=self._refresh_typing_action,
+            args=(chat_id, stop_typing, message_thread_id),
+            name="telegram-group-coach-typing",
+            daemon=True,
+        )
+        typing_thread.start()
+        try:
+            # Group Q&A is intentionally stateless: do not reuse or expose a
+            # member's private Coach history, profile, or journal data.
+            routed = self.message_router.route(
+                telegram_id,
+                question,
+                history=[],
+                profile={},
+                request_id=request_id,
+            )
+            self.api.send_message(
+                chat_id,
+                routed.reply.response,
+                message_thread_id=message_thread_id,
+            )
+        finally:
+            stop_typing.set()
+            typing_thread.join(timeout=1)
+        logger.info(
+            "Education-group Coach reply sent (path=%s). request_id=%s.",
+            routed.response_path,
+            request_id,
+        )
+
+    def _send_typing_action(
+        self,
+        chat_id: int,
+        *,
+        message_thread_id: int | None = None,
+    ) -> None:
         send_chat_action = getattr(self.api, "send_chat_action", None)
         if send_chat_action is None:
             return
         try:
-            send_chat_action(chat_id, "typing")
+            if message_thread_id is None:
+                send_chat_action(chat_id, "typing")
+            else:
+                send_chat_action(
+                    chat_id,
+                    "typing",
+                    message_thread_id=message_thread_id,
+                )
         except TelegramAPIError:
             # A transient status-action failure must not prevent the Coach reply.
             pass
 
     def _refresh_typing_action(
-        self, chat_id: int, stop_typing: threading.Event
+        self,
+        chat_id: int,
+        stop_typing: threading.Event,
+        message_thread_id: int | None = None,
     ) -> None:
         while not stop_typing.wait(TYPING_ACTION_REFRESH_SECONDS):
-            self._send_typing_action(chat_id)
+            self._send_typing_action(
+                chat_id,
+                message_thread_id=message_thread_id,
+            )
 
     def _process_coach_message(
         self,

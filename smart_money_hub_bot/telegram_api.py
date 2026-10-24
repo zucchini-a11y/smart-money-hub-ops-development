@@ -154,12 +154,15 @@ class TelegramAPI:
         reply_markup: dict[str, Any] | None = None,
         *,
         parse_mode: str | None = None,
+        message_thread_id: int | None = None,
     ) -> None:
         payload: dict[str, Any] = {"chat_id": chat_id, "text": text}
         if reply_markup is not None:
             payload["reply_markup"] = reply_markup
         if parse_mode is not None:
             payload["parse_mode"] = parse_mode
+        if message_thread_id is not None:
+            payload["message_thread_id"] = message_thread_id
         self._request("sendMessage", payload)
 
     def send_message_with_result(
@@ -178,12 +181,45 @@ class TelegramAPI:
         result = self._request("sendMessage", payload)
         return result if isinstance(result, dict) else {}
 
-    def send_chat_action(self, chat_id: int, action: str = "typing") -> None:
+    def send_chat_action(
+        self,
+        chat_id: int,
+        action: str = "typing",
+        *,
+        message_thread_id: int | None = None,
+    ) -> None:
+        payload: dict[str, Any] = {"chat_id": chat_id, "action": action}
+        if message_thread_id is not None:
+            payload["message_thread_id"] = message_thread_id
         self._request(
             "sendChatAction",
-            {"chat_id": chat_id, "action": action},
+            payload,
             timeout=3,
         )
+
+    def send_poll(
+        self,
+        chat_id: int,
+        question: str,
+        options: list[str],
+        correct_option_id: int,
+        explanation: str,
+        *,
+        message_thread_id: int | None = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "chat_id": chat_id,
+            "question": question,
+            "options": options,
+            "type": "quiz",
+            "is_anonymous": True,
+            "correct_option_id": correct_option_id,
+            "explanation": explanation,
+        }
+        if message_thread_id is not None:
+            payload["message_thread_id"] = message_thread_id
+        result = self._request("sendPoll", payload)
+        return result if isinstance(result, dict) else {}
 
     def answer_callback_query(
         self,
