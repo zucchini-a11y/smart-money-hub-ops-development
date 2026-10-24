@@ -17,7 +17,6 @@ from .channel_content import (
     validate_channel_post,
 )
 from .channel_gemini import (
-    ChannelDraft,
     GeminiChannelContentService,
     GeminiChannelGenerationError,
 )
@@ -689,6 +688,7 @@ class ChannelPostManager:
                 post,
                 "gemini_not_configured",
                 admin_id=admin_id,
+                revision=revision_feedback is not None,
             )
         try:
             draft = self.channel_writer.generate(

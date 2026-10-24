@@ -169,7 +169,7 @@ class GeminiChannelContentService:
         )
         if finish_reason == "MAX_TOKENS":
             raise GeminiChannelGenerationError("gemini_max_tokens", status)
-        if finish_reason not in {"STOP", None}:
+        if finish_reason != "STOP":
             raise GeminiChannelGenerationError(
                 "gemini_finish_reason_rejected", status
             )

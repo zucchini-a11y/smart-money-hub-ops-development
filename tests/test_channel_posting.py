@@ -7,7 +7,12 @@ from zoneinfo import ZoneInfo
 
 from smart_money_hub_bot.channel_content import (
     CHANNEL_CONTENT_CATEGORIES,
+    PROMO_FEATURES,
     validate_channel_post,
+)
+from smart_money_hub_bot.channel_gemini import (
+    ChannelDraft,
+    GeminiChannelGenerationError,
 )
 from smart_money_hub_bot.channel_posting import ChannelPostManager
 from smart_money_hub_bot.storage import Repository
@@ -73,6 +78,31 @@ class FakeTelegramAPI:
         return result
 
 
+class FakeChannelWriter:
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+        self.failures: list[GeminiChannelGenerationError] = []
+
+    def generate(self, **kwargs) -> ChannelDraft:
+        self.calls.append(kwargs)
+        if self.failures:
+            raise self.failures.pop(0)
+        category = kwargs["preferred_category"]
+        content = (
+            f"{category.replace('_', ' ').title()} reflection for "
+            f"{kwargs['schedule_date']}: focus on process, evidence, and patience."
+        )
+        if kwargs.get("promo_due"):
+            username = kwargs["promo_username"]
+            content += (
+                f"\n\n{PROMO_FEATURES[0]}\n"
+                f"Open @{username} and tap Start: https://t.me/{username}\n"
+                "The learning Coach is separate from PRO Signals."
+            )
+        content += "\n\nNO CONFIRMATION, NO ENTRY."
+        return ChannelDraft(category=category, content=content)
+
+
 def local_time(day: int, hour: int, minute: int = 0) -> datetime:
     return datetime(2026, 10, day, hour, minute, tzinfo=TZ)
 
@@ -85,8 +115,13 @@ class ChannelPostingTests(unittest.TestCase):
             f"{self.temp_dir.name}/channel-posts.sqlite3"
         )
         self.api = FakeTelegramAPI()
+        self.writer = FakeChannelWriter()
         self.manager = ChannelPostManager(
-            self.api, self.store, ADMIN_ID, CHANNEL_ID
+            self.api,
+            self.store,
+            ADMIN_ID,
+            CHANNEL_ID,
+            channel_writer=self.writer,
         )
 
     def test_daily_schedule_sends_one_post_after_admin_preview(self) -> None:
