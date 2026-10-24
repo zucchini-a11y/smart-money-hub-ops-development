@@ -15,6 +15,7 @@ import socket
 import sqlite3
 import time
 from dataclasses import dataclass
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from html.parser import HTMLParser
 from pathlib import Path
@@ -345,7 +346,7 @@ class OfficialCalendarRepository:
     def __init__(self, database_path: str | Path) -> None:
         self.database_path = Path(database_path)
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self.database_path) as connection:
+        with closing(sqlite3.connect(self.database_path)) as connection, connection:
             connection.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS usd_calendar_source_status (
@@ -397,7 +398,7 @@ class OfficialCalendarRepository:
         http_status: int | None = None,
         attempts: int = 1,
     ) -> None:
-        with sqlite3.connect(self.database_path) as connection:
+        with closing(sqlite3.connect(self.database_path)) as connection, connection:
             connection.execute(
                 """
                 INSERT INTO usd_calendar_source_status
@@ -422,7 +423,7 @@ class OfficialCalendarRepository:
             )
 
     def save_records(self, records: list[OfficialCalendarRecord]) -> None:
-        with sqlite3.connect(self.database_path) as connection:
+        with closing(sqlite3.connect(self.database_path)) as connection, connection:
             for record in records:
                 event_at = (
                     record.event_at_utc.astimezone(timezone.utc).isoformat(
@@ -476,7 +477,7 @@ class OfficialCalendarRepository:
                 )
 
     def list_records(self) -> list[dict]:
-        with sqlite3.connect(self.database_path) as connection:
+        with closing(sqlite3.connect(self.database_path)) as connection, connection:
             connection.row_factory = sqlite3.Row
             return [
                 dict(row)
@@ -487,7 +488,7 @@ class OfficialCalendarRepository:
             ]
 
     def list_source_status(self) -> list[dict]:
-        with sqlite3.connect(self.database_path) as connection:
+        with closing(sqlite3.connect(self.database_path)) as connection, connection:
             connection.row_factory = sqlite3.Row
             return [
                 dict(row)
@@ -513,7 +514,7 @@ class OfficialCalendarReadRepository:
             return []
         uri = f"{self.database_path.resolve().as_uri()}?mode=ro"
         try:
-            with sqlite3.connect(uri, uri=True, timeout=2) as connection:
+            with closing(sqlite3.connect(uri, uri=True, timeout=2)) as connection, connection:
                 connection.row_factory = sqlite3.Row
                 exists = connection.execute(
                     "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",

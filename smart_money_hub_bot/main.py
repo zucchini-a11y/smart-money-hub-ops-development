@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfoNotFoundError
 from .bot import SmartMoneyHubBot
 from .channel_gemini import GeminiChannelContentService
 from .coach import RuleBasedCoachService
+from .daily_calendar_brief import DailyCalendarBriefPublisher
 from .gemini_coach import GeminiCoachService, GEMINI_MODEL
 from .group_features import DEFAULT_EDUCATION_GROUP_ID
 from .storage import DEFAULT_DATABASE_PATH
@@ -79,6 +80,26 @@ def main() -> None:
             "weekend AI drafts."
         )
     try:
+        daily_brief_enabled = os.getenv(
+            "SMH_DAILY_USD_GOLD_BRIEF_ENABLED", "false"
+        ).strip().casefold() in {"1", "true", "yes", "on"}
+        daily_calendar_brief = None
+        if daily_brief_enabled:
+            if admin_id is None or main_channel_id is None:
+                logging.getLogger(__name__).error(
+                    "Daily USD/Gold brief is enabled but admin or Market Analysis "
+                    "channel configuration is missing; publisher remains disabled."
+                )
+            else:
+                daily_calendar_brief = DailyCalendarBriefPublisher(
+                    TelegramAPI(token),
+                    str(database_path),
+                    admin_id=admin_id,
+                    channel_id=main_channel_id,
+                )
+                logging.getLogger(__name__).info(
+                    "Daily USD/Gold official calendar brief enabled for 00:00 WAT."
+                )
         bot = SmartMoneyHubBot(
             TelegramAPI(token),
             str(database_path),
@@ -89,6 +110,7 @@ def main() -> None:
             coach_service=coach_service,
             channel_writer=channel_writer,
             education_group_id=education_group_id,
+            daily_calendar_brief=daily_calendar_brief,
         )
     except (ValueError, ZoneInfoNotFoundError):
         raise SystemExit(

@@ -2651,6 +2651,20 @@ class StorageMigrationTests(unittest.TestCase):
                 connection.close()
             self.assertEqual(count, 1)
             self.assertEqual(legacy_count, 1)
+class DailyCalendarSchedulerIntegrationTests(unittest.TestCase):
+    def test_bot_dispatches_the_enabled_daily_brief_with_its_normal_scheduler_tick(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            brief_publisher = Mock()
+            bot = SmartMoneyHubBot(
+                FakeTelegramAPI(),
+                str(Path(temp_dir) / "bot.sqlite3"),
+                daily_calendar_brief=brief_publisher,
+            )
+            now = datetime(2026, 10, 28, 23, 5, tzinfo=timezone.utc)
+
+            bot._dispatch_due_reminders(now)
+
+            brief_publisher.dispatch.assert_called_once_with(now)
 
 
 if __name__ == "__main__":

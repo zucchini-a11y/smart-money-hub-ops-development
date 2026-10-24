@@ -43,3 +43,4 @@ timeoutMs = 20000
 
 [userenv.shared]
 SMH_MAIN_CHANNEL_ID = "-1004481197912"
+SMH_DAILY_USD_GOLD_BRIEF_ENABLED = "true"

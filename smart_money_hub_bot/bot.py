@@ -26,6 +26,7 @@ from .group_knowledge import (
     format_group_context,
     topic_update_from_message,
 )
+from .daily_calendar_brief import DailyCalendarBriefPublisher
 from .education_polls import EducationPollPublisher, is_on_demand_poll_request
 from .message_router import CoachMessageRouter
 from .personal_reminders import (
@@ -400,6 +401,7 @@ class SmartMoneyHubBot:
         coach_service: CoachService | None = None,
         channel_writer: GeminiChannelContentService | None = None,
         education_group_id: int | None = DEFAULT_EDUCATION_GROUP_ID,
+        daily_calendar_brief: DailyCalendarBriefPublisher | None = None,
     ) -> None:
         self.api = api
         self.store = Repository(database_path)
@@ -415,6 +417,7 @@ class SmartMoneyHubBot:
             education_group_id=education_group_id,
             channel_id=self.admin_dashboard.channel_posts.destination_chat_id,
         )
+        self.daily_calendar_brief = daily_calendar_brief
         self.reminder_zone = ZoneInfo(reminder_timezone)
         self.reminder_time = ClockTime.fromisoformat(reminder_time)
         if self.reminder_time.tzinfo is not None:
@@ -3109,6 +3112,11 @@ class SmartMoneyHubBot:
             self.education_polls.dispatch_due(current)
         except Exception:
             logger.exception("Could not dispatch scheduled Education group polls.")
+        if self.daily_calendar_brief is not None:
+            try:
+                self.daily_calendar_brief.dispatch(current)
+            except Exception:
+                logger.exception("Could not dispatch the daily USD/Gold calendar brief.")
         self.admin_dashboard.channel_posts.dispatch_due(current)
 
     def _dispatch_weekly_checkin(self, local_now: datetime) -> None:
