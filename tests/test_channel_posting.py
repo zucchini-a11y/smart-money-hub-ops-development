@@ -194,6 +194,64 @@ class ChannelPostingTests(unittest.TestCase):
             "https://t.me/SmartMoneyHubSignalsBot"
         )
 
+    def test_sunday_preview_is_saturday_evening_and_publish_is_sunday_at_six(self) -> None:
+        manager, store, api = self.manager, self.store, self.api
+        manager.dispatch_due(local_time(24, 18))
+
+        sunday_post = store.get_scheduled_channel_post("2026-10-25")
+        assert sunday_post is not None
+        assert sunday_post["schedule_time"] == "18:00"
+        assert sunday_post["preview_sent_at"] is not None
+        assert not api.channel_messages
+        assert "2026-10-25 at 18:00 WAT" in api.messages[-1]["text"]
+
+        manager.dispatch_due(local_time(25, 18))
+        published = store.get_scheduled_channel_post("2026-10-25")
+        assert published is not None
+        assert published["status"] == "published"
+        assert len(api.channel_messages) == 1
+
+    def test_gemini_rate_limit_holds_weekend_post_without_local_publication(self) -> None:
+        self.writer.failures.append(
+            GeminiChannelGenerationError("gemini_rate_limit", 429)
+        )
+
+        self.manager.dispatch_due(local_time(23, 18))
+
+        post = self.store.get_scheduled_channel_post("2026-10-24")
+        assert post is not None
+        assert post["status"] == "failed"
+        assert post["failure_category"] == "gemini_rate_limit"
+        assert post["content"] == ""
+        assert not self.api.channel_messages
+        assert any(
+            "gemini_rate_limit" in message["text"] for message in self.api.messages
+        )
+        assert len(self.writer.calls) == 1
+
+    def test_admin_feedback_revises_weekend_draft_with_saved_context(self) -> None:
+        self.manager.dispatch_due(local_time(23, 18))
+        post = self.store.get_scheduled_channel_post("2026-10-24")
+        assert post is not None and post["status"] == "draft"
+
+        self.manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:channel_posts:revise:{post['id']}",
+            local_time(23, 18, 5),
+        )
+        feedback = "Make the teaching prompt more practical and ask members to reflect."
+        assert self.manager.handle_edit_message(
+            ADMIN_ID, ADMIN_ID, feedback, True
+        )
+
+        revised = self.store.get_channel_post(post["id"])
+        assert revised is not None and revised["status"] == "draft"
+        assert len(self.writer.calls) == 2
+        assert self.writer.calls[-1]["revision_feedback"] == feedback
+        assert self.writer.calls[-1]["existing_draft"]
+        assert self.store.get_latest_channel_post_feedback(post["id"]) == feedback
+
     def test_promotion_interval_can_be_changed_by_admin(self) -> None:
         store, manager = self.store, self.manager
         manager.dispatch_due(local_time(23, 18))
