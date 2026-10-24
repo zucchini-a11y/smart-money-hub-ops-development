@@ -22,18 +22,31 @@ UNAVAILABLE_CHAT_ERRORS = (
     "bot cannot initiate conversation",
 )
 CHANNEL_PROMO_TEXT = (
-    "SMART MONEY HUB\n\n"
-    "Build a more disciplined approach to Smart Money Concepts (SMC) with our "
-    "Telegram bot.\n\n"
-    "• Learn key SMC concepts through short lessons\n"
-    "• Take an SMC assessment and see which topics to review\n"
-    "• Journal trades and reflect on your decision-making\n"
-    "• Ask the private DM Coach about SMC concepts and trade reviews\n"
-    "• Track progress, set a weekly focus, and prepare for the week\n"
-    "• Get Monday and Thursday Zoom class reminders; the link is shared here\n\n"
-    "Tap “Open Smart Money Hub” below and send /start to begin.\n\n"
-    "For education and journaling only. This bot does not provide trade signals "
-    "or guarantee profits."
+    "🚀 <b>WELCOME TO SMART MONEY HUB</b>\n\n"
+    "📚 <b>Learn smarter. Trade with discipline. Keep improving.</b>\n\n"
+    "Want to understand Smart Money Concepts (SMC) and make more disciplined "
+    "trading decisions? Smart Money Hub brings educational tools together in one place.\n\n"
+    "🔥 <b>WHAT YOU CAN EXPLORE</b>\n\n"
+    "📖 <b>SMC Lessons</b> — Learn key trading concepts.\n\n"
+    "🎯 <b>Assessments &amp; Challenges</b> — Test your understanding and see which "
+    "topics to revisit.\n\n"
+    "📝 <b>Trade Journal</b> — Record trade reviews, reflect on decisions, and learn "
+    "from mistakes.\n\n"
+    "🧠 <b>Private Coach</b> — Ask educational questions about SMC concepts and "
+    "trade-review scenarios.\n\n"
+    "📈 <b>Learning Progress</b> — Review assessment and journal progress, and choose "
+    "a weekly focus in check-ins or Sunday Preparation.\n\n"
+    "🎓 <b>Class Reminders</b> — Get Monday and Thursday Zoom class reminders at the "
+    "configured times.\n\n"
+    "━━━━━━━━━━━━━━\n\n"
+    "🛡️ <b>OUR PRINCIPLE</b>\n\n"
+    "<b>NO CONFIRMATION, NO ENTRY.</b>\n\n"
+    "Patience, structured analysis, and responsible risk management come first.\n\n"
+    "👇 <b>READY TO GET STARTED?</b>\n\n"
+    "Tap the Coach button below to open the Smart Money Hub bot, then send /start "
+    "if prompted.\n\n"
+    "📌 For educational purposes only. Trading involves risk, and profits are not guaranteed.\n\n"
+    "— VAYDA | Smart Money Hub"
 )
 CHANNEL_PROMO_URL = "https://t.me/SmartMoneyHubSignalsBot"
 
@@ -324,15 +337,16 @@ class AdminDashboard:
         self._channel_promo_pending.add(telegram_id)
         self.api.send_message(
             chat_id,
-            "CHANNEL PROMO PREVIEW\n"
-            f"Destination channel ID: {self.main_channel_id}\n\n"
+            "<b>CHANNEL PROMO PREVIEW — NOT PUBLISHED</b>\n"
+            f"Destination channel ID: <code>{self.main_channel_id}</code>\n\n"
             f"{CHANNEL_PROMO_TEXT}\n\n"
-            "Nothing has been posted yet. Post this one-time message now?",
+            "<b>Nothing has been posted yet.</b> Confirm below to publish this one-time message.",
             self._admin_navigation(
                 [
+                    [{"text": "Coach", "url": CHANNEL_PROMO_URL}],
                     [
                         {
-                            "text": "Post to Channel",
+                            "text": "Publish to Channel",
                             "callback_data": "admin:channel_promo:confirm",
                         },
                         {
@@ -342,6 +356,7 @@ class AdminDashboard:
                     ]
                 ]
             ),
+            parse_mode="HTML",
         )
 
     def _post_channel_promo(self, chat_id: int, telegram_id: int) -> None:
@@ -368,9 +383,10 @@ class AdminDashboard:
                 CHANNEL_PROMO_TEXT,
                 {
                     "inline_keyboard": [
-                        [{"text": "Open Smart Money Hub", "url": CHANNEL_PROMO_URL}]
+                        [{"text": "Coach", "url": CHANNEL_PROMO_URL}]
                     ]
                 },
+                parse_mode="HTML",
             )
         except TelegramAPIError:
             self.api.send_message(

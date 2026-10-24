@@ -15,6 +15,7 @@ from .channel_content import (
     compose_routine_post,
     describe_channel_post_rejection,
     is_promotional_content,
+    normalize_weekend_brand_header,
     next_category,
     render_weekend_post_html,
     validate_channel_post,
@@ -47,6 +48,7 @@ _AI_RETRYABLE_CONTENT_FAILURES = {
     "missing_golden_rule",
     "prohibited_signal_or_promise",
     "unverified_market_claim",
+    "unsupported_institutional_intent",
     "unexpected_bot_promotion",
     "weekend_brand_header_missing",
     "weekend_headline_missing",
@@ -847,6 +849,7 @@ class ChannelPostManager:
                 revision=revision_feedback is not None,
             )
         try:
+            verified_information: list[str] = []
             draft = self.channel_writer.generate(
                 schedule_date=str(post["schedule_date"]),
                 schedule_time=str(post["schedule_time"]),
@@ -856,7 +859,7 @@ class ChannelPostManager:
                     chat_id=self.destination_chat_id,
                 ),
                 admin_feedback=self.store.get_recent_channel_post_feedback(limit=5),
-                verified_information=[],
+                verified_information=verified_information,
                 promo_username=post.get("bot_username"),
                 promo_due=bool(post.get("is_promo")),
                 revision_feedback=revision_feedback,
@@ -880,24 +883,23 @@ class ChannelPostManager:
                 revision=revision_feedback is not None,
             )
 
+        content = normalize_weekend_brand_header(draft.content, draft.category)
         rejection = validate_channel_post(
-            draft.content,
+            content,
             is_promo=bool(post["is_promo"]),
             bot_username=post.get("bot_username"),
+            verified_information=verified_information,
         )
         if not rejection:
-            rejection = validate_weekend_post_format(draft.content)
-        if rejection or self._is_duplicate(
-            draft.content,
-            exclude_post_id=int(post["id"]),
-        ):
+            rejection = validate_weekend_post_format(content)
+        if rejection or self._is_duplicate(content, exclude_post_id=int(post["id"])):
             category = rejection or "duplicate_content"
             return self._record_generation_failure(
                 post,
                 f"gemini_content_rejected_{category}",
                 admin_id=admin_id,
                 revision=revision_feedback is not None,
-                rejected_content=draft.content,
+                rejected_content=content,
             )
 
         next_feature_index = int(settings["next_promo_feature_index"])
@@ -910,7 +912,7 @@ class ChannelPostManager:
         if not self.store.complete_channel_post_generation(
             int(post["id"]),
             category=draft.category,
-            content=draft.content,
+            content=content,
             bot_username=post.get("bot_username"),
             next_category_index=sequence + 1 if advance_rotation else sequence,
             next_promo_feature_index=next_feature_index,

@@ -104,12 +104,31 @@ _UNVERIFIED_MARKET_CLAIMS = re.compile(
     r"\b(?:currently\s+trading\s+at|live\s+price|breaking\s+news|"
     r"latest\s+(?:market|economic)\s+(?:news|data|report)|"
     r"today'?s?\s+(?:gold|xauusd|market)\s+(?:price|move|trend)|"
-    r"(?:gold|xauusd)\s+(?:is|was)\s+(?:currently\s+)?(?:at|up|down|rising|falling))\b",
+    r"(?:gold|xauusd)\s+(?:is|was)\s+(?:currently\s+)?(?:at|up|down|rising|falling)|"
+    r"(?:xauusd|gold|the market)\b.{0,80}\b(?:today|currently|right now|"
+    r"this session|this week)\b.{0,60}\b(?:bullish|bearish|rising|falling|"
+    r"up|down|sweeping|breaking|trending)\b|"
+    r"\b(?:today|currently|right now|this session|this week)\b.{0,80}"
+    r"\b(?:xauusd|gold|the market)\b.{0,60}\b(?:bullish|bearish|rising|"
+    r"falling|up|down|sweeping|breaking|trending)\b|"
+    r"\b(?:today'?s?|latest|breaking|current)\b.{0,60}\b(?:cpi|nfp|"
+    r"inflation|rate decision|economic release|fed announcement)\b)",
     re.IGNORECASE,
 )
 _UNVERIFIED_MARKET_NUMBER = re.compile(
     r"\b(?:xauusd|gold|price|cpi|nfp|inflation|rate decision)\b"
     r".{0,60}(?:\$\s?\d|\d+(?:\.\d+)?\s?(?:points?|pips?|%|percent|usd|dollars?))",
+    re.IGNORECASE,
+)
+_UNSUPPORTED_INSTITUTIONAL_INTENT = re.compile(
+    r"\b(?:(?:institutional\s+participants?|institutions?|banks?|market\s+makers?|"
+    r"liquidity\s+providers?)|smart\s+money(?!\s+concepts?))\b"
+    r".{0,120}\b(?:frequently|often|typically|deliberately|intentionally|"
+    r"use|uses|absorb|absorbs|target|targets|drive|drives|manipulate|"
+    r"manipulates|push|pushes|move|moves|sweep|sweeps|accumulate|accumulates)\b"
+    r"|\b(?:absorb|absorbs|target|targets|drive|drives|manipulate|manipulates|"
+    r"push|pushes|move|moves|sweep|sweeps|accumulate|accumulates)\b"
+    r".{0,120}\b(?:institutions?|banks?|market\s+makers?|liquidity\s+providers?)\b",
     re.IGNORECASE,
 )
 _TELEGRAM_LINK = re.compile(r"https?://t\.me/\S+", re.IGNORECASE)
@@ -169,6 +188,10 @@ _CATEGORY_EMOJI = {
     "trading_psychology": "🧠",
     "risk_management": "🛡️",
 }
+_HEADER_BRAND_LINE = re.compile(
+    r"^(?P<prefix>[\s\u200d\ufe0f\u20e3\u2600-\u27bf\U0001f000-\U0001faff]*)"
+    r"SMART MONEY HUB(?P<suffix>.*)$"
+)
 _CATEGORY_HEADLINES = {
     "education": (
         "🎯 TODAY’S TRADING LESSON",
@@ -528,6 +551,26 @@ def validate_weekend_post_format(content: str) -> str | None:
     return None
 
 
+def normalize_weekend_brand_header(content: str, category: str) -> str:
+    """Normalize an emoji-only brand prefix to the category's approved header."""
+    lines = content.splitlines()
+    for index, line in enumerate(lines):
+        if not line.strip():
+            continue
+        match = _HEADER_BRAND_LINE.fullmatch(line.strip())
+        if not match:
+            return content
+        body = "\n".join(lines[index + 1 :])
+        emoji = (
+            "💧"
+            if re.search(r"\b(?:liquidity|sweep)\b", body, re.IGNORECASE)
+            else _CATEGORY_EMOJI.get(category, "📚")
+        )
+        lines[index] = f"{emoji} SMART MONEY HUB{match.group('suffix')}"
+        return "\n".join(lines)
+    return content
+
+
 def _is_brand_divider(line: str) -> bool:
     return len(line) >= 10 and bool(re.fullmatch(r"[━─—_-]+", line))
 
@@ -582,6 +625,7 @@ def validate_channel_post(
     is_promo: bool,
     bot_username: str | None = None,
     verified_market_information: bool = False,
+    verified_information: Sequence[str] = (),
 ) -> str | None:
     """Return a safe rejection category, or None when content is publishable."""
     text = content.strip()
@@ -593,11 +637,21 @@ def validate_channel_post(
         return "missing_golden_rule"
     if _BANNED_PROMISES.search(text):
         return "prohibited_signal_or_promise"
-    if not verified_market_information and (
+    market_claim = (
         _UNVERIFIED_MARKET_CLAIMS.search(text)
         or _UNVERIFIED_MARKET_NUMBER.search(text)
+    )
+    if (
+        not verified_market_information
+        and market_claim
+        and not _claim_has_verified_support(market_claim.group(0), verified_information)
     ):
         return "unverified_market_claim"
+    institutional_claim = _UNSUPPORTED_INSTITUTIONAL_INTENT.search(text)
+    if institutional_claim and not _claim_has_verified_support(
+        institutional_claim.group(0), verified_information
+    ):
+        return "unsupported_institutional_intent"
     if is_promo:
         if not bot_username:
             return "bot_username_unverified"
@@ -619,6 +673,17 @@ def validate_channel_post(
     elif _TELEGRAM_LINK.search(text):
         return "unexpected_bot_promotion"
     return None
+
+
+def _claim_has_verified_support(claim: str, verified_information: Sequence[str]) -> bool:
+    normalized_claim = re.sub(r"[^a-z0-9]+", " ", claim.casefold()).strip()
+    if not normalized_claim:
+        return False
+    return any(
+        normalized_claim
+        in re.sub(r"[^a-z0-9]+", " ", source.casefold()).strip()
+        for source in verified_information
+    )
 
 
 def next_category(categories: Sequence[str], sequence: int) -> str:
