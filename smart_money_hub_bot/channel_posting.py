@@ -783,6 +783,24 @@ class ChannelPostManager:
         if post.get("status") != "failed" or post.get("content"):
             self.api.send_message(chat_id, "This post is not waiting for Gemini generation.")
             return
+        if post.get("is_promo"):
+            try:
+                username = self._verified_bot_username(self.api.get_me())
+            except (TelegramAPIError, ValueError, TypeError):
+                self.api.send_message(
+                    chat_id,
+                    "The bot username could not be verified, so the promotional "
+                    "draft remains on hold.",
+                )
+                return
+            if not self.store.update_channel_post_bot_username(
+                int(post["id"]), username
+            ):
+                self.api.send_message(
+                    chat_id, "The promotional draft changed and cannot be retried."
+                )
+                return
+            post = {**post, "bot_username": username}
         settings = self.store.get_channel_posting_settings()
         generated = self._generate_weekend_post(
             post,

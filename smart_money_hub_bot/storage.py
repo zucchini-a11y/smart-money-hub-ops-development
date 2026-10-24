@@ -849,6 +849,26 @@ class Repository:
         finally:
             connection.close()
 
+    def update_channel_post_bot_username(
+        self, post_id: int, username: str, *, at: str | None = None
+    ) -> bool:
+        timestamp = at or utc_now()
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE scheduled_channel_posts
+                    SET bot_username = ?, updated_at = ?
+                    WHERE id = ? AND is_promo = 1
+                      AND status IN ('failed', 'awaiting_edit')
+                    """,
+                    (username, timestamp, post_id),
+                )
+                return bool(cursor.rowcount)
+        finally:
+            connection.close()
+
     def list_channel_posts(
         self, *, limit: int = 10, pending_only: bool = False
     ) -> list[dict[str, Any]]:
