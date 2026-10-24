@@ -380,6 +380,30 @@ class Repository:
                         updated_at TEXT NOT NULL
                     );
 
+                    CREATE TABLE IF NOT EXISTS education_poll_runs (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        run_key TEXT NOT NULL UNIQUE,
+                        source TEXT NOT NULL CHECK (source IN ('weekly', 'manual')),
+                        scheduled_at TEXT NOT NULL,
+                        scenario_index INTEGER NOT NULL,
+                        status TEXT NOT NULL DEFAULT 'queued'
+                            CHECK (status IN (
+                                'queued', 'sending_group', 'group_sent',
+                                'sending_channel', 'published', 'failed',
+                                'delivery_unknown', 'channel_failed',
+                                'channel_delivery_unknown', 'skipped'
+                            )),
+                        group_message_id INTEGER,
+                        channel_message_id INTEGER,
+                        failure_category TEXT,
+                        attempts INTEGER NOT NULL DEFAULT 0,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    );
+
+                    CREATE INDEX IF NOT EXISTS education_poll_runs_due
+                    ON education_poll_runs (status, scheduled_at);
+
                     CREATE TABLE IF NOT EXISTS dm_coaching_interactions (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         telegram_id INTEGER NOT NULL REFERENCES users(telegram_id),
@@ -1585,6 +1609,213 @@ class Repository:
                         utc_now(),
                         poll_id,
                     ),
+                )
+                return bool(cursor.rowcount)
+        finally:
+            connection.close()
+
+    def next_education_poll_scenario_index(self) -> int:
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                "SELECT COALESCE(MAX(scenario_index), -1) + 1 AS next_index "
+                "FROM education_poll_runs"
+            ).fetchone()
+            return int(row["next_index"])
+        finally:
+            connection.close()
+
+    def create_education_poll_run(
+        self,
+        *,
+        run_key: str,
+        source: str,
+        scheduled_at: str,
+        scenario_index: int,
+        status: str = "queued",
+        failure_category: str | None = None,
+        at: str | None = None,
+    ) -> dict[str, Any]:
+        if source not in {"weekly", "manual"}:
+            raise ValueError("Unsupported education poll source.")
+        allowed_statuses = {
+            "queued",
+            "sending_group",
+            "group_sent",
+            "sending_channel",
+            "published",
+            "failed",
+            "delivery_unknown",
+            "channel_failed",
+            "channel_delivery_unknown",
+            "skipped",
+        }
+        if status not in allowed_statuses:
+            raise ValueError("Unsupported education poll run status.")
+        timestamp = at or utc_now()
+        connection = self._connect()
+        try:
+            with connection:
+                connection.execute(
+                    """
+                    INSERT OR IGNORE INTO education_poll_runs
+                        (run_key, source, scheduled_at, scenario_index, status,
+                         failure_category, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        run_key[:160],
+                        source,
+                        scheduled_at,
+                        max(0, int(scenario_index)),
+                        status,
+                        failure_category,
+                        timestamp,
+                        timestamp,
+                    ),
+                )
+                row = connection.execute(
+                    "SELECT * FROM education_poll_runs WHERE run_key = ?",
+                    (run_key[:160],),
+                ).fetchone()
+                if row is None:
+                    raise RuntimeError("Education poll run could not be persisted.")
+                return dict(row)
+        finally:
+            connection.close()
+
+    def education_poll_run(self, run_key: str) -> dict[str, Any] | None:
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                "SELECT * FROM education_poll_runs WHERE run_key = ?",
+                (run_key[:160],),
+            ).fetchone()
+            return dict(row) if row else None
+        finally:
+            connection.close()
+
+    def pending_education_poll_runs(self, limit: int = 10) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(int(limit), 50))
+        connection = self._connect()
+        try:
+            rows = connection.execute(
+                """
+                SELECT * FROM education_poll_runs
+                WHERE status IN ('queued', 'group_sent', 'sending_group', 'sending_channel')
+                ORDER BY scheduled_at, id
+                LIMIT ?
+                """,
+                (safe_limit,),
+            ).fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            connection.close()
+
+    def reserve_education_poll_group(self, run_key: str, *, at: str | None = None) -> bool:
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE education_poll_runs
+                    SET status = 'sending_group', attempts = attempts + 1,
+                        failure_category = NULL, updated_at = ?
+                    WHERE run_key = ? AND status = 'queued'
+                    """,
+                    (at or utc_now(), run_key[:160]),
+                )
+                return bool(cursor.rowcount)
+        finally:
+            connection.close()
+
+    def mark_education_poll_group_sent(
+        self, run_key: str, message_id: int, *, at: str | None = None
+    ) -> bool:
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE education_poll_runs
+                    SET status = 'group_sent', group_message_id = ?,
+                        updated_at = ?
+                    WHERE run_key = ? AND status = 'sending_group'
+                    """,
+                    (message_id, at or utc_now(), run_key[:160]),
+                )
+                return bool(cursor.rowcount)
+        finally:
+            connection.close()
+
+    def reserve_education_poll_channel(
+        self, run_key: str, *, at: str | None = None
+    ) -> bool:
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE education_poll_runs
+                    SET status = 'sending_channel', attempts = attempts + 1,
+                        updated_at = ?
+                    WHERE run_key = ? AND status = 'group_sent'
+                    """,
+                    (at or utc_now(), run_key[:160]),
+                )
+                return bool(cursor.rowcount)
+        finally:
+            connection.close()
+
+    def complete_education_poll_channel(
+        self, run_key: str, message_id: int, *, at: str | None = None
+    ) -> bool:
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE education_poll_runs
+                    SET status = 'published', channel_message_id = ?,
+                        failure_category = NULL, updated_at = ?
+                    WHERE run_key = ? AND status = 'sending_channel'
+                    """,
+                    (message_id, at or utc_now(), run_key[:160]),
+                )
+                return bool(cursor.rowcount)
+        finally:
+            connection.close()
+
+    def fail_education_poll_run(
+        self,
+        run_key: str,
+        *,
+        status: str,
+        failure_category: str,
+        at: str | None = None,
+    ) -> bool:
+        allowed_statuses = {
+            "failed",
+            "delivery_unknown",
+            "channel_failed",
+            "channel_delivery_unknown",
+            "skipped",
+        }
+        if status not in allowed_statuses:
+            raise ValueError("Unsupported failed education poll status.")
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE education_poll_runs
+                    SET status = ?, failure_category = ?, updated_at = ?
+                    WHERE run_key = ? AND status NOT IN (
+                        'published', 'failed', 'delivery_unknown',
+                        'channel_failed', 'channel_delivery_unknown', 'skipped'
+                    )
+                    """,
+                    (status, failure_category[:100], at or utc_now(), run_key[:160]),
                 )
                 return bool(cursor.rowcount)
         finally:

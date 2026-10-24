@@ -26,6 +26,7 @@ from .group_knowledge import (
     format_group_context,
     topic_update_from_message,
 )
+from .education_polls import EducationPollPublisher, is_on_demand_poll_request
 from .message_router import CoachMessageRouter
 from .personal_reminders import (
     ReminderRequest,
@@ -407,6 +408,13 @@ class SmartMoneyHubBot:
         self.admin_dashboard = AdminDashboard(
             api, self.store, admin_id, main_channel_id, channel_writer
         )
+        self.education_polls = EducationPollPublisher(
+            api,
+            self.store,
+            admin_id=admin_id,
+            education_group_id=education_group_id,
+            channel_id=self.admin_dashboard.channel_posts.destination_chat_id,
+        )
         self.reminder_zone = ZoneInfo(reminder_timezone)
         self.reminder_time = ClockTime.fromisoformat(reminder_time)
         if self.reminder_time.tzinfo is not None:
@@ -524,7 +532,11 @@ class SmartMoneyHubBot:
         message = update.get("message")
         if isinstance(message, dict):
             self._archive_education_group_message(message)
-            self._handle_message(message)
+            update_id = update.get("update_id")
+            self._handle_message(
+                message,
+                update_id=update_id if isinstance(update_id, int) else None,
+            )
             return
 
         edited_message = update.get("edited_message")
@@ -905,7 +917,9 @@ class SmartMoneyHubBot:
             self._main_menu_keyboard(),
         )
 
-    def _handle_message(self, message: dict[str, Any]) -> None:
+    def _handle_message(
+        self, message: dict[str, Any], *, update_id: int | None = None
+    ) -> None:
         text = message.get("text")
         sender = message.get("from") or {}
         chat = message.get("chat") or {}
@@ -1030,6 +1044,7 @@ class SmartMoneyHubBot:
                     "This group currently limits ordinary member messages. If you "
                     "cannot post here, open the bot privately and ask Coach normally.\n\n"
                     "The admin can start a hypothetical quiz poll with /scenario. "
+                    "A new education poll is scheduled each Saturday at 9:00 PM WAT. "
                     "The bot does not reply to ordinary group posts.",
                     message_thread_id=self._message_thread_id(message),
                 )
@@ -1049,7 +1064,8 @@ class SmartMoneyHubBot:
                     "\n\nCEO reminder: send a message such as “Remind me to review "
                     "my journal tomorrow at 9am” to set a one-time personal reminder.\n"
                     "Use /groupinsights to review educational-group coverage and "
-                    "unanswered questions."
+                    "unanswered questions.\n"
+                    "For a new poll, type “post an SMC poll now” in this private chat."
                 )
             self.api.send_message(
                 chat_id,
@@ -1234,6 +1250,19 @@ class SmartMoneyHubBot:
                 )
             else:
                 self._accept_text_answer(session, text)
+            return
+        if (
+            is_private
+            and self.admin_id is not None
+            and telegram_id == self.admin_id
+            and is_on_demand_poll_request(text)
+        ):
+            request_key = (
+                f"update-{update_id}"
+                if isinstance(update_id, int)
+                else f"direct-{uuid.uuid4().hex}"
+            )
+            self.education_polls.post_now(request_key)
             return
         if command in {"/ask", "/scenario"}:
             if not self._is_education_group(chat_id, is_private):
@@ -3076,6 +3105,10 @@ class SmartMoneyHubBot:
         if class_day:
             self._dispatch_class_reminders(local_now, class_day)
         self._dispatch_personal_reminders(current)
+        try:
+            self.education_polls.dispatch_due(current)
+        except Exception:
+            logger.exception("Could not dispatch scheduled Education group polls.")
         self.admin_dashboard.channel_posts.dispatch_due(current)
 
     def _dispatch_weekly_checkin(self, local_now: datetime) -> None:
