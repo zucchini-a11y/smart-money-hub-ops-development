@@ -229,6 +229,49 @@ class ChannelPostingTests(unittest.TestCase):
         )
         assert len(self.writer.calls) == 1
 
+    def test_legacy_local_weekend_draft_is_held_until_gemini_replaces_it(self) -> None:
+        legacy_content = (
+            "Older routine text.\n\nNO CONFIRMATION, NO ENTRY."
+        )
+        legacy, created = self.store.create_scheduled_channel_post(
+            schedule_date="2026-10-24",
+            schedule_time="10:00",
+            requested_category="education",
+            category="education",
+            content=legacy_content,
+            destination_chat_id=CHANNEL_ID,
+            is_promo=False,
+            bot_username=None,
+            next_category_index=1,
+            next_promo_feature_index=0,
+            last_promo_date=None,
+        )
+        assert created
+
+        self.manager.dispatch_due(local_time(23, 18))
+        held = self.store.get_channel_post(legacy["id"])
+        assert held is not None
+        assert held["status"] == "failed"
+        assert held["failure_category"] == "gemini_legacy_draft_held"
+        assert held["generation_source"] == "local"
+        assert not self.api.channel_messages
+
+        self.manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:channel_posts:retry_generation:{legacy['id']}",
+            local_time(23, 18, 5),
+        )
+        replaced = self.store.get_channel_post(legacy["id"])
+        assert replaced is not None
+        assert replaced["status"] == "draft"
+        assert replaced["generation_source"] == "gemini"
+        assert self.writer.calls[-1]["existing_draft"] == legacy_content
+
+        self.manager.dispatch_due(local_time(24, 10))
+        assert self.store.get_channel_post(legacy["id"])["status"] == "published"
+        assert len(self.api.channel_messages) == 1
+
     def test_admin_feedback_revises_weekend_draft_with_saved_context(self) -> None:
         self.manager.dispatch_due(local_time(23, 18))
         post = self.store.get_scheduled_channel_post("2026-10-24")
