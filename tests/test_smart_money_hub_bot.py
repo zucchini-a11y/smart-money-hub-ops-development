@@ -312,6 +312,50 @@ class BotFlowTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 
+    def test_only_configured_market_analysis_channel_posts_are_archived(self) -> None:
+        channel_id = -1004481197912
+        bot = SmartMoneyHubBot(
+            self.api,
+            str(self.database_path),
+            main_channel_id=channel_id,
+        )
+        post_date = int(datetime(2026, 10, 24, 9, tzinfo=timezone.utc).timestamp())
+        bot.handle_update(
+            {
+                "channel_post": {
+                    "chat": {"id": channel_id, "type": "channel"},
+                    "message_id": 55,
+                    "date": post_date,
+                    "text": "A channel education post.",
+                }
+            }
+        )
+        bot.handle_update(
+            {
+                "channel_post": {
+                    "chat": {"id": -1009999999999, "type": "channel"},
+                    "message_id": 56,
+                    "date": post_date,
+                    "text": "A post from an unrelated destination.",
+                }
+            }
+        )
+        bot.handle_update(
+            {
+                "edited_channel_post": {
+                    "chat": {"id": channel_id, "type": "channel"},
+                    "message_id": 55,
+                    "date": post_date,
+                    "text": "The corrected channel education post.",
+                }
+            }
+        )
+
+        history = bot.store.get_recent_channel_post_contents(chat_id=channel_id)
+        self.assertEqual(len(history), 1)
+        self.assertEqual(history[0]["content"], "The corrected channel education post.")
+        self.assertEqual(history[0]["source"], "channel")
+
     def test_start_assessment_saves_answers_and_explains_missed_questions(self) -> None:
         self._message("/start")
         welcome = self.api.messages[-1]
