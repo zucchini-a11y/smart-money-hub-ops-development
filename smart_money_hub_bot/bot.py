@@ -504,7 +504,7 @@ class SmartMoneyHubBot:
         )
 
     def handle_update(self, update: dict[str, Any]) -> None:
-        channel_post = update.get("channel_post")
+        channel_post = update.get("channel_post") or update.get("edited_channel_post")
         if isinstance(channel_post, dict):
             self._archive_channel_post(channel_post)
             return

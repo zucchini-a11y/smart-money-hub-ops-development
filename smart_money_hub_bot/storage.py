@@ -969,6 +969,10 @@ class Repository:
                     INSERT OR IGNORE INTO channel_history_posts
                         (chat_id, message_id, content, posted_at, archived_at)
                     VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(chat_id, message_id) DO UPDATE SET
+                        content = excluded.content,
+                        posted_at = excluded.posted_at,
+                        archived_at = excluded.archived_at
                     """,
                     (chat_id, message_id, text[:4000], posted_at, at or utc_now()),
                 )
