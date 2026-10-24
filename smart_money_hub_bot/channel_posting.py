@@ -536,6 +536,13 @@ class ChannelPostManager:
     def _ensure_and_preview(self, target_date: date, now_utc: datetime) -> None:
         post = self.store.get_scheduled_channel_post(target_date.isoformat())
         if not post:
+            local_now = now_utc.astimezone(self.timezone)
+            if (
+                target_date == local_now.date()
+                and local_now.time().replace(tzinfo=None)
+                >= self._publish_time(target_date)
+            ):
+                return
             post = self._create_post(target_date)
         if (
             post

@@ -211,6 +211,12 @@ class ChannelPostingTests(unittest.TestCase):
         assert published["status"] == "published"
         assert len(api.channel_messages) == 1
 
+    def test_missed_same_day_publish_time_does_not_create_a_late_draft(self) -> None:
+        self.manager.dispatch_due(local_time(24, 13))
+        self.assertIsNone(self.store.get_scheduled_channel_post("2026-10-24"))
+        self.assertEqual(self.writer.calls, [])
+        self.assertEqual(self.api.channel_messages, [])
+
     def test_gemini_rate_limit_holds_weekend_post_without_local_publication(self) -> None:
         self.writer.failures.append(
             GeminiChannelGenerationError("gemini_rate_limit", 429)
