@@ -29,7 +29,7 @@ class TelegramUpdateSubscriptionTests(unittest.TestCase):
 
         api = TelegramAPI("synthetic-test-token")
         with patch("smart_money_hub_bot.telegram_api.urlopen", side_effect=fake_urlopen):
-            self.assertEqual(api.get_updates(), [])
+            self.assertEqual(api.get_updates(offset=None), [])
 
         payload = json.loads(captured["request"].data.decode("utf-8"))
         self.assertIn("channel_post", payload["allowed_updates"])

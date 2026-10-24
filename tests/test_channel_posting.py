@@ -295,6 +295,49 @@ class ChannelPostingTests(unittest.TestCase):
         assert self.writer.calls[-1]["existing_draft"]
         assert self.store.get_latest_channel_post_feedback(post["id"]) == feedback
 
+    def test_weekend_generation_receives_archived_posts_and_prior_admin_feedback(
+        self,
+    ) -> None:
+        self.store.record_channel_history_post(
+            CHANNEL_ID,
+            123,
+            "Earlier channel lesson about patience and FOMO.",
+            "2026-10-22T10:00:00+01:00",
+        )
+        prior, _ = self.store.create_scheduled_channel_post(
+            schedule_date="2026-10-22",
+            schedule_time="10:00",
+            requested_category="education",
+            category="education",
+            content="Past admin-reviewed draft.\n\nNO CONFIRMATION, NO ENTRY.",
+            destination_chat_id=CHANNEL_ID,
+            is_promo=False,
+            bot_username=None,
+            next_category_index=1,
+            next_promo_feature_index=0,
+            last_promo_date=None,
+        )
+        self.store.record_channel_post_action(
+            prior["id"],
+            "revision_feedback",
+            admin_id=ADMIN_ID,
+            details="Prefer practical examples and clear questions.",
+        )
+
+        self.manager.dispatch_due(local_time(23, 18))
+
+        context = self.writer.calls[-1]
+        self.assertTrue(
+            any(
+                item["content"].startswith("Earlier channel lesson")
+                for item in context["history"]
+            )
+        )
+        self.assertEqual(
+            context["admin_feedback"][0]["details"],
+            "Prefer practical examples and clear questions.",
+        )
+
     def test_promotion_interval_can_be_changed_by_admin(self) -> None:
         store, manager = self.store, self.manager
         manager.dispatch_due(local_time(23, 18))
