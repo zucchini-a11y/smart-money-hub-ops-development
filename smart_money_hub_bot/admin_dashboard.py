@@ -6,6 +6,7 @@ from typing import Any
 from .channel_posting import ChannelPostManager
 from .channel_gemini import GeminiChannelContentService
 from .economic_calendar_phase1 import (
+    CALENDAR_REVIEW_PAGE_SIZE,
     OfficialCalendarReadRepository,
     format_calendar_admin_review,
 )
@@ -696,11 +697,17 @@ class AdminDashboard:
     def _show_market_awareness_review(self, chat_id: int, *, page: int) -> None:
         records = self.calendar_review.list_records()
         statuses = self.calendar_review.list_source_status()
+        page_count = max(
+            1,
+            (len(records) + CALENDAR_REVIEW_PAGE_SIZE - 1)
+            // CALENDAR_REVIEW_PAGE_SIZE,
+        )
+        page = min(max(page, 0), page_count - 1)
         text, page_count = format_calendar_admin_review(
             records,
             statuses,
             page=page,
-            page_size=2,
+            page_size=CALENDAR_REVIEW_PAGE_SIZE,
         )
         keyboard_rows: list[list[dict[str, str]]] = []
         if page_count > 1:

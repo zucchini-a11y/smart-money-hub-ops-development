@@ -46,6 +46,7 @@ _ALLOWED_HOSTS = frozenset(
 _WAT = ZoneInfo("Africa/Lagos")
 _MAX_BODY_BYTES = 4_000_000
 CALENDAR_STALE_AFTER = timedelta(hours=24)
+CALENDAR_REVIEW_PAGE_SIZE = 2
 _TRANSIENT_FAILURES = {
     "rate_limit",
     "service_unavailable",
@@ -533,7 +534,7 @@ class OfficialCalendarReadRepository:
     def list_records(self) -> list[dict]:
         return self._read_table(
             "usd_calendar_source_events",
-            "release_date_text, release_time_text",
+            "release_date_text, release_time_text, external_id",
         )
 
     def list_source_status(self) -> list[dict]:
@@ -545,7 +546,7 @@ def format_calendar_admin_review(
     source_status: list[dict],
     *,
     page: int = 0,
-    page_size: int = 2,
+    page_size: int = CALENDAR_REVIEW_PAGE_SIZE,
     now: datetime | None = None,
 ) -> tuple[str, int]:
     """Format a private, read-only source review page as Telegram HTML."""
@@ -569,8 +570,8 @@ def format_calendar_admin_review(
 
     for item in selected:
         title = _review_escape(item.get("title") or "Unnamed event", limit=130)
-        instrument = html.escape(
-            str(item.get("affected_instrument") or "USD / XAUUSD"), quote=False
+        instrument = _review_escape(
+            item.get("affected_instrument") or "USD / XAUUSD", limit=60
         )
         source = _review_escape(item.get("source_name") or "Unknown", limit=80)
         lines.append(f"<b>{title}</b>")

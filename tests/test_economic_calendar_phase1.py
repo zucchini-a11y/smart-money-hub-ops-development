@@ -309,6 +309,82 @@ class EconomicCalendarPhaseOneTests(unittest.TestCase):
         self.assertEqual(len(reviewed), 1)
         self.assertEqual(reviewed[0]["external_id"], records[0].external_id)
 
+    def test_admin_review_caps_unusually_long_fields_within_telegram_limit(self):
+        oversized_url = "https://www.bea.gov/" + ("long-path-" * 100)
+        rows = []
+        for index in range(2):
+            rows.append(
+                {
+                    "title": f"Event {index} " + ("🧠" * 300),
+                    "source_name": "BEA",
+                    "affected_instrument": "USD / XAUUSD",
+                    "source_url": oversized_url,
+                    "release_date_text": "2026-10-29",
+                    "release_time_text": "12:30 UTC",
+                    "event_at_utc": None,
+                    "timezone_status": "unverified",
+                    "verification_status": "unverified " * 100,
+                    "retrieved_at_utc": NOW.isoformat(),
+                    "previous_value": "📊" * 300,
+                    "forecast_value": None,
+                    "actual_value": None,
+                    "provider_impact": None,
+                }
+            )
+
+        report, page_count = format_calendar_admin_review(
+            rows,
+            [],
+            now=NOW,
+        )
+
+        self.assertEqual(page_count, 1)
+        self.assertLessEqual(len(report), 4096)
+        self.assertLessEqual(len(report.encode("utf-16-le")) // 2, 4096)
+        self.assertIn("Source link: unavailable or not allowlisted", report)
+        self.assertNotIn(oversized_url, report)
+        self.assertIn("Forecast: UNAVAILABLE — not supplied", report)
+        self.assertIn("Actual: UNAVAILABLE — not supplied", report)
+        ElementTree.fromstring(f"<root>{report}</root>")
+
+    def test_calendar_review_pagination_includes_each_record_exactly_once(self):
+        rows = [
+            {
+                "title": f"Unique event {index}",
+                "source_name": "U.S. Bureau of Economic Analysis",
+                "affected_instrument": "USD / XAUUSD",
+                "source_url": "https://www.bea.gov/news/schedule",
+                "release_date_text": f"2026-10-{25 + index:02d}",
+                "release_time_text": "12:30:00+00:00",
+                "event_at_utc": "2026-10-29T12:30:00+00:00",
+                "timezone_status": "verified_explicit_utc_offset",
+                "verification_status": "verified_schedule",
+                "retrieved_at_utc": NOW.isoformat(),
+                "previous_value": None,
+                "forecast_value": None,
+                "actual_value": None,
+                "provider_impact": None,
+            }
+            for index in range(5)
+        ]
+
+        pages = []
+        page_count = None
+        for page in range(3):
+            content, count = format_calendar_admin_review(
+                rows,
+                [],
+                page=page,
+                now=NOW,
+            )
+            pages.append(content)
+            page_count = count
+
+        combined = "\n".join(pages)
+        self.assertEqual(page_count, 3)
+        for index in range(5):
+            self.assertEqual(combined.count(f"<b>Unique event {index}</b>"), 1)
+
     def test_existing_calendar_schema_is_migrated_without_losing_rows(self):
         import sqlite3
 
