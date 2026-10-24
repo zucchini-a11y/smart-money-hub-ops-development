@@ -1,3 +1,4 @@
+import sqlite3
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -14,6 +15,7 @@ from smart_money_hub_bot.education_polls import (
     format_channel_poll_preview,
     group_poll_message_url,
     is_on_demand_poll_request,
+    parse_education_poll_message_link,
     scheduled_occurrence,
     verify_poll_destinations,
 )
@@ -160,6 +162,42 @@ class EducationPollTests(unittest.TestCase):
         self.assertEqual(schedule_date, "2026-10-24")
         self.assertEqual(scheduled_utc.isoformat(), "2026-10-24T20:00:00+00:00")
 
+    def test_existing_poll_runs_database_gets_thread_column(self) -> None:
+        database_path = Path(self.temp_dir.name) / "legacy.sqlite3"
+        connection = sqlite3.connect(database_path)
+        try:
+            connection.execute(
+                """
+                CREATE TABLE education_poll_runs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_key TEXT NOT NULL UNIQUE,
+                    source TEXT NOT NULL,
+                    scheduled_at TEXT NOT NULL,
+                    scenario_index INTEGER NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'queued',
+                    group_message_id INTEGER,
+                    channel_message_id INTEGER,
+                    failure_category TEXT,
+                    attempts INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+            connection.commit()
+        finally:
+            connection.close()
+        Repository(database_path)
+        connection = sqlite3.connect(database_path)
+        try:
+            columns = {
+                row[1]
+                for row in connection.execute("PRAGMA table_info(education_poll_runs)")
+            }
+        finally:
+            connection.close()
+        self.assertIn("group_thread_id", columns)
+
     def test_late_weekly_poll_is_skipped_not_published(self) -> None:
         self.publisher.dispatch_due(
             datetime(2026, 10, 24, 20, 6, tzinfo=timezone.utc)
@@ -227,6 +265,41 @@ class EducationPollTests(unittest.TestCase):
         self.assertEqual(self.publisher.post_now("update-55", now), "published")
         self.assertEqual(len(self.api.polls), 1)
         self.assertEqual(len(self.api.channel_messages), 1)
+
+    def test_existing_poll_link_mirrors_only_to_channel_and_is_idempotent(self) -> None:
+        link = "https://t.me/c/3916437804/1/113"
+        self.assertEqual(
+            parse_education_poll_message_link(link),
+            (EXPECTED_EDUCATION_GROUP_ID, 1, 113),
+        )
+        now = datetime(2026, 10, 24, 20, 20, tzinfo=timezone.utc)
+        self.assertEqual(
+            self.publisher.publish_existing_poll_preview(
+                link, scenario_index=0, now=now
+            ),
+            "published",
+        )
+        self.assertEqual(
+            self.publisher.publish_existing_poll_preview(
+                link, scenario_index=0, now=now
+            ),
+            "published",
+        )
+        self.assertEqual(self.api.polls, [])
+        self.assertEqual(len(self.api.channel_messages), 1)
+        self.assertEqual(
+            self.api.channel_messages[0]["reply_markup"]["inline_keyboard"][0][0][
+                "url"
+            ],
+            link,
+        )
+
+    def test_existing_poll_link_for_wrong_group_is_rejected(self) -> None:
+        with self.assertRaises(EducationPollError) as raised:
+            parse_education_poll_message_link("https://t.me/c/3916437805/1/113")
+        self.assertEqual(
+            raised.exception.category, "education_group_destination_mismatch"
+        )
 
     def test_channel_failure_does_not_resend_group_poll(self) -> None:
         self.api.raise_channel_send = True
@@ -331,6 +404,15 @@ class EducationPollTests(unittest.TestCase):
                 message_id=501,
             ),
             "https://t.me/SMHEducation/501",
+        )
+        self.assertEqual(
+            group_poll_message_url(
+                group_id=EXPECTED_EDUCATION_GROUP_ID,
+                group_chat={"type": "supergroup"},
+                message_id=113,
+                thread_id=1,
+            ),
+            "https://t.me/c/3916437804/1/113",
         )
 
     def test_channel_preview_escapes_html_and_uses_balanced_telegram_tags(self) -> None:

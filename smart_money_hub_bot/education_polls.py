@@ -7,6 +7,7 @@ import logging
 import re
 from datetime import datetime, time, timedelta, timezone
 from typing import Any
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 from .group_features import SCENARIO_POLLS, ScenarioPoll
@@ -60,15 +61,49 @@ def is_on_demand_poll_request(text: str) -> bool:
 
 
 def group_poll_message_url(
-    *, group_id: int, group_chat: dict[str, Any], message_id: int
+    *,
+    group_id: int,
+    group_chat: dict[str, Any],
+    message_id: int,
+    thread_id: int | None = None,
 ) -> str:
     username = group_chat.get("username")
     if isinstance(username, str) and re.fullmatch(r"[A-Za-z0-9_]{5,32}", username):
+        if thread_id is not None:
+            return f"https://t.me/{username}/{thread_id}/{message_id}"
         return f"https://t.me/{username}/{message_id}"
     group_text = str(group_id)
     if not group_text.startswith("-100") or not group_text[4:].isdigit():
         raise EducationPollError("education_group_link_unavailable")
+    if thread_id is not None:
+        return f"https://t.me/c/{group_text[4:]}/{thread_id}/{message_id}"
     return f"https://t.me/c/{group_text[4:]}/{message_id}"
+
+
+def parse_education_poll_message_link(link: str) -> tuple[int, int | None, int]:
+    parsed = urlsplit(link.strip())
+    parts = [part for part in parsed.path.split("/") if part]
+    if (
+        parsed.scheme != "https"
+        or parsed.netloc.casefold() != "t.me"
+        or len(parts) not in {3, 4}
+        or parts[0] != "c"
+        or not parts[1].isdigit()
+        or any(not part.isdigit() for part in parts[2:])
+    ):
+        raise EducationPollError("education_poll_link_invalid")
+    group_id = int(f"-100{parts[1]}")
+    if group_id != EXPECTED_EDUCATION_GROUP_ID:
+        raise EducationPollError("education_group_destination_mismatch")
+    if len(parts) == 3:
+        thread_id = None
+        message_id = int(parts[2])
+    else:
+        thread_id = int(parts[2])
+        message_id = int(parts[3])
+    if message_id <= 0 or (thread_id is not None and thread_id <= 0):
+        raise EducationPollError("education_poll_link_invalid")
+    return group_id, thread_id, message_id
 
 
 def format_channel_poll_preview(scenario: ScenarioPoll) -> str:
@@ -230,6 +265,42 @@ class EducationPollPublisher:
                 scheduled_at=current.astimezone(timezone.utc).isoformat(),
                 scenario_index=self.store.next_education_poll_scenario_index(),
             )
+        self._dispatch_run(run, current)
+        updated = self.store.education_poll_run(run_key) or run
+        return str(updated["status"])
+
+    def publish_existing_poll_preview(
+        self,
+        poll_link: str,
+        *,
+        scenario_index: int,
+        now: datetime | None = None,
+    ) -> str:
+        current = now or datetime.now(timezone.utc)
+        if current.tzinfo is None:
+            current = current.replace(tzinfo=timezone.utc)
+        group_id, thread_id, message_id = parse_education_poll_message_link(poll_link)
+        if not 0 <= scenario_index < len(SCENARIO_POLLS):
+            raise EducationPollError("scenario_unavailable")
+        existing = self.store.education_poll_run_for_group_message(
+            message_id, thread_id
+        )
+        if existing is not None:
+            if existing.get("status") == "group_sent":
+                self._dispatch_run(existing, current)
+            updated = self.store.education_poll_run(str(existing["run_key"])) or existing
+            return str(updated["status"])
+        thread_key = str(thread_id) if thread_id is not None else "general"
+        run_key = f"manual:mirror:{group_id}:{thread_key}:{message_id}"
+        run = self.store.create_education_poll_run(
+            run_key=run_key,
+            source="manual",
+            scheduled_at=current.astimezone(timezone.utc).isoformat(),
+            scenario_index=scenario_index,
+            status="group_sent",
+            group_message_id=message_id,
+            group_thread_id=thread_id,
+        )
         self._dispatch_run(run, current)
         updated = self.store.education_poll_run(run_key) or run
         return str(updated["status"])
@@ -427,6 +498,7 @@ class EducationPollPublisher:
                     group_id=int(self.education_group_id),
                     group_chat=group,
                     message_id=message_id,
+                    thread_id=run.get("group_thread_id"),
                 )
                 preview = format_channel_poll_preview(scenario)
                 result = self.api.send_message_with_result(

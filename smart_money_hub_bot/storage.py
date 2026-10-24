@@ -394,6 +394,7 @@ class Repository:
                                 'channel_delivery_unknown', 'skipped'
                             )),
                         group_message_id INTEGER,
+                        group_thread_id INTEGER,
                         channel_message_id INTEGER,
                         failure_category TEXT,
                         attempts INTEGER NOT NULL DEFAULT 0,
@@ -581,6 +582,12 @@ class Repository:
                     "channel_posting_settings",
                     "weekend_auto_publish_enabled",
                     "INTEGER NOT NULL DEFAULT 0 CHECK (weekend_auto_publish_enabled IN (0, 1))",
+                )
+                self._ensure_table_column(
+                    connection,
+                    "education_poll_runs",
+                    "group_thread_id",
+                    "INTEGER",
                 )
                 self._migrate_legacy_assessments(connection)
                 member_ids = connection.execute(
@@ -1633,6 +1640,8 @@ class Repository:
         scheduled_at: str,
         scenario_index: int,
         status: str = "queued",
+        group_message_id: int | None = None,
+        group_thread_id: int | None = None,
         failure_category: str | None = None,
         at: str | None = None,
     ) -> dict[str, Any]:
@@ -1660,8 +1669,9 @@ class Repository:
                     """
                     INSERT OR IGNORE INTO education_poll_runs
                         (run_key, source, scheduled_at, scenario_index, status,
-                         failure_category, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                         group_message_id, group_thread_id, failure_category,
+                         created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         run_key[:160],
@@ -1669,6 +1679,8 @@ class Repository:
                         scheduled_at,
                         max(0, int(scenario_index)),
                         status,
+                        group_message_id,
+                        group_thread_id,
                         failure_category,
                         timestamp,
                         timestamp,
@@ -1690,6 +1702,23 @@ class Repository:
             row = connection.execute(
                 "SELECT * FROM education_poll_runs WHERE run_key = ?",
                 (run_key[:160],),
+            ).fetchone()
+            return dict(row) if row else None
+        finally:
+            connection.close()
+
+    def education_poll_run_for_group_message(
+        self, message_id: int, thread_id: int | None
+    ) -> dict[str, Any] | None:
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                """
+                SELECT * FROM education_poll_runs
+                WHERE group_message_id = ? AND group_thread_id IS ?
+                ORDER BY id DESC LIMIT 1
+                """,
+                (message_id, thread_id),
             ).fetchone()
             return dict(row) if row else None
         finally:
