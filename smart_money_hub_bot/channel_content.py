@@ -90,9 +90,17 @@ _BANNED_PROMISES = re.compile(
 )
 _UNVERIFIED_MARKET_CLAIMS = re.compile(
     r"\b(?:currently\s+trading\s+at|live\s+price|breaking\s+news|"
-    r"latest\s+(?:market|economic)\s+(?:news|data|report))\b",
+    r"latest\s+(?:market|economic)\s+(?:news|data|report)|"
+    r"today'?s?\s+(?:gold|xauusd|market)\s+(?:price|move|trend)|"
+    r"(?:gold|xauusd)\s+(?:is|was)\s+(?:currently\s+)?(?:at|up|down|rising|falling))\b",
     re.IGNORECASE,
 )
+_UNVERIFIED_MARKET_NUMBER = re.compile(
+    r"\b(?:xauusd|gold|price|cpi|nfp|inflation|rate decision)\b"
+    r".{0,60}(?:\$\s?\d|\d+(?:\.\d+)?\s?(?:points?|pips?|%|percent|usd|dollars?))",
+    re.IGNORECASE,
+)
+_TELEGRAM_LINK = re.compile(r"https?://t\.me/\S+", re.IGNORECASE)
 _USERNAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]{4,31}$")
 
 
@@ -128,6 +136,7 @@ def validate_channel_post(
     *,
     is_promo: bool,
     bot_username: str | None = None,
+    verified_market_information: bool = False,
 ) -> str | None:
     """Return a safe rejection category, or None when content is publishable."""
     text = content.strip()
@@ -139,7 +148,10 @@ def validate_channel_post(
         return "missing_golden_rule"
     if _BANNED_PROMISES.search(text):
         return "prohibited_signal_or_promise"
-    if _UNVERIFIED_MARKET_CLAIMS.search(text):
+    if not verified_market_information and (
+        _UNVERIFIED_MARKET_CLAIMS.search(text)
+        or _UNVERIFIED_MARKET_NUMBER.search(text)
+    ):
         return "unverified_market_claim"
     if is_promo:
         if not bot_username:
@@ -158,6 +170,8 @@ def validate_channel_post(
             for phrase in PROMO_FEATURES
         ):
             return "unverified_promo_feature"
+    elif _TELEGRAM_LINK.search(text):
+        return "unexpected_bot_promotion"
     return None
 
 
