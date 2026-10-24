@@ -812,6 +812,32 @@ class Repository:
                     (category, content, bot_username, timestamp, post_id),
                 )
                 if cursor.rowcount:
+                    settings = connection.execute(
+                        """
+                        SELECT next_category_index, next_promo_feature_index,
+                            last_promo_date
+                        FROM channel_posting_settings WHERE id = 1
+                        """
+                    ).fetchone()
+                    current_category_index = int(
+                        settings["next_category_index"] if settings else 0
+                    )
+                    current_feature_index = int(
+                        settings["next_promo_feature_index"] if settings else 0
+                    )
+                    current_promo_date = (
+                        str(settings["last_promo_date"])
+                        if settings and settings["last_promo_date"]
+                        else None
+                    )
+                    latest_promo_date = max(
+                        (
+                            value
+                            for value in (current_promo_date, last_promo_date)
+                            if value
+                        ),
+                        default=None,
+                    )
                     connection.execute(
                         """
                         UPDATE channel_posting_settings
@@ -820,9 +846,9 @@ class Repository:
                         WHERE id = 1
                         """,
                         (
-                            next_category_index,
-                            next_promo_feature_index,
-                            last_promo_date,
+                            max(current_category_index, next_category_index),
+                            max(current_feature_index, next_promo_feature_index),
+                            latest_promo_date,
                             timestamp,
                         ),
                     )
