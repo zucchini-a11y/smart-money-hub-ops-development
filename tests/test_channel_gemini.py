@@ -52,7 +52,10 @@ class GeminiChannelContentTests(unittest.TestCase):
         captured = {}
         response_text = (
             "CATEGORY: education\nPOST:\n"
-            "A useful SMC note.\n\nNO CONFIRMATION, NO ENTRY."
+            "💧 SMART MONEY HUB | LIQUIDITY\n\n"
+            "THE SWEEP IS NOT THE SIGNAL\n\n"
+            "A sweep alone does not confirm a reversal.\n\n"
+            "⚠️ REMEMBER\nNO CONFIRMATION, NO ENTRY."
         )
 
         def fake_urlopen(request, timeout):
@@ -79,8 +82,17 @@ class GeminiChannelContentTests(unittest.TestCase):
         self.assertNotIn("responseMimeType", payload["generationConfig"])
         self.assertNotIn("thinkingConfig", payload["generationConfig"])
         self.assertIn("Prior post", payload["contents"][0]["parts"][0]["text"])
+        instruction = payload["systemInstruction"]["parts"][0]["text"]
+        self.assertIn("short, uppercase, category-specific title", instruction)
+        self.assertIn("no Markdown or HTML", instruction)
+        self.assertIn("use 💧 for liquidity lessons", instruction)
+        self.assertIn("Never use 🎣", instruction)
+        self.assertIn("60–100 words", instruction)
+        self.assertIn("Do not present institutional intent or behavior as fact", instruction)
+        self.assertIn("risk_management", instruction)
+        self.assertIn("VERIFIED INFORMATION", instruction)
         self.assertEqual(draft.category, "education")
-        self.assertIn("A useful SMC note.", draft.content)
+        self.assertTrue(draft.content.startswith("💧 SMART MONEY HUB | LIQUIDITY"))
 
     def test_rejects_max_tokens_and_empty_candidate_text(self) -> None:
         for payload, expected in (

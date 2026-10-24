@@ -19,6 +19,29 @@ class _Response:
 
 
 class TelegramUpdateSubscriptionTests(unittest.TestCase):
+    def test_send_message_with_result_can_use_telegram_html_parse_mode(self) -> None:
+        api = TelegramAPI("synthetic-test-token")
+        with patch.object(
+            api,
+            "_request",
+            return_value={"message_id": 17},
+        ) as request:
+            result = api.send_message_with_result(
+                123,
+                "<b>Smart Money Hub</b>",
+                parse_mode="HTML",
+            )
+
+        self.assertEqual(result, {"message_id": 17})
+        request.assert_called_once_with(
+            "sendMessage",
+            {
+                "chat_id": 123,
+                "text": "<b>Smart Money Hub</b>",
+                "parse_mode": "HTML",
+            },
+        )
+
     def test_poll_subscription_includes_channel_posts_and_edits(self) -> None:
         captured = {}
 

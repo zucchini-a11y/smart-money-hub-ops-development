@@ -8,9 +8,13 @@ from zoneinfo import ZoneInfo
 from smart_money_hub_bot.channel_content import (
     CHANNEL_CONTENT_CATEGORIES,
     PROMO_FEATURES,
+    compose_promo_post,
+    compose_routine_post,
     describe_channel_post_rejection,
     is_promotional_content,
+    render_weekend_post_html,
     validate_channel_post,
+    validate_weekend_post_format,
 )
 from smart_money_hub_bot.channel_gemini import (
     ChannelDraft,
@@ -23,6 +27,70 @@ from smart_money_hub_bot.telegram_api import TelegramAPIError
 TZ = ZoneInfo("Africa/Lagos")
 ADMIN_ID = 777
 CHANNEL_ID = -1004481197912
+FORMATTED_WEEKEND_POST = (
+    "💧 SMART MONEY HUB | LIQUIDITY\n\n"
+    "THE SWEEP IS NOT THE SIGNAL\n\n"
+    "A sweep takes an obvious high or low; it does not confirm a reversal.\n\n"
+    "🔍 WHAT TO UNDERSTAND\n"
+    "• Wait for the structure evidence in your plan.\n\n"
+    "✅ WHAT TO DO\n"
+    "Mark invalidation and wait for confirmation.\n\n"
+    "⚠️ REMEMBER\n"
+    "NO CONFIRMATION, NO ENTRY."
+)
+TELEGRAM_LAYOUT_SAMPLES = (
+    (
+        "📚 SMART MONEY HUB\n"
+        "━━━━━━━━━━━━━━\n\n"
+        "🎯 TODAY’S TRADING LESSON\n\n"
+        "A POI is not an entry signal. Price reaching a Point of Interest does not "
+        "automatically mean you should enter.\n\n"
+        "🔍 WHAT TO LOOK FOR\n\n"
+        "✅ Observe the reaction at the zone.\n"
+        "✅ Wait for the confirmation required by your setup.\n\n"
+        "📌 KEY TAKEAWAY\n\n"
+        "A marked zone is context, not proof of a trade.\n\n"
+        "🛡️ RISK REMINDER\n"
+        "Protect your capital. Follow your trading plan.\n\n"
+        "⚠️ THE GOLDEN RULE\n"
+        "NO CONFIRMATION, NO ENTRY.\n\n"
+        "💬 What confirmation would you wait for before entering?\n\n"
+        "— VAYDA | Smart Money Hub"
+    ),
+    (
+        "📊 SMART MONEY HUB\n"
+        "━━━━━━━━━━━━━━\n\n"
+        "📊 MARKET PREPARATION\n\n"
+        "No verified session levels are included here, so this is a process "
+        "checklist rather than a live market update.\n\n"
+        "🔍 CONDITIONS TO WATCH\n\n"
+        "✅ Review your higher-timeframe context.\n"
+        "✅ Mark levels only from your verified chart.\n"
+        "✅ Define confirmation and invalidation before entry.\n\n"
+        "🛡️ RISK REMINDER\n"
+        "Protect your capital. Follow your trading plan.\n\n"
+        "⚠️ THE GOLDEN RULE\n"
+        "NO CONFIRMATION, NO ENTRY.\n\n"
+        "— VAYDA | Smart Money Hub"
+    ),
+    (
+        "🧠 SMART MONEY HUB\n"
+        "━━━━━━━━━━━━━━\n\n"
+        "🧠 TRADING PSYCHOLOGY\n\n"
+        "A common mistake is chasing a move after missing the planned entry. It "
+        "often comes from fear of being left behind.\n\n"
+        "⚠️ COMMON TRAP\n\n"
+        "Entering late can mean the original setup and its invalidation no longer "
+        "apply.\n\n"
+        "✅ ONE PRACTICAL RESET\n\n"
+        "Pause, review your rules, and decide only when calm.\n\n"
+        "🛡️ RISK REMINDER\n"
+        "Protect your capital. Follow your trading plan.\n\n"
+        "⚠️ THE GOLDEN RULE\n"
+        "NO CONFIRMATION, NO ENTRY.\n\n"
+        "— VAYDA | Smart Money Hub"
+    ),
+)
 
 
 class FakeTelegramAPI:
@@ -31,6 +99,8 @@ class FakeTelegramAPI:
         self.channel_messages: list[dict] = []
         self.channel_attempts: list[dict] = []
         self.send_failures: list[TelegramAPIError] = []
+        self.get_chat_error: Exception | None = None
+        self.get_member_error: Exception | None = None
         self.chat: dict = {
             "id": CHANNEL_ID,
             "type": "channel",
@@ -50,23 +120,39 @@ class FakeTelegramAPI:
 
     def get_chat(self, chat_id: int) -> dict:
         assert chat_id == CHANNEL_ID
+        if self.get_chat_error:
+            raise self.get_chat_error
         return self.chat
 
     def get_chat_member(self, chat_id: int, user_id: int) -> dict:
         assert chat_id == CHANNEL_ID
         assert user_id == self.bot_info["id"]
+        if self.get_member_error:
+            raise self.get_member_error
         return self.member
 
-    def send_message(self, chat_id: int, text: str, reply_markup=None) -> None:
+    def send_message(
+        self, chat_id: int, text: str, reply_markup=None, *, parse_mode=None
+    ) -> None:
         self.messages.append(
-            {"chat_id": chat_id, "text": text, "reply_markup": reply_markup}
+            {
+                "chat_id": chat_id,
+                "text": text,
+                "reply_markup": reply_markup,
+                "parse_mode": parse_mode,
+            }
         )
 
     def send_message_with_result(
-        self, chat_id: int, text: str, reply_markup=None
+        self, chat_id: int, text: str, reply_markup=None, *, parse_mode=None
     ) -> dict:
         self.channel_attempts.append(
-            {"chat_id": chat_id, "text": text, "reply_markup": reply_markup}
+            {
+                "chat_id": chat_id,
+                "text": text,
+                "reply_markup": reply_markup,
+                "parse_mode": parse_mode,
+            }
         )
         if self.send_failures:
             raise self.send_failures.pop(0)
@@ -74,6 +160,7 @@ class FakeTelegramAPI:
             "chat_id": chat_id,
             "text": text,
             "reply_markup": reply_markup,
+            "parse_mode": parse_mode,
             "message_id": 9000 + len(self.channel_attempts),
         }
         self.channel_messages.append(result)
@@ -84,15 +171,21 @@ class FakeChannelWriter:
     def __init__(self) -> None:
         self.calls: list[dict] = []
         self.failures: list[GeminiChannelGenerationError] = []
+        self.drafts: list[ChannelDraft] = []
 
     def generate(self, **kwargs) -> ChannelDraft:
         self.calls.append(kwargs)
         if self.failures:
             raise self.failures.pop(0)
+        if self.drafts:
+            return self.drafts.pop(0)
         category = kwargs["preferred_category"]
+        topic = category.replace("_", " ").upper()
         content = (
-            f"{category.replace('_', ' ').title()} reflection for "
-            f"{kwargs['schedule_date']}: focus on process, evidence, and patience."
+            f"📚 SMART MONEY HUB | {topic}\n\n"
+            f"{topic} NEEDS A CLEAR PLAN\n\n"
+            f"Focus on process, evidence, and patience for "
+            f"{kwargs['schedule_date']}."
         )
         if kwargs.get("promo_due"):
             username = kwargs["promo_username"]
@@ -116,6 +209,13 @@ class ChannelPostingTests(unittest.TestCase):
         self.store = Repository(
             f"{self.temp_dir.name}/channel-posts.sqlite3"
         )
+        self.weekend_auto_publish_default = bool(
+            self.store.get_channel_posting_settings()[
+                "weekend_auto_publish_enabled"
+            ]
+        )
+        # Existing automatic-publishing tests exercise the approved state.
+        self.store.set_weekend_auto_publish_enabled(True)
         self.api = FakeTelegramAPI()
         self.writer = FakeChannelWriter()
         self.manager = ChannelPostManager(
@@ -126,8 +226,266 @@ class ChannelPostingTests(unittest.TestCase):
             channel_writer=self.writer,
         )
 
+    def test_weekend_posts_wait_for_template_approval_without_affecting_previews(self) -> None:
+        self.assertFalse(self.weekend_auto_publish_default)
+        self.store.set_weekend_auto_publish_enabled(False)
+
+        # Saturday evening: create Sunday's private preview as usual.
+        self.manager.dispatch_due(local_time(24, 18))
+        post = self.store.get_scheduled_channel_post("2026-10-25")
+        self.assertIsNotNone(post)
+        self.assertEqual(post["status"], "draft")
+        self.assertTrue(self.api.messages)
+
+        # Sunday schedule time: hold the post rather than sending it publicly.
+        self.manager.dispatch_due(local_time(25, 18))
+        post = self.store.get_scheduled_channel_post("2026-10-25")
+        self.assertEqual(post["status"], "failed")
+        self.assertEqual(post["failure_category"], "template_approval_pending")
+        self.assertEqual(self.api.channel_messages, [])
+        self.assertTrue(
+            any("waiting for your approval" in message["text"].lower()
+                for message in self.api.messages)
+        )
+
+        self.manager.show_post(ADMIN_ID, post)
+        buttons = self.api.messages[-1]["reply_markup"]["inline_keyboard"]
+        self.assertFalse(
+            any(
+                button["text"] == "🚀 Publish Now"
+                for row in buttons
+                for button in row
+            )
+        )
+
+    def test_weekend_format_escapes_html_and_rejects_oversized_posts(self) -> None:
+        self.assertIsNone(validate_weekend_post_format(FORMATTED_WEEKEND_POST))
+        rendered = render_weekend_post_html(
+            FORMATTED_WEEKEND_POST.replace("obvious high or low", "high & <low>")
+        )
+        self.assertTrue(rendered.startswith("<b>💧 SMART MONEY HUB | LIQUIDITY</b>"))
+        self.assertIn("<b>THE SWEEP IS NOT THE SIGNAL</b>", rendered)
+        self.assertIn("&amp; &lt;low&gt;", rendered)
+        self.assertIn("<b>NO CONFIRMATION, NO ENTRY.</b>", rendered)
+        self.assertNotIn("<low>", rendered)
+
+        oversized = (
+            "💧 SMART MONEY HUB | LIQUIDITY\n\n"
+            "A VALID HEADLINE\n\n"
+            + ("x" * 4050)
+            + "\n\nNO CONFIRMATION, NO ENTRY."
+        )
+        self.assertEqual(
+            validate_channel_post(oversized, is_promo=False),
+            "content_too_long",
+        )
+        with self.assertRaisesRegex(ValueError, "content_too_long"):
+            render_weekend_post_html(oversized)
+
+    def test_requested_category_samples_render_as_safe_telegram_html(self) -> None:
+        expected_headings = (
+            "🎯 TODAY’S TRADING LESSON",
+            "📊 MARKET PREPARATION",
+            "🧠 TRADING PSYCHOLOGY",
+        )
+        for content, heading in zip(TELEGRAM_LAYOUT_SAMPLES, expected_headings):
+            with self.subTest(heading=heading):
+                self.assertIsNone(validate_channel_post(content, is_promo=False))
+                self.assertIsNone(validate_weekend_post_format(content))
+                rendered = render_weekend_post_html(content)
+                self.assertIn(f"<b>{heading}</b>", rendered)
+                self.assertIn("<b>NO CONFIRMATION, NO ENTRY.</b>", rendered)
+                self.assertNotIn("**", rendered)
+                self.assertNotIn("```", rendered)
+
+    def test_all_routine_categories_and_promo_use_the_branded_layout(self) -> None:
+        for category in CHANNEL_CONTENT_CATEGORIES:
+            with self.subTest(category=category):
+                post = compose_routine_post(category, sequence=0)
+                self.assertIsNone(validate_channel_post(post, is_promo=False))
+                self.assertIsNone(validate_weekend_post_format(post))
+                self.assertIn("━━━━━━━━━━━━━━", post)
+
+        promo = compose_promo_post(
+            compose_routine_post("education", sequence=0),
+            "SmartMoneyHubSignalsBot",
+            0,
+        )
+        self.assertIsNone(
+            validate_channel_post(
+                promo,
+                is_promo=True,
+                bot_username="SmartMoneyHubSignalsBot",
+            )
+        )
+        self.assertIsNone(validate_weekend_post_format(promo))
+        self.assertIn("🤖 HOW THE BOT CAN HELP", promo)
+
+    def test_routine_layout_places_explanation_under_topic_heading(self) -> None:
+        education = compose_routine_post("education", sequence=0)
+        self.assertIn(
+            "🔍 WHAT TO LOOK FOR\n"
+            "A liquidity sweep shows that an obvious high or low was taken; "
+            "it does not, by itself, confirm a reversal. Wait for the structure "
+            "and confirmation in your plan.\n\n"
+            "📌 KEY TAKEAWAY",
+            education,
+        )
+
+    def test_markdown_is_rejected_before_telegram_html_rendering(self) -> None:
+        markdown = TELEGRAM_LAYOUT_SAMPLES[0].replace(
+            "A POI is not an entry signal.",
+            "**A POI is not an entry signal.**",
+        )
+        self.assertEqual(
+            validate_weekend_post_format(markdown),
+            "markdown_not_supported",
+        )
+        self.assertIn(
+            "Markdown markers",
+            describe_channel_post_rejection(markdown, "markdown_not_supported"),
+        )
+
+    def test_weekend_format_requires_leading_emoji_brand_and_uppercase_headline(
+        self,
+    ) -> None:
+        self.assertEqual(
+            validate_weekend_post_format(
+                "SMART MONEY HUB | LIQUIDITY\n\nA SHORT HEADLINE"
+            ),
+            "weekend_brand_header_missing",
+        )
+        self.assertEqual(
+            validate_weekend_post_format(
+                "🎣 SMART MONEY HUB\n━━━━━━━━━━━━━━\n\n"
+                "UNDERSTANDING LIQUIDITY SWEEPS"
+            ),
+            "weekend_brand_header_missing",
+        )
+        self.assertEqual(
+            validate_weekend_post_format(
+                "💧 SMART MONEY HUB | LIQUIDITY\n\nA headline in sentence case"
+            ),
+            "weekend_headline_not_uppercase",
+        )
+
+    def test_generated_weekend_validation_failure_keeps_editable_draft_and_retries_same_row(
+        self,
+    ) -> None:
+        rejected = ChannelDraft(
+            category="education",
+            content=(
+                "A useful but unbranded SMC lesson.\n\n"
+                f"{PROMO_FEATURES[0]}\n"
+                "Open @SmartMoneyHubSignalsBot and tap Start: "
+                "https://t.me/SmartMoneyHubSignalsBot\n\n"
+                "The learning Coach is separate from PRO Signals.\n\n"
+                "NO CONFIRMATION, NO ENTRY."
+            ),
+        )
+        self.writer.drafts.append(rejected)
+        self.manager.dispatch_due(local_time(23, 18))
+
+        saved = self.store.get_scheduled_channel_post("2026-10-24")
+        assert saved is not None
+        self.assertEqual(saved["status"], "failed")
+        self.assertEqual(
+            saved["failure_category"],
+            "gemini_content_rejected_weekend_brand_header_missing",
+        )
+        self.assertEqual(saved["content"], rejected.content)
+        self.assertEqual(saved["generation_source"], "gemini_pending")
+        self.assertEqual(self.api.channel_attempts, [])
+
+        self.manager.show_post(ADMIN_ID, saved)
+        self.assertIn("failed this check", self.api.messages[-1]["text"])
+        buttons = self.api.messages[-1]["reply_markup"]["inline_keyboard"]
+        self.assertTrue(
+            any(
+                button["text"] == "Retry AI Draft"
+                for row in buttons
+                for button in row
+            )
+        )
+
+        post_id = int(saved["id"])
+        self.manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:channel_posts:retry_generation:{post_id}",
+            local_time(23, 18, 5),
+        )
+        retried = self.store.get_scheduled_channel_post("2026-10-24")
+        assert retried is not None
+        self.assertEqual(retried["id"], post_id)
+        self.assertEqual(retried["status"], "draft")
+        self.assertEqual(retried["generation_source"], "gemini")
+        self.assertEqual(self.api.channel_attempts, [])
+        same_date_posts = [
+            post
+            for post in self.store.list_channel_posts(limit=20)
+            if post["schedule_date"] == "2026-10-24"
+        ]
+        self.assertEqual(len(same_date_posts), 1)
+
+    def test_existing_gemini_draft_missing_brand_format_can_be_retried_safely(
+        self,
+    ) -> None:
+        original = "Older Gemini draft without its required branded heading.\n\nNO CONFIRMATION, NO ENTRY."
+        post, created = self.store.create_scheduled_channel_post(
+            schedule_date="2026-10-24",
+            schedule_time="10:00",
+            requested_category="education",
+            category="education",
+            content=original,
+            destination_chat_id=CHANNEL_ID,
+            is_promo=False,
+            bot_username=None,
+            next_category_index=1,
+            next_promo_feature_index=0,
+            last_promo_date=None,
+            generation_source="gemini",
+        )
+        self.assertTrue(created)
+
+        self.manager._publish(
+            post,
+            self.manager._as_utc(local_time(24, 10)),
+            automatic=False,
+            admin_id=ADMIN_ID,
+        )
+        rejected = self.store.get_channel_post(post["id"])
+        assert rejected is not None
+        self.assertEqual(
+            rejected["failure_category"],
+            "weekend_brand_header_missing",
+        )
+        self.assertEqual(rejected["content"], original)
+        self.assertEqual(self.api.channel_attempts, [])
+
+        self.manager.show_post(ADMIN_ID, rejected)
+        self.assertIn("branded divider", self.api.messages[-1]["text"])
+        buttons = self.api.messages[-1]["reply_markup"]["inline_keyboard"]
+        labels = {button["text"] for row in buttons for button in row}
+        self.assertIn("Retry AI Draft", labels)
+        self.assertNotIn("🚀 Publish Now", labels)
+
+        self.manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:channel_posts:retry_generation:{post['id']}",
+            local_time(24, 10, 5),
+        )
+        retried = self.store.get_channel_post(post["id"])
+        assert retried is not None
+        self.assertEqual(retried["status"], "draft")
+        self.assertEqual(retried["generation_source"], "gemini")
+        self.assertTrue(retried["content"].startswith("📚 SMART MONEY HUB | EDUCATION"))
+        self.assertEqual(self.api.channel_attempts, [])
+
     def test_daily_schedule_sends_one_post_after_admin_preview(self) -> None:
         store, api, manager = self.store, self.api, self.manager
+        store.set_weekend_auto_publish_enabled(False)
         monday_preview = datetime(2026, 10, 26, 8, 15, tzinfo=ZoneInfo("UTC"))
         manager.dispatch_due(monday_preview)
 
@@ -148,6 +506,30 @@ class ChannelPostingTests(unittest.TestCase):
         assert saved["telegram_message_id"] == 9001
         assert len(api.channel_messages) == 1
         assert {message["chat_id"] for message in api.channel_attempts} == {CHANNEL_ID}
+        assert api.channel_messages[0]["parse_mode"] == "HTML"
+        assert api.channel_messages[0]["text"].startswith(
+            "<b>📚 SMART MONEY HUB</b>"
+        )
+
+    def test_weekend_post_uses_safe_html_and_accepts_confirmed_generic_channel_title(
+        self,
+    ) -> None:
+        self.api.chat = {
+            "id": CHANNEL_ID,
+            "type": "channel",
+            "title": "Smart Money Hub",
+        }
+        self.manager.dispatch_due(local_time(23, 18))
+        self.manager.dispatch_due(local_time(24, 10))
+
+        post = self.store.get_scheduled_channel_post("2026-10-24")
+        assert post is not None
+        self.assertEqual(post["status"], "published")
+        self.assertEqual(len(self.api.channel_messages), 1)
+        sent = self.api.channel_messages[0]
+        self.assertEqual(sent["parse_mode"], "HTML")
+        self.assertIn("<b>📚 SMART MONEY HUB | EDUCATION</b>", sent["text"])
+        self.assertIn("<b>NO CONFIRMATION, NO ENTRY.</b>", sent["text"])
 
     def test_lagos_timezone_and_category_rotation_are_persistent(self) -> None:
         store, manager = self.store, self.manager
@@ -265,6 +647,15 @@ class ChannelPostingTests(unittest.TestCase):
         assert held["failure_category"] == "gemini_legacy_draft_held"
         assert held["generation_source"] == "local"
         assert not self.api.channel_messages
+        self.manager.show_post(ADMIN_ID, held)
+        retry_buttons = self.api.messages[-1]["reply_markup"]["inline_keyboard"]
+        self.assertTrue(
+            any(
+                button["text"] == "Retry AI Draft"
+                for row in retry_buttons
+                for button in row
+            )
+        )
 
         self.manager.handle_callback(
             ADMIN_ID,
@@ -277,6 +668,17 @@ class ChannelPostingTests(unittest.TestCase):
         assert replaced["status"] == "draft"
         assert replaced["generation_source"] == "gemini"
         assert self.writer.calls[-1]["existing_draft"] == legacy_content
+        self.assertEqual(
+            self.store.get_scheduled_channel_post("2026-10-24")["id"],
+            legacy["id"],
+        )
+        self.assertEqual(self.api.channel_attempts, [])
+        self.assertTrue(
+            any(
+                "passed the content checks" in message["text"]
+                for message in self.api.messages
+            )
+        )
 
         self.manager.dispatch_due(local_time(24, 10))
         assert self.store.get_channel_post(legacy["id"])["status"] == "published"
@@ -338,8 +740,10 @@ class ChannelPostingTests(unittest.TestCase):
             local_time(24, 9),
         )
         revised = (
-            "Edited education note: wait for planned structure confirmation "
-            "before entry.\n\nNO CONFIRMATION, NO ENTRY."
+            "📚 SMART MONEY HUB | EDUCATION\n\n"
+            "WAIT FOR PLANNED CONFIRMATION\n\n"
+            "Wait for planned structure confirmation before entry.\n\n"
+            "NO CONFIRMATION, NO ENTRY."
         )
         self.assertTrue(
             self.manager.handle_edit_message(ADMIN_ID, ADMIN_ID, revised, True)
@@ -357,7 +761,8 @@ class ChannelPostingTests(unittest.TestCase):
             local_time(24, 9, 30),
         )
         self.assertEqual(len(self.api.channel_messages), 1)
-        self.assertEqual(self.api.channel_messages[0]["text"], revised)
+        self.assertEqual(self.api.channel_messages[0]["parse_mode"], "HTML")
+        self.assertIn("<b>📚 SMART MONEY HUB | EDUCATION</b>", self.api.channel_messages[0]["text"])
 
     def test_admin_feedback_revises_weekend_draft_with_saved_context(self) -> None:
         self.manager.dispatch_due(local_time(23, 18))
@@ -488,11 +893,13 @@ class ChannelPostingTests(unittest.TestCase):
             local_time(26, 9, 5),
         )
 
-        edited = (
-            "Pause before entry. Check that your planned structure and confirmation "
-            "are present, and define what would invalidate the idea.\n\n"
-            "NO CONFIRMATION, NO ENTRY."
-        )
+        edited = TELEGRAM_LAYOUT_SAMPLES[0]
+        if post["is_promo"]:
+            edited = compose_promo_post(
+                edited,
+                post["bot_username"],
+                0,
+            )
         assert manager.handle_edit_message(ADMIN_ID, ADMIN_ID, edited, True)
         saved = store.get_channel_post(post["id"])
         assert saved is not None
@@ -518,8 +925,16 @@ class ChannelPostingTests(unittest.TestCase):
         assert post["status"] == "failed"
         assert post["failure_category"] == "destination_not_verified"
         assert api.channel_messages == []
+        self.assertTrue(
+            any(
+                "Smart Money Hub PRO Signals" in message["text"]
+                and str(CHANNEL_ID) in message["text"]
+                for message in api.messages
+            )
+        )
 
         manager.show_post(ADMIN_ID, post)
+        self.assertIn("Status: Destination Not Verified", api.messages[-1]["text"])
         failed_post_buttons = api.messages[-1]["reply_markup"]["inline_keyboard"]
         self.assertTrue(
             any(
@@ -534,10 +949,13 @@ class ChannelPostingTests(unittest.TestCase):
             f"admin:channel_posts:edit:{post['id']}",
             local_time(26, 10, 1),
         )
-        corrected = (
-            "A corrected education post still needs the verified Market Analysis "
-            "destination.\n\nNO CONFIRMATION, NO ENTRY."
-        )
+        corrected = TELEGRAM_LAYOUT_SAMPLES[0]
+        if post["is_promo"]:
+            corrected = compose_promo_post(
+                corrected,
+                post["bot_username"],
+                0,
+            )
         self.assertTrue(
             manager.handle_edit_message(ADMIN_ID, ADMIN_ID, corrected, True)
         )
@@ -570,6 +988,38 @@ class ChannelPostingTests(unittest.TestCase):
         assert permission_blocked is not None
         assert permission_blocked["status"] == "failed"
         assert permission_blocked["failure_category"] == "posting_permission_missing"
+
+    def test_wrong_configured_channel_id_is_blocked_before_telegram_send(self) -> None:
+        self.manager.dispatch_due(local_time(26, 9))
+        post = self.store.get_scheduled_channel_post("2026-10-26")
+        assert post is not None
+        self.manager.destination_chat_id = CHANNEL_ID + 1
+
+        self.manager.dispatch_due(local_time(26, 10))
+
+        saved = self.store.get_channel_post(post["id"])
+        assert saved is not None
+        self.assertEqual(saved["failure_category"], "destination_mismatch")
+        self.assertEqual(self.api.channel_attempts, [])
+
+    def test_telegram_destination_verification_api_error_is_reported_safely(
+        self,
+    ) -> None:
+        self.api.get_chat_error = TelegramAPIError("sanitized test transport failure")
+        self.manager.dispatch_due(local_time(26, 9))
+        self.manager.dispatch_due(local_time(26, 10))
+
+        post = self.store.get_scheduled_channel_post("2026-10-26")
+        assert post is not None
+        self.assertEqual(post["failure_category"], "destination_verification_unavailable")
+        self.assertEqual(self.api.channel_attempts, [])
+        self.assertTrue(
+            any(
+                str(CHANNEL_ID) in message["text"]
+                and "check the bot's channel access" in message["text"].casefold()
+                for message in self.api.messages
+            )
+        )
 
     def test_telegram_rate_limit_gets_one_bounded_retry(self) -> None:
         store, api, manager = self.store, self.api, self.manager
@@ -785,8 +1235,10 @@ class ChannelPostingTests(unittest.TestCase):
         self.assertIn(original, self.api.messages[-1]["text"])
 
         education = (
-            "Liquidity note: a sweep alone does not confirm a reversal. "
-            "Wait for your planned evidence.\n\nNO CONFIRMATION, NO ENTRY."
+            "💧 SMART MONEY HUB | LIQUIDITY\n\n"
+            "WAIT FOR CONFIRMATION\n\n"
+            "A sweep alone does not confirm a reversal. Wait for your planned "
+            "evidence.\n\nNO CONFIRMATION, NO ENTRY."
         )
         self.assertTrue(
             self.manager.handle_edit_message(ADMIN_ID, ADMIN_ID, education, True)
@@ -813,7 +1265,9 @@ class ChannelPostingTests(unittest.TestCase):
             local_time(24, 9, 30),
         )
         self.assertEqual(len(self.api.channel_messages), 1)
-        self.assertEqual(self.api.channel_messages[0]["text"], education)
+        self.assertEqual(self.api.channel_messages[0]["parse_mode"], "HTML")
+        self.assertIn("<b>💧 SMART MONEY HUB | LIQUIDITY</b>", self.api.channel_messages[0]["text"])
+        self.assertIn("<b>NO CONFIRMATION, NO ENTRY.</b>", self.api.channel_messages[0]["text"])
 
     def test_admin_controls_use_plain_action_labels(self) -> None:
         self.manager.dispatch_due(local_time(23, 18))

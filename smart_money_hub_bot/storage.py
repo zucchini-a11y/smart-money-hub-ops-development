@@ -205,6 +205,8 @@ class Repository:
                     CREATE TABLE IF NOT EXISTS channel_posting_settings (
                         id INTEGER PRIMARY KEY CHECK (id = 1),
                         paused INTEGER NOT NULL DEFAULT 0 CHECK (paused IN (0, 1)),
+                        weekend_auto_publish_enabled INTEGER NOT NULL DEFAULT 0
+                            CHECK (weekend_auto_publish_enabled IN (0, 1)),
                         next_category_index INTEGER NOT NULL DEFAULT 0,
                         next_promo_feature_index INTEGER NOT NULL DEFAULT 0,
                         promo_interval_days INTEGER NOT NULL DEFAULT 14,
@@ -436,6 +438,12 @@ class Repository:
                     "scheduled_channel_posts",
                     "admin_edit_approved",
                     "INTEGER NOT NULL DEFAULT 0 CHECK (admin_edit_approved IN (0, 1))",
+                )
+                self._ensure_table_column(
+                    connection,
+                    "channel_posting_settings",
+                    "weekend_auto_publish_enabled",
+                    "INTEGER NOT NULL DEFAULT 0 CHECK (weekend_auto_publish_enabled IN (0, 1))",
                 )
                 self._migrate_legacy_assessments(connection)
                 member_ids = connection.execute(
@@ -685,11 +693,47 @@ class Repository:
             ).fetchone()
             return dict(row) if row else {
                 "paused": 0,
+                "weekend_auto_publish_enabled": 0,
                 "next_category_index": 0,
                 "next_promo_feature_index": 0,
                 "promo_interval_days": 14,
                 "last_promo_date": None,
             }
+        finally:
+            connection.close()
+
+    def set_weekend_auto_publish_enabled(
+        self,
+        enabled: bool,
+        *,
+        admin_id: int | None = None,
+        at: str | None = None,
+    ) -> None:
+        timestamp = at or utc_now()
+        value = int(bool(enabled))
+        connection = self._connect()
+        try:
+            with connection:
+                connection.execute(
+                    """
+                    UPDATE channel_posting_settings
+                    SET weekend_auto_publish_enabled = ?, updated_at = ?
+                    WHERE id = 1
+                    """,
+                    (value, timestamp),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO channel_post_actions
+                        (post_id, action, admin_id, details, created_at)
+                    VALUES (NULL, 'weekend_auto_publish_setting_changed', ?, ?, ?)
+                    """,
+                    (
+                        admin_id,
+                        "enabled" if value else "disabled",
+                        timestamp,
+                    ),
+                )
         finally:
             connection.close()
 
@@ -1495,6 +1539,7 @@ class Repository:
         admin_id: int | None = None,
         details: str | None = None,
         failure_category: str | None = None,
+        rejected_content: str | None = None,
         at: str | None = None,
     ) -> bool:
         allowed_statuses = {"draft", "failed", "rejected", "skipped"}
@@ -1509,6 +1554,7 @@ class Repository:
                     UPDATE scheduled_channel_posts
                     SET status = ?, edit_admin_id = NULL,
                         failure_category = ?,
+                        content = COALESCE(?, content),
                         updated_at = ?
                     WHERE id = ? AND status IN (
                         'draft', 'awaiting_edit', 'failed', 'retry_wait'
@@ -1517,6 +1563,7 @@ class Repository:
                     (
                         status,
                         failure_category if status == "failed" else None,
+                        rejected_content if status == "failed" else None,
                         timestamp,
                         post_id,
                     ),

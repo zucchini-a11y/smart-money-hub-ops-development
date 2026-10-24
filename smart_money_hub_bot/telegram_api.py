@@ -152,10 +152,14 @@ class TelegramAPI:
         chat_id: int,
         text: str,
         reply_markup: dict[str, Any] | None = None,
+        *,
+        parse_mode: str | None = None,
     ) -> None:
         payload: dict[str, Any] = {"chat_id": chat_id, "text": text}
         if reply_markup is not None:
             payload["reply_markup"] = reply_markup
+        if parse_mode is not None:
+            payload["parse_mode"] = parse_mode
         self._request("sendMessage", payload)
 
     def send_message_with_result(
@@ -163,10 +167,14 @@ class TelegramAPI:
         chat_id: int,
         text: str,
         reply_markup: dict[str, Any] | None = None,
+        *,
+        parse_mode: str | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {"chat_id": chat_id, "text": text}
         if reply_markup is not None:
             payload["reply_markup"] = reply_markup
+        if parse_mode is not None:
+            payload["parse_mode"] = parse_mode
         result = self._request("sendMessage", payload)
         return result if isinstance(result, dict) else {}
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from html import escape
 import re
 from collections.abc import Sequence
 
@@ -12,6 +13,7 @@ CHANNEL_CONTENT_CATEGORIES = (
     "new_week_preparation",
     "engagement",
     "trading_psychology",
+    "risk_management",
 )
 
 ROUTINE_POSTS: dict[str, tuple[str, ...]] = {
@@ -69,6 +71,16 @@ ROUTINE_POSTS: dict[str, tuple[str, ...]] = {
         "outcome does not prove a poor process was sound. Review whether you "
         "followed your plan.\n\nNO CONFIRMATION, NO ENTRY.",
     ),
+    "risk_management": (
+        "Risk management: Decide what invalidates your idea before entry and size "
+        "the position according to your own risk plan.\n\nNO CONFIRMATION, NO ENTRY.",
+        "Risk management: A stop belongs where the trade idea is invalidated, not "
+        "where discomfort begins. Define it before you enter.\n\n"
+        "NO CONFIRMATION, NO ENTRY.",
+        "Risk management: Set a loss limit you can follow, then stop when it is "
+        "reached. Protecting capital comes before trying to recover a loss.\n\n"
+        "NO CONFIRMATION, NO ENTRY.",
+    ),
 }
 
 PROMO_FEATURES: tuple[str, ...] = (
@@ -122,16 +134,167 @@ _PROMO_CAPABILITY_VERBS = re.compile(
 )
 _PROMO_BOILERPLATE = re.compile(
     r"\b(?:open\s+@\w+|tap\s+start|the learning coach is separate from "
-    r"pro signals)\b",
+    r"pro signals|how the bot can help)\b",
     re.IGNORECASE,
+)
+_WEEKEND_HEADER = re.compile(
+    r"^(?:📚|📊|💧|🎯|🛡️|🧠|🤖|🔍|💬)\s+SMART MONEY HUB"
+    r"(?:\s+\|\s+[A-Z0-9][A-Z0-9 &/'-]{1,60})?$"
+)
+_WEEKEND_HEADINGS = {
+    "🔍 WHAT TO UNDERSTAND",
+    "✅ WHAT TO DO",
+    "⚠️ REMEMBER",
+    "📌 KEY TAKEAWAYS",
+    "🔍 WHAT TO LOOK FOR",
+    "📌 CONDITIONS TO WATCH",
+    "📚 WHAT THE REVIEW CAN TEACH",
+    "💬 YOUR TURN",
+    "⚠️ COMMON TRAP",
+    "✅ ONE PRACTICAL RESET",
+    "✅ WHAT TO DO",
+    "🛡️ RISK REMINDER",
+    "⚠️ THE GOLDEN RULE",
+    "🤖 HOW THE BOT CAN HELP",
+}
+_WEEKEND_SECTION_HEADING = re.compile(
+    r"^(?:🔍|✅|❌|📌|🛡️|⚠️|💬|🤖|📊|📚|🎯|🧠|💧)\s+"
+    r"[A-Z0-9][A-Z0-9’' &:-]{2,90}$"
+)
+_CATEGORY_EMOJI = {
+    "education": "📚",
+    "weekly_market_recap": "🔍",
+    "new_week_preparation": "📊",
+    "engagement": "💬",
+    "trading_psychology": "🧠",
+    "risk_management": "🛡️",
+}
+_CATEGORY_HEADLINES = {
+    "education": (
+        "🎯 TODAY’S TRADING LESSON",
+        "🎯 STRUCTURE BEFORE ENTRY",
+        "🎯 A ZONE IS NOT A SIGNAL",
+        "🎯 READ THE IMBALANCE IN CONTEXT",
+    ),
+    "weekly_market_recap": (
+        "🔍 REVIEW THE PROCESS, NOT JUST THE RESULT",
+        "🔍 WHAT DID YOUR PLAN TEACH YOU?",
+    ),
+    "new_week_preparation": (
+        "📊 PREPARE BEFORE THE SESSION",
+        "📊 DEFINE YOUR CONDITIONS FIRST",
+    ),
+    "engagement": (
+        "💬 COMMUNITY CHECK-IN",
+        "💬 YOUR PROCESS QUESTION",
+        "💬 THIS WEEK’S PRACTICE",
+    ),
+    "trading_psychology": (
+        "🧠 DON’T CHASE THE MOVE",
+        "🧠 PAUSE BEFORE THE NEXT DECISION",
+        "🧠 REVIEW THE PROCESS",
+    ),
+    "risk_management": (
+        "🛡️ DEFINE RISK BEFORE ENTRY",
+        "🛡️ KNOW WHAT INVALIDATES THE IDEA",
+        "🛡️ PROTECT CAPITAL FIRST",
+    ),
+}
+_CATEGORY_SECTION = {
+    "education": "🔍 WHAT TO LOOK FOR",
+    "weekly_market_recap": "📚 WHAT THE REVIEW CAN TEACH",
+    "new_week_preparation": "📌 CONDITIONS TO WATCH",
+    "engagement": "💬 YOUR TURN",
+    "trading_psychology": "⚠️ COMMON TRAP",
+    "risk_management": "✅ WHAT TO DO",
+}
+_CATEGORY_ACTION = {
+    "education": (
+        "📌 KEY TAKEAWAY",
+        "Treat the zone or label as context, not as an entry signal by itself.",
+    ),
+    "weekly_market_recap": (
+        "✅ NEXT STEP",
+        "Write down one process lesson to carry into the next week.",
+    ),
+    "new_week_preparation": (
+        "📌 BEFORE THE SESSION",
+        "Use verified levels only, and define invalidation before entry.",
+    ),
+    "engagement": (
+        "✅ SHARE A TAKEAWAY",
+        "Keep the discussion focused on learning and process.",
+    ),
+    "trading_psychology": (
+        "✅ ONE PRACTICAL RESET",
+        "Pause, review your rules, and decide only when calm.",
+    ),
+    "risk_management": (
+        "📌 BEFORE ENTRY",
+        "Write the risk and invalidation into your plan first.",
+    ),
+}
+_INLINE_BOLD_TERMS = re.compile(
+    r"\b(?:BOS|CHOCH|MSS|FVG|IFVG|POI|FOMO|liquidity|liquidity sweep|"
+    r"order block|fair value gap|"
+    r"risk management|stop loss|take profit|confirmation|invalidation|retest)\b|R:R",
+    re.IGNORECASE,
+)
+_SOURCE_LABEL = re.compile(
+    r"^(?:SMC lesson|Weekly review|New-week preparation|Before the new week|"
+    r"Quick check-in|Trading reflection|Community question|Trading psychology|"
+    r"Risk management):\s*",
+    re.IGNORECASE,
+)
+_BRAND_FOOTER = (
+    "⚠️ THE GOLDEN RULE\n"
+    "NO CONFIRMATION, NO ENTRY.\n\n"
+    "— VAYDA | Smart Money Hub"
 )
 
 
 def compose_routine_post(category: str, sequence: int) -> str:
     posts = ROUTINE_POSTS.get(category)
-    if not posts:
+    layout = _CATEGORY_HEADLINES.get(category)
+    if not posts or not layout:
         raise ValueError("Unknown channel post category.")
-    return posts[sequence % len(posts)]
+    body = posts[sequence % len(posts)].strip()
+    body = re.sub(
+        r"\s*NO CONFIRMATION,\s*NO ENTRY\.?\s*$",
+        "",
+        body,
+        flags=re.IGNORECASE,
+    ).strip()
+    body = _SOURCE_LABEL.sub("", body).strip()
+    if not body:
+        raise ValueError("Channel post content cannot be empty.")
+
+    emoji = _CATEGORY_EMOJI[category]
+    headline = layout[sequence % len(layout)]
+    section = _CATEGORY_SECTION[category]
+    action_heading, action = _CATEGORY_ACTION[category]
+    lines = [
+        f"{emoji} SMART MONEY HUB",
+        "━━━━━━━━━━━━━━",
+        "",
+        headline,
+        "",
+        section,
+        body,
+        "",
+        action_heading,
+        action,
+    ]
+    if category != "engagement":
+        lines.extend(
+            [
+                "",
+                "🛡️ RISK REMINDER",
+                "Protect your capital. Follow your trading plan.",
+            ]
+        )
+    lines.extend(["", _BRAND_FOOTER])
+    return "\n".join(lines)
 
 
 def compose_promo_post(
@@ -146,12 +309,17 @@ def compose_promo_post(
         raise ValueError("Telegram returned an invalid bot username.")
     feature = PROMO_FEATURES[feature_index % len(PROMO_FEATURES)]
     hook = PROMO_HOOKS[hook_index % len(PROMO_HOOKS)]
-    return (
-        f"{routine_text}\n\n{hook}\n{feature}\n\n"
+    body, separator, _footer = routine_text.rpartition(_BRAND_FOOTER)
+    if not separator:
+        raise ValueError("Routine post is missing its approved brand footer.")
+    promotion = (
+        "🤖 HOW THE BOT CAN HELP\n\n"
+        f"{hook}\n\n{feature}\n\n"
         f"Open @{clean_username} and tap Start: "
         f"https://t.me/{clean_username}\n"
         "The learning Coach is separate from PRO Signals."
     )
+    return f"{body.rstrip()}\n\n{promotion}\n\n{_BRAND_FOOTER}"
 
 
 def is_promotional_content(content: str) -> bool:
@@ -182,6 +350,17 @@ def describe_channel_post_rejection(
     bot_username: str | None = None,
 ) -> str:
     """Explain a validation failure in plain language without logging content."""
+    if category.startswith("gemini_content_rejected_"):
+        reason = category.removeprefix("gemini_content_rejected_")
+        return (
+            "Gemini returned a draft, but it was not published because it failed "
+            "this check. The draft is saved for review. "
+            + describe_channel_post_rejection(
+                content,
+                reason,
+                bot_username=bot_username,
+            )
+        )
     if category == "unverified_promo_feature":
         claims = _unverified_promo_feature_claims(content)
         claim_note = (
@@ -204,6 +383,11 @@ def describe_channel_post_rejection(
             "The post is missing the required trading rule “NO CONFIRMATION, NO "
             "ENTRY.” Add that exact sentence and resend the complete post. Your "
             "saved draft is unchanged, so you can try again or send /cancel."
+        )
+    if category == "content_too_long":
+        return (
+            "The post is longer than Telegram allows. Shorten it to 4,000 "
+            "characters or fewer; the saved draft is unchanged."
         )
     if category == "promo_link_mismatch":
         expected = f"https://t.me/{bot_username.removeprefix('@')}" if bot_username else None
@@ -253,9 +437,36 @@ def describe_channel_post_rejection(
         )
     if category == "gemini_legacy_draft_held":
         return (
-            "This weekend draft was created before Gemini review was added, so it "
-            "is on hold and will not be published automatically. Retry a Gemini "
-            "draft or save a validated administrator edit."
+            "This is an older weekend draft that was not generated by Gemini or "
+            "approved through an administrator edit. It was held before any send; "
+            "this does not mean Gemini rejected a response. Choose Retry AI Draft "
+            "to replace it, or edit it and save a validated replacement."
+        )
+    if category == "weekend_brand_header_missing":
+        return (
+            "The post must start with a relevant emoji and “SMART MONEY HUB,” "
+            "followed by the branded divider and a category heading. Add those "
+            "lines and resend the complete draft."
+        )
+    if category == "weekend_headline_missing":
+        return (
+            "The post needs a short uppercase headline on the line below its brand "
+            "header. Add one and resend the complete draft."
+        )
+    if category == "weekend_headline_not_uppercase":
+        return (
+            "The weekend headline must be short and uppercase. Correct that line "
+            "and resend the complete draft."
+        )
+    if category == "markdown_not_supported":
+        return (
+            "The post contains Markdown markers, but Telegram receives it as HTML. "
+            "Remove the Markdown marks; the bot will add safe bold formatting."
+        )
+    if category == "duplicate_content":
+        return (
+            "This draft is too similar to a recent channel post. Gemini can retry "
+            "with a different topic, or you can edit the saved draft."
         )
     if category == "gemini_rate_limit":
         return (
@@ -267,7 +478,11 @@ def describe_channel_post_rejection(
             "Telegram did not allow the bot to post in the configured Market "
             "Analysis channel. Check that the bot still has permission to post."
         )
-    if category in {"destination_not_verified", "destination_mismatch"}:
+    if category in {
+        "destination_not_verified",
+        "destination_mismatch",
+        "destination_verification_unavailable",
+    }:
         return (
             "The configured destination could not be verified as the Market "
             "Analysis channel. Nothing was sent; check the channel configuration."
@@ -290,6 +505,74 @@ def describe_channel_post_rejection(
     return (
         "This post did not pass a publishing check. Review the draft, correct the "
         "issue, and try again. Nothing was published."
+    )
+
+
+def validate_weekend_post_format(content: str) -> str | None:
+    """Require a compact, branded layout while accepting older branded drafts."""
+    lines = [line.strip() for line in content.strip().splitlines() if line.strip()]
+    if not lines or not _WEEKEND_HEADER.fullmatch(lines[0]):
+        return "weekend_brand_header_missing"
+    title_index = 1
+    if len(lines) > 1 and _is_brand_divider(lines[1]):
+        title_index = 2
+    if len(lines) <= title_index:
+        return "weekend_headline_missing"
+    headline = lines[title_index]
+    if not any(character.isalpha() for character in headline):
+        return "weekend_headline_missing"
+    if len(headline) > 90 or headline != headline.upper():
+        return "weekend_headline_not_uppercase"
+    if re.search(r"\*\*|__|`", content):
+        return "markdown_not_supported"
+    return None
+
+
+def _is_brand_divider(line: str) -> bool:
+    return len(line) >= 10 and bool(re.fullmatch(r"[━─—_-]+", line))
+
+
+def render_weekend_post_html(content: str) -> str:
+    """Render a branded post as Telegram HTML after escaping all plain text."""
+    if len(content.strip()) > 4000:
+        raise ValueError("content_too_long")
+    rejection = validate_weekend_post_format(content)
+    if rejection:
+        raise ValueError(rejection)
+
+    lines = content.strip().splitlines()
+    nonempty_indexes = [index for index, line in enumerate(lines) if line.strip()]
+    header_index = nonempty_indexes[0]
+    first_title_index = nonempty_indexes[1]
+    title_index = (
+        nonempty_indexes[2]
+        if _is_brand_divider(lines[first_title_index].strip())
+        else first_title_index
+    )
+
+    def render_line(index: int, raw_line: str) -> str:
+        line = raw_line.strip()
+        if line.startswith(("- ", "* ")):
+            line = f"• {line[2:].strip()}"
+        if (
+            index in {header_index, title_index}
+            or line.upper() in _WEEKEND_HEADINGS
+            or _WEEKEND_SECTION_HEADING.fullmatch(line)
+            or line.casefold().rstrip(".") == "no confirmation, no entry"
+        ):
+            return f"<b>{escape(line, quote=False)}</b>"
+        parts: list[str] = []
+        cursor = 0
+        for match in _INLINE_BOLD_TERMS.finditer(line):
+            parts.append(escape(line[cursor : match.start()], quote=False))
+            parts.append(f"<b>{escape(match.group(0), quote=False)}</b>")
+            cursor = match.end()
+        parts.append(escape(line[cursor:], quote=False))
+        return "".join(parts)
+
+    return "\n".join(
+        render_line(index, line) if line.strip() else ""
+        for index, line in enumerate(lines)
     )
 
 

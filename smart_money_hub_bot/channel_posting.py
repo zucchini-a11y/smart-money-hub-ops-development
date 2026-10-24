@@ -16,7 +16,9 @@ from .channel_content import (
     describe_channel_post_rejection,
     is_promotional_content,
     next_category,
+    render_weekend_post_html,
     validate_channel_post,
+    validate_weekend_post_format,
 )
 from .channel_gemini import (
     GeminiChannelContentService,
@@ -40,6 +42,16 @@ _SHARED_FOOTER = re.compile(
     r"no confirmation,\s*no entry\.?", re.IGNORECASE
 )
 _PROMO_LINK = re.compile(r"open\s+@\w+.*?https://t\.me/\w+", re.IGNORECASE | re.DOTALL)
+_AI_RETRYABLE_CONTENT_FAILURES = {
+    "content_too_long",
+    "missing_golden_rule",
+    "prohibited_signal_or_promise",
+    "unverified_market_claim",
+    "unexpected_bot_promotion",
+    "weekend_brand_header_missing",
+    "weekend_headline_missing",
+    "weekend_headline_not_uppercase",
+}
 
 
 class ChannelPostManager:
@@ -92,6 +104,26 @@ class ChannelPostManager:
         if not post:
             return
         status = post["status"]
+        if (
+            today.weekday() in {5, 6}
+            and not settings.get("weekend_auto_publish_enabled")
+            and status in {"draft", "retry_wait"}
+        ):
+            changed = self.store.set_channel_post_status(
+                int(post["id"]),
+                "failed",
+                action="template_approval_pending",
+                failure_category="template_approval_pending",
+                details="Weekend content template has not been approved.",
+            )
+            if changed:
+                self.api.send_message(
+                    self.admin_id,
+                    "Weekend post held: the new template is waiting for your "
+                    "approval. No channel post was sent. Weekend private previews "
+                    "will continue.",
+                )
+            return
         if status == "draft" and self._preview_was_available_before_schedule(post):
             self._publish(post, current_utc, automatic=True)
         elif status == "retry_wait" and self._retry_is_due(post, current_utc):
@@ -118,6 +150,10 @@ class ChannelPostManager:
             ),
             "Changing the interval affects future drafts; existing previews stay unchanged.",
             "Market recap posts use an evergreen review when verified market data is unavailable.",
+            (
+                "Weekend automatic publishing: "
+                f"{'ACTIVE' if settings.get('weekend_auto_publish_enabled') else 'WAITING FOR TEMPLATE APPROVAL'}"
+            ),
             "",
             "Pending posts:",
         ]
@@ -125,7 +161,7 @@ class ChannelPostManager:
             for post in pending:
                 lines.append(
                     f"• {post['schedule_date']} — {self._category_label(post['category'])} "
-                    f"({post['status'].replace('_', ' ')})"
+                    f"({self._status_label(post)})"
                 )
         else:
             lines.append("• None")
@@ -135,7 +171,7 @@ class ChannelPostManager:
                 promo_note = " · bot awareness" if post["is_promo"] else ""
                 lines.append(
                     f"• {post['schedule_date']} — {self._category_label(post['category'])}"
-                    f"{promo_note} — {post['status'].replace('_', ' ')}"
+                    f"{promo_note} — {self._status_label(post)}"
                 )
         else:
             lines.append("• No posts recorded yet.")
@@ -376,6 +412,8 @@ class ChannelPostManager:
             is_promo=is_promo,
             bot_username=username,
         )
+        if not rejection:
+            rejection = validate_weekend_post_format(text)
         if rejection:
             logger.info("Channel post edit rejected category=%s.", rejection)
             self.api.send_message(
@@ -412,6 +450,24 @@ class ChannelPostManager:
 
     def show_post(self, chat_id: int, post: dict[str, Any]) -> None:
         status = post["status"]
+        failure_category = str(post.get("failure_category") or "")
+        scheduled_weekend = (
+            date.fromisoformat(str(post["schedule_date"])).weekday() in {5, 6}
+        )
+        template_pending = (
+            failure_category == "template_approval_pending"
+            or (
+                scheduled_weekend
+                and not self.store.get_channel_posting_settings().get(
+                    "weekend_auto_publish_enabled"
+                )
+            )
+        )
+        display_status = (
+            "Awaiting Template Approval"
+            if template_pending
+            else self._status_label(post)
+        )
         category = self._category_label(post["category"])
         content = post["content"]
         if status == "delivery_unknown":
@@ -425,7 +481,7 @@ class ChannelPostManager:
                 f"CHANNEL POST — {post['schedule_date']} at "
                 f"{post['schedule_time']} WAT\n"
                 f"Category: {category}\n"
-                f"Status: {status.replace('_', ' ')}\n"
+                f"Status: {display_status}\n"
                 f"Destination: configured Market Analysis channel\n\n"
             )
             if post.get("failure_category") and status != "awaiting_edit":
@@ -439,24 +495,26 @@ class ChannelPostManager:
                 )
         rows: list[list[dict[str, str]]] = []
         if status == "draft":
+            main_row = [
+                {
+                    "text": "✨ Revise with Gemini",
+                    "callback_data": f"admin:channel_posts:revise:{post['id']}",
+                },
+                {
+                    "text": "✏️ Edit Post",
+                    "callback_data": f"admin:channel_posts:edit:{post['id']}",
+                },
+            ]
+            if not template_pending:
+                main_row.append(
+                    {
+                        "text": "🚀 Publish Now",
+                        "callback_data": f"admin:channel_posts:publish:{post['id']}",
+                    }
+                )
             rows.extend(
                 [
-                    [
-                        {
-                            "text": "✨ Revise with Gemini",
-                            "callback_data": (
-                                f"admin:channel_posts:revise:{post['id']}"
-                            ),
-                        },
-                        {
-                            "text": "✏️ Edit Post",
-                            "callback_data": f"admin:channel_posts:edit:{post['id']}",
-                        },
-                        {
-                            "text": "🚀 Publish Now",
-                            "callback_data": f"admin:channel_posts:publish:{post['id']}",
-                        },
-                    ],
+                    main_row,
                     [
                         {
                             "text": "❌ Reject Post",
@@ -500,20 +558,21 @@ class ChannelPostManager:
                 ]
             )
         elif status in {"failed", "retry_wait"}:
-            if str(post.get("failure_category") or "").startswith("gemini_"):
+            failure_category = str(post.get("failure_category") or "")
+            if failure_category.startswith("gemini_revision_") or (
+                status == "failed" and self._can_retry_ai_draft(post)
+            ):
                 retry_action = (
                     "retry_revision"
-                    if str(post.get("failure_category") or "").startswith(
-                        "gemini_revision_"
-                    )
+                    if failure_category.startswith("gemini_revision_")
                     else "retry_generation"
                 )
                 rows.append(
                     [
                         {
-                            "text": "Retry Gemini revision"
+                            "text": "Retry AI Revision"
                             if retry_action == "retry_revision"
-                            else "Retry Gemini draft",
+                            else "Retry AI Draft",
                             "callback_data": (
                                 f"admin:channel_posts:{retry_action}:{post['id']}"
                             ),
@@ -530,11 +589,13 @@ class ChannelPostManager:
                     ]
                 )
             if (
-                post.get("content")
+                not template_pending
+                and post.get("content")
                 and (
                     post.get("generation_source") == "gemini"
                     or post.get("admin_edit_approved")
                 )
+                and not self._can_retry_ai_draft(post)
             ):
                 rows.append(
                     [
@@ -570,6 +631,41 @@ class ChannelPostManager:
             intro + content if content else intro.rstrip(),
             {"inline_keyboard": rows},
         )
+
+    @staticmethod
+    def _status_label(post: dict[str, Any]) -> str:
+        status = str(post.get("status") or "")
+        failure = str(post.get("failure_category") or "")
+        if failure in {
+            "destination_not_verified",
+            "destination_mismatch",
+            "destination_verification_unavailable",
+        }:
+            return "Destination Not Verified"
+        if failure == "template_approval_pending":
+            return "Awaiting Template Approval"
+        return {
+            "draft": "Draft",
+            "awaiting_edit": "Awaiting Approval (Edit Pending)",
+            "published": "Published",
+            "failed": "Failed",
+            "retry_wait": "Retry Scheduled",
+            "delivery_unknown": "Delivery Unknown",
+            "rejected": "Rejected",
+            "skipped": "Skipped",
+            "publishing": "Publishing",
+        }.get(status, status.replace("_", " ").title())
+
+    @staticmethod
+    def _can_retry_ai_draft(post: dict[str, Any]) -> bool:
+        failure = str(post.get("failure_category") or "")
+        source = str(post.get("generation_source") or "")
+        content = bool(post.get("content"))
+        if failure.startswith("gemini_revision_"):
+            return False
+        if failure.startswith("gemini_"):
+            return source != "gemini" or not content
+        return source == "gemini" and failure in _AI_RETRYABLE_CONTENT_FAILURES
 
     def _ensure_and_preview(self, target_date: date, now_utc: datetime) -> None:
         post = self.store.get_scheduled_channel_post(target_date.isoformat())
@@ -674,6 +770,8 @@ class ChannelPostManager:
             is_promo=is_promo,
             bot_username=username,
         )
+        if not rejection:
+            rejection = validate_weekend_post_format(content)
         if rejection:
             logger.error("Channel post draft withheld category=%s.", rejection)
             return None
@@ -787,6 +885,8 @@ class ChannelPostManager:
             is_promo=bool(post["is_promo"]),
             bot_username=post.get("bot_username"),
         )
+        if not rejection:
+            rejection = validate_weekend_post_format(draft.content)
         if rejection or self._is_duplicate(
             draft.content,
             exclude_post_id=int(post["id"]),
@@ -797,6 +897,7 @@ class ChannelPostManager:
                 f"gemini_content_rejected_{category}",
                 admin_id=admin_id,
                 revision=revision_feedback is not None,
+                rejected_content=draft.content,
             )
 
         next_feature_index = int(settings["next_promo_feature_index"])
@@ -838,10 +939,8 @@ class ChannelPostManager:
         admin_id: int,
         now_utc: datetime,
     ) -> None:
-        if post.get("status") != "failed" or (
-            post.get("content") and post.get("generation_source") == "gemini"
-        ):
-            self.api.send_message(chat_id, "This post is not waiting for Gemini generation.")
+        if post.get("status") != "failed" or not self._can_retry_ai_draft(post):
+            self.api.send_message(chat_id, "This post is not waiting for AI draft generation.")
             return
         if post.get("is_promo"):
             try:
@@ -871,6 +970,11 @@ class ChannelPostManager:
         )
         if generated.get("status") == "draft":
             self._send_preview(generated, now_utc)
+            self.api.send_message(
+                chat_id,
+                "The AI draft passed the content checks and is ready for review. "
+                "Nothing was sent to the channel.",
+            )
 
     def _retry_revision(
         self,
@@ -939,6 +1043,7 @@ class ChannelPostManager:
         *,
         admin_id: int | None = None,
         revision: bool = False,
+        rejected_content: str | None = None,
     ) -> dict[str, Any]:
         category = (
             f"gemini_revision_{failure_category.removeprefix('gemini_')}"
@@ -956,6 +1061,7 @@ class ChannelPostManager:
             admin_id=admin_id,
             details=category,
             failure_category=category,
+            rejected_content=rejected_content,
         )
         logger.warning(
             "Weekend channel draft held failure_category=%s.",
@@ -1032,6 +1138,17 @@ class ChannelPostManager:
                     "Publishing is paused. Resume channel publishing first.",
                 )
             return
+        if (
+            scheduled_date.weekday() in {5, 6}
+            and not settings.get("weekend_auto_publish_enabled")
+        ):
+            if not automatic:
+                self.api.send_message(
+                    self.admin_id,
+                    "Weekend publishing is waiting for template approval. "
+                    "No channel post was sent.",
+                )
+            return
         local_now = now_utc.astimezone(self.timezone)
         if post["schedule_date"] != local_now.date().isoformat():
             if not automatic:
@@ -1059,8 +1176,15 @@ class ChannelPostManager:
             is_promo=bool(post["is_promo"]),
             bot_username=post.get("bot_username"),
         )
+        if not rejection:
+            rejection = validate_weekend_post_format(str(post["content"]))
         if rejection:
             self._fail_before_send(post, rejection, admin_id)
+            return
+        try:
+            channel_text = render_weekend_post_html(str(post["content"]))
+        except ValueError as error:
+            self._fail_before_send(post, str(error), admin_id)
             return
         try:
             bot_info = self.api.get_me()
@@ -1073,24 +1197,55 @@ class ChannelPostManager:
             ).casefold():
                 raise _PreflightFailure("bot_username_changed")
             chat = self.api.get_chat(int(self.destination_chat_id))
+            title = re.sub(r"[\r\n]+", " ", str(chat.get("title") or "")).strip()
+            title_folded = title.casefold()
+            unsafe_title = (
+                "pro signals" in title_folded
+                or bool(re.search(r"\b(?:test|testing|sandbox)\b", title_folded))
+            )
             if (
                 int(chat.get("id", 0)) != int(self.destination_chat_id)
                 or chat.get("type") != "channel"
-                or "market analysis" not in str(chat.get("title", "")).casefold()
+                or unsafe_title
             ):
-                raise _PreflightFailure("destination_not_verified")
+                detail = (
+                    f"Telegram returned “{title[:120]}” "
+                    f"(type {str(chat.get('type') or 'unknown')}, "
+                    f"ID {chat.get('id', 'unknown')}); the configured destination "
+                    f"ID is {self.destination_chat_id}."
+                )
+                raise _PreflightFailure("destination_not_verified", detail)
             member = self.api.get_chat_member(int(self.destination_chat_id), bot_id)
             status = member.get("status")
             can_post = status == "creator" or (
                 status == "administrator" and member.get("can_post_messages") is True
             )
             if not can_post:
-                raise _PreflightFailure("posting_permission_missing")
+                raise _PreflightFailure(
+                    "posting_permission_missing",
+                    f"Telegram returned “{title[:120]}” (ID "
+                    f"{chat.get('id', 'unknown')}); the bot lacks confirmed "
+                    "channel posting permission.",
+                )
         except _PreflightFailure as error:
-            self._fail_before_send(post, error.category, admin_id)
+            self._fail_before_send(
+                post,
+                error.category,
+                admin_id,
+                verification_detail=error.safe_detail,
+            )
             return
         except (TelegramAPIError, TypeError, ValueError, AttributeError):
-            self._fail_before_send(post, "destination_verification_unavailable", admin_id)
+            self._fail_before_send(
+                post,
+                "destination_verification_unavailable",
+                admin_id,
+                verification_detail=(
+                    "Telegram could not confirm the configured channel or bot "
+                    f"permissions for destination ID {self.destination_chat_id}. "
+                    "Check the bot's channel access and try verification again."
+                ),
+            )
             return
 
         attempts = self.store.reserve_channel_post_publish(int(post["id"]))
@@ -1118,8 +1273,9 @@ class ChannelPostManager:
         try:
             result = self.api.send_message_with_result(
                 int(self.destination_chat_id),
-                post["content"],
+                channel_text,
                 markup,
+                parse_mode="HTML",
             )
             message_id = result.get("message_id")
             if not isinstance(message_id, int):
@@ -1214,7 +1370,13 @@ class ChannelPostManager:
             self._preflight_keyboard(post),
         )
 
-    def _notify_failure(self, post: dict[str, Any], category: str) -> None:
+    def _notify_failure(
+        self,
+        post: dict[str, Any],
+        category: str,
+        *,
+        verification_detail: str | None = None,
+    ) -> None:
         if self.admin_id is None:
             return
         reason = describe_channel_post_rejection(
@@ -1223,6 +1385,8 @@ class ChannelPostManager:
             bot_username=post.get("bot_username"),
         )
         message = f"{post['schedule_date']}: {reason}"
+        if verification_detail:
+            message += f"\n\nTelegram destination response: {verification_detail}"
         self._notify_admin(
             message,
             {
@@ -1248,7 +1412,12 @@ class ChannelPostManager:
             logger.warning("Administrator notification delivery failed.")
 
     def _fail_before_send(
-        self, post: dict[str, Any], category: str, admin_id: int | None
+        self,
+        post: dict[str, Any],
+        category: str,
+        admin_id: int | None,
+        *,
+        verification_detail: str | None = None,
     ) -> None:
         self.store.set_channel_post_status(
             int(post["id"]),
@@ -1261,7 +1430,11 @@ class ChannelPostManager:
         logger.warning(
             "Channel post withheld post_id=%s category=%s.", post["id"], category
         )
-        self._notify_failure(post, category)
+        self._notify_failure(
+            post,
+            category,
+            verification_detail=verification_detail,
+        )
 
     def _confirm_unknown_posted(
         self, chat_id: int, post: dict[str, Any], admin_id: int
@@ -1438,6 +1611,7 @@ class ChannelPostManager:
 
 
 class _PreflightFailure(Exception):
-    def __init__(self, category: str) -> None:
+    def __init__(self, category: str, safe_detail: str | None = None) -> None:
         super().__init__(category)
         self.category = category
+        self.safe_detail = safe_detail
