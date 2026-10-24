@@ -278,6 +278,32 @@ class ChannelPostingTests(unittest.TestCase):
         assert self.store.get_channel_post(legacy["id"])["status"] == "published"
         assert len(self.api.channel_messages) == 1
 
+    def test_restart_does_not_cancel_an_admin_edit_already_in_progress(self) -> None:
+        legacy, _ = self.store.create_scheduled_channel_post(
+            schedule_date="2026-10-24",
+            schedule_time="10:00",
+            requested_category="education",
+            category="education",
+            content="Draft being edited.\n\nNO CONFIRMATION, NO ENTRY.",
+            destination_chat_id=CHANNEL_ID,
+            is_promo=False,
+            bot_username=None,
+            next_category_index=1,
+            next_promo_feature_index=0,
+            last_promo_date=None,
+        )
+        self.assertTrue(
+            self.store.start_channel_post_edit(legacy["id"], admin_id=ADMIN_ID)
+        )
+
+        self.manager.dispatch_due(local_time(24, 14))
+
+        saved = self.store.get_channel_post(legacy["id"])
+        self.assertEqual(saved["status"], "awaiting_edit")
+        self.assertEqual(saved["edit_admin_id"], ADMIN_ID)
+        self.assertFalse(self.writer.calls)
+        self.assertFalse(self.api.channel_messages)
+
     def test_admin_feedback_revises_weekend_draft_with_saved_context(self) -> None:
         self.manager.dispatch_due(local_time(23, 18))
         post = self.store.get_scheduled_channel_post("2026-10-24")

@@ -548,7 +548,8 @@ class ChannelPostManager:
             post
             and target_date.weekday() in {5, 6}
             and post.get("generation_source") == "local"
-            and post["status"] not in {"published", "rejected", "skipped"}
+            and post["status"]
+            not in {"published", "rejected", "skipped", "awaiting_edit"}
         ):
             post = self._hold_legacy_weekend_draft(post)
         if (
