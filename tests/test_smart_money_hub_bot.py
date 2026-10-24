@@ -2,6 +2,7 @@ import sqlite3
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock, patch
@@ -13,6 +14,7 @@ from smart_money_hub_bot.bot import (
     POLLING_HEARTBEAT_INTERVAL_SECONDS,
     SmartMoneyHubBot,
 )
+from smart_money_hub_bot.admin_dashboard import CHANNEL_PROMO_TEXT, CHANNEL_PROMO_URL
 from smart_money_hub_bot.coach import RuleBasedCoachService
 from smart_money_hub_bot.grading import RuleBasedWrittenAnswerEvaluator
 from smart_money_hub_bot.questions import QUESTIONS, validate_questions
@@ -40,10 +42,13 @@ class FakeTelegramAPI:
         chat_id: int,
         text: str,
         reply_markup: dict[str, Any] | None = None,
+        *,
+        parse_mode: str | None = None,
     ) -> None:
-        self.messages.append(
-            {"chat_id": chat_id, "text": text, "reply_markup": reply_markup}
-        )
+        message = {"chat_id": chat_id, "text": text, "reply_markup": reply_markup}
+        if parse_mode is not None:
+            message["parse_mode"] = parse_mode
+        self.messages.append(message)
 
     def send_chat_action(self, chat_id: int, action: str = "typing") -> None:
         self.chat_actions.append({"chat_id": chat_id, "action": action})
@@ -63,6 +68,25 @@ class FakeTelegramAPI:
                 "show_alert": show_alert,
             }
         )
+
+
+class StrictTelegramHtmlParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.open_tags: list[str] = []
+        self.errors: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag not in {"b", "code"}:
+            self.errors.append(f"unsupported tag: {tag}")
+        else:
+            self.open_tags.append(tag)
+
+    def handle_endtag(self, tag: str) -> None:
+        if not self.open_tags or self.open_tags[-1] != tag:
+            self.errors.append(f"unbalanced tag: {tag}")
+        else:
+            self.open_tags.pop()
 
 
 class AssessmentTests(unittest.TestCase):
@@ -1143,9 +1167,35 @@ class BotFlowTests(unittest.TestCase):
             "admin:channel_promo", sender_id=self.user_id, chat_id=self.chat_id
         )
         preview = self.api.messages[-1]
-        self.assertIn(f"Destination channel ID: {channel_id}", preview["text"])
-        self.assertIn("Learn key SMC concepts through short lessons", preview["text"])
-        self.assertIn("does not provide trade signals", preview["text"])
+        self.assertIn(
+            f"Destination channel ID: <code>{channel_id}</code>",
+            preview["text"],
+        )
+        self.assertIn("CHANNEL PROMO PREVIEW — NOT PUBLISHED", preview["text"])
+        self.assertIn("SMC Lessons", preview["text"])
+        self.assertIn("Assessments &amp; Challenges", preview["text"])
+        self.assertIn("choose a weekly focus in check-ins", preview["text"])
+        self.assertIn("Monday and Thursday Zoom class reminders", preview["text"])
+        self.assertIn("NO CONFIRMATION, NO ENTRY.", preview["text"])
+        self.assertNotIn("Open Smart Money Hub", preview["text"])
+        self.assertEqual(preview["parse_mode"], "HTML")
+        self.assertEqual(preview["text"].count("<b>"), preview["text"].count("</b>"))
+        self.assertEqual(preview["text"].count("<code>"), preview["text"].count("</code>"))
+        parser = StrictTelegramHtmlParser()
+        parser.feed(preview["text"])
+        parser.close()
+        self.assertEqual(parser.errors, [])
+        self.assertEqual(parser.open_tags, [])
+        self.assertLessEqual(len(preview["text"]), 4096)
+        self.assertIn("🚀", CHANNEL_PROMO_TEXT)
+        self.assertIn("SMART MONEY HUB", CHANNEL_PROMO_TEXT)
+        self.assertIn("&amp;", CHANNEL_PROMO_TEXT)
+        self.assertNotIn("& Challenges", CHANNEL_PROMO_TEXT)
+        self.assertIn("send /start if prompted", CHANNEL_PROMO_TEXT)
+        self.assertEqual(
+            CHANNEL_PROMO_URL,
+            "https://t.me/SmartMoneyHubSignalsBot",
+        )
         self.assertIn("Nothing has been posted yet", preview["text"])
         self.assertFalse(
             any(message["chat_id"] == channel_id for message in self.api.messages)
@@ -1156,11 +1206,21 @@ class BotFlowTests(unittest.TestCase):
             for row in preview["reply_markup"]["inline_keyboard"]
             for button in row
         ]
-        self.assertTrue(
-            any(button["callback_data"] == "admin:channel_promo:confirm" for button in buttons)
+        coach_button = next(button for button in buttons if button["text"] == "Coach")
+        self.assertEqual(
+            coach_button["url"], "https://t.me/SmartMoneyHubSignalsBot"
         )
         self.assertTrue(
-            any(button["callback_data"] == "admin:channel_promo:cancel" for button in buttons)
+            any(
+                button.get("callback_data") == "admin:channel_promo:confirm"
+                for button in buttons
+            )
+        )
+        self.assertTrue(
+            any(
+                button.get("callback_data") == "admin:channel_promo:cancel"
+                for button in buttons
+            )
         )
 
         self._callback(
@@ -1176,10 +1236,12 @@ class BotFlowTests(unittest.TestCase):
         self.assertEqual(
             posted[0]["reply_markup"]["inline_keyboard"][0][0],
             {
-                "text": "Open Smart Money Hub",
+                "text": "Coach",
                 "url": "https://t.me/SmartMoneyHubSignalsBot",
             },
         )
+        self.assertEqual(posted[0]["parse_mode"], "HTML")
+        self.assertNotIn("Open Smart Money Hub", posted[0]["text"])
         self.assertIn("posted to the channel", self.api.messages[-1]["text"])
 
         self._callback(

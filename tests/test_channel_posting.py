@@ -12,6 +12,7 @@ from smart_money_hub_bot.channel_content import (
     compose_routine_post,
     describe_channel_post_rejection,
     is_promotional_content,
+    normalize_weekend_brand_header,
     render_weekend_post_html,
     validate_channel_post,
     validate_weekend_post_format,
@@ -368,6 +369,93 @@ class ChannelPostingTests(unittest.TestCase):
             ),
             "weekend_headline_not_uppercase",
         )
+
+    def test_unsupported_emoji_brand_header_is_corrected_before_full_validation(
+        self,
+    ) -> None:
+        generated = (
+            "🎣 SMART MONEY HUB | LIQUIDITY\n"
+            "━━━━━━━━━━━━━━\n\n"
+            "LIQUIDITY SWEEPS IN CONTEXT\n\n"
+            "A liquidity sweep occurs when price moves beyond a recognizable high "
+            "or low where liquidity may be resting. It does not identify who placed "
+            "orders or guarantee a reversal.\n\n"
+            "⚠️ REMEMBER\n"
+            "NO CONFIRMATION, NO ENTRY."
+        )
+
+        corrected = normalize_weekend_brand_header(generated, "education")
+
+        self.assertTrue(corrected.startswith("💧 SMART MONEY HUB | LIQUIDITY\n"))
+        self.assertIsNone(validate_channel_post(corrected, is_promo=False))
+        self.assertIsNone(validate_weekend_post_format(corrected))
+        self.assertIn("<b>💧 SMART MONEY HUB | LIQUIDITY</b>",
+                      render_weekend_post_html(corrected))
+
+    def test_non_emoji_prefix_is_not_silently_rewritten(self) -> None:
+        generated = (
+            "LATEST NEWS SMART MONEY HUB | LIQUIDITY\n"
+            "━━━━━━━━━━━━━━\n\n"
+            "A LIQUIDITY LESSON\n\n"
+            "NO CONFIRMATION, NO ENTRY."
+        )
+        self.assertEqual(
+            normalize_weekend_brand_header(generated, "education"),
+            generated,
+        )
+        self.assertEqual(
+            validate_weekend_post_format(generated),
+            "weekend_brand_header_missing",
+        )
+
+    def test_generated_header_is_normalized_before_draft_is_saved(self) -> None:
+        settings = self.store.get_channel_posting_settings()
+        sequence = int(settings["next_category_index"])
+        post, created = self.store.create_scheduled_channel_post(
+            schedule_date="2026-10-24",
+            schedule_time="10:00",
+            requested_category="education",
+            category="education",
+            content="",
+            destination_chat_id=CHANNEL_ID,
+            is_promo=False,
+            bot_username=None,
+            next_category_index=sequence,
+            next_promo_feature_index=int(settings["next_promo_feature_index"]),
+            last_promo_date=settings.get("last_promo_date"),
+            status="failed",
+            failure_category="gemini_generation_pending",
+            generation_source="gemini_pending",
+        )
+        self.assertTrue(created)
+        self.writer.drafts.append(
+            ChannelDraft(
+                category="education",
+                content=(
+                    "🎣 SMART MONEY HUB | LIQUIDITY\n"
+                    "━━━━━━━━━━━━━━\n\n"
+                    "LIQUIDITY SWEEPS IN CONTEXT\n\n"
+                    "A liquidity sweep occurs when price moves beyond a recognizable "
+                    "high or low where liquidity may be resting. It does not identify "
+                    "who placed orders or guarantee a reversal.\n\n"
+                    "⚠️ REMEMBER\n"
+                    "NO CONFIRMATION, NO ENTRY."
+                ),
+            )
+        )
+
+        saved = self.manager._generate_weekend_post(
+            post,
+            preferred_category="education",
+            sequence=sequence,
+            settings=settings,
+        )
+
+        self.assertEqual(saved["status"], "draft")
+        self.assertTrue(saved["content"].startswith("💧 SMART MONEY HUB | LIQUIDITY"))
+        self.assertIsNone(validate_channel_post(saved["content"], is_promo=False))
+        self.assertIsNone(validate_weekend_post_format(saved["content"]))
+        self.assertEqual(self.api.channel_attempts, [])
 
     def test_generated_weekend_validation_failure_keeps_editable_draft_and_retries_same_row(
         self,
@@ -1128,6 +1216,111 @@ class ChannelPostingTests(unittest.TestCase):
             is_promo=True,
             bot_username="SmartMoneyHubSignalsBot",
         ) == "promo_link_mismatch"
+
+    def test_unverified_institutional_intent_claim_is_rejected(self) -> None:
+        claim = (
+            "Institutional participants frequently use liquidity zones to absorb "
+            "orders before shifting direction."
+        )
+        post = f"{claim}\n\nNO CONFIRMATION, NO ENTRY."
+
+        self.assertEqual(
+            validate_channel_post(post, is_promo=False),
+            "unsupported_institutional_intent",
+        )
+        self.assertIn(
+            "institutions or other market participants",
+            describe_channel_post_rejection(
+                post, "unsupported_institutional_intent"
+            ).casefold(),
+        )
+        self.assertIsNone(
+            validate_channel_post(
+                post,
+                is_promo=False,
+                verified_information=[claim],
+            )
+        )
+
+    def test_unverified_current_market_claim_is_rejected(self) -> None:
+        post = "Gold is bullish today.\n\nNO CONFIRMATION, NO ENTRY."
+
+        self.assertEqual(
+            validate_channel_post(post, is_promo=False),
+            "unverified_market_claim",
+        )
+        self.assertIsNone(
+            validate_channel_post(
+                post,
+                is_promo=False,
+                verified_information=["Gold is bullish today."],
+            )
+        )
+
+    def test_unsourced_liquidity_and_sweep_frequency_claims_are_rejected(self) -> None:
+        overconfident = (
+            "Liquidity often rests beyond swing highs where orders naturally "
+            "accumulate. A sweep frequently triggers a reaction.\n\n"
+            "NO CONFIRMATION, NO ENTRY."
+        )
+        cautious = (
+            "A liquidity sweep occurs when price moves beyond a recognizable high "
+            "or low where liquidity may be resting.\n\n"
+            "NO CONFIRMATION, NO ENTRY."
+        )
+        self.assertEqual(
+            validate_channel_post(overconfident, is_promo=False),
+            "unsupported_liquidity_assertion",
+        )
+        self.assertIsNone(validate_channel_post(cautious, is_promo=False))
+
+    def test_unsupported_liquidity_claim_is_saved_as_held_draft(self) -> None:
+        settings = self.store.get_channel_posting_settings()
+        sequence = int(settings["next_category_index"])
+        post, created = self.store.create_scheduled_channel_post(
+            schedule_date="2026-10-24",
+            schedule_time="10:00",
+            requested_category="education",
+            category="education",
+            content="",
+            destination_chat_id=CHANNEL_ID,
+            is_promo=False,
+            bot_username=None,
+            next_category_index=sequence,
+            next_promo_feature_index=int(settings["next_promo_feature_index"]),
+            last_promo_date=settings.get("last_promo_date"),
+            status="failed",
+            failure_category="gemini_generation_pending",
+            generation_source="gemini_pending",
+        )
+        self.assertTrue(created)
+        rejected = (
+            "📚 SMART MONEY HUB\n"
+            "━━━━━━━━━━━━━━\n\n"
+            "UNDERSTANDING LIQUIDITY SWEEPS\n\n"
+            "Liquidity often rests beyond swing highs where orders naturally "
+            "accumulate. A sweep frequently triggers a reaction.\n\n"
+            "NO CONFIRMATION, NO ENTRY."
+        )
+        self.writer.drafts.append(ChannelDraft("education", rejected))
+
+        saved = self.manager._generate_weekend_post(
+            post,
+            preferred_category="education",
+            sequence=sequence,
+            settings=settings,
+        )
+
+        self.assertEqual(saved["status"], "failed")
+        self.assertEqual(
+            saved["failure_category"],
+            "gemini_content_rejected_unsupported_liquidity_assertion",
+        )
+        self.assertEqual(
+            saved["content"],
+            normalize_weekend_brand_header(rejected, "education"),
+        )
+        self.assertEqual(self.api.channel_attempts, [])
 
     def test_unverified_promo_error_names_claim_and_safe_correction(self) -> None:
         claim = "The Smart Money Hub bot predicts exact Gold entries for you."

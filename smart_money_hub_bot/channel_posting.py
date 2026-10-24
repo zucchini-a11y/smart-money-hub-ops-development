@@ -49,6 +49,7 @@ _AI_RETRYABLE_CONTENT_FAILURES = {
     "prohibited_signal_or_promise",
     "unverified_market_claim",
     "unsupported_institutional_intent",
+    "unsupported_liquidity_assertion",
     "unexpected_bot_promotion",
     "weekend_brand_header_missing",
     "weekend_headline_missing",

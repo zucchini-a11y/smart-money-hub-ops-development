@@ -58,6 +58,20 @@ Weekday posts continue to use the existing reviewed local content. Before any po
 
 Before sending a post, the bot verifies that the configured destination is a channel whose title identifies it as Market Analysis and that this bot has posting permission. It does not post to PRO Signals. Posts, previews, admin actions, Telegram message IDs, and publication outcomes are recorded in SQLite. If a send's delivery is uncertain, the bot asks the administrator to check the channel before authorizing a retry, preventing an automatic duplicate.
 
+### USD and gold news intelligence (not activated)
+
+The isolated `news_intelligence.py` module adds source parsing, SQLite history, deduplication and revision tracking, GDELT lead verification, timezone-aware event formatting, source-bounded Gemini analysis, and private-admin alert drafts. It is **not wired into the bot polling loop or channel publisher**. No news alert, calendar reminder, Gemini macro analysis, or public weekly-report update is sent automatically. This separation is intentional: test and approve the alert/report flow before any activation.
+
+Current source plan:
+
+- Federal Reserve official press-release RSS: [Fed feed directory](https://www.federalreserve.gov/feeds/feeds.htm), feed `https://www.federalreserve.gov/feeds/press_all.xml`. Public feed; no API key is needed.
+- U.S. Treasury official daily yield curve: [Treasury XML API](https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml?data=daily_treasury_yield_curve&field_tdr_date_value=2026). Public daily observations; values are not real-time quotes or forecasts.
+- BLS: [BLS API overview](https://www.bls.gov/developers/). The bot has a BLS v2 adapter, but access and current quota must be verified before activation; a recent availability check returned HTTP 503. A registered BLS API key may be supplied as `BLS_API_KEY` through Replit Secrets if needed. Do not infer missing forecasts or release times from observations.
+- BEA: [BEA API](https://apps.bea.gov/api/) and [official user guide](https://apps.bea.gov/api/_pdf/bea_web_service_api_user_guide.pdf). Requires a registered key stored as `BEA_API_KEY` in Replit Secrets. The guide documents limits of 100 requests/minute, 100 MB/minute, and 30 errors/minute; limits can change.
+- Geopolitical discovery: [GDELT DOC API documentation](https://blog.gdeltproject.org/gdelt-doc-2-0-api-debuts/). GDELT is used only to discover leads. A lead is held unless its headline and timing match an allowlisted official statement/release; GDELT alone is never evidence for an alert. The API returned HTTP 429 during a prior check and publishes no dependable quota/SLA used by this project.
+
+The adapters do not invent a complete economic calendar: schedule times, forecasts, previous values, and actual values remain unavailable unless a source supplies them. Event timestamps are converted to `Africa/Lagos` using timezone-aware conversion, including U.S. daylight-saving changes. Recommended initial refresh cadence, subject to source availability and API terms, is every 15 minutes for RSS/GDELT discovery, once daily for Treasury yields, and only around verified releases for BLS/BEA. The scheduler, credentials, admin delivery, and weekly-report integration still require setup and end-to-end tests before activation. No new source key is requested or read by the bot unless the corresponding secret is configured.
+
 ## Reminder schedule
 
 The default weekly check-in is Sunday at **09:00 Africa/Lagos**. Zoom-class reminders are sent at **19:00** and **20:00** on Mondays and Thursdays. Optional environment variables:
@@ -82,6 +96,7 @@ Editable content is in:
 - `coach.py` — local SMC explanations, the provider interface, and deterministic fallback.
 - `gemini_coach.py` — direct Gemini API client pinned to the free-tier model, with bounded history and sanitized error handling.
 - `channel_gemini.py` — primary-model-only weekend post writer; failures never fall back to local or alternate-model content.
+- `news_intelligence.py` — isolated, currently inactive news-source adapters, verification, persistence, calendar formatting, and verified-fact Gemini analysis.
 - `message_router.py` — routes simple conversation intents, approved knowledge matches, and fallback Coach replies.
 - `question_detection.py`, `knowledge_base.py`, and the `knowledge_*.py` modules — question triage, lexical retrieval, research/draft validation, approval, versions, and member feedback.
 

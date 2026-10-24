@@ -108,6 +108,9 @@ _UNVERIFIED_MARKET_CLAIMS = re.compile(
     r"(?:xauusd|gold|the market)\b.{0,80}\b(?:today|currently|right now|"
     r"this session|this week)\b.{0,60}\b(?:bullish|bearish|rising|falling|"
     r"up|down|sweeping|breaking|trending)\b|"
+    r"\b(?:xauusd|gold|the market)\b.{0,80}\b(?:bullish|bearish|rising|"
+    r"falling|up|down|sweeping|breaking|trending)\b.{0,40}\b(?:today|"
+    r"currently|right now|this session|this week)\b|"
     r"\b(?:today|currently|right now|this session|this week)\b.{0,80}"
     r"\b(?:xauusd|gold|the market)\b.{0,60}\b(?:bullish|bearish|rising|"
     r"falling|up|down|sweeping|breaking|trending)\b|"
@@ -129,6 +132,15 @@ _UNSUPPORTED_INSTITUTIONAL_INTENT = re.compile(
     r"|\b(?:absorb|absorbs|target|targets|drive|drives|manipulate|manipulates|"
     r"push|pushes|move|moves|sweep|sweeps|accumulate|accumulates)\b"
     r".{0,120}\b(?:institutions?|banks?|market\s+makers?|liquidity\s+providers?)\b",
+    re.IGNORECASE,
+)
+_UNSUPPORTED_LIQUIDITY_ASSERTION = re.compile(
+    r"\b(?:liquidity|resting\s+orders?|orders?)\b.{0,80}"
+    r"\b(?:often|frequently|typically|naturally|commonly|regularly)\b.{0,50}"
+    r"\b(?:rests?|accumulates?|gathers?|collects?|forms?)\b|"
+    r"\b(?:liquidity\s+sweep|sweep)\b.{0,100}"
+    r"\b(?:often|frequently|typically|usually)\b.{0,40}"
+    r"\b(?:triggers?|causes?|leads?\s+to|results?\s+in)\b",
     re.IGNORECASE,
 )
 _TELEGRAM_LINK = re.compile(r"https?://t\.me/\S+", re.IGNORECASE)
@@ -452,6 +464,20 @@ def describe_channel_post_rejection(
             "verified. Replace it with evergreen education or provide verified "
             "source information before saving."
         )
+    if category == "unsupported_institutional_intent":
+        return (
+            "This post states or implies what institutions or other market "
+            "participants intend to do without supporting evidence. Rephrase it as "
+            "a general SMC interpretation, or provide verified information before "
+            "saving."
+        )
+    if category == "unsupported_liquidity_assertion":
+        return (
+            "This post presents a typical liquidity/order-flow behavior or sweep "
+            "outcome as fact without supporting evidence. Rephrase it cautiously "
+            "(for example, liquidity may be resting near a recognizable high or "
+            "low), or provide verified information before saving."
+        )
     if category == "unexpected_bot_promotion":
         return (
             "This post mentions a Telegram bot but is not marked as a promotion. "
@@ -652,6 +678,11 @@ def validate_channel_post(
         institutional_claim.group(0), verified_information
     ):
         return "unsupported_institutional_intent"
+    liquidity_claim = _UNSUPPORTED_LIQUIDITY_ASSERTION.search(text)
+    if liquidity_claim and not _claim_has_verified_support(
+        liquidity_claim.group(0), verified_information
+    ):
+        return "unsupported_liquidity_assertion"
     if is_promo:
         if not bot_username:
             return "bot_username_unverified"
