@@ -541,6 +541,32 @@ def describe_channel_post_rejection(
             "The bot is not confirmed as an administrator with permission to post "
             "in the Market Analysis channel. No post was sent."
         )
+    if category == "scheduled_review_delivery_failed":
+        return (
+            "The final private review message could not be delivered. The post is "
+            "held and will not publish automatically; check the bot's private chat "
+            "access before reviewing it again."
+        )
+    if category == "scheduled_review_delivery_uncertain":
+        return (
+            "The scheduler could not confirm that the final review reached you. "
+            "The post is held and will not publish automatically."
+        )
+    if category == "scheduled_review_missed":
+        return (
+            "The scheduled 5-minute review window was missed. The post is held "
+            "instead of being published late."
+        )
+    if category == "scheduled_review_edit_incomplete":
+        return (
+            "Your edit was still in progress at publication time. The post is "
+            "held until it is reviewed again; no version was published."
+        )
+    if category == "scheduled_review_edit_late":
+        return (
+            "The edited version was completed after its scheduled time. The post "
+            "is held instead of being published late."
+        )
     if category == "telegram_rate_limit":
         return (
             "Telegram temporarily limited channel posting. The post was not "

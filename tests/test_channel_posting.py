@@ -100,6 +100,7 @@ class FakeTelegramAPI:
         self.channel_messages: list[dict] = []
         self.channel_attempts: list[dict] = []
         self.send_failures: list[TelegramAPIError] = []
+        self.message_failures: list[TelegramAPIError] = []
         self.get_chat_error: Exception | None = None
         self.get_member_error: Exception | None = None
         self.chat: dict = {
@@ -135,6 +136,8 @@ class FakeTelegramAPI:
     def send_message(
         self, chat_id: int, text: str, reply_markup=None, *, parse_mode=None
     ) -> None:
+        if self.message_failures:
+            raise self.message_failures.pop(0)
         self.messages.append(
             {
                 "chat_id": chat_id,
@@ -201,6 +204,17 @@ class FakeChannelWriter:
 
 def local_time(day: int, hour: int, minute: int = 0) -> datetime:
     return datetime(2026, 10, day, hour, minute, tzinfo=TZ)
+
+
+def final_review_time(day: int) -> datetime:
+    target_date = datetime(2026, 10, day, 12, tzinfo=TZ).date()
+    publish_hour = 18 if target_date.weekday() == 6 else 10
+    scheduled = datetime.combine(
+        target_date,
+        datetime.min.time().replace(hour=publish_hour),
+        tzinfo=TZ,
+    )
+    return scheduled - timedelta(minutes=5)
 
 
 class ChannelPostingTests(unittest.TestCase):
@@ -536,6 +550,15 @@ class ChannelPostingTests(unittest.TestCase):
         )
         self.assertTrue(created)
 
+        self.manager.dispatch_due(final_review_time(24))
+        self.manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:channel_posts:review_approve:{post['id']}",
+            local_time(24, 9, 56),
+        )
+        post = self.store.get_channel_post(post["id"])
+        assert post is not None
         self.manager._publish(
             post,
             self.manager._as_utc(local_time(24, 10)),
@@ -584,6 +607,26 @@ class ChannelPostingTests(unittest.TestCase):
         assert api.messages[-1]["chat_id"] == ADMIN_ID
         assert api.channel_messages == []
 
+        manager.dispatch_due(final_review_time(26))
+        review = api.messages[-1]
+        self.assertIn("FINAL SCHEDULED POST REVIEW", review["text"])
+        self.assertIn(f"ID {CHANNEL_ID}", review["text"])
+        self.assertIn("Monday, 26 October 2026 at 10:00 WAT", review["text"])
+        self.assertIn(post["content"], review["text"])
+        self.assertEqual(
+            [
+                button["text"]
+                for button in review["reply_markup"]["inline_keyboard"][0]
+            ],
+            ["✅ Approve", "✏️ Edit", "❌ Cancel"],
+        )
+        manager.dispatch_due(final_review_time(26))
+        manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:channel_posts:review_approve:{post['id']}",
+            local_time(26, 9, 56),
+        )
         manager.dispatch_due(local_time(26, 10))
         manager.dispatch_due(local_time(26, 10, 1))
 
@@ -599,6 +642,123 @@ class ChannelPostingTests(unittest.TestCase):
             "<b>📚 SMART MONEY HUB</b>"
         )
 
+    def test_review_approval_is_persisted_until_scheduled_publication(self) -> None:
+        manager, store, api = self.manager, self.store, self.api
+        manager.dispatch_due(final_review_time(26))
+        post = store.get_scheduled_channel_post("2026-10-26")
+        assert post is not None
+        self.assertEqual(post["review_status"], "pending")
+
+        manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:channel_posts:review_approve:{post['id']}",
+            local_time(26, 9, 56),
+        )
+        self.assertEqual(store.get_channel_post(post["id"])["review_status"], "approved")
+        self.assertEqual(api.channel_messages, [])
+        manager.dispatch_due(local_time(26, 10))
+
+        saved = store.get_channel_post(post["id"])
+        assert saved is not None
+        self.assertEqual(saved["status"], "published")
+        self.assertEqual(saved["publish_attempts"], 1)
+        self.assertEqual(len(api.channel_messages), 1)
+
+    def test_review_cancel_prevents_publication(self) -> None:
+        manager, store, api = self.manager, self.store, self.api
+        manager.dispatch_due(final_review_time(26))
+        post = store.get_scheduled_channel_post("2026-10-26")
+        assert post is not None
+        manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:channel_posts:review_cancel:{post['id']}",
+            local_time(26, 9, 56),
+        )
+        manager.dispatch_due(local_time(26, 10))
+
+        saved = store.get_channel_post(post["id"])
+        assert saved is not None
+        self.assertEqual(saved["review_status"], "cancelled")
+        self.assertEqual(saved["status"], "skipped")
+        self.assertEqual(api.channel_messages, [])
+
+    def test_review_edit_is_validated_and_published_at_schedule(self) -> None:
+        manager, store, api = self.manager, self.store, self.api
+        manager.dispatch_due(final_review_time(26))
+        post = store.get_scheduled_channel_post("2026-10-26")
+        assert post is not None
+        edited = TELEGRAM_LAYOUT_SAMPLES[0]
+        manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:channel_posts:edit:{post['id']}",
+            local_time(26, 9, 56),
+        )
+        self.assertTrue(manager.handle_edit_message(ADMIN_ID, ADMIN_ID, edited, True))
+        saved = store.get_channel_post(post["id"])
+        assert saved is not None
+        self.assertEqual(saved["review_status"], "edited")
+        self.assertEqual(saved["content"], edited)
+        manager.dispatch_due(local_time(26, 10))
+
+        self.assertEqual(store.get_channel_post(post["id"])["status"], "published")
+        self.assertIn("TODAY’S TRADING LESSON", api.channel_messages[0]["text"])
+
+    def test_review_timeout_recovers_after_restart_without_duplicate_send(self) -> None:
+        manager, store, api = self.manager, self.store, self.api
+        manager.dispatch_due(final_review_time(26))
+        post = store.get_scheduled_channel_post("2026-10-26")
+        assert post is not None
+        reopened = Repository(store.database_path)
+        restarted = ChannelPostManager(api, reopened, ADMIN_ID, CHANNEL_ID)
+        restarted.dispatch_due(local_time(26, 10))
+        restarted.dispatch_due(local_time(26, 10, 1))
+
+        saved = reopened.get_channel_post(post["id"])
+        assert saved is not None
+        self.assertEqual(saved["review_status"], "timed_out")
+        self.assertEqual(saved["status"], "published")
+        self.assertEqual(saved["publish_attempts"], 1)
+        self.assertEqual(len(api.channel_messages), 1)
+
+    def test_missing_review_window_holds_post_instead_of_publishing_late(self) -> None:
+        manager, store, api = self.manager, self.store, self.api
+        manager.dispatch_due(local_time(23, 18))
+        manager.dispatch_due(local_time(24, 10))
+        post = store.get_scheduled_channel_post("2026-10-24")
+        assert post is not None
+        self.assertEqual(post["review_status"], "missed")
+        self.assertEqual(post["status"], "draft")
+        manager.dispatch_due(local_time(24, 10, 1))
+        self.assertEqual(api.channel_messages, [])
+
+    def test_failed_review_delivery_holds_post_and_notifies_admin(self) -> None:
+        manager, store, api = self.manager, self.store, self.api
+        manager.dispatch_due(local_time(26, 9))
+        post = store.get_scheduled_channel_post("2026-10-26")
+        assert post is not None
+        api.message_failures.append(
+            TelegramAPIError("sanitized review delivery failure", error_code=500)
+        )
+
+        manager.dispatch_due(final_review_time(26))
+        manager.dispatch_due(local_time(26, 10))
+
+        saved = store.get_channel_post(post["id"])
+        assert saved is not None
+        self.assertEqual(saved["review_status"], "delivery_failed")
+        self.assertEqual(saved["status"], "draft")
+        self.assertEqual(api.channel_messages, [])
+        self.assertTrue(
+            any(
+                "final private review message could not be delivered"
+                in message["text"].casefold()
+                for message in api.messages
+            )
+        )
+
     def test_weekend_post_uses_safe_html_and_accepts_confirmed_generic_channel_title(
         self,
     ) -> None:
@@ -608,6 +768,7 @@ class ChannelPostingTests(unittest.TestCase):
             "title": "Smart Money Hub",
         }
         self.manager.dispatch_due(local_time(23, 18))
+        self.manager.dispatch_due(final_review_time(24))
         self.manager.dispatch_due(local_time(24, 10))
 
         post = self.store.get_scheduled_channel_post("2026-10-24")
@@ -659,6 +820,7 @@ class ChannelPostingTests(unittest.TestCase):
         ) is None
         assert api.channel_messages == []
 
+        manager.dispatch_due(final_review_time(24))
         manager.dispatch_due(local_time(24, 10))
         published = api.channel_messages[-1]
         assert published["chat_id"] == CHANNEL_ID
@@ -677,6 +839,7 @@ class ChannelPostingTests(unittest.TestCase):
         assert not api.channel_messages
         assert "2026-10-25 at 18:00 WAT" in api.messages[-1]["text"]
 
+        manager.dispatch_due(final_review_time(25))
         manager.dispatch_due(local_time(25, 18))
         published = store.get_scheduled_channel_post("2026-10-25")
         assert published is not None
@@ -768,6 +931,7 @@ class ChannelPostingTests(unittest.TestCase):
             )
         )
 
+        self.manager.dispatch_due(final_review_time(24))
         self.manager.dispatch_due(local_time(24, 10))
         assert self.store.get_channel_post(legacy["id"])["status"] == "published"
         assert len(self.api.channel_messages) == 1
@@ -842,11 +1006,18 @@ class ChannelPostingTests(unittest.TestCase):
         self.assertEqual(saved["admin_edit_approved"], 1)
         self.assertFalse(self.api.channel_messages)
 
+        self.manager.dispatch_due(final_review_time(24))
+        self.manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:channel_posts:review_approve:{legacy['id']}",
+            local_time(24, 9, 56),
+        )
         self.manager.handle_callback(
             ADMIN_ID,
             ADMIN_ID,
             f"admin:channel_posts:publish:{legacy['id']}",
-            local_time(24, 9, 30),
+            local_time(24, 10),
         )
         self.assertEqual(len(self.api.channel_messages), 1)
         self.assertEqual(self.api.channel_messages[0]["parse_mode"], "HTML")
@@ -934,6 +1105,7 @@ class ChannelPostingTests(unittest.TestCase):
         manager.dispatch_due(local_time(26, 9))
         store.set_channel_posting_paused(True, admin_id=ADMIN_ID)
 
+        manager.dispatch_due(final_review_time(26))
         manager.dispatch_due(local_time(26, 10))
         assert api.channel_messages == []
 
@@ -1006,6 +1178,15 @@ class ChannelPostingTests(unittest.TestCase):
             "type": "channel",
             "title": "Smart Money Hub PRO Signals",
         }
+        manager.dispatch_due(final_review_time(26))
+        review_post = store.get_scheduled_channel_post("2026-10-26")
+        assert review_post is not None
+        manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:channel_posts:review_approve:{review_post['id']}",
+            local_time(26, 9, 56),
+        )
         manager.dispatch_due(local_time(26, 10))
 
         post = store.get_scheduled_channel_post("2026-10-26")
@@ -1071,6 +1252,13 @@ class ChannelPostingTests(unittest.TestCase):
             "can_post_messages": False,
         }
         manager.dispatch_due(local_time(27, 9))
+        manager.dispatch_due(final_review_time(27))
+        manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:channel_posts:review_approve:{store.get_scheduled_channel_post('2026-10-27')['id']}",
+            local_time(27, 9, 56),
+        )
         manager.dispatch_due(local_time(27, 10))
         permission_blocked = store.get_scheduled_channel_post("2026-10-27")
         assert permission_blocked is not None
@@ -1083,6 +1271,13 @@ class ChannelPostingTests(unittest.TestCase):
         assert post is not None
         self.manager.destination_chat_id = CHANNEL_ID + 1
 
+        self.manager.dispatch_due(final_review_time(26))
+        self.manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:channel_posts:review_approve:{post['id']}",
+            local_time(26, 9, 56),
+        )
         self.manager.dispatch_due(local_time(26, 10))
 
         saved = self.store.get_channel_post(post["id"])
@@ -1095,6 +1290,15 @@ class ChannelPostingTests(unittest.TestCase):
     ) -> None:
         self.api.get_chat_error = TelegramAPIError("sanitized test transport failure")
         self.manager.dispatch_due(local_time(26, 9))
+        self.manager.dispatch_due(final_review_time(26))
+        post = self.store.get_scheduled_channel_post("2026-10-26")
+        assert post is not None
+        self.manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:channel_posts:review_approve:{post['id']}",
+            local_time(26, 9, 56),
+        )
         self.manager.dispatch_due(local_time(26, 10))
 
         post = self.store.get_scheduled_channel_post("2026-10-26")
@@ -1112,6 +1316,15 @@ class ChannelPostingTests(unittest.TestCase):
     def test_telegram_rate_limit_gets_one_bounded_retry(self) -> None:
         store, api, manager = self.store, self.api, self.manager
         manager.dispatch_due(local_time(26, 9))
+        manager.dispatch_due(final_review_time(26))
+        post = store.get_scheduled_channel_post("2026-10-26")
+        assert post is not None
+        manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:channel_posts:review_approve:{post['id']}",
+            local_time(26, 9, 56),
+        )
         api.send_failures.append(
             TelegramAPIError(
                 "rate limited",
@@ -1138,6 +1351,15 @@ class ChannelPostingTests(unittest.TestCase):
     def test_failed_preflight_after_rate_limit_stops_automatic_retry(self) -> None:
         store, api, manager = self.store, self.api, self.manager
         manager.dispatch_due(local_time(26, 9))
+        manager.dispatch_due(final_review_time(26))
+        post = store.get_scheduled_channel_post("2026-10-26")
+        assert post is not None
+        manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:channel_posts:review_approve:{post['id']}",
+            local_time(26, 9, 56),
+        )
         api.send_failures.append(
             TelegramAPIError("rate limited", error_code=429, retry_after=10)
         )
@@ -1161,8 +1383,15 @@ class ChannelPostingTests(unittest.TestCase):
     def test_ambiguous_send_is_not_retried_after_restart(self) -> None:
         store, api, manager = self.store, self.api, self.manager
         manager.dispatch_due(local_time(26, 9))
+        manager.dispatch_due(final_review_time(26))
         post = store.get_scheduled_channel_post("2026-10-26")
         assert post is not None
+        manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:channel_posts:review_approve:{post['id']}",
+            local_time(26, 9, 56),
+        )
         assert store.reserve_channel_post_publish(post["id"])
 
         restarted_manager = ChannelPostManager(api, store, ADMIN_ID, CHANNEL_ID)
@@ -1180,8 +1409,15 @@ class ChannelPostingTests(unittest.TestCase):
     def test_admin_check_is_required_before_retrying_ambiguous_delivery(self) -> None:
         store, api, manager = self.store, self.api, self.manager
         manager.dispatch_due(local_time(26, 9))
+        manager.dispatch_due(final_review_time(26))
         post = store.get_scheduled_channel_post("2026-10-26")
         assert post is not None
+        manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:channel_posts:review_approve:{post['id']}",
+            local_time(26, 9, 56),
+        )
         assert store.reserve_channel_post_publish(post["id"])
         store.fail_channel_post_publish(
             post["id"],
@@ -1451,11 +1687,18 @@ class ChannelPostingTests(unittest.TestCase):
         self.assertEqual(persisted["admin_edit_approved"], 1)
         self.assertEqual(self.api.channel_messages, [])
 
+        self.manager.dispatch_due(final_review_time(24))
+        self.manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:channel_posts:review_approve:{post['id']}",
+            local_time(24, 9, 56),
+        )
         self.manager.handle_callback(
             ADMIN_ID,
             ADMIN_ID,
             f"admin:channel_posts:publish:{post['id']}",
-            local_time(24, 9, 30),
+            local_time(24, 10),
         )
         self.assertEqual(len(self.api.channel_messages), 1)
         self.assertEqual(self.api.channel_messages[0]["parse_mode"], "HTML")

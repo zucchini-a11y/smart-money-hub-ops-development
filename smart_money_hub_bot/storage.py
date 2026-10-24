@@ -248,6 +248,16 @@ class Repository:
                             CHECK (generation_source IN ('local', 'gemini_pending', 'gemini')),
                         admin_edit_approved INTEGER NOT NULL DEFAULT 0
                             CHECK (admin_edit_approved IN (0, 1)),
+                        review_status TEXT NOT NULL DEFAULT 'not_requested'
+                            CHECK (review_status IN (
+                                'not_requested', 'sending', 'pending', 'approved',
+                                'editing', 'edited', 'cancelled', 'timed_out',
+                                'delivery_failed', 'missed'
+                            )),
+                        review_last_attempt_at TEXT,
+                        review_sent_at TEXT,
+                        review_deadline_at TEXT,
+                        review_decision_at TEXT,
                         created_at TEXT NOT NULL,
                         updated_at TEXT NOT NULL
                     );
@@ -439,6 +449,16 @@ class Repository:
                     "admin_edit_approved",
                     "INTEGER NOT NULL DEFAULT 0 CHECK (admin_edit_approved IN (0, 1))",
                 )
+                for column, definition in (
+                    ("review_status", "TEXT NOT NULL DEFAULT 'not_requested'"),
+                    ("review_last_attempt_at", "TEXT"),
+                    ("review_sent_at", "TEXT"),
+                    ("review_deadline_at", "TEXT"),
+                    ("review_decision_at", "TEXT"),
+                ):
+                    self._ensure_table_column(
+                        connection, "scheduled_channel_posts", column, definition
+                    )
                 self._ensure_table_column(
                     connection,
                     "channel_posting_settings",
@@ -858,6 +878,9 @@ class Repository:
                         failure_category = NULL, preview_sent_at = NULL,
                         preview_last_attempt_at = NULL, edit_admin_id = NULL,
                         edit_mode = 'replace', generation_source = 'gemini',
+                        review_status = 'not_requested',
+                        review_last_attempt_at = NULL, review_sent_at = NULL,
+                        review_deadline_at = NULL, review_decision_at = NULL,
                         updated_at = ?
                     WHERE id = ? AND status IN ('failed', 'awaiting_edit')
                     """,
@@ -1229,6 +1252,184 @@ class Repository:
         finally:
             connection.close()
 
+    def reserve_channel_post_review(self, post_id: int, *, at: str) -> bool:
+        """Claim the single final-review notification attempt before sending it."""
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE scheduled_channel_posts
+                    SET review_status = 'sending', review_last_attempt_at = ?,
+                        updated_at = ?
+                    WHERE id = ? AND status = 'draft'
+                        AND review_status = 'not_requested'
+                    """,
+                    (at, at, post_id),
+                )
+                if cursor.rowcount:
+                    connection.execute(
+                        """
+                        INSERT INTO channel_post_actions
+                            (post_id, action, created_at)
+                        VALUES (?, 'review_send_reserved', ?)
+                        """,
+                        (post_id, at),
+                    )
+                return bool(cursor.rowcount)
+        finally:
+            connection.close()
+
+    def complete_channel_post_review(
+        self,
+        post_id: int,
+        *,
+        sent_at: str,
+        deadline_at: str,
+    ) -> bool:
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE scheduled_channel_posts
+                    SET review_status = 'pending', review_sent_at = ?,
+                        review_deadline_at = ?, updated_at = ?
+                    WHERE id = ? AND status = 'draft' AND review_status = 'sending'
+                    """,
+                    (sent_at, deadline_at, sent_at, post_id),
+                )
+                if cursor.rowcount:
+                    connection.execute(
+                        """
+                        INSERT INTO channel_post_actions
+                            (post_id, action, details, created_at)
+                        VALUES (?, 'review_sent', ?, ?)
+                        """,
+                        (post_id, f"deadline={deadline_at}", sent_at),
+                    )
+                return bool(cursor.rowcount)
+        finally:
+            connection.close()
+
+    def fail_channel_post_review(
+        self, post_id: int, *, failure_category: str, at: str
+    ) -> bool:
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE scheduled_channel_posts
+                    SET review_status = 'delivery_failed', failure_category = ?,
+                        updated_at = ?
+                    WHERE id = ? AND status = 'draft' AND review_status = 'sending'
+                    """,
+                    (failure_category, at, post_id),
+                )
+                if cursor.rowcount:
+                    connection.execute(
+                        """
+                        INSERT INTO channel_post_actions
+                            (post_id, action, details, created_at)
+                        VALUES (?, 'review_send_failed', ?, ?)
+                        """,
+                        (post_id, failure_category, at),
+                    )
+                return bool(cursor.rowcount)
+        finally:
+            connection.close()
+
+    def decide_channel_post_review(
+        self, post_id: int, decision: str, *, admin_id: int, at: str
+    ) -> bool:
+        if decision not in {"approved", "cancelled"}:
+            raise ValueError("Unsupported scheduled-post review decision.")
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE scheduled_channel_posts
+                    SET review_status = ?, review_decision_at = ?,
+                        status = CASE WHEN ? = 'cancelled' THEN 'skipped' ELSE status END,
+                        updated_at = ?
+                    WHERE id = ? AND status = 'draft' AND review_status = 'pending'
+                        AND review_deadline_at >= ?
+                    """,
+                    (decision, at, decision, at, post_id, at),
+                )
+                if cursor.rowcount:
+                    connection.execute(
+                        """
+                        INSERT INTO channel_post_actions
+                            (post_id, action, admin_id, details, created_at)
+                        VALUES (?, 'review_decision', ?, ?, ?)
+                        """,
+                        (post_id, admin_id, decision, at),
+                    )
+                return bool(cursor.rowcount)
+        finally:
+            connection.close()
+
+    def timeout_channel_post_review(self, post_id: int, *, at: str) -> bool:
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE scheduled_channel_posts
+                    SET review_status = 'timed_out', review_decision_at = ?,
+                        updated_at = ?
+                    WHERE id = ? AND status = 'draft' AND review_status = 'pending'
+                        AND review_deadline_at <= ?
+                    """,
+                    (at, at, post_id, at),
+                )
+                if cursor.rowcount:
+                    connection.execute(
+                        """
+                        INSERT INTO channel_post_actions
+                            (post_id, action, details, created_at)
+                        VALUES (?, 'review_timed_out', 'automatic publish permitted', ?)
+                        """,
+                        (post_id, at),
+                    )
+                return bool(cursor.rowcount)
+        finally:
+            connection.close()
+
+    def mark_channel_post_review_missed(
+        self, post_id: int, *, at: str
+    ) -> bool:
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE scheduled_channel_posts
+                    SET review_status = 'missed',
+                        failure_category = 'scheduled_review_missed',
+                        updated_at = ?
+                    WHERE id = ? AND status IN ('draft', 'awaiting_edit')
+                        AND review_status IN ('not_requested', 'sending', 'editing')
+                    """,
+                    (at, post_id),
+                )
+                if cursor.rowcount:
+                    connection.execute(
+                        """
+                        INSERT INTO channel_post_actions
+                            (post_id, action, details, created_at)
+                        VALUES (?, 'review_window_missed',
+                            'No final review was delivered before schedule time.', ?)
+                        """,
+                        (post_id, at),
+                    )
+                return bool(cursor.rowcount)
+        finally:
+            connection.close()
+
     def start_channel_post_edit(
         self, post_id: int, *, admin_id: int, at: str | None = None
     ) -> bool:
@@ -1240,7 +1441,10 @@ class Repository:
                     """
                     UPDATE scheduled_channel_posts
                     SET status = 'awaiting_edit', edit_admin_id = ?,
-                        edit_mode = 'replace', updated_at = ?
+                        edit_mode = 'replace',
+                        review_status = CASE WHEN review_status = 'pending'
+                            THEN 'editing' ELSE review_status END,
+                        updated_at = ?
                     WHERE id = ? AND (
                         status = 'draft'
                         OR (status = 'failed' AND content <> '')
@@ -1328,10 +1532,21 @@ class Repository:
                         admin_edit_approved = 1,
                         failure_category = NULL,
                         preview_sent_at = NULL, preview_last_attempt_at = NULL,
+                        review_status = CASE WHEN review_status = 'editing'
+                            THEN 'edited' ELSE review_status END,
+                        review_decision_at = CASE WHEN review_status = 'editing'
+                            THEN ? ELSE review_decision_at END,
                         updated_at = ?
                     WHERE id = ? AND status = 'awaiting_edit' AND edit_admin_id = ?
                     """,
-                    (content, int(is_promo), timestamp, post_id, admin_id),
+                    (
+                        content,
+                        int(is_promo),
+                        timestamp,
+                        timestamp,
+                        post_id,
+                        admin_id,
+                    ),
                 )
                 if cursor.rowcount:
                     connection.execute(
@@ -1366,7 +1581,10 @@ class Repository:
                     """
                     UPDATE scheduled_channel_posts
                     SET status = 'draft', edit_admin_id = NULL,
-                        edit_mode = 'replace', updated_at = ?
+                        edit_mode = 'replace',
+                        review_status = CASE WHEN review_status = 'editing'
+                            THEN 'pending' ELSE review_status END,
+                        updated_at = ?
                     WHERE status = 'awaiting_edit' AND edit_admin_id = ?
                     """,
                     (timestamp, admin_id),

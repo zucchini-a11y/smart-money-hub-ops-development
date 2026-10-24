@@ -37,6 +37,7 @@ SATURDAY_PUBLISH_TIME = wall_time(hour=10)
 SUNDAY_PUBLISH_TIME = wall_time(hour=18)
 EVENING_PREVIEW_TIME = wall_time(hour=18)
 PREVIEW_RETRY_DELAY = timedelta(minutes=5)
+FINAL_REVIEW_LEAD = timedelta(minutes=5)
 MAX_AUTOMATIC_RATE_LIMIT_RETRIES = 1
 _USERNAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]{4,31}$")
 _SHARED_FOOTER = re.compile(
@@ -101,9 +102,20 @@ class ChannelPostManager:
             self._ensure_and_preview(today + timedelta(days=1), current_utc)
 
         publish_time = self._publish_time(today)
-        if settings["paused"] or local_time < publish_time:
-            return
+        scheduled_at = datetime.combine(today, publish_time, tzinfo=self.timezone)
+        review_at = scheduled_at - FINAL_REVIEW_LEAD
         post = self.store.get_scheduled_channel_post(today.isoformat())
+        if (
+            post
+            and post["status"] == "draft"
+            and post.get("review_status") == "not_requested"
+            and review_at <= local_now < scheduled_at
+        ):
+            self._send_scheduled_review(post, current_utc, scheduled_at)
+            post = self.store.get_channel_post(int(post["id"])) or post
+
+        if settings["paused"] or local_now < scheduled_at:
+            return
         if not post:
             return
         status = post["status"]
@@ -127,7 +139,58 @@ class ChannelPostManager:
                     "will continue.",
                 )
             return
-        if status == "draft" and self._preview_was_available_before_schedule(post):
+        if status == "awaiting_edit" and post.get("review_status") == "editing":
+            if self.store.mark_channel_post_review_missed(
+                int(post["id"]), at=current_utc.isoformat()
+            ):
+                missed = self.store.get_channel_post(int(post["id"])) or post
+                self._notify_failure(missed, "scheduled_review_edit_incomplete")
+            return
+        if status == "draft" and post.get("review_status") == "pending":
+            if self.store.timeout_channel_post_review(
+                int(post["id"]), at=current_utc.isoformat()
+            ):
+                post = self.store.get_channel_post(int(post["id"])) or post
+            else:
+                return
+        if status == "draft" and post.get("review_status") in {
+            "not_requested",
+            "sending",
+        }:
+            if self.store.mark_channel_post_review_missed(
+                int(post["id"]), at=current_utc.isoformat()
+            ):
+                missed = self.store.get_channel_post(int(post["id"])) or post
+                category = (
+                    "scheduled_review_delivery_uncertain"
+                    if post.get("review_status") == "sending"
+                    else "scheduled_review_missed"
+                )
+                self._notify_failure(missed, category)
+            return
+        if status == "draft" and post.get("review_status") in {
+            "approved",
+            "edited",
+            "timed_out",
+        }:
+            review_decision_at = self._parse_datetime(
+                post.get("review_decision_at")
+            )
+            if (
+                post.get("review_status") == "edited"
+                and review_decision_at
+                and self._as_utc(review_decision_at) > scheduled_at.astimezone(timezone.utc)
+            ):
+                self.store.set_channel_post_status(
+                    int(post["id"]),
+                    "failed",
+                    action="scheduled_review_edit_late",
+                    details="A late edit was saved; the post was held rather than published late.",
+                    failure_category="scheduled_review_edit_late",
+                )
+                failed = self.store.get_channel_post(int(post["id"])) or post
+                self._notify_failure(failed, "scheduled_review_edit_late")
+                return
             self._publish(post, current_utc, automatic=True)
         elif status == "retry_wait" and self._retry_is_due(post, current_utc):
             self._publish(post, current_utc, automatic=True)
@@ -288,6 +351,8 @@ class ChannelPostManager:
             "publish",
             "reject",
             "skip",
+            "review_approve",
+            "review_cancel",
             "confirm_posted",
             "retry_checked",
             "retry_generation",
@@ -317,6 +382,30 @@ class ChannelPostManager:
                 else:
                     self.api.send_message(
                         chat_id, "Only an unpublished draft can be edited."
+                    )
+            elif action in {"review_approve", "review_cancel"}:
+                decision = (
+                    "approved" if action == "review_approve" else "cancelled"
+                )
+                changed = self.store.decide_channel_post_review(
+                    post_id,
+                    decision,
+                    admin_id=admin_id,
+                    at=current_utc.isoformat(),
+                )
+                if changed and decision == "approved":
+                    self.api.send_message(
+                        chat_id,
+                        "Approved. The post will publish at its scheduled WAT time "
+                        "if all pre-send checks pass.",
+                    )
+                elif changed:
+                    self.api.send_message(chat_id, "Cancelled. This post will not publish.")
+                else:
+                    self.api.send_message(
+                        chat_id,
+                        "The review window is closed or this post is no longer waiting "
+                        "for a decision.",
                     )
             elif action == "revise":
                 if self.store.start_channel_post_revision(post_id, admin_id=admin_id):
@@ -639,6 +728,17 @@ class ChannelPostManager:
     def _status_label(post: dict[str, Any]) -> str:
         status = str(post.get("status") or "")
         failure = str(post.get("failure_category") or "")
+        review_status = str(post.get("review_status") or "")
+        if status == "draft" and review_status == "pending":
+            return "Awaiting Final Review"
+        if status == "draft" and review_status == "approved":
+            return "Approved — Scheduled"
+        if status == "draft" and review_status == "edited":
+            return "Edited — Scheduled"
+        if review_status == "delivery_failed":
+            return "Review Delivery Failed"
+        if review_status == "missed":
+            return "Review Missed — Held"
         if failure in {
             "destination_not_verified",
             "destination_mismatch",
@@ -1108,6 +1208,76 @@ class ChannelPostManager:
         except TelegramAPIError:
             logger.warning("Channel post admin preview delivery failed post_id=%s.", post["id"])
 
+    def _send_scheduled_review(
+        self,
+        post: dict[str, Any],
+        now_utc: datetime,
+        scheduled_at: datetime,
+    ) -> None:
+        if self.admin_id is None:
+            return
+        post_id = int(post["id"])
+        if not self.store.reserve_channel_post_review(
+            post_id, at=now_utc.isoformat()
+        ):
+            return
+        local_schedule = scheduled_at.astimezone(self.timezone)
+        text = (
+            "FINAL SCHEDULED POST REVIEW\n"
+            f"Destination: Market Analysis channel "
+            f"(ID {int(post['destination_chat_id'])})\n"
+            f"Scheduled: {local_schedule.strftime('%A, %d %B %Y at %H:%M WAT')}\n"
+            "Decision window: 5 minutes, ending at the scheduled time.\n\n"
+            f"{post['content']}\n\n"
+            "Choose Approve to allow automatic publication at the scheduled time, "
+            "Edit to submit a checked replacement, or Cancel to skip this post. "
+            "If you do not respond by the scheduled time, the reviewed draft will "
+            "publish automatically if all checks pass."
+        )
+        markup = {
+            "inline_keyboard": [
+                [
+                    {
+                        "text": "✅ Approve",
+                        "callback_data": (
+                            f"admin:channel_posts:review_approve:{post_id}"
+                        ),
+                    },
+                    {
+                        "text": "✏️ Edit",
+                        "callback_data": f"admin:channel_posts:edit:{post_id}",
+                    },
+                    {
+                        "text": "❌ Cancel",
+                        "callback_data": (
+                            f"admin:channel_posts:review_cancel:{post_id}"
+                        ),
+                    },
+                ]
+            ]
+        }
+        try:
+            self.api.send_message(self.admin_id, text, markup)
+        except TelegramAPIError:
+            self.store.fail_channel_post_review(
+                post_id,
+                failure_category="scheduled_review_delivery_failed",
+                at=now_utc.isoformat(),
+            )
+            refreshed = self.store.get_channel_post(post_id) or post
+            self._notify_failure(refreshed, "scheduled_review_delivery_failed")
+            logger.warning("Scheduled post review delivery failed post_id=%s.", post_id)
+            return
+        deadline = scheduled_at.astimezone(timezone.utc)
+        if not self.store.complete_channel_post_review(
+            post_id,
+            sent_at=now_utc.isoformat(),
+            deadline_at=deadline.isoformat(),
+        ):
+            logger.warning(
+                "Scheduled post review send could not be recorded post_id=%s.", post_id
+            )
+
     def _publish(
         self,
         post: dict[str, Any],
@@ -1118,7 +1288,24 @@ class ChannelPostManager:
     ) -> None:
         if self.admin_id is None or self.destination_chat_id is None:
             return
+        review_status = str(post.get("review_status") or "not_requested")
+        if (
+            review_status not in {"approved", "edited", "timed_out"}
+            or not post.get("review_sent_at")
+        ):
+            if not automatic:
+                self.api.send_message(
+                    self.admin_id,
+                    "The scheduler sends the final review automatically 5 minutes "
+                    "before publication. Approve that review or wait for its "
+                    "5-minute timeout; the post will not publish early.",
+                )
+            return
         scheduled_date = date.fromisoformat(str(post["schedule_date"]))
+        scheduled_time = wall_time.fromisoformat(str(post["schedule_time"]))
+        scheduled_at = datetime.combine(
+            scheduled_date, scheduled_time, tzinfo=self.timezone
+        )
         if (
             scheduled_date.weekday() in {5, 6}
             and post.get("generation_source") != "gemini"
@@ -1160,6 +1347,12 @@ class ChannelPostManager:
                     "To keep the one-post-per-day limit, Publish now is available "
                     "only on this post's scheduled WAT date.",
                 )
+            return
+        if not automatic and local_now < scheduled_at:
+            self.api.send_message(
+                self.admin_id,
+                "This post is approved for its scheduled time. It will not publish early.",
+            )
             return
         if int(post["destination_chat_id"]) != int(self.destination_chat_id):
             self._fail_before_send(post, "destination_mismatch", admin_id)
