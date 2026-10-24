@@ -16,6 +16,10 @@ from smart_money_hub_bot.bot import (
 )
 from smart_money_hub_bot.admin_dashboard import CHANNEL_PROMO_TEXT, CHANNEL_PROMO_URL
 from smart_money_hub_bot.coach import RuleBasedCoachService
+from smart_money_hub_bot.economic_calendar_phase1 import (
+    OfficialCalendarRepository,
+    parse_bea_release_dates,
+)
 from smart_money_hub_bot.grading import RuleBasedWrittenAnswerEvaluator
 from smart_money_hub_bot.questions import QUESTIONS, validate_questions
 from smart_money_hub_bot.scoring import grade_answers
@@ -996,6 +1000,45 @@ class BotFlowTests(unittest.TestCase):
         self.assertNotIn(
             "SMART MONEY HUB — ADMIN DASHBOARD", self.api.messages[-1]["text"]
         )
+
+    def test_market_awareness_review_is_admin_only_and_reads_saved_calendar_data(self) -> None:
+        self.bot.admin_id = self.user_id
+        self.bot.admin_dashboard.admin_id = self.user_id
+        now = datetime(2026, 10, 24, 16, 0, tzinfo=timezone.utc)
+        source_repository = OfficialCalendarRepository(self.database_path)
+        records = parse_bea_release_dates(
+            {
+                "Gross Domestic Product": {
+                    "release_dates": ["2026-10-29T12:30:00+00:00"]
+                }
+            },
+            retrieved_at=now,
+            start_at=now,
+            end_at=datetime(2026, 11, 30, tzinfo=timezone.utc),
+        )
+        source_repository.save_records(records)
+        before_count = len(source_repository.list_records())
+
+        self._callback(
+            "admin:market_awareness",
+            sender_id=self.user_id + 1,
+            chat_id=self.chat_id + 1,
+        )
+        self.assertIn("Admin access is restricted", self.api.messages[-1]["text"])
+        self.assertNotIn("Gross Domestic Product", self.api.messages[-1]["text"])
+
+        self._click("admin:market_awareness")
+        rendered = self.api.messages[-1]
+        self.assertIn("USD &amp; GOLD — SOURCE REVIEW", rendered["text"])
+        self.assertIn("Gross Domestic Product", rendered["text"])
+        self.assertIn("WAT: Thu, 29 Oct 2026 13:30 WAT", rendered["text"])
+        self.assertEqual(rendered["chat_id"], self.chat_id)
+        self.assertEqual(rendered["parse_mode"], "HTML")
+        self.assertEqual(len(source_repository.list_records()), before_count)
+        self.assertFalse(any(
+            message["chat_id"] == -1004481197912
+            for message in self.api.messages
+        ))
 
     def test_pro_channel_access_request_returns_other_bot_username(self) -> None:
         self._message("How can I join the Pro channel?")

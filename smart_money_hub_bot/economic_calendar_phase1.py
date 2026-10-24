@@ -37,6 +37,7 @@ DOL_CLAIMS_SCHEDULE_URL = "https://www.dol.gov/agencies/eta/ui/claims"
 _ALLOWED_HOSTS = frozenset(
     {
         "apps.bea.gov",
+        "www.bea.gov",
         "www.census.gov",
         "www.bls.gov",
         "www.dol.gov",
@@ -44,6 +45,7 @@ _ALLOWED_HOSTS = frozenset(
 )
 _WAT = ZoneInfo("Africa/Lagos")
 _MAX_BODY_BYTES = 4_000_000
+CALENDAR_STALE_AFTER = timedelta(hours=24)
 _TRANSIENT_FAILURES = {
     "rate_limit",
     "service_unavailable",
@@ -56,6 +58,7 @@ _TRANSIENT_FAILURES = {
 class OfficialCalendarRecord:
     external_id: str
     source_name: str
+    affected_instrument: str
     title: str
     source_url: str
     retrieved_at: datetime
@@ -223,6 +226,7 @@ def parse_bea_release_dates(
                 OfficialCalendarRecord(
                     external_id=_event_id("bea", title, event_at.isoformat()),
                     source_name="U.S. Bureau of Economic Analysis",
+                    affected_instrument="USD / XAUUSD",
                     title=title,
                     source_url="https://www.bea.gov/news/schedule",
                     retrieved_at=retrieved_at,
@@ -320,6 +324,7 @@ def parse_census_retail_calendar(
             OfficialCalendarRecord(
                 external_id=_event_id("census", title, source_schedule),
                 source_name="U.S. Census Bureau",
+                affected_instrument="USD / XAUUSD",
                 title=title,
                 source_url=source_url,
                 retrieved_at=retrieved_at,
@@ -358,6 +363,7 @@ class OfficialCalendarRepository:
                     release_date_text TEXT NOT NULL,
                     release_time_text TEXT,
                     event_at_utc TEXT,
+                    affected_instrument TEXT NOT NULL DEFAULT 'USD / XAUUSD',
                     timezone_status TEXT NOT NULL,
                     previous_value TEXT,
                     forecast_value TEXT,
@@ -368,6 +374,17 @@ class OfficialCalendarRepository:
                 );
                 """
             )
+            columns = {
+                row[1]
+                for row in connection.execute(
+                    "PRAGMA table_info(usd_calendar_source_events)"
+                ).fetchall()
+            }
+            if "affected_instrument" not in columns:
+                connection.execute(
+                    "ALTER TABLE usd_calendar_source_events ADD COLUMN "
+                    "affected_instrument TEXT NOT NULL DEFAULT 'USD / XAUUSD'"
+                )
 
     def record_source_status(
         self,
@@ -418,15 +435,16 @@ class OfficialCalendarRepository:
                     INSERT INTO usd_calendar_source_events (
                         external_id, source_name, title, source_url,
                         release_date_text, release_time_text, event_at_utc,
-                        timezone_status, previous_value, forecast_value,
+                        affected_instrument, timezone_status, previous_value, forecast_value,
                         actual_value, provider_impact, verification_status,
                         retrieved_at_utc
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(external_id) DO UPDATE SET
                         source_url=excluded.source_url,
                         release_date_text=excluded.release_date_text,
                         release_time_text=excluded.release_time_text,
                         event_at_utc=excluded.event_at_utc,
+                        affected_instrument=excluded.affected_instrument,
                         timezone_status=excluded.timezone_status,
                         previous_value=excluded.previous_value,
                         forecast_value=excluded.forecast_value,
@@ -443,6 +461,7 @@ class OfficialCalendarRepository:
                         record.release_date_text,
                         record.release_time_text,
                         event_at,
+                        record.affected_instrument,
                         record.timezone_status,
                         record.previous,
                         record.forecast,
@@ -475,6 +494,215 @@ class OfficialCalendarRepository:
                     "SELECT * FROM usd_calendar_source_status ORDER BY source_name"
                 ).fetchall()
             ]
+
+
+class OfficialCalendarReadRepository:
+    """Read-only view of calendar tables; it never creates or migrates tables."""
+
+    def __init__(self, database_path: str | Path) -> None:
+        self.database_path = Path(database_path)
+
+    def _read_table(self, table: str, order_by: str) -> list[dict]:
+        if table not in {
+            "usd_calendar_source_events",
+            "usd_calendar_source_status",
+        }:
+            raise ValueError("Unsupported calendar review table.")
+        if not self.database_path.exists():
+            return []
+        uri = f"{self.database_path.resolve().as_uri()}?mode=ro"
+        try:
+            with sqlite3.connect(uri, uri=True, timeout=2) as connection:
+                connection.row_factory = sqlite3.Row
+                exists = connection.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                    (table,),
+                ).fetchone()
+                if not exists:
+                    return []
+                return [
+                    dict(row)
+                    for row in connection.execute(
+                        f"SELECT * FROM {table} ORDER BY {order_by}"
+                    ).fetchall()
+                ]
+        except sqlite3.Error:
+            logger.warning("Calendar review read failed; displaying no records.")
+            return []
+
+    def list_records(self) -> list[dict]:
+        return self._read_table(
+            "usd_calendar_source_events",
+            "release_date_text, release_time_text",
+        )
+
+    def list_source_status(self) -> list[dict]:
+        return self._read_table("usd_calendar_source_status", "source_name")
+
+
+def format_calendar_admin_review(
+    records: list[dict],
+    source_status: list[dict],
+    *,
+    page: int = 0,
+    page_size: int = 2,
+    now: datetime | None = None,
+) -> tuple[str, int]:
+    """Format a private, read-only source review page as Telegram HTML."""
+    if page_size < 1:
+        raise ValueError("page_size must be positive.")
+    checked_at = now or datetime.now(timezone.utc)
+    if checked_at.tzinfo is None:
+        raise ValueError("now must be timezone-aware.")
+    page_count = max(1, (len(records) + page_size - 1) // page_size)
+    page = min(max(page, 0), page_count - 1)
+    start = page * page_size
+    selected = records[start : start + page_size]
+    lines = [
+        "<b>USD &amp; GOLD — SOURCE REVIEW</b>",
+        "Read-only source records. No scheduler or publisher is connected.",
+        f"Page {page + 1} of {page_count}",
+        "",
+    ]
+    if not records:
+        lines.append("No calendar records have been ingested yet.")
+
+    for item in selected:
+        title = _review_escape(item.get("title") or "Unnamed event", limit=130)
+        instrument = html.escape(
+            str(item.get("affected_instrument") or "USD / XAUUSD"), quote=False
+        )
+        source = _review_escape(item.get("source_name") or "Unknown", limit=80)
+        lines.append(f"<b>{title}</b>")
+        lines.append(f"Instrument: {instrument}")
+        lines.append(f"Source: {source}")
+        source_url = str(item.get("source_url") or "")
+        if len(source_url) <= 350 and _safe_source_url(source_url):
+            lines.append(
+                f'Source link: <a href="{html.escape(source_url, quote=True)}">'
+                "official source</a>"
+            )
+        else:
+            lines.append("Source link: unavailable or not allowlisted")
+
+        original_time = item.get("release_time_text") or "Unavailable"
+        timezone_status = str(item.get("timezone_status") or "unverified")
+        if timezone_status == "verified_explicit_utc_offset":
+            lines.append(
+                "Original source timestamp: "
+                f"<code>{_review_escape(original_time, limit=80)}</code> "
+                "(explicit UTC offset)"
+            )
+            event_at = _parse_review_datetime(item.get("event_at_utc"))
+            if event_at is not None:
+                lines.append(
+                    f"WAT: {event_at.astimezone(_WAT).strftime('%a, %d %b %Y %H:%M WAT')}"
+                )
+            else:
+                lines.append("WAT: Unavailable — stored timestamp is invalid")
+        else:
+            lines.append(
+                f"Original date/time: {_review_escape(item.get('release_date_text') or 'Unavailable', limit=60)} "
+                f"{_review_escape(original_time, limit=80)}"
+            )
+            lines.append("Timezone: UNAVAILABLE — NOT VERIFIED; no WAT conversion")
+
+        retrieved = _parse_review_datetime(item.get("retrieved_at_utc"))
+        if retrieved is None:
+            lines.append("Retrieved: Unavailable")
+            lines.append("Freshness: UNKNOWN")
+        else:
+            age = checked_at.astimezone(timezone.utc) - retrieved
+            freshness = (
+                "FRESH"
+                if timedelta(0) <= age <= CALENDAR_STALE_AFTER
+                else "STALE"
+            )
+            lines.append(
+                "Retrieved: "
+                f"{retrieved.strftime('%Y-%m-%d %H:%M:%S UTC')}"
+            )
+            lines.append(
+                f"Freshness: {freshness} (24-hour review threshold)"
+            )
+        verification = _review_escape(
+            item.get("verification_status") or "UNAVAILABLE", limit=80
+        )
+        lines.append(f"Verification: {verification}")
+        for label, key in (
+            ("Previous", "previous_value"),
+            ("Forecast", "forecast_value"),
+            ("Actual", "actual_value"),
+            ("Impact classification", "provider_impact"),
+        ):
+            value = item.get(key)
+            lines.append(
+                f"{label}: "
+                f"{_review_escape(value, limit=80) if value not in (None, '') else 'UNAVAILABLE — not supplied'}"
+            )
+        lines.append("")
+
+    statuses = {str(row.get("source_name")): row for row in source_status}
+    lines.append("<b>SOURCE HEALTH</b>")
+    for source in ("BEA", "Census", "BLS", "DOL"):
+        status = statuses.get(source)
+        if status is None:
+            label = (
+                "UNAVAILABLE — SOURCE NOT VERIFIED"
+                if source in {"BLS", "DOL"}
+                else "No source check recorded"
+            )
+            lines.append(f"{source}: {label}")
+            continue
+        checked = _parse_review_datetime(status.get("checked_at_utc"))
+        health = _review_escape(status.get("status") or "UNKNOWN", limit=60)
+        if checked is not None:
+            age = checked_at.astimezone(timezone.utc) - checked
+            freshness = (
+                "FRESH"
+                if timedelta(0) <= age <= CALENDAR_STALE_AFTER
+                else "STALE"
+            )
+            health += (
+                f" — {freshness}; checked "
+                f"{checked.strftime('%Y-%m-%d %H:%M:%S UTC')}"
+            )
+        else:
+            health += " — check time unavailable"
+        failure = status.get("failure_category")
+        if failure:
+            health += f"; category={_review_escape(failure, limit=50)}"
+        if status.get("http_status") is not None:
+            health += f"; HTTP {int(status['http_status'])}"
+        lines.append(f"{html.escape(source, quote=False)}: {health}")
+    lines.extend(
+        [
+            "",
+            "<b>SEPARATE SOURCE TYPES</b>",
+            "Federal Reserve policy records are kept separate from this event calendar.",
+            "Treasury observations are daily yields, not live gold or FX prices.",
+        ]
+    )
+    return "\n".join(lines), page_count
+
+
+def _review_escape(value: object, *, limit: int) -> str:
+    text = str(value)
+    if len(text) > limit:
+        text = text[: limit - 1] + "…"
+    return html.escape(text, quote=False)
+
+
+def _parse_review_datetime(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed.astimezone(timezone.utc)
 
 
 def build_calendar_phase_one_report(

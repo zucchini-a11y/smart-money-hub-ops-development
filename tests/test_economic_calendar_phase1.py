@@ -6,12 +6,15 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.error import HTTPError
+from xml.etree import ElementTree
 
 from smart_money_hub_bot.economic_calendar_phase1 import (
+    OfficialCalendarReadRepository,
     OfficialCalendarRepository,
     build_calendar_phase_one_report,
     fetch_and_store_official_schedules,
     fetch_with_bounded_backoff,
+    format_calendar_admin_review,
     parse_bea_release_dates,
     parse_census_retail_calendar,
 )
@@ -202,6 +205,145 @@ class EconomicCalendarPhaseOneTests(unittest.TestCase):
         self.assertEqual(len(pending), 2)
         self.assertTrue(all(row["notification_type"] == "calendar_source_unavailable" for row in pending))
         self.assertTrue(all(row["status"] == "pending" for row in pending))
+
+    def test_admin_review_preserves_wat_evidence_missing_fields_and_source_failure(self):
+        records = parse_bea_release_dates(
+            {"Gross Domestic Product": {"release_dates": ["2026-10-29T12:30:00+00:00"]}},
+            retrieved_at=NOW,
+            start_at=NOW,
+            end_at=datetime(2026, 11, 30, tzinfo=timezone.utc),
+        )
+        repository = OfficialCalendarRepository(self.database)
+        repository.save_records(records)
+        repository.record_source_status(
+            "BLS",
+            status="unavailable",
+            checked_at=NOW,
+            failure_category="permission_error",
+            http_status=403,
+        )
+        review_repository = OfficialCalendarReadRepository(self.database)
+
+        report, page_count = format_calendar_admin_review(
+            review_repository.list_records(),
+            review_repository.list_source_status(),
+            now=NOW,
+        )
+
+        self.assertEqual(page_count, 1)
+        self.assertIn("USD / XAUUSD", report)
+        self.assertIn("2026-10-29T12:30:00+00:00", report)
+        self.assertIn("WAT: Thu, 29 Oct 2026 13:30 WAT", report)
+        self.assertIn("Forecast: UNAVAILABLE — not supplied", report)
+        self.assertIn("Verification: verified_schedule", report)
+        self.assertIn('href="https://www.bea.gov/news/schedule"', report)
+        self.assertIn("BLS: unavailable", report)
+        self.assertIn("HTTP 403", report)
+        self.assertIn("DOL: UNAVAILABLE — SOURCE NOT VERIFIED", report)
+        self.assertIn("Treasury observations are daily yields", report)
+
+    def test_admin_review_does_not_convert_census_time_and_flags_stale_data(self):
+        row = {
+            "title": "Advance Monthly Sales & Services",
+            "source_name": "U.S. Census Bureau",
+            "affected_instrument": "USD / XAUUSD",
+            "source_url": "https://www.census.gov/economic-indicators/calendar-listview.html",
+            "release_date_text": "January 15, 2027",
+            "release_time_text": "8:30 AM",
+            "event_at_utc": None,
+            "timezone_status": "unverified_no_timezone_in_source",
+            "verification_status": "date_time_listed_timezone_unverified",
+            "retrieved_at_utc": "2026-10-20T16:00:00+00:00",
+            "previous_value": None,
+            "forecast_value": None,
+            "actual_value": None,
+            "provider_impact": None,
+        }
+
+        report, _ = format_calendar_admin_review(
+            [row],
+            [],
+            now=NOW,
+        )
+
+        self.assertIn("UNAVAILABLE — NOT VERIFIED; no WAT conversion", report)
+        self.assertNotIn("WAT: Fri", report)
+        self.assertIn("Freshness: STALE", report)
+        self.assertIn("Advance Monthly Sales &amp; Services", report)
+        self.assertIn("Forecast: UNAVAILABLE — not supplied", report)
+        ElementTree.fromstring(f"<root>{report}</root>")
+
+    def test_read_only_repository_survives_reopen_and_does_not_create_missing_database(self):
+        records = parse_bea_release_dates(
+            {"Gross Domestic Product": {"release_dates": ["2026-10-29T12:30:00+00:00"]}},
+            retrieved_at=NOW,
+            start_at=NOW,
+            end_at=datetime(2026, 11, 30, tzinfo=timezone.utc),
+        )
+        writer = OfficialCalendarRepository(self.database)
+        writer.save_records(records)
+        writer.record_source_status("BEA", status="ok", checked_at=NOW)
+
+        reopened = OfficialCalendarReadRepository(self.database)
+        self.assertEqual(len(reopened.list_records()), 1)
+        self.assertEqual(reopened.list_source_status()[0]["source_name"], "BEA")
+        self.assertEqual(len(OfficialCalendarReadRepository(self.database).list_records()), 1)
+
+        absent_path = Path(self.temp_dir.name) / "not-created.sqlite3"
+        absent = OfficialCalendarReadRepository(absent_path)
+        self.assertEqual(absent.list_records(), [])
+        self.assertFalse(absent_path.exists())
+
+    def test_admin_review_source_records_remain_deduplicated(self):
+        records = parse_bea_release_dates(
+            {"Gross Domestic Product": {"release_dates": ["2026-10-29T12:30:00+00:00"]}},
+            retrieved_at=NOW,
+            start_at=NOW,
+            end_at=datetime(2026, 11, 30, tzinfo=timezone.utc),
+        )
+        repository = OfficialCalendarRepository(self.database)
+
+        repository.save_records(records + records)
+
+        reviewed = OfficialCalendarReadRepository(self.database).list_records()
+        self.assertEqual(len(reviewed), 1)
+        self.assertEqual(reviewed[0]["external_id"], records[0].external_id)
+
+    def test_existing_calendar_schema_is_migrated_without_losing_rows(self):
+        import sqlite3
+
+        with sqlite3.connect(self.database) as connection:
+            connection.executescript(
+                """
+                CREATE TABLE usd_calendar_source_status (
+                    source_name TEXT PRIMARY KEY, status TEXT NOT NULL,
+                    failure_category TEXT, http_status INTEGER,
+                    attempts INTEGER NOT NULL DEFAULT 0, checked_at_utc TEXT NOT NULL
+                );
+                CREATE TABLE usd_calendar_source_events (
+                    external_id TEXT PRIMARY KEY, source_name TEXT NOT NULL,
+                    title TEXT NOT NULL, source_url TEXT NOT NULL,
+                    release_date_text TEXT NOT NULL, release_time_text TEXT,
+                    event_at_utc TEXT, timezone_status TEXT NOT NULL,
+                    previous_value TEXT, forecast_value TEXT, actual_value TEXT,
+                    provider_impact TEXT, verification_status TEXT NOT NULL,
+                    retrieved_at_utc TEXT NOT NULL
+                );
+                INSERT INTO usd_calendar_source_events VALUES (
+                    'existing', 'U.S. Census Bureau', 'Retail sales',
+                    'https://www.census.gov/', 'January 15, 2027', '8:30 AM',
+                    NULL, 'unverified_no_timezone_in_source', NULL, NULL, NULL,
+                    NULL, 'date_time_listed_timezone_unverified',
+                    '2026-10-24T16:00:00+00:00'
+                );
+                """
+            )
+
+        migrated = OfficialCalendarRepository(self.database).list_records()
+
+        self.assertEqual(len(migrated), 1)
+        self.assertEqual(migrated[0]["external_id"], "existing")
+        self.assertEqual(migrated[0]["affected_instrument"], "USD / XAUUSD")
 
 
 if __name__ == "__main__":

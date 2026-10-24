@@ -5,6 +5,10 @@ from typing import Any
 
 from .channel_posting import ChannelPostManager
 from .channel_gemini import GeminiChannelContentService
+from .economic_calendar_phase1 import (
+    OfficialCalendarReadRepository,
+    format_calendar_admin_review,
+)
 from .knowledge_approval import can_approve
 from .knowledge_drafting import parse_research_material, validate_answer_draft
 from .knowledge_research import UnavailableResearchProvider
@@ -59,11 +63,15 @@ class AdminDashboard:
         admin_id: int | None,
         main_channel_id: int | None = None,
         channel_writer: GeminiChannelContentService | None = None,
+        calendar_review: OfficialCalendarReadRepository | None = None,
     ) -> None:
         self.api = api
         self.store = store
         self.admin_id = admin_id
         self.main_channel_id = main_channel_id
+        self.calendar_review = calendar_review or OfficialCalendarReadRepository(
+            store.database_path
+        )
         self.channel_posts = ChannelPostManager(
             api,
             store,
@@ -436,6 +444,12 @@ class AdminDashboard:
 
         if data in {"admin:open", "admin:home"}:
             self._show_dashboard(chat_id)
+        elif data == "admin:market_awareness":
+            self._show_market_awareness_review(chat_id, page=0)
+        elif data.startswith("admin:market_awareness:page:"):
+            self._show_market_awareness_review(
+                chat_id, page=self._calendar_review_page(data)
+            )
         elif data == "admin:members":
             self._show_members(chat_id, page=0, sort="joined")
         elif data.startswith("admin:members:"):
@@ -666,12 +680,72 @@ class AdminDashboard:
                 ],
                 [{"text": "💬 DM Coach Stats", "callback_data": "admin:dm_coach"}],
                 [{"text": "🧠 Knowledge Improvement", "callback_data": "admin:knowledge"}],
+                [
+                    {
+                        "text": "🌍 Market Awareness Review",
+                        "callback_data": "admin:market_awareness",
+                    }
+                ],
                 [{"text": "🗓️ Channel Content", "callback_data": "admin:channel_posts"}],
                 [{"text": "📨 Send One-Time DM", "callback_data": "admin:dm_broadcast"}],
                 [{"text": "📣 Promote Bot in Channel", "callback_data": "admin:channel_promo"}],
                 [{"text": "🏠 Main Menu", "callback_data": "nav:home"}],
             ]
         }
+
+    def _show_market_awareness_review(self, chat_id: int, *, page: int) -> None:
+        records = self.calendar_review.list_records()
+        statuses = self.calendar_review.list_source_status()
+        text, page_count = format_calendar_admin_review(
+            records,
+            statuses,
+            page=page,
+            page_size=2,
+        )
+        keyboard_rows: list[list[dict[str, str]]] = []
+        if page_count > 1:
+            navigation: list[dict[str, str]] = []
+            if page > 0:
+                navigation.append(
+                    {
+                        "text": "⬅️ Previous",
+                        "callback_data": f"admin:market_awareness:page:{page - 1}",
+                    }
+                )
+            if page + 1 < page_count:
+                navigation.append(
+                    {
+                        "text": "Next ➡️",
+                        "callback_data": f"admin:market_awareness:page:{page + 1}",
+                    }
+                )
+            if navigation:
+                keyboard_rows.append(navigation)
+        keyboard_rows.extend(
+            [
+                [
+                    {
+                        "text": "🔄 Refresh View",
+                        "callback_data": f"admin:market_awareness:page:{page}",
+                    }
+                ],
+                [{"text": "⬅️ Admin Dashboard", "callback_data": "admin:home"}],
+            ]
+        )
+        self.api.send_message(
+            chat_id,
+            text,
+            {"inline_keyboard": keyboard_rows},
+            parse_mode="HTML",
+        )
+
+    @staticmethod
+    def _calendar_review_page(data: str) -> int:
+        try:
+            page = int(data.rsplit(":", maxsplit=1)[1])
+        except (IndexError, ValueError):
+            return 0
+        return max(page, 0)
 
     def _show_statistics(self, chat_id: int) -> None:
         stats = self._dashboard_data()
