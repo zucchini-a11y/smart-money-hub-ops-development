@@ -90,7 +90,17 @@ class FakeTelegramAPI:
         if message_thread_id is not None:
             poll["message_thread_id"] = message_thread_id
         self.polls.append(poll)
-        return {"message_id": len(self.polls)}
+        return {
+            "message_id": len(self.polls),
+            "date": 1_797_000_000,
+            "poll": {
+                "id": f"synthetic-poll-{len(self.polls)}",
+                "question": question,
+                "options": [{"text": option} for option in options],
+                "correct_option_id": correct_option_id,
+                "explanation": explanation,
+            },
+        }
 
     def answer_callback_query(
         self,
@@ -484,6 +494,7 @@ class BotFlowTests(unittest.TestCase):
         self.bot.handle_update(
             {
                 "message": {
+                    "message_id": 9001,
                     "text": "Good morning everyone",
                     "chat": {
                         "id": -1003916437804,
@@ -495,6 +506,44 @@ class BotFlowTests(unittest.TestCase):
         )
 
         self.assertEqual(self.api.messages, [])
+        archived = self.bot.store.search_education_group_posts(
+            -1003916437804, "good morning"
+        )
+        self.assertEqual(len(archived), 1)
+        self.assertEqual(archived[0]["content"], "Good morning everyone")
+
+    def test_edited_group_post_updates_the_archive_in_place(self) -> None:
+        group_id = -1003916437804
+        self.bot.handle_update(
+            {
+                "message": {
+                    "message_id": 9002,
+                    "text": "An initial FVG lesson.",
+                    "chat": {"id": group_id, "type": "supergroup"},
+                    "from": {"id": self.user_id},
+                }
+            }
+        )
+        self.bot.handle_update(
+            {
+                "edited_message": {
+                    "message_id": 9002,
+                    "text": "The corrected FVG lesson.",
+                    "chat": {"id": group_id, "type": "supergroup"},
+                    "from": {"id": self.user_id},
+                }
+            }
+        )
+
+        self.assertEqual(
+            self.bot.store.search_education_group_posts(group_id, "corrected FVG")[0][
+                "content"
+            ],
+            "The corrected FVG lesson.",
+        )
+        self.assertEqual(
+            self.bot.store.search_education_group_posts(group_id, "initial"), []
+        )
 
     def test_explicit_menu_command_still_works_in_education_group(self) -> None:
         self.bot.handle_update(
@@ -531,14 +580,77 @@ class BotFlowTests(unittest.TestCase):
 
         self.assertEqual(len(self.api.messages), 1)
         self.assertIn("/ask What is a liquidity sweep?", self.api.messages[0]["text"])
+        self.assertIn("@SmartMoneyHubSignalsBot", self.api.messages[0]["text"])
         self.assertIn("/scenario", self.api.messages[0]["text"])
         self.assertEqual(self.api.messages[0]["message_thread_id"], 7654)
         self.assertIsNone(self.api.messages[0]["reply_markup"])
 
+    def test_natural_mentioned_question_uses_relevant_group_archive(self) -> None:
+        group_id = -1003916437804
+        self.bot.handle_update(
+            {
+                "message": {
+                    "message_id": 70,
+                    "text": "BOS is a break of a meaningful swing high or low.",
+                    "chat": {"id": group_id, "type": "supergroup"},
+                    "message_thread_id": 7654,
+                    "from": {"id": 456789},
+                }
+            }
+        )
+        routed = Mock(
+            reply=Mock(
+                response="A BOS is a break of meaningful structure.",
+                requires_review=False,
+            ),
+            assessment=None,
+            response_path="gemini_success",
+        )
+        with patch.object(
+            self.bot.message_router, "route", return_value=routed
+        ) as route:
+            self.bot.handle_update(
+                {
+                    "message": {
+                        "message_id": 71,
+                        "text": "@SmartMoneyHubSignalsBot, explain BOS simply.",
+                        "chat": {"id": group_id, "type": "supergroup"},
+                        "message_thread_id": 7654,
+                        "from": {"id": self.user_id},
+                    }
+                }
+            )
+
+        args, kwargs = route.call_args
+        self.assertEqual(args, (self.user_id, "explain BOS simply."))
+        self.assertEqual(kwargs["history"], [])
+        self.assertIn(
+            "BOS is a break of a meaningful swing high or low.",
+            [entry["content"] for entry in kwargs["profile"]["group_knowledge_context"]],
+        )
+        self.assertEqual(self.api.messages[-1]["message_thread_id"], 7654)
+        self.assertEqual(
+            self.api.messages[-1]["text"],
+            "A BOS is a break of meaningful structure.",
+        )
+        connection = self.bot.store._connect()
+        try:
+            archived_count = connection.execute(
+                "SELECT COUNT(*) FROM education_group_posts WHERE chat_id = ?",
+                (group_id,),
+            ).fetchone()[0]
+        finally:
+            connection.close()
+        self.assertEqual(archived_count, 1)
+
     def test_group_ask_uses_no_private_history_and_replies_in_same_topic(self) -> None:
         routed = Mock(
-            reply=Mock(response="Liquidity may gather around obvious highs and lows."),
+            reply=Mock(
+                response="Liquidity may gather around obvious highs and lows.",
+                requires_review=False,
+            ),
             response_path="approved_knowledge",
+            assessment=None,
         )
         with (
             patch.object(
@@ -569,7 +681,7 @@ class BotFlowTests(unittest.TestCase):
         args, kwargs = route.call_args
         self.assertEqual(args, (self.user_id, "What is liquidity?"))
         self.assertEqual(kwargs["history"], [])
-        self.assertEqual(kwargs["profile"], {})
+        self.assertEqual(kwargs["profile"], {"group_knowledge_context": []})
         self.assertRegex(kwargs["request_id"], r"^[0-9a-f]{32}$")
         self.assertEqual(len(self.api.messages), 1)
         self.assertEqual(
@@ -596,6 +708,38 @@ class BotFlowTests(unittest.TestCase):
 
         self.assertIn("Add your SMC question after /ask", self.api.messages[0]["text"])
         self.assertEqual(self.api.messages[0]["message_thread_id"], 7654)
+
+    def test_group_question_needing_review_is_recorded_without_sender_identity(self) -> None:
+        routed = Mock(
+            reply=Mock(
+                response="I could not verify that topic, so I flagged it for review.",
+                requires_review=True,
+                detected_topic="Unverified topic",
+            ),
+            assessment=None,
+            response_path="fallback",
+        )
+        with patch.object(self.bot.message_router, "route", return_value=routed):
+            self.bot.handle_update(
+                {
+                    "message": {
+                        "message_id": 9003,
+                        "text": "/ask What did @member 123456789 claim about a live signal?",
+                        "chat": {
+                            "id": -1003916437804,
+                            "type": "supergroup",
+                        },
+                        "message_thread_id": 7654,
+                        "from": {"id": self.user_id, "username": self.username},
+                    }
+                }
+            )
+
+        insights = self.bot.store.education_group_insights(-1003916437804)
+        self.assertEqual(insights["open_question_count"], 1)
+        preview = insights["open_questions"][0]["question_preview"]
+        self.assertNotIn("@member", preview)
+        self.assertNotIn("123456789", preview)
 
     def test_admin_can_start_hypothetical_quiz_poll_in_current_topic(self) -> None:
         bot = SmartMoneyHubBot(
@@ -626,6 +770,63 @@ class BotFlowTests(unittest.TestCase):
         self.assertEqual(len(poll["options"]), 4)
         self.assertIn("NO CONFIRMATION, NO ENTRY.", poll["explanation"])
         self.assertEqual(self.api.messages, [])
+        archived = self.bot.store.search_education_group_posts(
+            -1003916437804, "hypothetical SMC scenario"
+        )
+        self.assertEqual(len(archived), 1)
+        self.assertIn("Correct option:", archived[0]["content"])
+
+    def test_group_insights_are_private_and_admin_only(self) -> None:
+        admin_bot = SmartMoneyHubBot(
+            self.api,
+            str(self.database_path),
+            admin_id=self.user_id,
+        )
+        admin_bot.store.record_education_group_post(
+            chat_id=-1003916437804,
+            message_id=91,
+            thread_id=7654,
+            topic_name="SMC Basics",
+            message_kind="text",
+            content="A safe education post.",
+            source_status="configured_admin",
+            posted_at="2026-10-24T10:00:00+00:00",
+        )
+        admin_bot.store.record_education_group_question(
+            chat_id=-1003916437804,
+            question="How can I confirm a retest?",
+            topic="Confirmation",
+            thread_id=7654,
+        )
+
+        admin_bot.handle_update(
+            {
+                "message": {
+                    "text": "/groupinsights",
+                    "chat": {"id": self.chat_id, "type": "private"},
+                    "from": {"id": self.user_id},
+                }
+            }
+        )
+        self.assertIn("Archived posts: 1", self.api.messages[-1]["text"])
+        self.assertIn("How can I confirm a retest?", self.api.messages[-1]["text"])
+
+        outsider_bot = SmartMoneyHubBot(
+            self.api,
+            str(self.database_path),
+            admin_id=987654321,
+        )
+        outsider_bot.handle_update(
+            {
+                "message": {
+                    "text": "/groupinsights",
+                    "chat": {"id": self.chat_id, "type": "private"},
+                    "from": {"id": self.user_id},
+                }
+            }
+        )
+        self.assertIn("only to the administrator", self.api.messages[-1]["text"])
+        self.assertNotIn("Archived posts:", self.api.messages[-1]["text"])
 
     def test_only_configured_admin_can_start_group_scenario_polls(self) -> None:
         bot = SmartMoneyHubBot(

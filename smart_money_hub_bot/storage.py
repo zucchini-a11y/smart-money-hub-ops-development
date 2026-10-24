@@ -1,11 +1,14 @@
 """SQLite repository for members, assessments, journals, progress, and reminders."""
 
-import sqlite3
+import hashlib
+import json
 import re
+import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .group_knowledge import fts_query_terms, question_fingerprint
 from .knowledge_approval import can_approve, rejection_status
 from .knowledge_base import find_similar_item
 from .knowledge_versions import next_version_number
@@ -286,6 +289,96 @@ class Repository:
 
                     CREATE INDEX IF NOT EXISTS channel_history_posts_recent
                     ON channel_history_posts (chat_id, posted_at DESC);
+
+                    CREATE TABLE IF NOT EXISTS education_group_topics (
+                        chat_id INTEGER NOT NULL,
+                        thread_id INTEGER NOT NULL,
+                        topic_name TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL,
+                        PRIMARY KEY (chat_id, thread_id)
+                    );
+
+                    CREATE TABLE IF NOT EXISTS education_group_posts (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        chat_id INTEGER NOT NULL,
+                        message_id INTEGER NOT NULL,
+                        thread_id INTEGER,
+                        topic_name TEXT NOT NULL DEFAULT '',
+                        message_kind TEXT NOT NULL
+                            CHECK (message_kind IN ('text', 'caption', 'poll')),
+                        content TEXT NOT NULL,
+                        source_status TEXT NOT NULL
+                            CHECK (source_status IN (
+                                'configured_admin', 'unverified', 'bot_authored'
+                            )),
+                        posted_at TEXT NOT NULL,
+                        archived_at TEXT NOT NULL,
+                        content_hash TEXT NOT NULL,
+                        UNIQUE (chat_id, message_id)
+                    );
+
+                    CREATE INDEX IF NOT EXISTS education_group_posts_topic_date
+                    ON education_group_posts (chat_id, thread_id, posted_at DESC);
+
+                    CREATE VIRTUAL TABLE IF NOT EXISTS education_group_posts_fts
+                    USING fts5(content, topic_name,
+                        content='education_group_posts', content_rowid='id');
+
+                    CREATE TRIGGER IF NOT EXISTS education_group_posts_fts_insert
+                    AFTER INSERT ON education_group_posts BEGIN
+                        INSERT INTO education_group_posts_fts
+                            (rowid, content, topic_name)
+                        VALUES (new.id, new.content, new.topic_name);
+                    END;
+
+                    CREATE TRIGGER IF NOT EXISTS education_group_posts_fts_delete
+                    AFTER DELETE ON education_group_posts BEGIN
+                        INSERT INTO education_group_posts_fts
+                            (education_group_posts_fts, rowid, content, topic_name)
+                        VALUES ('delete', old.id, old.content, old.topic_name);
+                    END;
+
+                    CREATE TRIGGER IF NOT EXISTS education_group_posts_fts_update
+                    AFTER UPDATE ON education_group_posts BEGIN
+                        INSERT INTO education_group_posts_fts
+                            (education_group_posts_fts, rowid, content, topic_name)
+                        VALUES ('delete', old.id, old.content, old.topic_name);
+                        INSERT INTO education_group_posts_fts
+                            (rowid, content, topic_name)
+                        VALUES (new.id, new.content, new.topic_name);
+                    END;
+
+                    CREATE TABLE IF NOT EXISTS education_group_questions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        chat_id INTEGER NOT NULL,
+                        question_hash TEXT NOT NULL,
+                        question_preview TEXT NOT NULL,
+                        topic TEXT NOT NULL,
+                        thread_id INTEGER,
+                        status TEXT NOT NULL DEFAULT 'open'
+                            CHECK (status IN ('open', 'reviewed')),
+                        occurrence_count INTEGER NOT NULL DEFAULT 1,
+                        first_seen_at TEXT NOT NULL,
+                        last_seen_at TEXT NOT NULL,
+                        UNIQUE (chat_id, question_hash)
+                    );
+
+                    CREATE INDEX IF NOT EXISTS education_group_questions_open
+                    ON education_group_questions (chat_id, status, occurrence_count DESC);
+
+                    CREATE TABLE IF NOT EXISTS education_group_polls (
+                        poll_id TEXT PRIMARY KEY,
+                        chat_id INTEGER NOT NULL,
+                        message_id INTEGER NOT NULL,
+                        thread_id INTEGER,
+                        topic_name TEXT NOT NULL DEFAULT '',
+                        question TEXT NOT NULL,
+                        correct_option_id INTEGER,
+                        total_voter_count INTEGER NOT NULL DEFAULT 0,
+                        option_counts_json TEXT NOT NULL DEFAULT '[]',
+                        updated_at TEXT NOT NULL
+                    );
 
                     CREATE TABLE IF NOT EXISTS dm_coaching_interactions (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1089,6 +1182,409 @@ class Repository:
                         archived_at = excluded.archived_at
                     """,
                     (chat_id, message_id, text[:4000], posted_at, at or utc_now()),
+                )
+                return bool(cursor.rowcount)
+        finally:
+            connection.close()
+
+    def record_education_group_topic(
+        self,
+        chat_id: int,
+        thread_id: int,
+        topic_name: str,
+        *,
+        at: str | None = None,
+    ) -> None:
+        name = " ".join(topic_name.split())[:120]
+        if not name:
+            return
+        timestamp = at or utc_now()
+        connection = self._connect()
+        try:
+            with connection:
+                connection.execute(
+                    """
+                    INSERT INTO education_group_topics
+                        (chat_id, thread_id, topic_name, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(chat_id, thread_id) DO UPDATE SET
+                        topic_name = excluded.topic_name,
+                        updated_at = excluded.updated_at
+                    """,
+                    (chat_id, thread_id, name, timestamp, timestamp),
+                )
+        finally:
+            connection.close()
+
+    def education_group_topic_name(
+        self, chat_id: int, thread_id: int | None
+    ) -> str:
+        if thread_id is None:
+            return ""
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                """
+                SELECT topic_name FROM education_group_topics
+                WHERE chat_id = ? AND thread_id = ?
+                """,
+                (chat_id, thread_id),
+            ).fetchone()
+            return str(row["topic_name"]) if row else ""
+        finally:
+            connection.close()
+
+    def record_education_group_post(
+        self,
+        *,
+        chat_id: int,
+        message_id: int,
+        thread_id: int | None,
+        topic_name: str,
+        message_kind: str,
+        content: str,
+        source_status: str,
+        posted_at: str,
+        at: str | None = None,
+    ) -> bool:
+        text = content.strip()[:6000]
+        if not text:
+            return False
+        if message_kind not in {"text", "caption", "poll"}:
+            raise ValueError("Unsupported educational group post kind.")
+        if source_status not in {"configured_admin", "unverified", "bot_authored"}:
+            raise ValueError("Unsupported educational group source status.")
+        digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO education_group_posts
+                        (chat_id, message_id, thread_id, topic_name, message_kind,
+                         content, source_status, posted_at, archived_at, content_hash)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(chat_id, message_id) DO UPDATE SET
+                        thread_id = excluded.thread_id,
+                        topic_name = excluded.topic_name,
+                        message_kind = excluded.message_kind,
+                        content = excluded.content,
+                        source_status = excluded.source_status,
+                        posted_at = excluded.posted_at,
+                        archived_at = excluded.archived_at,
+                        content_hash = excluded.content_hash
+                    """,
+                    (
+                        chat_id,
+                        message_id,
+                        thread_id,
+                        " ".join(topic_name.split())[:120],
+                        message_kind,
+                        text,
+                        source_status,
+                        posted_at,
+                        at or utc_now(),
+                        digest,
+                    ),
+                )
+                return bool(cursor.rowcount)
+        finally:
+            connection.close()
+
+    def search_education_group_posts(
+        self,
+        chat_id: int,
+        query: str,
+        *,
+        thread_id: int | None = None,
+        exclude_message_id: int | None = None,
+        limit: int = 4,
+    ) -> list[dict[str, Any]]:
+        match_query = fts_query_terms(query)
+        if not match_query:
+            return []
+        safe_limit = max(1, min(int(limit), 8))
+        connection = self._connect()
+        try:
+            rows = connection.execute(
+                """
+                SELECT p.id, p.message_id, p.thread_id, p.topic_name,
+                       p.message_kind, p.content, p.source_status, p.posted_at
+                FROM education_group_posts_fts
+                JOIN education_group_posts AS p
+                  ON p.id = education_group_posts_fts.rowid
+                WHERE education_group_posts_fts MATCH ?
+                  AND p.chat_id = ?
+                  AND (? IS NULL OR p.message_id != ?)
+                ORDER BY
+                    CASE WHEN ? IS NOT NULL AND p.thread_id = ? THEN 0 ELSE 1 END,
+                    bm25(education_group_posts_fts, 1.0, 2.0),
+                    p.posted_at DESC,
+                    p.id DESC
+                LIMIT ?
+                """,
+                (
+                    match_query,
+                    chat_id,
+                    exclude_message_id,
+                    exclude_message_id,
+                    thread_id,
+                    thread_id,
+                    safe_limit,
+                ),
+            ).fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            connection.close()
+
+    def record_education_group_question(
+        self,
+        *,
+        chat_id: int,
+        question: str,
+        topic: str,
+        thread_id: int | None,
+        at: str | None = None,
+    ) -> str:
+        fingerprint, preview = question_fingerprint(question)
+        if not preview:
+            return ""
+        timestamp = at or utc_now()
+        connection = self._connect()
+        try:
+            with connection:
+                connection.execute(
+                    """
+                    INSERT INTO education_group_questions
+                        (chat_id, question_hash, question_preview, topic, thread_id,
+                         status, occurrence_count, first_seen_at, last_seen_at)
+                    VALUES (?, ?, ?, ?, ?, 'open', 1, ?, ?)
+                    ON CONFLICT(chat_id, question_hash) DO UPDATE SET
+                        question_preview = excluded.question_preview,
+                        topic = excluded.topic,
+                        thread_id = excluded.thread_id,
+                        status = 'open',
+                        occurrence_count = education_group_questions.occurrence_count + 1,
+                        last_seen_at = excluded.last_seen_at
+                    """,
+                    (
+                        chat_id,
+                        fingerprint,
+                        preview,
+                        topic[:120],
+                        thread_id,
+                        timestamp,
+                        timestamp,
+                    ),
+                )
+            return fingerprint
+        finally:
+            connection.close()
+
+    def mark_education_group_question_reviewed(
+        self, chat_id: int, hash_prefix: str, *, at: str | None = None
+    ) -> bool:
+        prefix = hash_prefix.strip().casefold()
+        if not re.fullmatch(r"[0-9a-f]{8,64}", prefix):
+            return False
+        timestamp = at or utc_now()
+        connection = self._connect()
+        try:
+            with connection:
+                matches = connection.execute(
+                    """
+                    SELECT id FROM education_group_questions
+                    WHERE chat_id = ? AND status = 'open' AND question_hash LIKE ?
+                    LIMIT 2
+                    """,
+                    (chat_id, f"{prefix}%"),
+                ).fetchall()
+                if len(matches) != 1:
+                    return False
+                cursor = connection.execute(
+                    """
+                    UPDATE education_group_questions
+                    SET status = 'reviewed', last_seen_at = ?
+                    WHERE id = ? AND status = 'open'
+                    """,
+                    (timestamp, matches[0]["id"]),
+                )
+                return bool(cursor.rowcount)
+        finally:
+            connection.close()
+
+    def education_group_insights(self, chat_id: int) -> dict[str, Any]:
+        connection = self._connect()
+        try:
+            totals = connection.execute(
+                """
+                SELECT COUNT(*) AS post_count,
+                       (
+                           SELECT COUNT(*) FROM (
+                               SELECT thread_id FROM education_group_topics
+                               WHERE chat_id = ?
+                               UNION
+                               SELECT thread_id FROM education_group_posts
+                               WHERE chat_id = ? AND thread_id IS NOT NULL
+                           )
+                       ) AS topic_count
+                FROM education_group_posts WHERE chat_id = ?
+                """,
+                (chat_id, chat_id, chat_id),
+            ).fetchone()
+            questions = connection.execute(
+                """
+                SELECT question_hash, question_preview, topic, occurrence_count,
+                       last_seen_at
+                FROM education_group_questions
+                WHERE chat_id = ? AND status = 'open'
+                ORDER BY occurrence_count DESC, last_seen_at DESC, id DESC
+                LIMIT 5
+                """,
+                (chat_id,),
+            ).fetchall()
+            open_question_totals = connection.execute(
+                """
+                SELECT COALESCE(SUM(occurrence_count), 0) AS occurrence_count
+                FROM education_group_questions
+                WHERE chat_id = ? AND status = 'open'
+                """,
+                (chat_id,),
+            ).fetchone()
+            poll_summary = connection.execute(
+                """
+                SELECT COUNT(*) AS poll_count,
+                       COALESCE(SUM(total_voter_count), 0) AS votes_seen
+                FROM education_group_polls WHERE chat_id = ?
+                """,
+                (chat_id,),
+            ).fetchone()
+            poll_rows = connection.execute(
+                """
+                SELECT topic_name, question, correct_option_id, total_voter_count,
+                       option_counts_json, updated_at
+                FROM education_group_polls
+                WHERE chat_id = ?
+                ORDER BY updated_at DESC, message_id DESC
+                LIMIT 5
+                """,
+                (chat_id,),
+            ).fetchall()
+            quiz_results: list[dict[str, Any]] = []
+            for row in poll_rows:
+                try:
+                    option_counts = json.loads(row["option_counts_json"] or "[]")
+                except (TypeError, json.JSONDecodeError):
+                    option_counts = []
+                correct_id = row["correct_option_id"]
+                correct_votes = (
+                    int(option_counts[correct_id])
+                    if isinstance(correct_id, int)
+                    and 0 <= correct_id < len(option_counts)
+                    else None
+                )
+                quiz_results.append(
+                    {
+                        "topic_name": row["topic_name"],
+                        "question": row["question"],
+                        "total_voter_count": int(row["total_voter_count"]),
+                        "correct_votes": correct_votes,
+                        "updated_at": row["updated_at"],
+                    }
+                )
+            return {
+                **dict(totals),
+                "open_question_count": int(open_question_totals["occurrence_count"]),
+                "open_questions": [
+                    {
+                        **dict(row),
+                        "question_hash": str(row["question_hash"])[:8],
+                    }
+                    for row in questions
+                ],
+                "poll_count": int(poll_summary["poll_count"]),
+                "votes_seen": int(poll_summary["votes_seen"]),
+                "quiz_results": quiz_results,
+            }
+        finally:
+            connection.close()
+
+    def record_education_group_poll(
+        self,
+        *,
+        poll_id: str,
+        chat_id: int,
+        message_id: int,
+        thread_id: int | None,
+        topic_name: str,
+        question: str,
+        correct_option_id: int | None,
+        at: str | None = None,
+    ) -> None:
+        if not poll_id.strip():
+            return
+        timestamp = at or utc_now()
+        connection = self._connect()
+        try:
+            with connection:
+                connection.execute(
+                    """
+                    INSERT INTO education_group_polls
+                        (poll_id, chat_id, message_id, thread_id, topic_name,
+                         question, correct_option_id, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(poll_id) DO NOTHING
+                    """,
+                    (
+                        poll_id,
+                        chat_id,
+                        message_id,
+                        thread_id,
+                        topic_name[:120],
+                        question[:500],
+                        correct_option_id,
+                        timestamp,
+                    ),
+                )
+        finally:
+            connection.close()
+
+    def update_education_group_poll(self, poll: dict[str, Any]) -> bool:
+        poll_id = poll.get("id")
+        if not isinstance(poll_id, str) or not poll_id:
+            return False
+        options = poll.get("options")
+        option_counts: list[int] = []
+        if isinstance(options, list):
+            for option in options[:12]:
+                if not isinstance(option, dict):
+                    continue
+                try:
+                    voter_count = max(0, int(option.get("voter_count", 0)))
+                except (TypeError, ValueError, OverflowError):
+                    voter_count = 0
+                option_counts.append(voter_count)
+        total_voters = poll.get("total_voter_count")
+        total_voters = (
+            max(0, int(total_voters))
+            if isinstance(total_voters, int) and not isinstance(total_voters, bool)
+            else 0
+        )
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE education_group_polls
+                    SET total_voter_count = ?, option_counts_json = ?, updated_at = ?
+                    WHERE poll_id = ?
+                    """,
+                    (
+                        total_voters,
+                        json.dumps(option_counts),
+                        utc_now(),
+                        poll_id,
+                    ),
                 )
                 return bool(cursor.rowcount)
         finally:

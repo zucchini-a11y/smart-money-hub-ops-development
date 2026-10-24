@@ -423,7 +423,11 @@ def _relevant_conversation_context(
     profile: dict[str, Any] | None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Keep prior turns for clear follow-ups, not self-contained questions."""
-    role_context = {"is_admin": True} if profile and profile.get("is_admin") is True else {}
+    role_context: dict[str, Any] = {}
+    if profile and profile.get("is_admin") is True:
+        role_context["is_admin"] = True
+    if profile and isinstance(profile.get("group_knowledge_context"), list):
+        role_context["group_knowledge_context"] = profile["group_knowledge_context"]
     if not history:
         return [], role_context
 

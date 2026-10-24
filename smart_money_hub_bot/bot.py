@@ -20,6 +20,12 @@ from .group_features import (
     DEFAULT_EDUCATION_GROUP_ID,
     scenario_for_message_id,
 )
+from .group_knowledge import (
+    addressed_group_question,
+    archived_group_post,
+    format_group_context,
+    topic_update_from_message,
+)
 from .message_router import CoachMessageRouter
 from .personal_reminders import (
     ReminderRequest,
@@ -517,7 +523,19 @@ class SmartMoneyHubBot:
 
         message = update.get("message")
         if isinstance(message, dict):
+            self._archive_education_group_message(message)
             self._handle_message(message)
+            return
+
+        edited_message = update.get("edited_message")
+        if isinstance(edited_message, dict):
+            self._archive_education_group_message(edited_message)
+            return
+
+        poll = update.get("poll")
+        if isinstance(poll, dict):
+            if self.store.update_education_group_poll(poll):
+                logger.info("Updated aggregate education-group quiz results.")
             return
 
         callback = update.get("callback_query")
@@ -554,6 +572,126 @@ class SmartMoneyHubBot:
             posted_at,
         ):
             logger.info("Archived a new Market Analysis channel post.")
+
+    def _archive_education_group_message(self, message: dict[str, Any]) -> None:
+        chat = message.get("chat")
+        if not isinstance(chat, dict):
+            return
+        chat_id = chat.get("id")
+        if not isinstance(chat_id, int) or chat_id != self.education_group_id:
+            return
+
+        topic = topic_update_from_message(message)
+        if topic:
+            self.store.record_education_group_topic(
+                chat_id, topic["thread_id"], topic["topic_name"]
+            )
+
+        record = archived_group_post(
+            message,
+            configured_admin_id=self.admin_id,
+            bot_username="SmartMoneyHubSignalsBot",
+        )
+        if record is None:
+            return
+        thread_id = record["thread_id"]
+        topic_name = self.store.education_group_topic_name(chat_id, thread_id)
+        self.store.record_education_group_post(
+            chat_id=chat_id,
+            message_id=record["message_id"],
+            thread_id=thread_id,
+            topic_name=topic_name,
+            message_kind=record["message_kind"],
+            content=record["content"],
+            source_status=record["source_status"],
+            posted_at=record["posted_at"],
+        )
+        if record.get("poll_id"):
+            poll = message.get("poll")
+            if isinstance(poll, dict):
+                correct = poll.get("correct_option_id")
+                correct = correct if isinstance(correct, int) else None
+                self.store.record_education_group_poll(
+                    poll_id=record["poll_id"],
+                    chat_id=chat_id,
+                    message_id=record["message_id"],
+                    thread_id=thread_id,
+                    topic_name=topic_name,
+                    question=str(poll.get("question") or ""),
+                    correct_option_id=correct,
+                )
+
+    def _show_education_group_insights(
+        self,
+        chat_id: int,
+        telegram_id: int,
+        is_private: bool,
+        command_text: str,
+    ) -> None:
+        if not is_private:
+            return
+        if self.admin_id is None or telegram_id != self.admin_id:
+            self.api.send_message(chat_id, "This review is available only to the administrator.")
+            return
+        parts = command_text.strip().split()
+        if len(parts) == 3 and parts[1].casefold() == "reviewed":
+            if self.store.mark_education_group_question_reviewed(
+                self.education_group_id, parts[2]
+            ):
+                self.api.send_message(chat_id, "Marked that group question as reviewed.")
+            else:
+                self.api.send_message(
+                    chat_id,
+                    "I couldn’t match that question. Use its exact ID from /groupinsights.",
+                )
+            return
+
+        insights = self.store.education_group_insights(self.education_group_id)
+        lines = [
+            "📚 Education Group Learning Insights",
+            "",
+            f"Archived posts: {insights['post_count']}",
+            f"Topics identified: {insights['topic_count']}",
+            f"Tracked quiz polls: {insights['poll_count']}",
+            f"Aggregate votes seen: {insights['votes_seen']}",
+            f"Open questions needing review: {insights['open_question_count']}",
+        ]
+        for quiz in insights["quiz_results"]:
+            total_votes = quiz["total_voter_count"]
+            correct_votes = quiz["correct_votes"]
+            if total_votes and correct_votes is not None:
+                result = f"{correct_votes}/{total_votes} selected the keyed answer"
+            elif total_votes:
+                result = f"{total_votes} votes recorded; no keyed answer available"
+            else:
+                result = "No aggregate vote result received yet"
+            lines.append(
+                f"\nQuiz · {quiz['topic_name'] or 'Topic not identified'}: "
+                f"{result}\n{str(quiz['question'])[:180]}"
+            )
+        for question in insights["open_questions"]:
+            lines.append(
+                f"\n{question['question_hash']} · {question['topic']} · "
+                f"seen {question['occurrence_count']} time(s)\n"
+                f"{question['question_preview']}"
+            )
+        if not insights["post_count"]:
+            lines.extend(
+                [
+                    "",
+                    "No group history has been archived yet. New posts will be indexed "
+                    "as they arrive; Telegram does not provide this bot with older chat history.",
+                ]
+            )
+        if insights["open_questions"]:
+            lines.extend(
+                [
+                    "",
+                    "After reviewing a listed item, mark it reviewed with "
+                    "/groupinsights reviewed <ID>.",
+                ]
+            )
+        self.api.send_message(chat_id, "\n".join(lines), self._nav_keyboard())
 
     def _register(
         self, sender: dict[str, Any], chat: dict[str, Any]
@@ -771,6 +909,12 @@ class SmartMoneyHubBot:
         text = message.get("text")
         sender = message.get("from") or {}
         chat = message.get("chat") or {}
+        if (
+            not isinstance(text, str)
+            and isinstance(chat, dict)
+            and chat.get("id") == self.education_group_id
+        ):
+            text = message.get("caption")
         if not isinstance(text, str):
             return
         command = text.strip().split(maxsplit=1)[0].split("@", maxsplit=1)[0].lower()
@@ -880,8 +1024,13 @@ class SmartMoneyHubBot:
                     "📚 Smart Money Hub group learning\n\n"
                     "Ask an SMC question in this topic with:\n"
                     "/ask What is a liquidity sweep?\n\n"
+                    "For a natural-language reply, mention "
+                    "@SmartMoneyHubSignalsBot or reply to one of its messages. "
+                    "Group posts are otherwise archived quietly for learning.\n\n"
+                    "This group currently limits ordinary member messages. If you "
+                    "cannot post here, open the bot privately and ask Coach normally.\n\n"
                     "The admin can start a hypothetical quiz poll with /scenario. "
-                    "Ordinary group messages do not trigger Coach replies.",
+                    "The bot does not reply to ordinary group posts.",
                     message_thread_id=self._message_thread_id(message),
                 )
                 return
@@ -898,12 +1047,22 @@ class SmartMoneyHubBot:
             if is_private and self.admin_id is not None and telegram_id == self.admin_id:
                 help_text += (
                     "\n\nCEO reminder: send a message such as “Remind me to review "
-                    "my journal tomorrow at 9am” to set a one-time personal reminder."
+                    "my journal tomorrow at 9am” to set a one-time personal reminder.\n"
+                    "Use /groupinsights to review educational-group coverage and "
+                    "unanswered questions."
                 )
             self.api.send_message(
                 chat_id,
                 help_text,
                 self._nav_keyboard(),
+            )
+            return
+        if command == "/groupinsights":
+            self._show_education_group_insights(
+                chat_id,
+                telegram_id,
+                is_private,
+                text,
             )
             return
         if command == "/menu" or text.strip().casefold() in {"menu", "main menu"}:
@@ -1096,6 +1255,7 @@ class SmartMoneyHubBot:
                     telegram_id,
                     question,
                     message_thread_id=thread_id,
+                    message_id=message.get("message_id"),
                 )
                 return
 
@@ -1108,7 +1268,7 @@ class SmartMoneyHubBot:
                 return
             scenario = scenario_for_message_id(message.get("message_id", 0))
             try:
-                self.api.send_poll(
+                poll_message = self.api.send_poll(
                     chat_id,
                     scenario.question,
                     list(scenario.options),
@@ -1124,8 +1284,29 @@ class SmartMoneyHubBot:
                     message_thread_id=thread_id,
                 )
             else:
+                if isinstance(poll_message, dict):
+                    self._archive_sent_scenario_poll(
+                        chat_id,
+                        thread_id,
+                        scenario,
+                        poll_message,
+                    )
                 logger.info("Education-group scenario poll sent.")
             return
+        if not is_private and self._is_education_group(chat_id, is_private):
+            group_question = addressed_group_question(
+                message,
+                bot_username="SmartMoneyHubSignalsBot",
+            )
+            if group_question:
+                self._answer_group_question(
+                    chat_id,
+                    telegram_id,
+                    group_question,
+                    message_thread_id=self._message_thread_id(message),
+                    message_id=message.get("message_id"),
+                )
+                return
         reminder_request = parse_personal_reminder_request(
             text, datetime.now(timezone.utc), self.reminder_zone
         )
@@ -1767,6 +1948,7 @@ class SmartMoneyHubBot:
         question: str,
         *,
         message_thread_id: int | None,
+        message_id: int | None = None,
     ) -> None:
         request_id = uuid.uuid4().hex
         logger.info("Education-group question received. request_id=%s.", request_id)
@@ -1780,15 +1962,49 @@ class SmartMoneyHubBot:
         )
         typing_thread.start()
         try:
-            # Group Q&A is intentionally stateless: do not reuse or expose a
-            # member's private Coach history, profile, or journal data.
+            try:
+                group_context = format_group_context(
+                    self.store.search_education_group_posts(
+                        chat_id,
+                        question,
+                        thread_id=message_thread_id,
+                        exclude_message_id=message_id,
+                        limit=4,
+                    )
+                )
+            except Exception:
+                logger.warning("Could not retrieve educational group context.")
+                group_context = []
+            # Group Q&A never reads or exposes private Coach history or journals.
+            profile: dict[str, Any] = {
+                "group_knowledge_context": group_context,
+            }
+            if self.admin_id is not None and telegram_id == self.admin_id:
+                profile["is_admin"] = True
             routed = self.message_router.route(
                 telegram_id,
                 question,
                 history=[],
-                profile={},
+                profile=profile,
                 request_id=request_id,
             )
+            if getattr(routed.reply, "requires_review", False) is True or (
+                routed.assessment is not None
+                and routed.assessment.confidence == "low"
+            ):
+                try:
+                    self.store.record_education_group_question(
+                        chat_id=chat_id,
+                        question=question,
+                        topic=(
+                            routed.assessment.topic
+                            if routed.assessment is not None
+                            else routed.reply.detected_topic
+                        ),
+                        thread_id=message_thread_id,
+                    )
+                except Exception:
+                    logger.warning("Could not record an unanswered group question.")
             self.api.send_message(
                 chat_id,
                 routed.reply.response,
@@ -1802,6 +2018,49 @@ class SmartMoneyHubBot:
             routed.response_path,
             request_id,
         )
+
+    def _archive_sent_scenario_poll(
+        self,
+        chat_id: int,
+        thread_id: int | None,
+        scenario: Any,
+        telegram_message: dict[str, Any],
+    ) -> None:
+        message_id = telegram_message.get("message_id")
+        if not isinstance(message_id, int):
+            return
+        topic_name = self.store.education_group_topic_name(chat_id, thread_id)
+        options = list(scenario.options)
+        content = (
+            f"{scenario.question}\nOptions:\n"
+            + "\n".join(f"{index + 1}. {option}" for index, option in enumerate(options))
+            + f"\nCorrect option: {options[scenario.correct_option_id]}\n"
+            f"Explanation: {scenario.explanation}"
+        )
+        posted_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        poll = telegram_message.get("poll")
+        poll_id = str(poll.get("id")) if isinstance(poll, dict) and poll.get("id") else ""
+        self.store.record_education_group_post(
+            chat_id=chat_id,
+            message_id=message_id,
+            thread_id=thread_id,
+            topic_name=topic_name,
+            message_kind="poll",
+            content=content,
+            source_status="bot_authored",
+            posted_at=posted_at,
+        )
+        if poll_id:
+            self.store.record_education_group_poll(
+                poll_id=poll_id,
+                chat_id=chat_id,
+                message_id=message_id,
+                thread_id=thread_id,
+                topic_name=topic_name,
+                question=scenario.question,
+                correct_option_id=scenario.correct_option_id,
+                at=posted_at,
+            )
 
     def _send_typing_action(
         self,
@@ -1864,6 +2123,17 @@ class SmartMoneyHubBot:
             history = []
             profile = {}
         profile["is_admin"] = self.admin_id is not None and telegram_id == self.admin_id
+        if self.education_group_id is not None:
+            try:
+                profile["group_knowledge_context"] = format_group_context(
+                    self.store.search_education_group_posts(
+                        self.education_group_id,
+                        question,
+                        limit=4,
+                    )
+                )
+            except Exception:
+                logger.warning("Could not retrieve educational group context for Coach.")
         routed = self.message_router.route(
             telegram_id,
             question,

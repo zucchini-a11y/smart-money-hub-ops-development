@@ -137,9 +137,11 @@ class TelegramAPI:
             "timeout": timeout,
             "allowed_updates": [
                 "message",
+                "edited_message",
                 "callback_query",
                 "channel_post",
                 "edited_channel_post",
+                "poll",
             ],
         }
         if offset is not None:

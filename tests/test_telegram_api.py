@@ -126,7 +126,10 @@ class TelegramUpdateSubscriptionTests(unittest.TestCase):
         self.assertIn("channel_post", payload["allowed_updates"])
         self.assertIn("edited_channel_post", payload["allowed_updates"])
         self.assertIn("message", payload["allowed_updates"])
+        self.assertIn("edited_message", payload["allowed_updates"])
+        self.assertIn("poll", payload["allowed_updates"])
         self.assertIn("callback_query", payload["allowed_updates"])
+        self.assertNotIn("poll_answer", payload["allowed_updates"])
 
 
 if __name__ == "__main__":

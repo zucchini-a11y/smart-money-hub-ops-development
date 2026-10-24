@@ -1,4 +1,5 @@
 - [Smart Money Hub module boundaries](smart-money-hub-module-boundaries.md) — keep dashboard dependencies one-way from the bot orchestrator.
+- [Education group archive boundaries](education-group-knowledge.md) — keep private member history separate and do not assume Telegram can backfill old group messages.
 - [Smart Money Hub Coach rules](smart-money-hub-coach-rules.md) — treat H1/M5, 2% risk, 1:3 planned R:R, 3% daily loss, and 1:1 break-even as preferences, not proof of validity.
 - [Verify Telegram command delivery](telegram-command-verification.md) — test new commands through the update handler before reporting them active.
 - [Telegram polling cleanup](telegram-polling-cleanup.md) — check for a leftover poller before treating a Telegram getUpdates conflict as a credential problem.

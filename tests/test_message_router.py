@@ -63,6 +63,34 @@ class MessageRouterTests(unittest.TestCase):
 
         self.assertIs(provider.evaluate.call_args.kwargs["profile"]["is_admin"], True)
 
+    def test_group_archive_context_reaches_provider_without_private_history(self) -> None:
+        provider = Mock()
+        provider.diagnostic_response_path = "gemini_success"
+        provider.evaluate.return_value = CoachReply(
+            "A contextual educational answer.", "BOS", (), ""
+        )
+        router = CoachMessageRouter(provider, _EmptyKnowledgeStore())
+        group_context = [
+            {
+                "topic_name": "Market Structure",
+                "source_status": "unverified",
+                "posted_at": "2026-10-24T10:00:00Z",
+                "content": "A prior public group lesson covered BOS.",
+            }
+        ]
+
+        router.route(
+            202,
+            "Explain BOS",
+            profile={"group_knowledge_context": group_context},
+        )
+
+        self.assertEqual(provider.evaluate.call_args.kwargs["history"], [])
+        self.assertEqual(
+            provider.evaluate.call_args.kwargs["profile"]["group_knowledge_context"],
+            group_context,
+        )
+
     def test_admin_local_fallback_keeps_a_professional_tone(self) -> None:
         provider = Mock()
         provider.evaluate.side_effect = CoachProviderError("client_timeout")
