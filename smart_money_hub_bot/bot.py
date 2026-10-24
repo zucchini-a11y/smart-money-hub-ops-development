@@ -770,13 +770,24 @@ class SmartMoneyHubBot:
                 return
             group_title = str(chat.get("title") or "Unnamed group")
             group_title = " ".join(group_title.split())[:100]
+            topic_id = message.get("message_thread_id")
+            if isinstance(topic_id, int) and not isinstance(topic_id, bool):
+                topic_detail = f"Forum topic ID: {topic_id}"
+            elif chat.get("is_forum"):
+                topic_detail = (
+                    "Forum topic ID: not detected. Send /groupid inside the "
+                    "Announcements topic."
+                )
+            else:
+                topic_detail = "Forum topic ID: not applicable for this group."
             try:
                 self.api.send_message(
                     self.admin_id,
                     f"Telegram group details\n"
                     f"Name: {group_title}\n"
                     f"Type: {chat_type}\n"
-                    f"Group ID: {chat_id}",
+                    f"Group ID: {chat_id}\n"
+                    f"{topic_detail}",
                 )
             except TelegramAPIError:
                 self.api.send_message(

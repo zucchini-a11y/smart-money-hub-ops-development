@@ -401,7 +401,9 @@ class BotFlowTests(unittest.TestCase):
                         "id": group_id,
                         "type": "supergroup",
                         "title": "Smart Money Hub Education",
+                        "is_forum": True,
                     },
+                    "message_thread_id": 876543,
                     "from": {"id": admin_id},
                 }
             }
@@ -411,7 +413,37 @@ class BotFlowTests(unittest.TestCase):
         self.assertEqual(self.api.messages[0]["chat_id"], admin_id)
         self.assertIn("Smart Money Hub Education", self.api.messages[0]["text"])
         self.assertIn(f"Group ID: {group_id}", self.api.messages[0]["text"])
+        self.assertIn("Forum topic ID: 876543", self.api.messages[0]["text"])
         self.assertNotEqual(self.api.messages[0]["chat_id"], group_id)
+
+    def test_group_id_command_requests_exact_topic_when_forum_thread_missing(self) -> None:
+        admin_id = 987654321
+        bot = SmartMoneyHubBot(
+            self.api,
+            str(self.database_path),
+            admin_id=admin_id,
+        )
+
+        bot.handle_update(
+            {
+                "message": {
+                    "text": "/groupid",
+                    "chat": {
+                        "id": -1001234567890,
+                        "type": "supergroup",
+                        "title": "Smart Money Hub Education",
+                        "is_forum": True,
+                    },
+                    "from": {"id": admin_id},
+                }
+            }
+        )
+
+        self.assertEqual(self.api.messages[0]["chat_id"], admin_id)
+        self.assertIn(
+            "not detected. Send /groupid inside the Announcements topic",
+            self.api.messages[0]["text"],
+        )
 
     def test_group_id_command_is_silent_for_non_admins(self) -> None:
         bot = SmartMoneyHubBot(
