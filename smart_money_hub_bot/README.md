@@ -48,6 +48,14 @@ There is no automated web-research provider in the bot runtime. Selecting **Requ
 
 **Send One-Time DM** lets the admin write, preview, and confirm a plain-text DM to active private-chat members who have not used `/stop`; the admin is excluded. **Promote Bot in Channel** previews a single bot introduction in the configured channel and posts only after the admin confirms. Set `SMH_MAIN_CHANNEL_ID` to the channel's numeric ID. Admin access is not configured until `ADMIN_TELEGRAM_ID` is set. The bot never asks for your Telegram token in chat.
 
+### Scheduled channel content
+
+The admin dashboard's **Channel Content** page manages one post per day at **10:00 WAT (Africa/Lagos)** in the configured Market Analysis channel. The bot sends the administrator a preview the evening before at 18:00, or at 09:00 on the scheduled day if a preview is missing. The preview can be edited, published immediately, rejected, or skipped; scheduled publishing can also be paused and resumed. A draft not rejected or skipped is eligible for automatic publication at 10:00 after its preview has been delivered.
+
+Posts rotate through education, weekly review, new-week preparation, engagement, and trading psychology. Until a verified market-data source is configured, the weekly recap slot uses an evergreen process review and does not state current prices, news, or market movements. Every post preserves **NO CONFIRMATION, NO ENTRY.** Bot-awareness content replaces a routine post about every two weekends by default; the administrator can change this to every weekend or every four weekends. Promotions use the runtime-verified bot username and link, and explain only implemented member features.
+
+Before sending a post, the bot verifies that the configured destination is a channel whose title identifies it as Market Analysis and that this bot has posting permission. It does not post to PRO Signals. Posts, previews, admin actions, Telegram message IDs, and publication outcomes are recorded in SQLite. If a send's delivery is uncertain, the bot asks the administrator to check the channel before authorizing a retry, preventing an automatic duplicate.
+
 ## Reminder schedule
 
 The default weekly check-in is Sunday at **09:00 Africa/Lagos**. Zoom-class reminders are sent at **19:00** and **20:00** on Mondays and Thursdays. Optional environment variables:

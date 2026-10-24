@@ -1,6 +1,7 @@
 """SQLite repository for members, assessments, journals, progress, and reminders."""
 
 import sqlite3
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -201,6 +202,75 @@ class Repository:
                     CREATE INDEX IF NOT EXISTS personal_reminders_due
                     ON personal_reminders (status, due_at);
 
+                    CREATE TABLE IF NOT EXISTS channel_posting_settings (
+                        id INTEGER PRIMARY KEY CHECK (id = 1),
+                        paused INTEGER NOT NULL DEFAULT 0 CHECK (paused IN (0, 1)),
+                        next_category_index INTEGER NOT NULL DEFAULT 0,
+                        next_promo_feature_index INTEGER NOT NULL DEFAULT 0,
+                        promo_interval_days INTEGER NOT NULL DEFAULT 14,
+                        last_promo_date TEXT,
+                        updated_at TEXT NOT NULL
+                    );
+
+                    INSERT OR IGNORE INTO channel_posting_settings (id, updated_at)
+                    VALUES (1, CURRENT_TIMESTAMP);
+
+                    CREATE TABLE IF NOT EXISTS scheduled_channel_posts (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        schedule_date TEXT NOT NULL UNIQUE,
+                        schedule_time TEXT NOT NULL,
+                        requested_category TEXT NOT NULL,
+                        category TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        destination_chat_id INTEGER NOT NULL,
+                        is_promo INTEGER NOT NULL DEFAULT 0 CHECK (is_promo IN (0, 1)),
+                        bot_username TEXT,
+                        status TEXT NOT NULL DEFAULT 'draft'
+                            CHECK (status IN (
+                                'draft', 'awaiting_edit', 'rejected', 'skipped',
+                                'publishing', 'published', 'delivery_unknown',
+                                'retry_wait', 'failed'
+                            )),
+                        preview_sent_at TEXT,
+                        preview_last_attempt_at TEXT,
+                        edit_admin_id INTEGER,
+                        edit_mode TEXT NOT NULL DEFAULT 'replace'
+                            CHECK (edit_mode IN ('replace', 'feedback')),
+                        publishing_started_at TEXT,
+                        retry_after_at TEXT,
+                        publish_attempts INTEGER NOT NULL DEFAULT 0,
+                        telegram_message_id INTEGER,
+                        published_at TEXT,
+                        failure_category TEXT,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    );
+
+                    CREATE INDEX IF NOT EXISTS scheduled_channel_posts_due
+                    ON scheduled_channel_posts (status, schedule_date);
+
+                    CREATE TABLE IF NOT EXISTS channel_post_actions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        post_id INTEGER REFERENCES scheduled_channel_posts(id),
+                        action TEXT NOT NULL,
+                        admin_id INTEGER,
+                        details TEXT,
+                        created_at TEXT NOT NULL
+                    );
+
+                    CREATE TABLE IF NOT EXISTS channel_history_posts (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        chat_id INTEGER NOT NULL,
+                        message_id INTEGER NOT NULL,
+                        content TEXT NOT NULL,
+                        posted_at TEXT NOT NULL,
+                        archived_at TEXT NOT NULL,
+                        UNIQUE (chat_id, message_id)
+                    );
+
+                    CREATE INDEX IF NOT EXISTS channel_history_posts_recent
+                    ON channel_history_posts (chat_id, posted_at DESC);
+
                     CREATE TABLE IF NOT EXISTS dm_coaching_interactions (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         telegram_id INTEGER NOT NULL REFERENCES users(telegram_id),
@@ -344,6 +414,12 @@ class Repository:
                     "knowledge_items",
                     "draft_review_after",
                     "TEXT",
+                )
+                self._ensure_table_column(
+                    connection,
+                    "scheduled_channel_posts",
+                    "edit_mode",
+                    "TEXT NOT NULL DEFAULT 'replace'",
                 )
                 self._migrate_legacy_assessments(connection)
                 member_ids = connection.execute(
@@ -582,6 +658,855 @@ class Repository:
                     """,
                     (recovery_at, telegram_id, at or utc_now()),
                 )
+        finally:
+            connection.close()
+
+    def get_channel_posting_settings(self) -> dict[str, Any]:
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                "SELECT * FROM channel_posting_settings WHERE id = 1"
+            ).fetchone()
+            return dict(row) if row else {
+                "paused": 0,
+                "next_category_index": 0,
+                "next_promo_feature_index": 0,
+                "promo_interval_days": 14,
+                "last_promo_date": None,
+            }
+        finally:
+            connection.close()
+
+    def create_scheduled_channel_post(
+        self,
+        *,
+        schedule_date: str,
+        schedule_time: str,
+        requested_category: str,
+        category: str,
+        content: str,
+        destination_chat_id: int,
+        is_promo: bool,
+        bot_username: str | None,
+        next_category_index: int,
+        next_promo_feature_index: int,
+        last_promo_date: str | None,
+        status: str = "draft",
+        failure_category: str | None = None,
+        at: str | None = None,
+    ) -> tuple[dict[str, Any], bool]:
+        if status not in {"draft", "failed"}:
+            raise ValueError("Invalid initial channel post status.")
+        created_at = at or utc_now()
+        connection = self._connect()
+        try:
+            with connection:
+                existing = connection.execute(
+                    "SELECT * FROM scheduled_channel_posts WHERE schedule_date = ?",
+                    (schedule_date,),
+                ).fetchone()
+                if existing:
+                    return dict(existing), False
+                cursor = connection.execute(
+                    """
+                    INSERT OR IGNORE INTO scheduled_channel_posts (
+                        schedule_date, schedule_time, requested_category, category,
+                        content, destination_chat_id, is_promo, bot_username, status,
+                        failure_category, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        schedule_date,
+                        schedule_time,
+                        requested_category,
+                        category,
+                        content,
+                        destination_chat_id,
+                        int(is_promo),
+                        bot_username,
+                        status,
+                        failure_category,
+                        created_at,
+                        created_at,
+                    ),
+                )
+                if cursor.rowcount:
+                    connection.execute(
+                        """
+                        UPDATE channel_posting_settings
+                        SET next_category_index = ?,
+                            next_promo_feature_index = ?,
+                            last_promo_date = ?,
+                            updated_at = ?
+                        WHERE id = 1
+                        """,
+                        (
+                            next_category_index,
+                            next_promo_feature_index,
+                            last_promo_date,
+                            created_at,
+                        ),
+                    )
+                    connection.execute(
+                        """
+                        INSERT INTO channel_post_actions
+                            (post_id, action, details, created_at)
+                        VALUES (?, 'created', ?, ?)
+                        """,
+                        (
+                            cursor.lastrowid,
+                            f"category={category}; promo={int(is_promo)}",
+                            created_at,
+                        ),
+                    )
+                row = connection.execute(
+                    "SELECT * FROM scheduled_channel_posts WHERE schedule_date = ?",
+                    (schedule_date,),
+                ).fetchone()
+                if row is None:
+                    raise RuntimeError("Scheduled channel post was not saved.")
+                return dict(row), bool(cursor.rowcount)
+        finally:
+            connection.close()
+
+    def complete_channel_post_generation(
+        self,
+        post_id: int,
+        *,
+        category: str,
+        content: str,
+        bot_username: str | None,
+        next_category_index: int,
+        next_promo_feature_index: int,
+        last_promo_date: str | None,
+        action: str = "gemini_generated",
+        admin_id: int | None = None,
+        at: str | None = None,
+    ) -> bool:
+        timestamp = at or utc_now()
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE scheduled_channel_posts
+                    SET category = ?, content = ?, bot_username = ?, status = 'draft',
+                        failure_category = NULL, preview_sent_at = NULL,
+                        preview_last_attempt_at = NULL, edit_admin_id = NULL,
+                        edit_mode = 'replace', updated_at = ?
+                    WHERE id = ? AND status IN ('failed', 'awaiting_edit')
+                    """,
+                    (category, content, bot_username, timestamp, post_id),
+                )
+                if cursor.rowcount:
+                    connection.execute(
+                        """
+                        UPDATE channel_posting_settings
+                        SET next_category_index = ?, next_promo_feature_index = ?,
+                            last_promo_date = ?, updated_at = ?
+                        WHERE id = 1
+                        """,
+                        (
+                            next_category_index,
+                            next_promo_feature_index,
+                            last_promo_date,
+                            timestamp,
+                        ),
+                    )
+                    connection.execute(
+                        """
+                        INSERT INTO channel_post_actions
+                            (post_id, action, admin_id, details, created_at)
+                        VALUES (?, ?, ?, ?, ?)
+                        """,
+                        (post_id, action, admin_id, category, timestamp),
+                    )
+                return bool(cursor.rowcount)
+        finally:
+            connection.close()
+
+    def get_scheduled_channel_post(
+        self, schedule_date: str
+    ) -> dict[str, Any] | None:
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                "SELECT * FROM scheduled_channel_posts WHERE schedule_date = ?",
+                (schedule_date,),
+            ).fetchone()
+            return dict(row) if row else None
+        finally:
+            connection.close()
+
+    def get_channel_post(self, post_id: int) -> dict[str, Any] | None:
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                "SELECT * FROM scheduled_channel_posts WHERE id = ?",
+                (post_id,),
+            ).fetchone()
+            return dict(row) if row else None
+        finally:
+            connection.close()
+
+    def list_channel_posts(
+        self, *, limit: int = 10, pending_only: bool = False
+    ) -> list[dict[str, Any]]:
+        connection = self._connect()
+        try:
+            if pending_only:
+                rows = connection.execute(
+                    """
+                    SELECT * FROM scheduled_channel_posts
+                    WHERE status IN ('draft', 'awaiting_edit', 'failed', 'retry_wait')
+                    ORDER BY schedule_date ASC LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    """
+                    SELECT * FROM scheduled_channel_posts
+                    ORDER BY schedule_date DESC LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            connection.close()
+
+    def get_recent_channel_post_contents(
+        self, *, limit: int = 30, chat_id: int | None = None
+    ) -> list[dict[str, Any]]:
+        connection = self._connect()
+        try:
+            scheduled_sql = """
+                SELECT id, category, content, is_promo, schedule_date, status,
+                    'scheduled' AS source
+                FROM scheduled_channel_posts
+                WHERE content != ''
+            """
+            scheduled_params: list[Any] = []
+            if chat_id is not None:
+                scheduled_sql += " AND destination_chat_id = ?"
+                scheduled_params.append(chat_id)
+            scheduled_sql += " ORDER BY schedule_date DESC LIMIT ?"
+            scheduled_params.append(limit)
+            scheduled_rows = connection.execute(
+                scheduled_sql, scheduled_params
+            ).fetchall()
+
+            history_sql = """
+                SELECT message_id AS id, 'channel_history' AS category, content,
+                    0 AS is_promo, posted_at AS schedule_date, 'observed' AS status,
+                    'channel' AS source
+                FROM channel_history_posts
+            """
+            history_params: list[Any] = []
+            if chat_id is not None:
+                history_sql += " WHERE chat_id = ?"
+                history_params.append(chat_id)
+            history_sql += " ORDER BY posted_at DESC LIMIT ?"
+            history_params.append(limit)
+            history_rows = connection.execute(history_sql, history_params).fetchall()
+            combined = [dict(row) for row in scheduled_rows]
+            combined.extend(dict(row) for row in history_rows)
+            combined.sort(
+                key=lambda item: str(item.get("schedule_date") or ""), reverse=True
+            )
+            unique: list[dict[str, Any]] = []
+            seen: set[str] = set()
+            for item in combined:
+                content = str(item.get("content") or "").strip()
+                canonical = re.sub(r"[^a-z0-9]+", "", content.casefold())
+                if not canonical or canonical in seen:
+                    continue
+                seen.add(canonical)
+                unique.append(item)
+                if len(unique) >= limit:
+                    break
+            return unique
+        finally:
+            connection.close()
+
+    def record_channel_history_post(
+        self,
+        chat_id: int,
+        message_id: int,
+        content: str,
+        posted_at: str,
+        *,
+        at: str | None = None,
+    ) -> bool:
+        text = content.strip()
+        if not text:
+            return False
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    INSERT OR IGNORE INTO channel_history_posts
+                        (chat_id, message_id, content, posted_at, archived_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (chat_id, message_id, text[:4000], posted_at, at or utc_now()),
+                )
+                return bool(cursor.rowcount)
+        finally:
+            connection.close()
+
+    def get_recent_channel_post_feedback(
+        self, *, limit: int = 5
+    ) -> list[dict[str, Any]]:
+        connection = self._connect()
+        try:
+            rows = connection.execute(
+                """
+                SELECT p.schedule_date, p.category, a.details
+                FROM channel_post_actions AS a
+                JOIN scheduled_channel_posts AS p ON p.id = a.post_id
+                WHERE a.action = 'revision_feedback'
+                ORDER BY a.id DESC LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            connection.close()
+
+    def get_latest_channel_post_feedback(self, post_id: int) -> str | None:
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                """
+                SELECT details FROM channel_post_actions
+                WHERE post_id = ? AND action = 'revision_feedback'
+                ORDER BY id DESC LIMIT 1
+                """,
+                (post_id,),
+            ).fetchone()
+            return str(row["details"]) if row and row["details"] else None
+        finally:
+            connection.close()
+
+    def record_channel_post_action(
+        self,
+        post_id: int | None,
+        action: str,
+        *,
+        admin_id: int | None = None,
+        details: str | None = None,
+        at: str | None = None,
+    ) -> None:
+        connection = self._connect()
+        try:
+            with connection:
+                connection.execute(
+                    """
+                    INSERT INTO channel_post_actions
+                        (post_id, action, admin_id, details, created_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (post_id, action, admin_id, details, at or utc_now()),
+                )
+        finally:
+            connection.close()
+
+    def set_channel_posting_paused(
+        self, paused: bool, *, admin_id: int, at: str | None = None
+    ) -> None:
+        timestamp = at or utc_now()
+        connection = self._connect()
+        try:
+            with connection:
+                connection.execute(
+                    """
+                    UPDATE channel_posting_settings
+                    SET paused = ?, updated_at = ? WHERE id = 1
+                    """,
+                    (int(paused), timestamp),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO channel_post_actions
+                        (post_id, action, admin_id, details, created_at)
+                    VALUES (NULL, ?, ?, ?, ?)
+                    """,
+                    (
+                        "paused" if paused else "resumed",
+                        admin_id,
+                        "Scheduled channel publishing",
+                        timestamp,
+                    ),
+                )
+        finally:
+            connection.close()
+
+    def set_channel_promo_interval(
+        self, interval_days: int, *, admin_id: int, at: str | None = None
+    ) -> None:
+        if interval_days not in {7, 14, 28}:
+            raise ValueError("Unsupported bot-promotion interval.")
+        timestamp = at or utc_now()
+        connection = self._connect()
+        try:
+            with connection:
+                connection.execute(
+                    """
+                    UPDATE channel_posting_settings
+                    SET promo_interval_days = ?, updated_at = ?
+                    WHERE id = 1
+                    """,
+                    (interval_days, timestamp),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO channel_post_actions
+                        (post_id, action, admin_id, details, created_at)
+                    VALUES (NULL, 'promo_interval_changed', ?, ?, ?)
+                    """,
+                    (admin_id, f"interval_days={interval_days}", timestamp),
+                )
+        finally:
+            connection.close()
+
+    def mark_channel_post_preview_attempted(
+        self, post_id: int, *, at: str | None = None
+    ) -> None:
+        connection = self._connect()
+        try:
+            with connection:
+                connection.execute(
+                    """
+                    UPDATE scheduled_channel_posts
+                    SET preview_last_attempt_at = ?, updated_at = ?
+                    WHERE id = ? AND preview_sent_at IS NULL
+                    """,
+                    (at or utc_now(), at or utc_now(), post_id),
+                )
+        finally:
+            connection.close()
+
+    def mark_channel_post_preview_sent(
+        self, post_id: int, *, at: str | None = None
+    ) -> None:
+        timestamp = at or utc_now()
+        connection = self._connect()
+        try:
+            with connection:
+                connection.execute(
+                    """
+                    UPDATE scheduled_channel_posts
+                    SET preview_sent_at = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (timestamp, timestamp, post_id),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO channel_post_actions
+                        (post_id, action, created_at)
+                    VALUES (?, 'preview_sent', ?)
+                    """,
+                    (post_id, timestamp),
+                )
+        finally:
+            connection.close()
+
+    def start_channel_post_edit(
+        self, post_id: int, *, admin_id: int, at: str | None = None
+    ) -> bool:
+        timestamp = at or utc_now()
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE scheduled_channel_posts
+                    SET status = 'awaiting_edit', edit_admin_id = ?,
+                        edit_mode = 'replace', updated_at = ?
+                    WHERE id = ? AND status = 'draft'
+                    """,
+                    (admin_id, timestamp, post_id),
+                )
+                if cursor.rowcount:
+                    connection.execute(
+                        """
+                        INSERT INTO channel_post_actions
+                            (post_id, action, admin_id, created_at)
+                        VALUES (?, 'edit_started', ?, ?)
+                        """,
+                        (post_id, admin_id, timestamp),
+                    )
+                return bool(cursor.rowcount)
+        finally:
+            connection.close()
+
+    def start_channel_post_revision(
+        self, post_id: int, *, admin_id: int, at: str | None = None
+    ) -> bool:
+        timestamp = at or utc_now()
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE scheduled_channel_posts
+                    SET status = 'awaiting_edit', edit_admin_id = ?,
+                        edit_mode = 'feedback', updated_at = ?
+                    WHERE id = ? AND status = 'draft'
+                    """,
+                    (admin_id, timestamp, post_id),
+                )
+                if cursor.rowcount:
+                    connection.execute(
+                        """
+                        INSERT INTO channel_post_actions
+                            (post_id, action, admin_id, created_at)
+                        VALUES (?, 'revision_started', ?, ?)
+                        """,
+                        (post_id, admin_id, timestamp),
+                    )
+                return bool(cursor.rowcount)
+        finally:
+            connection.close()
+
+    def pending_channel_post_edit(
+        self, admin_id: int
+    ) -> dict[str, Any] | None:
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                """
+                SELECT * FROM scheduled_channel_posts
+                WHERE status = 'awaiting_edit' AND edit_admin_id = ?
+                ORDER BY schedule_date ASC LIMIT 1
+                """,
+                (admin_id,),
+            ).fetchone()
+            return dict(row) if row else None
+        finally:
+            connection.close()
+
+    def save_channel_post_edit(
+        self, post_id: int, content: str, *, admin_id: int, at: str | None = None
+    ) -> bool:
+        timestamp = at or utc_now()
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE scheduled_channel_posts
+                    SET content = ?, status = 'draft', edit_admin_id = NULL,
+                        edit_mode = 'replace',
+                        preview_sent_at = NULL, preview_last_attempt_at = NULL,
+                        updated_at = ?
+                    WHERE id = ? AND status = 'awaiting_edit' AND edit_admin_id = ?
+                    """,
+                    (content, timestamp, post_id, admin_id),
+                )
+                if cursor.rowcount:
+                    connection.execute(
+                        """
+                        INSERT INTO channel_post_actions
+                            (post_id, action, admin_id, details, created_at)
+                        VALUES (?, 'edited', ?, ?, ?)
+                        """,
+                        (post_id, admin_id, content, timestamp),
+                    )
+                return bool(cursor.rowcount)
+        finally:
+            connection.close()
+
+    def cancel_channel_post_edit(
+        self, admin_id: int, *, at: str | None = None
+    ) -> bool:
+        timestamp = at or utc_now()
+        connection = self._connect()
+        try:
+            with connection:
+                rows = connection.execute(
+                    """
+                    SELECT id FROM scheduled_channel_posts
+                    WHERE status = 'awaiting_edit' AND edit_admin_id = ?
+                    """,
+                    (admin_id,),
+                ).fetchall()
+                if not rows:
+                    return False
+                connection.execute(
+                    """
+                    UPDATE scheduled_channel_posts
+                    SET status = 'draft', edit_admin_id = NULL,
+                        edit_mode = 'replace', updated_at = ?
+                    WHERE status = 'awaiting_edit' AND edit_admin_id = ?
+                    """,
+                    (timestamp, admin_id),
+                )
+                connection.executemany(
+                    """
+                    INSERT INTO channel_post_actions
+                        (post_id, action, admin_id, created_at)
+                    VALUES (?, 'edit_cancelled', ?, ?)
+                    """,
+                    [(row["id"], admin_id, timestamp) for row in rows],
+                )
+                return True
+        finally:
+            connection.close()
+
+    def reserve_channel_post_publish(
+        self, post_id: int, *, at: str | None = None
+    ) -> int | None:
+        timestamp = at or utc_now()
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE scheduled_channel_posts
+                    SET status = 'publishing', publishing_started_at = ?,
+                        retry_after_at = NULL, failure_category = NULL,
+                        publish_attempts = publish_attempts + 1, updated_at = ?
+                    WHERE id = ? AND status IN ('draft', 'failed', 'retry_wait')
+                    """,
+                    (timestamp, timestamp, post_id),
+                )
+                if cursor.rowcount:
+                    row = connection.execute(
+                        "SELECT publish_attempts FROM scheduled_channel_posts WHERE id = ?",
+                        (post_id,),
+                    ).fetchone()
+                    connection.execute(
+                        """
+                        INSERT INTO channel_post_actions
+                            (post_id, action, created_at)
+                        VALUES (?, 'publishing_started', ?)
+                        """,
+                        (post_id, timestamp),
+                    )
+                    return int(row["publish_attempts"])
+                return None
+        finally:
+            connection.close()
+
+    def complete_channel_post_publish(
+        self,
+        post_id: int,
+        *,
+        telegram_message_id: int | None,
+        at: str | None = None,
+        admin_id: int | None = None,
+    ) -> None:
+        timestamp = at or utc_now()
+        connection = self._connect()
+        try:
+            with connection:
+                connection.execute(
+                    """
+                    UPDATE scheduled_channel_posts
+                    SET status = 'published', telegram_message_id = ?,
+                        published_at = ?, failure_category = NULL, updated_at = ?
+                    WHERE id = ? AND status = 'publishing'
+                    """,
+                    (telegram_message_id, timestamp, timestamp, post_id),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO channel_post_actions
+                        (post_id, action, admin_id, details, created_at)
+                    VALUES (?, 'published', ?, ?, ?)
+                    """,
+                    (
+                        post_id,
+                        admin_id,
+                        f"telegram_message_id={telegram_message_id}",
+                        timestamp,
+                    ),
+                )
+        finally:
+            connection.close()
+
+    def fail_channel_post_publish(
+        self,
+        post_id: int,
+        *,
+        status: str,
+        failure_category: str,
+        retry_after_at: str | None = None,
+        at: str | None = None,
+    ) -> None:
+        if status not in {"failed", "delivery_unknown", "retry_wait"}:
+            raise ValueError("Invalid channel post failure status.")
+        timestamp = at or utc_now()
+        connection = self._connect()
+        try:
+            with connection:
+                connection.execute(
+                    """
+                    UPDATE scheduled_channel_posts
+                    SET status = ?, failure_category = ?, retry_after_at = ?,
+                        updated_at = ?
+                    WHERE id = ? AND status = 'publishing'
+                    """,
+                    (status, failure_category, retry_after_at, timestamp, post_id),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO channel_post_actions
+                        (post_id, action, details, created_at)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (
+                        post_id,
+                        status,
+                        failure_category,
+                        timestamp,
+                    ),
+                )
+        finally:
+            connection.close()
+
+    def recover_inflight_channel_posts(
+        self, *, at: str | None = None
+    ) -> list[dict[str, Any]]:
+        timestamp = at or utc_now()
+        connection = self._connect()
+        try:
+            with connection:
+                rows = connection.execute(
+                    """
+                    SELECT * FROM scheduled_channel_posts WHERE status = 'publishing'
+                    """
+                ).fetchall()
+                if rows:
+                    connection.execute(
+                        """
+                        UPDATE scheduled_channel_posts
+                        SET status = 'delivery_unknown',
+                            failure_category = 'restart_during_send',
+                            updated_at = ?
+                        WHERE status = 'publishing'
+                        """,
+                        (timestamp,),
+                    )
+                    connection.executemany(
+                        """
+                        INSERT INTO channel_post_actions
+                            (post_id, action, details, created_at)
+                        VALUES (?, 'delivery_unknown', 'restart_during_send', ?)
+                        """,
+                        [(row["id"], timestamp) for row in rows],
+                    )
+                return [dict(row) for row in rows]
+        finally:
+            connection.close()
+
+    def set_channel_post_status(
+        self,
+        post_id: int,
+        status: str,
+        *,
+        action: str,
+        admin_id: int | None = None,
+        details: str | None = None,
+        failure_category: str | None = None,
+        at: str | None = None,
+    ) -> bool:
+        allowed_statuses = {"draft", "failed", "rejected", "skipped"}
+        if status not in allowed_statuses:
+            raise ValueError("Invalid channel post status transition.")
+        timestamp = at or utc_now()
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE scheduled_channel_posts
+                    SET status = ?, edit_admin_id = NULL,
+                        failure_category = ?,
+                        updated_at = ?
+                    WHERE id = ? AND status IN (
+                        'draft', 'awaiting_edit', 'failed', 'retry_wait'
+                    )
+                    """,
+                    (
+                        status,
+                        failure_category if status == "failed" else None,
+                        timestamp,
+                        post_id,
+                    ),
+                )
+                if cursor.rowcount:
+                    connection.execute(
+                        """
+                        INSERT INTO channel_post_actions
+                            (post_id, action, admin_id, details, created_at)
+                        VALUES (?, ?, ?, ?, ?)
+                        """,
+                        (post_id, action, admin_id, details, timestamp),
+                    )
+                return bool(cursor.rowcount)
+        finally:
+            connection.close()
+
+    def confirm_unknown_channel_post(
+        self, post_id: int, *, admin_id: int, at: str | None = None
+    ) -> bool:
+        timestamp = at or utc_now()
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE scheduled_channel_posts
+                    SET status = 'published', published_at = ?, failure_category = NULL,
+                        updated_at = ?
+                    WHERE id = ? AND status = 'delivery_unknown'
+                    """,
+                    (timestamp, timestamp, post_id),
+                )
+                if cursor.rowcount:
+                    connection.execute(
+                        """
+                        INSERT INTO channel_post_actions
+                            (post_id, action, admin_id, details, created_at)
+                        VALUES (?, 'admin_confirmed_published', ?, ?, ?)
+                        """,
+                        (post_id, admin_id, "No message ID was available.", timestamp),
+                    )
+                return bool(cursor.rowcount)
+        finally:
+            connection.close()
+
+    def resolve_unknown_channel_post_for_retry(
+        self, post_id: int, *, admin_id: int, at: str | None = None
+    ) -> bool:
+        timestamp = at or utc_now()
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE scheduled_channel_posts
+                    SET status = 'failed', failure_category = 'admin_checked_not_posted',
+                        updated_at = ?
+                    WHERE id = ? AND status = 'delivery_unknown'
+                    """,
+                    (timestamp, post_id),
+                )
+                if cursor.rowcount:
+                    connection.execute(
+                        """
+                        INSERT INTO channel_post_actions
+                            (post_id, action, admin_id, details, created_at)
+                        VALUES (?, 'admin_checked_not_posted', ?, ?, ?)
+                        """,
+                        (post_id, admin_id, "Admin explicitly authorized a retry.", timestamp),
+                    )
+                return bool(cursor.rowcount)
         finally:
             connection.close()
 

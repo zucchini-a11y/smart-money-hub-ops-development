@@ -12,6 +12,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from .admin_dashboard import AdminDashboard
+from .channel_gemini import GeminiChannelContentService
 from .coach import CoachService, RuleBasedCoachService
 from .education import EDUCATION
 from .flows import SUNDAY_FIELDS, TRADE_FIELDS, WEEKLY_FIELDS
@@ -386,12 +387,13 @@ class SmartMoneyHubBot:
         reminder_timezone: str = "Africa/Lagos",
         reminder_time: str = "09:00",
         coach_service: CoachService | None = None,
+        channel_writer: GeminiChannelContentService | None = None,
     ) -> None:
         self.api = api
         self.store = Repository(database_path)
         self.admin_id = admin_id
         self.admin_dashboard = AdminDashboard(
-            api, self.store, admin_id, main_channel_id
+            api, self.store, admin_id, main_channel_id, channel_writer
         )
         self.reminder_zone = ZoneInfo(reminder_timezone)
         self.reminder_time = ClockTime.fromisoformat(reminder_time)
@@ -502,6 +504,11 @@ class SmartMoneyHubBot:
         )
 
     def handle_update(self, update: dict[str, Any]) -> None:
+        channel_post = update.get("channel_post")
+        if isinstance(channel_post, dict):
+            self._archive_channel_post(channel_post)
+            return
+
         message = update.get("message")
         if isinstance(message, dict):
             self._handle_message(message)
@@ -510,6 +517,37 @@ class SmartMoneyHubBot:
         callback = update.get("callback_query")
         if isinstance(callback, dict):
             self._handle_callback(callback)
+
+    def _archive_channel_post(self, channel_post: dict[str, Any]) -> None:
+        configured_channel_id = self.admin_dashboard.main_channel_id
+        chat = channel_post.get("chat")
+        if (
+            configured_channel_id is None
+            or not isinstance(chat, dict)
+            or chat.get("type") != "channel"
+            or chat.get("id") != configured_channel_id
+        ):
+            return
+        message_id = channel_post.get("message_id")
+        if not isinstance(message_id, int):
+            return
+        content = channel_post.get("text") or channel_post.get("caption") or ""
+        if not isinstance(content, str) or not content.strip():
+            return
+        posted_timestamp = channel_post.get("date")
+        try:
+            posted_at = datetime.fromtimestamp(
+                int(posted_timestamp), tz=timezone.utc
+            ).isoformat(timespec="seconds")
+        except (TypeError, ValueError, OSError, OverflowError):
+            posted_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        if self.store.record_channel_history_post(
+            configured_channel_id,
+            message_id,
+            content,
+            posted_at,
+        ):
+            logger.info("Archived a new Market Analysis channel post.")
 
     def _register(
         self, sender: dict[str, Any], chat: dict[str, Any]
@@ -718,6 +756,22 @@ class SmartMoneyHubBot:
         telegram_id, chat_id, is_private = self._register(sender, chat)
         self._send_bot_recovery_notice(chat_id, telegram_id, is_private)
         command = text.strip().split(maxsplit=1)[0].split("@", maxsplit=1)[0].lower()
+        if (
+            is_private
+            and self.admin_dashboard.has_channel_post_edit_pending(telegram_id)
+        ):
+            if command == "/cancel":
+                self.admin_dashboard.cancel_channel_post_edit(telegram_id)
+                self.api.send_message(chat_id, "Channel post edit cancelled.")
+                self.admin_dashboard.channel_posts.show_controls(chat_id)
+                return
+            if command.startswith("/"):
+                self.admin_dashboard.cancel_channel_post_edit(telegram_id)
+            else:
+                self.admin_dashboard.handle_channel_post_edit_message(
+                    chat_id, telegram_id, is_private, text
+                )
+                return
         requested_action = self._requested_member_action(text)
         session = self.sessions.get(telegram_id)
         has_pending_admin_action = (
@@ -725,6 +779,10 @@ class SmartMoneyHubBot:
             or self.admin_dashboard.broadcast_is_pending(telegram_id)
             or self.admin_dashboard.knowledge_is_pending(telegram_id)
             or self.admin_dashboard.has_channel_promo_state(telegram_id)
+            or (
+                is_private
+                and self.admin_dashboard.has_channel_post_edit_pending(telegram_id)
+            )
         )
         if (
             requested_action
@@ -2562,6 +2620,7 @@ class SmartMoneyHubBot:
         if class_day:
             self._dispatch_class_reminders(local_now, class_day)
         self._dispatch_personal_reminders(current)
+        self.admin_dashboard.channel_posts.dispatch_due(current)
 
     def _dispatch_weekly_checkin(self, local_now: datetime) -> None:
         schedule_key = local_now.date().isoformat()

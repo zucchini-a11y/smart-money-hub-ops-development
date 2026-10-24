@@ -6,6 +6,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfoNotFoundError
 
 from .bot import SmartMoneyHubBot
+from .channel_gemini import GeminiChannelContentService
 from .coach import RuleBasedCoachService
 from .gemini_coach import GeminiCoachService, GEMINI_MODEL
 from .storage import DEFAULT_DATABASE_PATH
@@ -50,6 +51,9 @@ def main() -> None:
         if gemini_api_key
         else RuleBasedCoachService()
     )
+    channel_writer = (
+        GeminiChannelContentService(gemini_api_key) if gemini_api_key else None
+    )
     if gemini_api_key:
         logging.getLogger(__name__).info(
             "Gemini Coach enabled with the fixed free-tier model %s.", GEMINI_MODEL
@@ -67,6 +71,7 @@ def main() -> None:
             reminder_timezone=reminder_timezone,
             reminder_time=reminder_time,
             coach_service=coach_service,
+            channel_writer=channel_writer,
         )
     except (ValueError, ZoneInfoNotFoundError):
         raise SystemExit(

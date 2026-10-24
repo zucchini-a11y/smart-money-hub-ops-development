@@ -3,6 +3,8 @@
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from .channel_posting import ChannelPostManager
+from .channel_gemini import GeminiChannelContentService
 from .knowledge_approval import can_approve
 from .knowledge_drafting import parse_research_material, validate_answer_draft
 from .knowledge_research import UnavailableResearchProvider
@@ -43,11 +45,19 @@ class AdminDashboard:
         store: Repository,
         admin_id: int | None,
         main_channel_id: int | None = None,
+        channel_writer: GeminiChannelContentService | None = None,
     ) -> None:
         self.api = api
         self.store = store
         self.admin_id = admin_id
         self.main_channel_id = main_channel_id
+        self.channel_posts = ChannelPostManager(
+            api,
+            store,
+            admin_id,
+            main_channel_id,
+            channel_writer=channel_writer,
+        )
         self._search_pending: set[int] = set()
         self._broadcast_pending: set[int] = set()
         self._broadcast_drafts: dict[int, str] = {}
@@ -78,6 +88,24 @@ class AdminDashboard:
 
     def cancel_channel_promo(self, telegram_id: int) -> None:
         self._channel_promo_pending.discard(telegram_id)
+
+    def has_channel_post_edit_pending(self, telegram_id: int) -> bool:
+        if self.admin_id is None or telegram_id != self.admin_id:
+            return False
+        return self.channel_posts.has_edit_pending(telegram_id)
+
+    def cancel_channel_post_edit(self, telegram_id: int) -> None:
+        self.channel_posts.cancel_edit(telegram_id)
+
+    def handle_channel_post_edit_message(
+        self, chat_id: int, telegram_id: int, is_private: bool, text: str
+    ) -> bool:
+        if not self._authorize(chat_id, telegram_id, is_private):
+            self.cancel_channel_post_edit(telegram_id)
+            return True
+        return self.channel_posts.handle_edit_message(
+            chat_id, telegram_id, text, is_private
+        )
 
     def knowledge_is_pending(self, telegram_id: int) -> bool:
         return telegram_id in self._knowledge_pending
@@ -377,8 +405,18 @@ class AdminDashboard:
             self.cancel_broadcast(telegram_id)
         if data not in channel_promo_actions:
             self.cancel_channel_promo(telegram_id)
+        channel_post_actions = (
+            data == "admin:channel_posts"
+            or data.startswith("admin:channel_posts:")
+        )
+        if not channel_post_actions:
+            self.cancel_channel_post_edit(telegram_id)
         if data != "admin:search":
             self.cancel_search(telegram_id)
+
+        if channel_post_actions:
+            self.channel_posts.handle_callback(chat_id, telegram_id, data)
+            return
 
         if data in {"admin:open", "admin:home"}:
             self._show_dashboard(chat_id)
@@ -612,6 +650,7 @@ class AdminDashboard:
                 ],
                 [{"text": "💬 DM Coach Stats", "callback_data": "admin:dm_coach"}],
                 [{"text": "🧠 Knowledge Improvement", "callback_data": "admin:knowledge"}],
+                [{"text": "🗓️ Channel Content", "callback_data": "admin:channel_posts"}],
                 [{"text": "📨 Send One-Time DM", "callback_data": "admin:dm_broadcast"}],
                 [{"text": "📣 Promote Bot in Channel", "callback_data": "admin:channel_promo"}],
                 [{"text": "🏠 Main Menu", "callback_data": "nav:home"}],
