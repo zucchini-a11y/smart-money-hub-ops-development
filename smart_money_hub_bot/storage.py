@@ -242,6 +242,8 @@ class Repository:
                         telegram_message_id INTEGER,
                         published_at TEXT,
                         failure_category TEXT,
+                        generation_source TEXT NOT NULL DEFAULT 'local'
+                            CHECK (generation_source IN ('local', 'gemini_pending', 'gemini')),
                         created_at TEXT NOT NULL,
                         updated_at TEXT NOT NULL
                     );
@@ -420,6 +422,12 @@ class Repository:
                     "scheduled_channel_posts",
                     "edit_mode",
                     "TEXT NOT NULL DEFAULT 'replace'",
+                )
+                self._ensure_table_column(
+                    connection,
+                    "scheduled_channel_posts",
+                    "generation_source",
+                    "TEXT NOT NULL DEFAULT 'local'",
                 )
                 self._migrate_legacy_assessments(connection)
                 member_ids = connection.execute(
@@ -693,10 +701,13 @@ class Repository:
         last_promo_date: str | None,
         status: str = "draft",
         failure_category: str | None = None,
+        generation_source: str = "local",
         at: str | None = None,
     ) -> tuple[dict[str, Any], bool]:
         if status not in {"draft", "failed"}:
             raise ValueError("Invalid initial channel post status.")
+        if generation_source not in {"local", "gemini_pending", "gemini"}:
+            raise ValueError("Invalid channel content source.")
         created_at = at or utc_now()
         connection = self._connect()
         try:
@@ -712,8 +723,8 @@ class Repository:
                     INSERT OR IGNORE INTO scheduled_channel_posts (
                         schedule_date, schedule_time, requested_category, category,
                         content, destination_chat_id, is_promo, bot_username, status,
-                        failure_category, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        failure_category, generation_source, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         schedule_date,
@@ -726,6 +737,7 @@ class Repository:
                         bot_username,
                         status,
                         failure_category,
+                        generation_source,
                         created_at,
                         created_at,
                     ),
@@ -793,7 +805,8 @@ class Repository:
                     SET category = ?, content = ?, bot_username = ?, status = 'draft',
                         failure_category = NULL, preview_sent_at = NULL,
                         preview_last_attempt_at = NULL, edit_admin_id = NULL,
-                        edit_mode = 'replace', updated_at = ?
+                        edit_mode = 'replace', generation_source = 'gemini',
+                        updated_at = ?
                     WHERE id = ? AND status IN ('failed', 'awaiting_edit')
                     """,
                     (category, content, bot_username, timestamp, post_id),
