@@ -1,6 +1,6 @@
 # Smart Money Hub AI Coach
 
-A Python Telegram Bot API application for SMC education, assessment, trading journals, and accountability. It uses the Python standard library and SQLite. The first version does not call OpenAI, Grok, or any other AI provider or paid AI service.
+A Python Telegram Bot API application for SMC education, assessment, trading journals, and accountability. It uses the Python standard library and SQLite, with optional Google Gemini access on the configured free tier. It does not use paid AI services.
 
 ## Start the bot
 
