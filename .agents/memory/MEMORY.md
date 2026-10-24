@@ -3,6 +3,7 @@
 - [Verify Telegram command delivery](telegram-command-verification.md) — test new commands through the update handler before reporting them active.
 - [Telegram polling cleanup](telegram-polling-cleanup.md) — check for a leftover poller before treating a Telegram getUpdates conflict as a credential problem.
 - [Weekend post originality](weekend-post-originality.md) — use recent channel history to avoid repeating topics and layouts, not only exact wording.
+- [U.S. economic calendar scope](us-economic-calendar-scope.md) — use official U.S. sources, include DOL and Census, exclude ISM and geopolitical news.
 - [Gemini free-tier policy](gemini-free-tier-policy.md) — member text/history may go to Google's free tier; keep billing off and never silently use paid models.
 - [Google Gemini docs access](gemini-docs-access.md) — if documentation callbacks return 402, direct fetch from official Google docs may still work.
 - [Coach reply navigation](coach-reply-navigation.md) — keep repeated Coaching Modes buttons off replies while preserving main-menu access.
