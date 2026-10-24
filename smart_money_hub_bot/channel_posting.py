@@ -494,7 +494,10 @@ class ChannelPostManager:
                         }
                     ]
                 )
-            if post.get("content"):
+            if (
+                post.get("content")
+                and post.get("generation_source") == "gemini"
+            ):
                 rows.append(
                     [
                         {
@@ -534,6 +537,13 @@ class ChannelPostManager:
         post = self.store.get_scheduled_channel_post(target_date.isoformat())
         if not post:
             post = self._create_post(target_date)
+        if (
+            post
+            and target_date.weekday() in {5, 6}
+            and post.get("generation_source") == "local"
+            and post["status"] not in {"published", "rejected", "skipped"}
+        ):
+            post = self._hold_legacy_weekend_draft(post)
         if (
             post
             and post["status"] not in {"rejected", "skipped", "published"}
@@ -663,6 +673,7 @@ class ChannelPostManager:
             last_promo_date=settings.get("last_promo_date"),
             status="failed",
             failure_category="gemini_generation_pending",
+            generation_source="gemini_pending",
         )
         if not created:
             return post
@@ -780,7 +791,9 @@ class ChannelPostManager:
         admin_id: int,
         now_utc: datetime,
     ) -> None:
-        if post.get("status") != "failed" or post.get("content"):
+        if post.get("status") != "failed" or (
+            post.get("content") and post.get("generation_source") == "gemini"
+        ):
             self.api.send_message(chat_id, "This post is not waiting for Gemini generation.")
             return
         if post.get("is_promo"):
@@ -868,6 +881,7 @@ class ChannelPostManager:
             last_promo_date=settings.get("last_promo_date"),
             status="failed",
             failure_category=failure_category,
+            generation_source="gemini_pending",
         )
         return self._record_generation_failure(post, failure_category)
 
@@ -904,6 +918,22 @@ class ChannelPostManager:
         self._notify_failure(saved, category)
         return saved
 
+    def _hold_legacy_weekend_draft(
+        self, post: dict[str, Any]
+    ) -> dict[str, Any]:
+        if post.get("failure_category") != "gemini_legacy_draft_held":
+            self.store.set_channel_post_status(
+                int(post["id"]),
+                "failed",
+                action="legacy_weekend_draft_held",
+                details="gemini_legacy_draft_held",
+                failure_category="gemini_legacy_draft_held",
+            )
+            held = self.store.get_channel_post(int(post["id"])) or post
+            self._notify_failure(held, "gemini_legacy_draft_held")
+            return held
+        return post
+
     def _send_preview(self, post: dict[str, Any], now_utc: datetime) -> None:
         if self.admin_id is None or post.get("preview_sent_at"):
             return
@@ -931,6 +961,19 @@ class ChannelPostManager:
         admin_id: int | None = None,
     ) -> None:
         if self.admin_id is None or self.destination_chat_id is None:
+            return
+        scheduled_date = date.fromisoformat(str(post["schedule_date"]))
+        if (
+            scheduled_date.weekday() in {5, 6}
+            and post.get("generation_source") != "gemini"
+        ):
+            self._hold_legacy_weekend_draft(post)
+            if not automatic:
+                self.api.send_message(
+                    self.admin_id,
+                    "This weekend draft was created before Gemini review. It remains "
+                    "on hold; use Retry Gemini draft before publishing.",
+                )
             return
         settings = self.store.get_channel_posting_settings()
         if settings["paused"]:
