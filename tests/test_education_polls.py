@@ -30,6 +30,7 @@ class FakeTelegramAPI:
         self.polls: list[dict[str, Any]] = []
         self.messages: list[dict[str, Any]] = []
         self.channel_messages: list[dict[str, Any]] = []
+        self.edits: list[dict[str, Any]] = []
         self.group_status = "administrator"
         self.channel_status = "administrator"
         self.channel_can_post = True
@@ -103,6 +104,26 @@ class FakeTelegramAPI:
         }
         self.channel_messages.append(message)
         return {"message_id": 900 + len(self.channel_messages)}
+
+    def edit_message_text(
+        self,
+        chat_id: int,
+        message_id: int,
+        text: str,
+        reply_markup: dict[str, Any] | None = None,
+        *,
+        parse_mode: str | None = None,
+    ) -> dict[str, Any]:
+        self.edits.append(
+            {
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "text": text,
+                "reply_markup": reply_markup,
+                "parse_mode": parse_mode,
+            }
+        )
+        return {"message_id": message_id}
 
     def send_message(
         self,
@@ -245,7 +266,7 @@ class EducationPollTests(unittest.TestCase):
         button = self.api.channel_messages[0]["reply_markup"]["inline_keyboard"][0][0]
         self.assertEqual(button["text"], "Vote in Education Group")
         self.assertEqual(button["url"], "https://t.me/c/3916437804/501")
-        self.assertIn("This is a preview", self.api.channel_messages[0]["text"])
+        self.assertIn("Tap below to vote", self.api.channel_messages[0]["text"])
         self.assertEqual(self.api.channel_messages[0]["parse_mode"], "HTML")
         restarted_publisher = EducationPollPublisher(
             self.api,
@@ -299,6 +320,39 @@ class EducationPollTests(unittest.TestCase):
             parse_education_poll_message_link("https://t.me/c/3916437805/1/113")
         self.assertEqual(
             raised.exception.category, "education_group_destination_mismatch"
+        )
+
+    def test_existing_channel_preview_is_edited_without_resending_poll_or_post(self) -> None:
+        run_key = "manual:mirror:-1003916437804:1:113"
+        self.repo.create_education_poll_run(
+            run_key=run_key,
+            source="manual",
+            scheduled_at="2026-10-24T20:20:00+00:00",
+            scenario_index=0,
+            status="group_sent",
+            group_message_id=113,
+            group_thread_id=1,
+        )
+        self.assertTrue(self.repo.reserve_education_poll_channel(run_key))
+        self.assertTrue(self.repo.complete_education_poll_channel(run_key, 901))
+
+        result = self.publisher.edit_existing_poll_preview(
+            "https://t.me/c/3916437804/1/113"
+        )
+
+        self.assertEqual(result, "edited")
+        self.assertEqual(self.api.polls, [])
+        self.assertEqual(self.api.channel_messages, [])
+        self.assertEqual(len(self.api.edits), 1)
+        edited = self.api.edits[0]
+        self.assertEqual(edited["message_id"], 901)
+        self.assertEqual(edited["parse_mode"], "HTML")
+        self.assertIn("📊 <b>SMART MONEY HUB", edited["text"])
+        self.assertIn("What is the safest read?", edited["text"])
+        self.assertNotIn("A. ", edited["text"])
+        self.assertEqual(
+            edited["reply_markup"]["inline_keyboard"][0][0]["url"],
+            "https://t.me/c/3916437804/1/113",
         )
 
     def test_channel_failure_does_not_resend_group_poll(self) -> None:
@@ -428,9 +482,11 @@ class EducationPollTests(unittest.TestCase):
         parser.close()
         self.assertEqual(parser.errors, [])
         self.assertFalse(parser.stack)
-        self.assertIn("🧠 <b>SMART MONEY HUB", rendered)
+        self.assertIn("📊 <b>SMART MONEY HUB", rendered)
         self.assertIn("&lt;BOS&gt; &amp; CHOCH", rendered)
-        self.assertIn("&lt;confirmation&gt;", rendered)
+        self.assertNotIn("&lt;confirmation&gt;", rendered)
+        self.assertNotIn("A. ", rendered)
+        self.assertIn("Tap below to vote", rendered)
         self.assertIn("NO CONFIRMATION, NO ENTRY.", rendered)
         self.assertIn("\n\n", rendered)
 

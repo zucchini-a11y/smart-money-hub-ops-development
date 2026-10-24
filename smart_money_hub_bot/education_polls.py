@@ -107,16 +107,11 @@ def parse_education_poll_message_link(link: str) -> tuple[int, int | None, int]:
 
 
 def format_channel_poll_preview(scenario: ScenarioPoll) -> str:
-    options = "\n".join(
-        f"{chr(65 + index)}. {html.escape(option)}"
-        for index, option in enumerate(scenario.options)
-    )
     return (
-        "🧠 <b>SMART MONEY HUB | WEEKLY EDUCATION POLL</b>\n\n"
+        "📊 <b>SMART MONEY HUB | EDUCATION POLL</b>\n\n"
         "<b>Test your SMC understanding</b>\n\n"
         f"{html.escape(scenario.question)}\n\n"
-        f"{options}\n\n"
-        "This is a preview. Tap below to vote in the Education Group.\n\n"
+        "🗳️ Tap below to vote in the Education Group.\n\n"
         "⚠️ <b>NO CONFIRMATION, NO ENTRY.</b>"
     )
 
@@ -304,6 +299,49 @@ class EducationPollPublisher:
         self._dispatch_run(run, current)
         updated = self.store.education_poll_run(run_key) or run
         return str(updated["status"])
+
+    def edit_existing_poll_preview(self, poll_link: str) -> str:
+        group_id, thread_id, message_id = parse_education_poll_message_link(poll_link)
+        run = self.store.education_poll_run_for_group_message(message_id, thread_id)
+        if (
+            run is None
+            or run.get("status") != "published"
+            or not isinstance(run.get("channel_message_id"), int)
+        ):
+            raise EducationPollError("existing_channel_preview_not_found")
+        scenario_index = int(run.get("scenario_index", -1))
+        if not 0 <= scenario_index < len(SCENARIO_POLLS):
+            raise EducationPollError("scenario_unavailable")
+
+        verify_poll_destinations(
+            self.api,
+            education_group_id=self.education_group_id,
+            channel_id=self.channel_id,
+        )
+        keyboard = {
+            "inline_keyboard": [
+                [
+                    {
+                        "text": "Vote in Education Group",
+                        "url": poll_link.strip(),
+                    }
+                ]
+            ]
+        }
+        try:
+            self.api.edit_message_text(
+                int(self.channel_id),
+                int(run["channel_message_id"]),
+                format_channel_poll_preview(SCENARIO_POLLS[scenario_index]),
+                reply_markup=keyboard,
+                parse_mode="HTML",
+            )
+        except TelegramAPIError as error:
+            if "message is not modified" in str(error).casefold():
+                return "already_current"
+            raise EducationPollError("existing_channel_preview_edit_failed") from None
+        logger.info("Existing Education poll channel preview updated.")
+        return "edited"
 
     def dispatch_pending(self, now: datetime | None = None) -> None:
         current = now or datetime.now(timezone.utc)

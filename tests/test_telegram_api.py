@@ -42,6 +42,30 @@ class TelegramUpdateSubscriptionTests(unittest.TestCase):
             },
         )
 
+    def test_edit_message_text_preserves_inline_button_and_html(self) -> None:
+        api = TelegramAPI("synthetic-test-token")
+        keyboard = {"inline_keyboard": [[{"text": "Vote", "url": "https://t.me/c/1/2"}]]}
+        with patch.object(api, "_request", return_value={"message_id": 17}) as request:
+            result = api.edit_message_text(
+                -100123,
+                17,
+                "📊 <b>Poll preview</b>",
+                reply_markup=keyboard,
+                parse_mode="HTML",
+            )
+
+        self.assertEqual(result, {"message_id": 17})
+        request.assert_called_once_with(
+            "editMessageText",
+            {
+                "chat_id": -100123,
+                "message_id": 17,
+                "text": "📊 <b>Poll preview</b>",
+                "reply_markup": keyboard,
+                "parse_mode": "HTML",
+            },
+        )
+
     def test_send_message_can_target_a_forum_topic(self) -> None:
         api = TelegramAPI("synthetic-test-token")
         with patch.object(api, "_request") as request:

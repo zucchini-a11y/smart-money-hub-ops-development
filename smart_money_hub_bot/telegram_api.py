@@ -183,6 +183,26 @@ class TelegramAPI:
         result = self._request("sendMessage", payload)
         return result if isinstance(result, dict) else {}
 
+    def edit_message_text(
+        self,
+        chat_id: int,
+        message_id: int,
+        text: str,
+        reply_markup: dict[str, Any] | None = None,
+        *,
+        parse_mode: str | None = None,
+    ) -> Any:
+        payload: dict[str, Any] = {
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "text": text,
+        }
+        if reply_markup is not None:
+            payload["reply_markup"] = reply_markup
+        if parse_mode is not None:
+            payload["parse_mode"] = parse_mode
+        return self._request("editMessageText", payload)
+
     def send_chat_action(
         self,
         chat_id: int,
