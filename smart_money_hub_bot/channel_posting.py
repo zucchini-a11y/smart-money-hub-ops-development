@@ -1125,9 +1125,19 @@ class ChannelPostManager:
     def _notify_failure(self, post: dict[str, Any], category: str) -> None:
         if self.admin_id is None:
             return
+        if category.startswith("gemini_"):
+            message = (
+                f"The {post['schedule_date']} AI draft was held because Gemini "
+                f"could not provide a publishable result ({category}). Nothing was "
+                "sent to the channel. You can review the status and retry manually."
+            )
+        else:
+            message = (
+                f"The {post['schedule_date']} channel post was not confirmed. "
+                f"Failure category: {category}. You can review it in Channel Posts."
+            )
         self._notify_admin(
-            f"The {post['schedule_date']} channel post was not confirmed. "
-            f"Failure category: {category}. You can review it in Channel Posts.",
+            message,
             {
                 "inline_keyboard": [
                     [

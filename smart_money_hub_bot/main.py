@@ -58,9 +58,14 @@ def main() -> None:
         logging.getLogger(__name__).info(
             "Gemini Coach enabled with the fixed free-tier model %s.", GEMINI_MODEL
         )
+        logging.getLogger(__name__).info(
+            "Weekend channel drafts use the primary Gemini model only; "
+            "provider failures hold the draft."
+        )
     else:
         logging.getLogger(__name__).info(
-            "GEMINI_API_KEY is not configured; using the local Coach."
+            "GEMINI_API_KEY is not configured; using the local Coach and holding "
+            "weekend AI drafts."
         )
     try:
         bot = SmartMoneyHubBot(
