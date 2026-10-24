@@ -8,6 +8,8 @@ from zoneinfo import ZoneInfo
 from smart_money_hub_bot.channel_content import (
     CHANNEL_CONTENT_CATEGORIES,
     PROMO_FEATURES,
+    describe_channel_post_rejection,
+    is_promotional_content,
     validate_channel_post,
 )
 from smart_money_hub_bot.channel_gemini import (
@@ -231,7 +233,9 @@ class ChannelPostingTests(unittest.TestCase):
         assert post["content"] == ""
         assert not self.api.channel_messages
         assert any(
-            "gemini_rate_limit" in message["text"] for message in self.api.messages
+            "Gemini reached a usage or rate limit" in message["text"]
+            and "no weekend post was sent" in message["text"]
+            for message in self.api.messages
         )
         assert len(self.writer.calls) == 1
 
@@ -303,6 +307,57 @@ class ChannelPostingTests(unittest.TestCase):
         self.assertEqual(saved["edit_admin_id"], ADMIN_ID)
         self.assertFalse(self.writer.calls)
         self.assertFalse(self.api.channel_messages)
+
+    def test_held_legacy_post_can_be_recovered_with_a_valid_admin_edit(self) -> None:
+        legacy, _ = self.store.create_scheduled_channel_post(
+            schedule_date="2026-10-24",
+            schedule_time="10:00",
+            requested_category="education",
+            category="education",
+            content="Saved legacy draft.\n\nNO CONFIRMATION, NO ENTRY.",
+            destination_chat_id=CHANNEL_ID,
+            is_promo=False,
+            bot_username=None,
+            next_category_index=1,
+            next_promo_feature_index=0,
+            last_promo_date=None,
+        )
+        held = self.manager._hold_legacy_weekend_draft(legacy)
+        self.assertEqual(held["status"], "failed")
+
+        self.manager.show_post(ADMIN_ID, held)
+        held_buttons = self.api.messages[-1]["reply_markup"]["inline_keyboard"]
+        self.assertTrue(
+            any(button["text"] == "✏️ Edit Post" for row in held_buttons for button in row)
+        )
+
+        self.manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:channel_posts:edit:{legacy['id']}",
+            local_time(24, 9),
+        )
+        revised = (
+            "Edited education note: wait for planned structure confirmation "
+            "before entry.\n\nNO CONFIRMATION, NO ENTRY."
+        )
+        self.assertTrue(
+            self.manager.handle_edit_message(ADMIN_ID, ADMIN_ID, revised, True)
+        )
+        saved = self.store.get_channel_post(legacy["id"])
+        self.assertEqual(saved["status"], "draft")
+        self.assertIsNone(saved["failure_category"])
+        self.assertEqual(saved["admin_edit_approved"], 1)
+        self.assertFalse(self.api.channel_messages)
+
+        self.manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:channel_posts:publish:{legacy['id']}",
+            local_time(24, 9, 30),
+        )
+        self.assertEqual(len(self.api.channel_messages), 1)
+        self.assertEqual(self.api.channel_messages[0]["text"], revised)
 
     def test_admin_feedback_revises_weekend_draft_with_saved_context(self) -> None:
         self.manager.dispatch_due(local_time(23, 18))
@@ -464,6 +519,42 @@ class ChannelPostingTests(unittest.TestCase):
         assert post["failure_category"] == "destination_not_verified"
         assert api.channel_messages == []
 
+        manager.show_post(ADMIN_ID, post)
+        failed_post_buttons = api.messages[-1]["reply_markup"]["inline_keyboard"]
+        self.assertTrue(
+            any(
+                button["text"] == "✏️ Edit Post"
+                for row in failed_post_buttons
+                for button in row
+            )
+        )
+        manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:channel_posts:edit:{post['id']}",
+            local_time(26, 10, 1),
+        )
+        corrected = (
+            "A corrected education post still needs the verified Market Analysis "
+            "destination.\n\nNO CONFIRMATION, NO ENTRY."
+        )
+        self.assertTrue(
+            manager.handle_edit_message(ADMIN_ID, ADMIN_ID, corrected, True)
+        )
+        corrected_post = store.get_channel_post(post["id"])
+        self.assertEqual(corrected_post["status"], "draft")
+        self.assertEqual(corrected_post["admin_edit_approved"], 1)
+        manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:channel_posts:publish:{post['id']}",
+            local_time(26, 10, 2),
+        )
+        blocked_again = store.get_channel_post(post["id"])
+        self.assertEqual(blocked_again["status"], "failed")
+        self.assertEqual(blocked_again["failure_category"], "destination_not_verified")
+        self.assertEqual(api.channel_messages, [])
+
         api.chat = {
             "id": CHANNEL_ID,
             "type": "channel",
@@ -587,6 +678,169 @@ class ChannelPostingTests(unittest.TestCase):
             is_promo=True,
             bot_username="SmartMoneyHubSignalsBot",
         ) == "promo_link_mismatch"
+
+    def test_unverified_promo_error_names_claim_and_safe_correction(self) -> None:
+        claim = "The Smart Money Hub bot predicts exact Gold entries for you."
+        text = (
+            f"{claim}\n"
+            "Open @SmartMoneyHubSignalsBot and tap Start: "
+            "https://t.me/SmartMoneyHubSignalsBot\n"
+            "NO CONFIRMATION, NO ENTRY."
+        )
+
+        self.assertEqual(
+            validate_channel_post(
+                text,
+                is_promo=True,
+                bot_username="SmartMoneyHubSignalsBot",
+            ),
+            "unverified_promo_feature",
+        )
+        explanation = describe_channel_post_rejection(
+            text,
+            "unverified_promo_feature",
+            bot_username="SmartMoneyHubSignalsBot",
+        )
+        self.assertIn(f"“{claim}”", explanation)
+        self.assertIn(PROMO_FEATURES[0], explanation)
+        self.assertIn("remove the bot promotion completely", explanation)
+        self.assertIn("saved draft is unchanged", explanation)
+
+    def test_verified_promo_and_nonpromo_education_both_validate(self) -> None:
+        valid_promo = (
+            f"{PROMO_FEATURES[1]}\n"
+            "Open @SmartMoneyHubSignalsBot and tap Start: "
+            "https://t.me/SmartMoneyHubSignalsBot\n"
+            "NO CONFIRMATION, NO ENTRY."
+        )
+        education = (
+            "A liquidity sweep alone does not confirm a reversal. Wait for "
+            "the evidence required by your plan.\n\nNO CONFIRMATION, NO ENTRY."
+        )
+
+        self.assertTrue(is_promotional_content(valid_promo))
+        self.assertIsNone(
+            validate_channel_post(
+                valid_promo,
+                is_promo=True,
+                bot_username="SmartMoneyHubSignalsBot",
+            )
+        )
+        self.assertFalse(is_promotional_content(education))
+        self.assertIsNone(validate_channel_post(education, is_promo=False))
+
+    def test_missing_golden_rule_has_a_plain_language_correction(self) -> None:
+        text = "A useful educational post without its required footer."
+        self.assertEqual(
+            validate_channel_post(text, is_promo=False),
+            "missing_golden_rule",
+        )
+        explanation = describe_channel_post_rejection(
+            text,
+            "missing_golden_rule",
+        )
+        self.assertIn("NO CONFIRMATION, NO ENTRY.", explanation)
+        self.assertIn("resend the complete post", explanation)
+        self.assertIn("saved draft is unchanged", explanation)
+
+    def test_admin_can_retry_edit_remove_promo_and_publish_only_on_action(self) -> None:
+        original = (
+            f"Weekly learning reminder.\n\n{PROMO_FEATURES[0]}\n"
+            "Open @SmartMoneyHubSignalsBot and tap Start: "
+            "https://t.me/SmartMoneyHubSignalsBot\n"
+            "The learning Coach is separate from PRO Signals.\n"
+            "NO CONFIRMATION, NO ENTRY."
+        )
+        post, _ = self.store.create_scheduled_channel_post(
+            schedule_date="2026-10-24",
+            schedule_time="10:00",
+            requested_category="education",
+            category="education",
+            content=original,
+            destination_chat_id=CHANNEL_ID,
+            is_promo=True,
+            bot_username="SmartMoneyHubSignalsBot",
+            next_category_index=1,
+            next_promo_feature_index=1,
+            last_promo_date="2026-10-24",
+        )
+        self.assertTrue(
+            self.store.start_channel_post_edit(post["id"], admin_id=ADMIN_ID)
+        )
+
+        invalid = (
+            "Weekly learning reminder.\n\n"
+            "The Smart Money Hub bot predicts exact Gold entries for you.\n"
+            "Open @SmartMoneyHubSignalsBot and tap Start: "
+            "https://t.me/SmartMoneyHubSignalsBot\n"
+            "NO CONFIRMATION, NO ENTRY."
+        )
+        self.assertTrue(
+            self.manager.handle_edit_message(ADMIN_ID, ADMIN_ID, invalid, True)
+        )
+        awaiting = self.store.get_channel_post(post["id"])
+        self.assertEqual(awaiting["status"], "awaiting_edit")
+        self.assertEqual(awaiting["content"], original)
+        self.assertIn("predicts exact Gold entries", self.api.messages[-2]["text"])
+        self.assertIn(original, self.api.messages[-1]["text"])
+
+        education = (
+            "Liquidity note: a sweep alone does not confirm a reversal. "
+            "Wait for your planned evidence.\n\nNO CONFIRMATION, NO ENTRY."
+        )
+        self.assertTrue(
+            self.manager.handle_edit_message(ADMIN_ID, ADMIN_ID, education, True)
+        )
+        saved = self.store.get_channel_post(post["id"])
+        self.assertEqual(saved["status"], "draft")
+        self.assertEqual(saved["content"], education)
+        self.assertEqual(saved["is_promo"], 0)
+        self.assertEqual(saved["generation_source"], "local")
+        self.assertEqual(saved["admin_edit_approved"], 1)
+        self.assertEqual(self.api.channel_messages, [])
+
+        reopened = Repository(self.store.database_path)
+        persisted = reopened.get_channel_post(post["id"])
+        self.assertEqual(persisted["content"], education)
+        self.assertEqual(persisted["is_promo"], 0)
+        self.assertEqual(persisted["admin_edit_approved"], 1)
+        self.assertEqual(self.api.channel_messages, [])
+
+        self.manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:channel_posts:publish:{post['id']}",
+            local_time(24, 9, 30),
+        )
+        self.assertEqual(len(self.api.channel_messages), 1)
+        self.assertEqual(self.api.channel_messages[0]["text"], education)
+
+    def test_admin_controls_use_plain_action_labels(self) -> None:
+        self.manager.dispatch_due(local_time(23, 18))
+        post = self.store.get_scheduled_channel_post("2026-10-24")
+        self.assertIsNotNone(post)
+
+        self.manager.show_controls(ADMIN_ID)
+        controls_markup = self.api.messages[-1]["reply_markup"]
+        control_labels = {
+            button["text"]
+            for row in controls_markup["inline_keyboard"]
+            for button in row
+        }
+        self.assertIn("⏸ Pause Channel Posts", control_labels)
+        self.assertIn("👁 Preview Post — 2026-10-24", control_labels)
+
+        self.manager.show_post(ADMIN_ID, post)
+        post_markup = self.api.messages[-1]["reply_markup"]
+        post_labels = {
+            button["text"]
+            for row in post_markup["inline_keyboard"]
+            for button in row
+        }
+        self.assertIn("✏️ Edit Post", post_labels)
+        self.assertIn("🚀 Publish Now", post_labels)
+        self.assertIn("❌ Reject Post", post_labels)
+        self.assertIn("⏭ Skip This Post", post_labels)
 
 if __name__ == "__main__":
     unittest.main()

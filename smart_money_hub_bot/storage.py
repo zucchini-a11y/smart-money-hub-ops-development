@@ -244,6 +244,8 @@ class Repository:
                         failure_category TEXT,
                         generation_source TEXT NOT NULL DEFAULT 'local'
                             CHECK (generation_source IN ('local', 'gemini_pending', 'gemini')),
+                        admin_edit_approved INTEGER NOT NULL DEFAULT 0
+                            CHECK (admin_edit_approved IN (0, 1)),
                         created_at TEXT NOT NULL,
                         updated_at TEXT NOT NULL
                     );
@@ -428,6 +430,12 @@ class Repository:
                     "scheduled_channel_posts",
                     "generation_source",
                     "TEXT NOT NULL DEFAULT 'local'",
+                )
+                self._ensure_table_column(
+                    connection,
+                    "scheduled_channel_posts",
+                    "admin_edit_approved",
+                    "INTEGER NOT NULL DEFAULT 0 CHECK (admin_edit_approved IN (0, 1))",
                 )
                 self._migrate_legacy_assessments(connection)
                 member_ids = connection.execute(
@@ -1189,7 +1197,10 @@ class Repository:
                     UPDATE scheduled_channel_posts
                     SET status = 'awaiting_edit', edit_admin_id = ?,
                         edit_mode = 'replace', updated_at = ?
-                    WHERE id = ? AND status = 'draft'
+                    WHERE id = ? AND (
+                        status = 'draft'
+                        OR (status = 'failed' AND content <> '')
+                    )
                     """,
                     (admin_id, timestamp, post_id),
                 )
@@ -1253,7 +1264,13 @@ class Repository:
             connection.close()
 
     def save_channel_post_edit(
-        self, post_id: int, content: str, *, admin_id: int, at: str | None = None
+        self,
+        post_id: int,
+        content: str,
+        *,
+        admin_id: int,
+        is_promo: bool,
+        at: str | None = None,
     ) -> bool:
         timestamp = at or utc_now()
         connection = self._connect()
@@ -1263,12 +1280,14 @@ class Repository:
                     """
                     UPDATE scheduled_channel_posts
                     SET content = ?, status = 'draft', edit_admin_id = NULL,
-                        edit_mode = 'replace',
+                        edit_mode = 'replace', is_promo = ?,
+                        admin_edit_approved = 1,
+                        failure_category = NULL,
                         preview_sent_at = NULL, preview_last_attempt_at = NULL,
                         updated_at = ?
                     WHERE id = ? AND status = 'awaiting_edit' AND edit_admin_id = ?
                     """,
-                    (content, timestamp, post_id, admin_id),
+                    (content, int(is_promo), timestamp, post_id, admin_id),
                 )
                 if cursor.rowcount:
                     connection.execute(

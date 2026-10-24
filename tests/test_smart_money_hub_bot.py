@@ -1879,6 +1879,73 @@ class BotFlowTests(unittest.TestCase):
 
 
 class StorageMigrationTests(unittest.TestCase):
+    def test_existing_channel_drafts_get_admin_edit_approval_flag_without_data_loss(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "channel-posts-legacy.sqlite3"
+            connection = sqlite3.connect(path)
+            connection.execute(
+                """
+                CREATE TABLE scheduled_channel_posts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    schedule_date TEXT NOT NULL UNIQUE,
+                    schedule_time TEXT NOT NULL,
+                    requested_category TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    destination_chat_id INTEGER NOT NULL,
+                    is_promo INTEGER NOT NULL DEFAULT 0,
+                    bot_username TEXT,
+                    status TEXT NOT NULL,
+                    preview_sent_at TEXT,
+                    preview_last_attempt_at TEXT,
+                    edit_admin_id INTEGER,
+                    publishing_started_at TEXT,
+                    retry_after_at TEXT,
+                    publish_attempts INTEGER NOT NULL DEFAULT 0,
+                    telegram_message_id INTEGER,
+                    published_at TEXT,
+                    failure_category TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                INSERT INTO scheduled_channel_posts (
+                    schedule_date, schedule_time, requested_category, category,
+                    content, destination_chat_id, is_promo, bot_username, status,
+                    edit_admin_id, created_at, updated_at
+                ) VALUES (
+                    '2026-10-24', '10:00', 'education', 'education',
+                    'Saved post text.', -1004481197912, 1,
+                    'SmartMoneyHubSignalsBot', 'awaiting_edit', 777,
+                    '2026-10-24T10:00:00+00:00', '2026-10-24T10:00:00+00:00'
+                )
+                """
+            )
+            connection.commit()
+            connection.close()
+
+            Repository(path)
+
+            connection = sqlite3.connect(path)
+            try:
+                saved = connection.execute(
+                    """
+                    SELECT content, status, edit_admin_id,
+                           generation_source, admin_edit_approved
+                    FROM scheduled_channel_posts WHERE schedule_date = '2026-10-24'
+                    """
+                ).fetchone()
+            finally:
+                connection.close()
+
+            self.assertEqual(
+                saved,
+                ("Saved post text.", "awaiting_edit", 777, "local", 0),
+            )
+
     def test_existing_user_table_gets_class_reminder_opt_in_without_data_loss(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "existing.sqlite3"

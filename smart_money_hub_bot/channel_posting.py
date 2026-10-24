@@ -13,6 +13,8 @@ from .channel_content import (
     CHANNEL_CONTENT_CATEGORIES,
     compose_promo_post,
     compose_routine_post,
+    describe_channel_post_rejection,
+    is_promotional_content,
     next_category,
     validate_channel_post,
 )
@@ -102,9 +104,11 @@ class ChannelPostManager:
         recent = self.store.list_channel_posts(limit=5)
         lines = [
             "CHANNEL CONTENT SCHEDULER",
+            "Review previews below. Eligible posts may publish at their scheduled time unless you pause, reject, or skip them.",
             "Weekday/Saturday schedule: 10:00 WAT; Sunday: 18:00 WAT.",
             "Admin preview: 18:00 WAT the evening before; one hour before if missing.",
             "Destination: the configured Market Analysis channel only.",
+            "Pause/resume affects all scheduled channel posts, including weekdays.",
             "Gemini drafts weekend posts using archived channel posts and saved admin feedback.",
             f"Publishing: {'PAUSED' if paused else 'ACTIVE'}",
             (
@@ -141,7 +145,7 @@ class ChannelPostManager:
             keyboard_rows.append(
                 [
                     {
-                        "text": f"Review {post['schedule_date']}",
+                        "text": f"👁 Preview Post — {post['schedule_date']}",
                         "callback_data": f"admin:channel_posts:preview:{post['id']}",
                     }
                 ]
@@ -150,7 +154,7 @@ class ChannelPostManager:
             keyboard_rows.append(
                 [
                     {
-                        "text": f"Open latest ({recent[0]['schedule_date']})",
+                        "text": f"👁 Preview Latest — {recent[0]['schedule_date']}",
                         "callback_data": f"admin:channel_posts:preview:{recent[0]['id']}",
                     }
                 ]
@@ -159,7 +163,11 @@ class ChannelPostManager:
             [
                 [
                     {
-                        "text": "Resume publishing" if paused else "Pause publishing",
+                        "text": (
+                            "▶️ Resume Channel Posts"
+                            if paused
+                            else "⏸ Pause Channel Posts"
+                        ),
                         "callback_data": (
                             "admin:channel_posts:resume"
                             if paused
@@ -183,7 +191,7 @@ class ChannelPostManager:
                         "callback_data": "admin:channel_posts:promo_interval:28",
                     }
                 ],
-                [{"text": "Admin Dashboard", "callback_data": "admin:home"}],
+                [{"text": "🔙 Back to Admin Dashboard", "callback_data": "admin:home"}],
             ]
         )
         self.api.send_message(
@@ -261,7 +269,9 @@ class ChannelPostManager:
                     )
                     self.api.send_message(
                         chat_id,
-                        "Send the complete replacement text in one message. Keep "
+                        "The complete saved draft is shown next. Send your complete "
+                        "replacement in one message. It will be checked before saving; "
+                        "a rejected edit will not replace the saved draft. Keep "
                         "“NO CONFIRMATION, NO ENTRY.” in the post."
                         f"{promo_note} Send /cancel to stop editing.",
                     )
@@ -360,28 +370,37 @@ class ChannelPostManager:
                 self.api.send_message(chat_id, "Revised draft is ready for review.")
             return True
         username = post["bot_username"]
+        is_promo = is_promotional_content(text)
         rejection = validate_channel_post(
             text,
-            is_promo=bool(post["is_promo"]),
+            is_promo=is_promo,
             bot_username=username,
         )
         if rejection:
             logger.info("Channel post edit rejected category=%s.", rejection)
             self.api.send_message(
                 chat_id,
-                "I couldn't save that edit because it failed the publishing checks "
-                f"({rejection}). Please send a corrected version or /cancel.",
+                describe_channel_post_rejection(
+                    text,
+                    rejection,
+                    bot_username=username,
+                ),
             )
+            self.show_post(chat_id, post)
             return True
         if self._is_duplicate(text, exclude_post_id=int(post["id"])):
             self.api.send_message(
                 chat_id,
                 "That wording is too close to a recent post. Please send a fresh "
-                "version or /cancel.",
+                "version or /cancel. Your saved draft is unchanged.",
             )
+            self.show_post(chat_id, post)
             return True
         saved = self.store.save_channel_post_edit(
-            int(post["id"]), text.strip(), admin_id=admin_id
+            int(post["id"]),
+            text.strip(),
+            admin_id=admin_id,
+            is_promo=is_promo,
         )
         if not saved:
             self.api.send_message(chat_id, "This draft is no longer waiting for an edit.")
@@ -409,35 +428,42 @@ class ChannelPostManager:
                 f"Status: {status.replace('_', ' ')}\n"
                 f"Destination: configured Market Analysis channel\n\n"
             )
-            if post.get("failure_category"):
-                intro += f"Failure: {post['failure_category']}\n\n"
+            if post.get("failure_category") and status != "awaiting_edit":
+                intro += (
+                    describe_channel_post_rejection(
+                        content,
+                        str(post["failure_category"]),
+                        bot_username=post.get("bot_username"),
+                    )
+                    + "\n\n"
+                )
         rows: list[list[dict[str, str]]] = []
         if status == "draft":
             rows.extend(
                 [
                     [
                         {
-                            "text": "Revise with Gemini",
+                            "text": "✨ Revise with Gemini",
                             "callback_data": (
                                 f"admin:channel_posts:revise:{post['id']}"
                             ),
                         },
                         {
-                            "text": "Edit",
+                            "text": "✏️ Edit Post",
                             "callback_data": f"admin:channel_posts:edit:{post['id']}",
                         },
                         {
-                            "text": "Publish now",
+                            "text": "🚀 Publish Now",
                             "callback_data": f"admin:channel_posts:publish:{post['id']}",
                         },
                     ],
                     [
                         {
-                            "text": "Reject",
+                            "text": "❌ Reject Post",
                             "callback_data": f"admin:channel_posts:reject:{post['id']}",
                         },
                         {
-                            "text": "Skip",
+                            "text": "⏭ Skip This Post",
                             "callback_data": f"admin:channel_posts:skip:{post['id']}",
                         },
                     ],
@@ -447,7 +473,7 @@ class ChannelPostManager:
             rows.append(
                 [
                     {
-                        "text": "Cancel edit",
+                        "text": "🔙 Back to Post",
                         "callback_data": f"admin:channel_posts:edit_cancel:{post['id']}",
                     }
                 ]
@@ -494,14 +520,26 @@ class ChannelPostManager:
                         }
                     ]
                 )
+            if status == "failed" and post.get("content"):
+                rows.append(
+                    [
+                        {
+                            "text": "✏️ Edit Post",
+                            "callback_data": f"admin:channel_posts:edit:{post['id']}",
+                        }
+                    ]
+                )
             if (
                 post.get("content")
-                and post.get("generation_source") == "gemini"
+                and (
+                    post.get("generation_source") == "gemini"
+                    or post.get("admin_edit_approved")
+                )
             ):
                 rows.append(
                     [
                         {
-                            "text": "Publish now",
+                            "text": "🚀 Publish Now",
                             "callback_data": (
                                 f"admin:channel_posts:publish:{post['id']}"
                             ),
@@ -511,13 +549,13 @@ class ChannelPostManager:
             rows.append(
                 [
                         {
-                            "text": "Reject",
+                            "text": "❌ Reject Post",
                             "callback_data": (
                                 f"admin:channel_posts:reject:{post['id']}"
                             ),
                         },
                         {
-                            "text": "Skip",
+                            "text": "⏭ Skip This Post",
                             "callback_data": (
                                 f"admin:channel_posts:skip:{post['id']}"
                             ),
@@ -525,7 +563,7 @@ class ChannelPostManager:
                 ]
             )
         rows.append(
-            [{"text": "Channel Posts", "callback_data": "admin:channel_posts"}]
+            [{"text": "🔙 Back to Channel Posts", "callback_data": "admin:channel_posts"}]
         )
         self.api.send_message(
             chat_id,
@@ -548,6 +586,7 @@ class ChannelPostManager:
             post
             and target_date.weekday() in {5, 6}
             and post.get("generation_source") == "local"
+            and not post.get("admin_edit_approved")
             and post["status"]
             not in {"published", "rejected", "skipped", "awaiting_edit"}
         ):
@@ -974,13 +1013,15 @@ class ChannelPostManager:
         if (
             scheduled_date.weekday() in {5, 6}
             and post.get("generation_source") != "gemini"
+            and not post.get("admin_edit_approved")
         ):
             self._hold_legacy_weekend_draft(post)
             if not automatic:
                 self.api.send_message(
                     self.admin_id,
-                    "This weekend draft was created before Gemini review. It remains "
-                    "on hold; use Retry Gemini draft before publishing.",
+                    "This weekend draft has not passed Gemini review or administrator "
+                    "editing. It remains on hold; use Retry Gemini draft or Edit Post "
+                    "before publishing.",
                 )
             return
         settings = self.store.get_channel_posting_settings()
@@ -1176,24 +1217,19 @@ class ChannelPostManager:
     def _notify_failure(self, post: dict[str, Any], category: str) -> None:
         if self.admin_id is None:
             return
-        if category.startswith("gemini_"):
-            message = (
-                f"The {post['schedule_date']} AI draft was held because Gemini "
-                f"could not provide a publishable result ({category}). Nothing was "
-                "sent to the channel. You can review the status and retry manually."
-            )
-        else:
-            message = (
-                f"The {post['schedule_date']} channel post was not confirmed. "
-                f"Failure category: {category}. You can review it in Channel Posts."
-            )
+        reason = describe_channel_post_rejection(
+            str(post.get("content") or ""),
+            category,
+            bot_username=post.get("bot_username"),
+        )
+        message = f"{post['schedule_date']}: {reason}"
         self._notify_admin(
             message,
             {
                 "inline_keyboard": [
                     [
                         {
-                            "text": "Review post",
+                            "text": "👁 Review Post",
                             "callback_data": f"admin:channel_posts:preview:{post['id']}",
                         }
                     ]
