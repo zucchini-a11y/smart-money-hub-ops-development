@@ -328,6 +328,38 @@ class ChannelPostManager:
         post = self.store.pending_channel_post_edit(admin_id)
         if not post:
             return False
+        if post.get("edit_mode") == "feedback":
+            feedback = text.strip()
+            if feedback.casefold() == "/cancel":
+                self.store.cancel_channel_post_edit(admin_id)
+                self.api.send_message(chat_id, "Gemini revision cancelled.")
+                return True
+            if not feedback or len(feedback) > _MAX_FEEDBACK_CHARS:
+                self.api.send_message(
+                    chat_id,
+                    f"Please send revision feedback of 1–{_MAX_FEEDBACK_CHARS} "
+                    "characters, or /cancel.",
+                )
+                return True
+            self.store.record_channel_post_action(
+                int(post["id"]),
+                "revision_feedback",
+                admin_id=admin_id,
+                details=feedback,
+            )
+            settings = self.store.get_channel_posting_settings()
+            revised = self._generate_weekend_post(
+                post,
+                preferred_category=str(post["requested_category"]),
+                sequence=int(settings["next_category_index"]),
+                settings=settings,
+                revision_feedback=feedback,
+                admin_id=admin_id,
+            )
+            if revised.get("status") == "draft":
+                self._send_preview(revised, datetime.now(timezone.utc))
+                self.api.send_message(chat_id, "Revised draft is ready for review.")
+            return True
         username = post["bot_username"]
         rejection = validate_channel_post(
             text,
@@ -682,10 +714,8 @@ class ChannelPostManager:
                 revision=revision_feedback is not None,
             )
         except Exception:
-            logger.exception(
-                "Weekend Gemini draft failed category=unexpected_provider_error "
-                "post_id=%s.",
-                post["id"],
+            logger.warning(
+                "Weekend Gemini draft failed category=unexpected_provider_error."
             )
             return self._record_generation_failure(
                 post,
@@ -832,9 +862,13 @@ class ChannelPostManager:
         revision: bool = False,
     ) -> dict[str, Any]:
         category = (
-            f"gemini_revision_{failure_category}"
+            f"gemini_revision_{failure_category.removeprefix('gemini_')}"
             if revision
-            else f"gemini_{failure_category}"
+            else (
+                failure_category
+                if failure_category.startswith("gemini_")
+                else f"gemini_{failure_category}"
+            )
         )
         self.store.set_channel_post_status(
             int(post["id"]),
@@ -1170,12 +1204,32 @@ class ChannelPostManager:
         preview_at = self._parse_datetime(post.get("preview_sent_at"))
         if not preview_at:
             return False
+        try:
+            scheduled_time = wall_time.fromisoformat(str(post["schedule_time"]))
+        except ValueError:
+            scheduled_time = self._publish_time(date.fromisoformat(post["schedule_date"]))
         schedule_at = datetime.combine(
             date.fromisoformat(post["schedule_date"]),
-            DAILY_PUBLISH_TIME,
+            scheduled_time,
             tzinfo=self.timezone,
         )
         return self._as_utc(preview_at) <= schedule_at.astimezone(timezone.utc)
+
+    @staticmethod
+    def _publish_time(target_date: date) -> wall_time:
+        if target_date.weekday() == 6:
+            return SUNDAY_PUBLISH_TIME
+        if target_date.weekday() == 5:
+            return SATURDAY_PUBLISH_TIME
+        return WEEKDAY_PUBLISH_TIME
+
+    @classmethod
+    def _same_day_preview_time(cls, target_date: date) -> wall_time:
+        scheduled = cls._publish_time(target_date)
+        return wall_time(
+            hour=max(0, scheduled.hour - 1),
+            minute=scheduled.minute,
+        )
 
     @staticmethod
     def _retry_is_due(post: dict[str, Any], now_utc: datetime) -> bool:
@@ -1186,8 +1240,15 @@ class ChannelPostManager:
         self, content: str, *, exclude_post_id: int | None = None
     ) -> bool:
         normalized = self._canonical_content(content)
-        for previous in self.store.get_recent_channel_post_contents(limit=30):
-            if exclude_post_id is not None and int(previous["id"]) == exclude_post_id:
+        for previous in self.store.get_recent_channel_post_contents(
+            limit=30,
+            chat_id=self.destination_chat_id,
+        ):
+            if (
+                previous.get("source") == "scheduled"
+                and exclude_post_id is not None
+                and int(previous["id"]) == exclude_post_id
+            ):
                 continue
             if self._canonical_content(previous["content"]) == normalized:
                 return True
