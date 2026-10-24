@@ -384,6 +384,76 @@ class BotFlowTests(unittest.TestCase):
         self.assertEqual(history[0]["content"], "The corrected channel education post.")
         self.assertEqual(history[0]["source"], "channel")
 
+    def test_group_id_command_sends_details_only_to_configured_admin(self) -> None:
+        admin_id = 987654321
+        group_id = -1001234567890
+        bot = SmartMoneyHubBot(
+            self.api,
+            str(self.database_path),
+            admin_id=admin_id,
+        )
+
+        bot.handle_update(
+            {
+                "message": {
+                    "text": "/groupid@SmartMoneyHubSignalsBot",
+                    "chat": {
+                        "id": group_id,
+                        "type": "supergroup",
+                        "title": "Smart Money Hub Education",
+                    },
+                    "from": {"id": admin_id},
+                }
+            }
+        )
+
+        self.assertEqual(len(self.api.messages), 1)
+        self.assertEqual(self.api.messages[0]["chat_id"], admin_id)
+        self.assertIn("Smart Money Hub Education", self.api.messages[0]["text"])
+        self.assertIn(f"Group ID: {group_id}", self.api.messages[0]["text"])
+        self.assertNotEqual(self.api.messages[0]["chat_id"], group_id)
+
+    def test_group_id_command_is_silent_for_non_admins(self) -> None:
+        bot = SmartMoneyHubBot(
+            self.api,
+            str(self.database_path),
+            admin_id=987654321,
+        )
+
+        bot.handle_update(
+            {
+                "message": {
+                    "text": "/groupid",
+                    "chat": {"id": -1001234567890, "type": "supergroup"},
+                    "from": {"id": 123456789},
+                }
+            }
+        )
+
+        self.assertEqual(self.api.messages, [])
+
+    def test_group_id_command_in_private_chat_instructs_admin_to_use_group(self) -> None:
+        admin_id = 987654321
+        bot = SmartMoneyHubBot(
+            self.api,
+            str(self.database_path),
+            admin_id=admin_id,
+        )
+
+        bot.handle_update(
+            {
+                "message": {
+                    "text": "/groupid",
+                    "chat": {"id": admin_id, "type": "private"},
+                    "from": {"id": admin_id},
+                }
+            }
+        )
+
+        self.assertEqual(self.api.messages[0]["chat_id"], admin_id)
+        self.assertIn("send /groupid inside that group", self.api.messages[0]["text"])
+        self.assertNotIn("Group ID:", self.api.messages[0]["text"])
+
     def test_start_assessment_saves_answers_and_explains_missed_questions(self) -> None:
         self._message("/start")
         welcome = self.api.messages[-1]

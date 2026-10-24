@@ -753,9 +753,41 @@ class SmartMoneyHubBot:
         chat = message.get("chat") or {}
         if not isinstance(text, str):
             return
+        command = text.strip().split(maxsplit=1)[0].split("@", maxsplit=1)[0].lower()
+        if command == "/groupid":
+            sender_id = sender.get("id")
+            chat_id = chat.get("id")
+            chat_type = chat.get("type")
+            if self.admin_id is None or sender_id != self.admin_id:
+                return
+            if not isinstance(chat_id, int):
+                return
+            if chat_type not in {"group", "supergroup"}:
+                self.api.send_message(
+                    chat_id,
+                    "To identify the educational group, send /groupid inside that group.",
+                )
+                return
+            group_title = str(chat.get("title") or "Unnamed group")
+            group_title = " ".join(group_title.split())[:100]
+            try:
+                self.api.send_message(
+                    self.admin_id,
+                    f"Telegram group details\n"
+                    f"Name: {group_title}\n"
+                    f"Type: {chat_type}\n"
+                    f"Group ID: {chat_id}",
+                )
+            except TelegramAPIError:
+                self.api.send_message(
+                    chat_id,
+                    "I couldn’t send the group details privately. Open "
+                    "@SmartMoneyHubSignalsBot and press Start, then send /groupid "
+                    "in this group again.",
+                )
+            return
         telegram_id, chat_id, is_private = self._register(sender, chat)
         self._send_bot_recovery_notice(chat_id, telegram_id, is_private)
-        command = text.strip().split(maxsplit=1)[0].split("@", maxsplit=1)[0].lower()
         if (
             is_private
             and self.admin_dashboard.has_channel_post_edit_pending(telegram_id)
