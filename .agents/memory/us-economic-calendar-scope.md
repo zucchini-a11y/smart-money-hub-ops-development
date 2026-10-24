@@ -3,10 +3,10 @@ name: U.S. economic calendar scope
 description: The selected source boundary for Smart Money Hub's USD and gold event calendar.
 ---
 
-Use official U.S. government sources for the USD/XAU calendar. Include official Department of Labor and Census sources for jobless claims and retail sales; omit ISM and geopolitical headlines. Forecast and provider impact fields may be unavailable and must not be invented. Keep the USD & Gold destination separate and unset until the user supplies and approves it.
+For the first USD/XAU calendar phase, use official U.S. sources, omit ISM and general/geopolitical headlines, and keep BLS/DOL unavailable until their sources are verified. Never infer missing values or timezones. The longer-term market-awareness scope may expand to Fed policy, Treasury data, and other instruments only when reliable sources and reuse rights are confirmed. GDELT is discovery only; leads require credible verification.
 
-The user selected Sunday at 7:00 PM WAT as the proposed weekly brief time. This does not authorize enabling automation or delivery.
+Keep the USD & Gold destination unset until the user supplies and approves it. Sunday at 7:00 PM WAT is the proposed weekly brief time, not authorization to enable automation or delivery.
 
-**Why:** the user selected official sources only, approved adding DOL and Census, excluded ISM, and explicitly required no guessed destination or unverified news.
+**Why:** the user approved an official-source-first calendar, then expanded the product goal to broader market awareness while requiring source, licensing, and cost checks before use.
 
-**How to apply:** only publish a calendar item when its official source and timestamp are verified. Hold affected items when a source is blocked, stale, or unavailable; never route them to Market Analysis by default.
+**How to apply:** only describe facts supported by a verified source and timestamp. Hold affected items when a source is blocked, stale, timezone-ambiguous, or lacks redistribution permission; never route them to Market Analysis by default or imply automated trading.
