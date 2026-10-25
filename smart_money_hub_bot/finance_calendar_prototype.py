@@ -459,11 +459,9 @@ def parse_fed_fomc_calendar(
     parser = _VisibleTextParser()
     parser.feed(body.decode("utf-8", "replace"))
     text = " ".join(parser.parts)
-    section_start = text.find("2026 FOMC Meetings")
-    if section_start < 0:
+    year_headings = list(re.finditer(r"\b(20\d{2}) FOMC Meetings\b", text))
+    if not year_headings:
         return []
-    section_end = text.find("2025 FOMC Meetings", section_start)
-    section = text[section_start : section_end if section_end >= 0 else None]
     month_numbers = {
         "January": 1,
         "February": 2,
@@ -479,24 +477,32 @@ def parse_fed_fomc_calendar(
         "December": 12,
     }
     result: list[OfficialScheduleEvidence] = []
-    for match in re.finditer(
-        r"\b(January|February|March|April|May|June|July|August|September|"
-        r"October|November|December)\s+(\d{1,2})\s*[-–]\s*(\d{1,2})\b",
-        section,
-    ):
-        month = month_numbers[match.group(1)]
-        meeting_end = date(2026, month, int(match.group(3)))
-        result.append(
-            OfficialScheduleEvidence(
-                series_code="fomc",
-                event_date=meeting_end,
-                source_name="Board of Governors of the Federal Reserve System",
-                source_url=FED_FOMC_CALENDAR_URL,
-                retrieved_at=retrieved_at,
-                release_at_utc=None,
-                source_timezone=None,
-            )
+    for index, heading in enumerate(year_headings):
+        year = int(heading.group(1))
+        section_end = (
+            year_headings[index + 1].start()
+            if index + 1 < len(year_headings)
+            else len(text)
         )
+        section = text[heading.start() : section_end]
+        for match in re.finditer(
+            r"\b(January|February|March|April|May|June|July|August|September|"
+            r"October|November|December)\s+(\d{1,2})\s*[-–]\s*(\d{1,2})\b",
+            section,
+        ):
+            month = month_numbers[match.group(1)]
+            meeting_end = date(year, month, int(match.group(3)))
+            result.append(
+                OfficialScheduleEvidence(
+                    series_code="fomc",
+                    event_date=meeting_end,
+                    source_name="Board of Governors of the Federal Reserve System",
+                    source_url=FED_FOMC_CALENDAR_URL,
+                    retrieved_at=retrieved_at,
+                    release_at_utc=None,
+                    source_timezone=None,
+                )
+            )
     return result
 
 
