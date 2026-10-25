@@ -1097,7 +1097,16 @@ def evaluate_provider_records(
             else f"snapshot_{result.snapshot_freshness_status}"
         )
         record_verified_at = _parse_timestamp(event.get("last_verified_at"))
+        record_updated_at = _parse_timestamp(event.get("updated_at"))
         age_at = now.astimezone(timezone.utc)
+        record_update_age = (
+            age_at - record_updated_at.astimezone(timezone.utc)
+            if record_updated_at
+            else None
+        )
+        record_update_in_future = bool(
+            record_update_age is not None and record_update_age < timedelta(0)
+        )
         record_limit = freshness_policy.record_limit(source_id)
         record_age_fresh = bool(
             record_verified_at
@@ -1105,6 +1114,7 @@ def evaluate_provider_records(
             <= age_at - record_verified_at.astimezone(timezone.utc)
             <= record_limit
             and event.get("data_stale") is False
+            and not record_update_in_future
         )
         if not record_age_fresh:
             freshness += ";record_stale_or_unverified"
@@ -1134,7 +1144,12 @@ def evaluate_provider_records(
             status, reason = "held", f"provider_snapshot_{result.snapshot_freshness_status}"
             official = None
         elif not record_age_fresh:
-            status, reason = "held", "record_stale_or_unverified"
+            status, reason = (
+                "held",
+                "provider_record_updated_at_in_future"
+                if record_update_in_future
+                else "record_stale_or_unverified",
+            )
             official = None
         elif source_health_status != "success":
             status, reason = "held", "provider_source_health_not_success"
@@ -1186,6 +1201,27 @@ def evaluate_provider_records(
                 ),
                 source_health_fetched_at=(
                     str(health.get("fetched_at")) if health.get("fetched_at") else None
+                ),
+                record_retrieved_at=(
+                    str(health.get("fetched_at")) if health.get("fetched_at") else None
+                ),
+                provider_updated_at=(
+                    str(event.get("updated_at")) if event.get("updated_at") else None
+                ),
+                provider_update_age_seconds=(
+                    int(record_update_age.total_seconds())
+                    if record_update_age is not None and record_update_age >= timedelta(0)
+                    else None
+                ),
+                provider_last_verified_at=(
+                    str(event.get("last_verified_at"))
+                    if event.get("last_verified_at")
+                    else None
+                ),
+                official_evidence_retrieved_at=(
+                    official.retrieved_at.astimezone(timezone.utc).isoformat()
+                    if official
+                    else None
                 ),
                 field_verification=field_verification,
                 verified_values=verified_values,
@@ -1382,9 +1418,44 @@ def build_source_comparison_report(
     """Summarize provider health and every candidate's safe review status."""
     if generated_at.tzinfo is None:
         raise ValueError("generated_at must be timezone-aware.")
+    groups: dict[str, list[CalendarCandidate]] = {
+        "verified": [],
+        "held": [],
+        "conflicting": [],
+        "unavailable_source": [],
+    }
+    for candidate in evaluation.candidates:
+        if candidate.verification_status == "conflict":
+            category = "conflicting"
+        elif candidate.verification_status.startswith("verified"):
+            category = "verified"
+        elif candidate.reason in {
+            "official_source_not_verified",
+            "official_evidence_stale",
+        }:
+            category = "unavailable_source"
+        else:
+            category = "held"
+        groups[category].append(candidate)
+
+    def field_status(candidate: CalendarCandidate, name: str) -> str:
+        status = candidate.field_verification.get(name, "unavailable")
+        if status == "verified":
+            value = str(candidate.verified_values.get(name, "unavailable"))[:100]
+            return f"verified:{value}"
+        if status == "present_unverified":
+            return "present_unverified; value_withheld"
+        return status
+
     lines = [
         "NON-PRODUCTION SOURCE COMPARISON — ADMIN REVIEW",
         f"Generated: {generated_at.astimezone(timezone.utc).isoformat()}",
+        "Evaluation retrieval time: "
+        + (
+            evaluation.evaluated_at.astimezone(timezone.utc).isoformat()
+            if evaluation.evaluated_at
+            else "unavailable"
+        ),
         f"Provider health: {evaluation.provider_health_status}",
         "Provider-degraded source IDs: "
         + (
@@ -1400,68 +1471,74 @@ def build_source_comparison_report(
             if evaluation.provider_snapshot_age_seconds is not None
             else "unavailable"
         ),
+        f"Snapshot freshness: {evaluation.snapshot_freshness_status}",
         f"Allowlisted candidates: {len(evaluation.candidates)}",
-        f"Verified against official evidence: {evaluation.verified_count}",
+        f"Verified schedule records: {len(groups['verified'])}",
+        f"Held records: {len(groups['held'])}",
+        f"Conflicting records: {len(groups['conflicting'])}",
+        f"Unavailable official-source records: {len(groups['unavailable_source'])}",
         f"Exact duplicates removed: {evaluation.duplicate_count}",
         f"Out-of-scope records excluded: {evaluation.excluded_count}",
         f"Conflicts: {len(evaluation.conflicts)}",
         "",
     ]
-    for candidate in evaluation.candidates:
-        event = candidate.event
-        lines.append(
-            " | ".join(
-                (
-                    str(event.get("series_code") or "unknown-series"),
-                    str(event.get("date") or "date-unavailable"),
-                    candidate.verification_status,
-                    candidate.reason,
-                    f"provider-source-health={candidate.source_health_status}",
-                    "provider-source-checked-at="
-                    + str(candidate.source_health_checked_at or "unavailable"),
-                    "provider-source-fetched-at="
-                    + str(candidate.source_health_fetched_at or "unavailable"),
-                    f"freshness={candidate.source_freshness_status}",
-                    f"provider-impact={event.get('impact') or 'unavailable'}",
-                    "provider-source-name=" + str(event.get("source_name") or "unavailable"),
-                    "provider-source-url=" + str(event.get("source_url") or "unavailable"),
-                    "provider-original-utc=" + str(event.get("release_at_utc") or "unavailable"),
-                    "provider-source-timezone=" + str(event.get("release_tz") or "unavailable"),
-                    "provider-updated-at="
-                    + str(event.get("updated_at") or "unavailable"),
-                    "provider-last-verified-at="
-                    + str(event.get("last_verified_at") or "unavailable"),
-                    "previous="
-                    + ("present_unverified" if event.get("prior") is not None else "unavailable"),
-                    "forecast="
-                    + (
-                        "present_unverified"
-                        if event.get("consensus") is not None
-                        else "unavailable"
-                    ),
-                    "actual="
-                    + ("present_unverified" if event.get("actual") is not None else "unavailable"),
-                    "official-source-check-url="
-                    + str(candidate.official_source_url or "unavailable"),
-                    "official-time-text="
-                    + str(candidate.official_release_time_text or "unavailable"),
-                )
-            )
-        )
-        if candidate.source_license_notice or candidate.source_rights_notice:
+    for category, candidates in groups.items():
+        lines.append(f"{category.replace('_', ' ').title()} records:")
+        if not candidates:
+            lines.append("  none")
+            continue
+        for candidate in candidates:
+            event = candidate.event
             lines.append(
-                "  source-specific rights notice retained: "
-                + json.dumps(
-                    {
-                        "source_license": candidate.source_license_notice,
-                        "source_rights": candidate.source_rights_notice,
-                    },
-                    ensure_ascii=False,
-                    sort_keys=True,
+                " | ".join(
+                    (
+                        str(event.get("series_code") or "unknown-series"),
+                        str(event.get("date") or "date-unavailable"),
+                        candidate.verification_status,
+                        candidate.reason,
+                        f"provider-source-health={candidate.source_health_status}",
+                        "provider-source-checked-at="
+                        + str(candidate.source_health_checked_at or "unavailable"),
+                        "provider-record-retrieved-at="
+                        + str(candidate.record_retrieved_at or "unavailable"),
+                        "official-evidence-retrieved-at="
+                        + str(candidate.official_evidence_retrieved_at or "unavailable"),
+                        f"freshness={candidate.source_freshness_status}",
+                        f"provider-impact={event.get('impact') or 'unavailable'} (provider-supplied)",
+                        "provider-source-name=" + str(event.get("source_name") or "unavailable"),
+                        "provider-source-url=" + str(event.get("source_url") or "unavailable"),
+                        "provider-original-utc=" + str(event.get("release_at_utc") or "unavailable"),
+                        "provider-source-timezone=" + str(event.get("release_tz") or "unavailable"),
+                        "provider-updated-at="
+                        + str(candidate.provider_updated_at or "unavailable"),
+                        "provider-update-age-seconds="
+                        + str(candidate.provider_update_age_seconds or "unavailable"),
+                        "provider-last-verified-at="
+                        + str(candidate.provider_last_verified_at or "unavailable"),
+                        "previous=" + field_status(candidate, "previous"),
+                        "forecast=" + field_status(candidate, "forecast"),
+                        "actual=" + field_status(candidate, "actual"),
+                        "official-source-check-url="
+                        + str(candidate.official_source_url or "unavailable"),
+                        "official-time-text="
+                        + str(candidate.official_release_time_text or "unavailable"),
+                    )
                 )
             )
-        else:
-            lines.append("  source-specific rights notice: none supplied in record")
+            if candidate.source_license_notice or candidate.source_rights_notice:
+                lines.append(
+                    "  source-specific rights notice retained: "
+                    + json.dumps(
+                        {
+                            "source_license": candidate.source_license_notice,
+                            "source_rights": candidate.source_rights_notice,
+                        },
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    )
+                )
+            else:
+                lines.append("  source-specific rights notice: none supplied in record")
     for conflict in evaluation.conflicts:
         lines.append(
             "CONFLICT: "
