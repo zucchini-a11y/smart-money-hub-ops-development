@@ -320,6 +320,133 @@ class FinanceCalendarPrototypeTests(unittest.TestCase):
         report = build_source_comparison_report(result, generated_at=NOW)
         self.assertIn("OFFICIAL SOURCE CHECK FAILED: BEA: permission_error_403", report)
 
+    def test_snapshot_age_mismatch_is_held_even_when_provider_reports_freshness(self):
+        status = provider_status(
+            snapshot={
+                "generated_at": (NOW - timedelta(hours=8)).isoformat(),
+                "age_seconds": 60,
+            }
+        )
+        result = evaluate([provider_event()], status=status)
+        self.assertEqual(result.snapshot_freshness_status, "age_mismatch")
+        self.assertEqual(
+            result.candidates[0].reason, "provider_snapshot_age_mismatch"
+        )
+        preview = render_weekly_preview(
+            result, week_start=date(2026, 10, 26), week_end=date(2026, 11, 1)
+        )
+        self.assertIn("age_mismatch", preview)
+        self.assertIn("No events passed both the freshness", preview)
+        self.assertNotIn("Gross Domestic Product release", preview)
+
+    def test_source_health_uses_its_six_hour_limit(self):
+        status = provider_status(
+            source_health=[
+                {
+                    "source_id": "bea",
+                    "status": "success",
+                    "checked_at": (NOW - timedelta(hours=7)).isoformat(),
+                    "fetched_at": (NOW - timedelta(hours=7)).isoformat(),
+                }
+            ]
+        )
+        result = evaluate([provider_event()], status=status)
+        self.assertEqual(
+            result.candidates[0].reason, "provider_source_health_stale_or_unknown"
+        )
+
+    def test_record_freshness_is_source_specific_and_configurable(self):
+        event = provider_event(
+            series_code="us-cpi",
+            source_id="bls",
+            source_name="U.S. Bureau of Labor Statistics",
+            source_url="https://www.bls.gov/schedule/news_release/bls.ics",
+            last_verified_at=(NOW - timedelta(hours=13)).isoformat(),
+        )
+        status = provider_status(
+            source_health=[
+                {
+                    "source_id": "bls",
+                    "status": "success",
+                    "checked_at": (NOW - timedelta(minutes=5)).isoformat(),
+                    "fetched_at": (NOW - timedelta(minutes=5)).isoformat(),
+                }
+            ]
+        )
+        result = evaluate([event], status=status, evidence=[])
+        self.assertEqual(
+            result.candidates[0].reason, "record_stale_or_unverified"
+        )
+
+        stricter = FreshnessPolicy(
+            record_verification={"bea": timedelta(hours=2)}
+        )
+        event = provider_event(last_verified_at=(NOW - timedelta(hours=3)).isoformat())
+        result = evaluate([event], freshness_policy=stricter)
+        self.assertEqual(
+            result.candidates[0].reason, "record_stale_or_unverified"
+        )
+
+    def test_future_record_update_and_missing_timestamps_are_not_fresh(self):
+        event = provider_event(updated_at=(NOW + timedelta(minutes=1)).isoformat())
+        result = evaluate([event])
+        self.assertEqual(
+            result.candidates[0].reason, "provider_record_updated_at_in_future"
+        )
+
+        status = provider_status(
+            snapshot={"generated_at": (NOW - timedelta(minutes=5)).isoformat()}
+        )
+        result = evaluate([provider_event()], status=status)
+        self.assertEqual(
+            result.candidates[0].reason,
+            "provider_snapshot_stale_or_unverifiable",
+        )
+
+    def test_official_evidence_has_an_independent_freshness_limit(self):
+        evidence = official_gdp(retrieved_at=NOW - timedelta(hours=25))
+        result = evaluate([provider_event()], evidence=[evidence])
+        self.assertEqual(result.candidates[0].verification_status, "held")
+        self.assertEqual(result.candidates[0].reason, "official_evidence_stale")
+
+    def test_figure_fields_are_verified_independently_from_the_schedule(self):
+        event = provider_event(prior="2.0%", consensus="2.1%", actual="1.5%")
+        evidence = official_gdp(
+            verified_fields=frozenset({"previous", "actual"}),
+            previous_value="2.0%",
+            actual_value="1.5%",
+        )
+        result = evaluate([event], evidence=[evidence])
+        candidate = result.candidates[0]
+        self.assertEqual(candidate.verification_status, "verified_date_and_time")
+        self.assertEqual(candidate.field_verification["previous"], "verified")
+        self.assertEqual(candidate.field_verification["forecast"], "present_unverified")
+        self.assertEqual(candidate.field_verification["actual"], "verified")
+        self.assertEqual(candidate.verified_values["actual"], "1.5%")
+
+        mismatched = official_gdp(
+            verified_fields=frozenset({"actual"}),
+            actual_value="1.4%",
+        )
+        result = evaluate([event], evidence=[mismatched])
+        candidate = result.candidates[0]
+        self.assertEqual(candidate.verification_status, "conflict")
+        self.assertEqual(candidate.reason, "official_value_mismatch")
+        self.assertEqual(candidate.field_conflicts, ["actual"])
+        report = build_source_comparison_report(result, generated_at=NOW)
+        self.assertIn("Conflicting records:", report)
+        self.assertIn("official_figure_value_conflict", report)
+
+    def test_official_value_can_be_shown_without_a_provider_value(self):
+        evidence = official_gdp(
+            verified_fields=frozenset({"previous"}),
+            previous_value="2.0%",
+        )
+        result = evaluate([provider_event()], evidence=[evidence])
+        candidate = result.candidates[0]
+        self.assertEqual(candidate.field_verification["previous"], "verified")
+        self.assertEqual(candidate.verified_values["previous"], "2.0%")
+
     def test_event_time_conflict_is_flagged_and_not_selected(self):
         wrong_time = official_gdp(
             release_at_utc=datetime(2026, 10, 29, 13, 30, tzinfo=timezone.utc)
