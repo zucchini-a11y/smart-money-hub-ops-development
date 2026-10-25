@@ -1046,8 +1046,14 @@ def evaluate_provider_records(
         "fresh"
         if snapshot_fresh
         else "age_mismatch"
-        if snapshot_generated and isinstance(snapshot_age, (int, float)) and not snapshot_age_matches
-        else "stale_or_unverifiable"
+        if snapshot_generated
+        and isinstance(snapshot_age, (int, float))
+        and not snapshot_age_matches
+        else "stale"
+        if snapshot_age_matches
+        and snapshot_age_calculated is not None
+        and snapshot_age_calculated > freshness_policy.provider_snapshot
+        else "unverifiable"
     )
     health_rows = _source_health_rows(provider_status)
     result.provider_degraded_sources = sorted(
@@ -1113,16 +1119,31 @@ def evaluate_provider_records(
             record_update_age is not None and record_update_age < timedelta(0)
         )
         record_limit = freshness_policy.record_limit(source_id)
+        record_verification_age = (
+            age_at - record_verified_at.astimezone(timezone.utc)
+            if record_verified_at
+            else None
+        )
         record_age_fresh = bool(
             record_verified_at
-            and timedelta(0)
-            <= age_at - record_verified_at.astimezone(timezone.utc)
-            <= record_limit
+            and record_verification_age is not None
+            and timedelta(0) <= record_verification_age <= record_limit
             and event.get("data_stale") is False
             and not record_update_in_future
         )
         if not record_age_fresh:
-            freshness += ";record_stale_or_unverified"
+            if record_update_in_future:
+                freshness += ";provider_update_future"
+            elif event.get("data_stale") is True:
+                freshness += ";provider_marked_stale"
+            elif record_verification_age is None:
+                freshness += ";verification_timestamp_missing_or_invalid"
+            elif record_verification_age < timedelta(0):
+                freshness += ";verification_timestamp_in_future"
+            elif record_verification_age > record_limit:
+                freshness += ";record_verification_stale"
+            else:
+                freshness += ";verification_status_unconfirmed"
         else:
             freshness += ";record_fresh"
         freshness += (
@@ -1153,7 +1174,15 @@ def evaluate_provider_records(
                 "held",
                 "provider_record_updated_at_in_future"
                 if record_update_in_future
-                else "record_stale_or_unverified",
+                else "provider_record_marked_stale"
+                if event.get("data_stale") is True
+                else "record_verification_missing_or_invalid"
+                if record_verification_age is None
+                else "record_verification_timestamp_in_future"
+                if record_verification_age < timedelta(0)
+                else "record_verification_stale"
+                if record_verification_age > record_limit
+                else "record_not_verified",
             )
             official = None
         elif source_health_status != "success":
