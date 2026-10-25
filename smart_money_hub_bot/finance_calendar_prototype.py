@@ -69,6 +69,29 @@ _SOURCE_BY_SERIES = {
     "us-durable-goods-orders": "census",
     "us-advance-economic-indicators": "census",
 }
+_OFFICIAL_SOURCE_URL_BY_SERIES = {
+    "fomc": FED_FOMC_CALENDAR_URL,
+    "us-gdp": BEA_RELEASE_DATES_URL,
+    "us-pce": BEA_RELEASE_DATES_URL,
+    "us-cpi": BLS_RELEASE_ICS_URL,
+    "us-ppi": BLS_RELEASE_ICS_URL,
+    "us-nfp": BLS_RELEASE_ICS_URL,
+    "us-retail-sales": CENSUS_RELEASE_CALENDAR_URL,
+    "us-durable-goods-orders": CENSUS_RELEASE_CALENDAR_URL,
+    "us-advance-economic-indicators": CENSUS_RELEASE_CALENDAR_URL,
+}
+_OFFICIAL_SERIES_LABELS = {
+    "fomc": "Federal Open Market Committee meeting",
+    "us-gdp": "Gross Domestic Product release",
+    "us-pce": "Personal Income and Outlays (PCE) release",
+    "us-cpi": "Consumer Price Index release",
+    "us-ppi": "Producer Price Index release",
+    "us-nfp": "Employment Situation (Nonfarm Payrolls) release",
+    "us-jobless-claims": "Unemployment Insurance Claims release",
+    "us-retail-sales": "Advance Monthly Retail Sales release",
+    "us-durable-goods-orders": "Durable Goods Orders release",
+    "us-advance-economic-indicators": "Advance Economic Indicators release",
+}
 _SOURCE_HOSTS = {
     "bea": frozenset({"apps.bea.gov", "www.bea.gov", "bea.gov"}),
     "fed": frozenset({"www.federalreserve.gov", "federalreserve.gov"}),
@@ -968,7 +991,11 @@ def evaluate_provider_records(
                     str(health.get("fetched_at")) if health.get("fetched_at") else None
                 ),
                 official_source_name=official.source_name if official else None,
-                official_source_url=official.source_url if official else None,
+                official_source_url=(
+                    official.source_url
+                    if official
+                    else _OFFICIAL_SOURCE_URL_BY_SERIES.get(code)
+                ),
                 official_release_time_text=(
                     official.release_time_text if official else None
                 ),
@@ -1036,7 +1063,10 @@ def render_weekly_preview(
         lines.append("No events passed the official-source checks for this week.")
     for candidate in rows:
         event = candidate.event
-        title = html.escape(str(event.get("title") or event.get("name") or "U.S. event"))
+        series_code = str(event.get("series_code") or "")
+        title = html.escape(
+            _OFFICIAL_SERIES_LABELS.get(series_code, "U.S. economic release")
+        )
         event_date = date.fromisoformat(str(event["date"]))
         date_line = event_date.strftime("%a, %d %b %Y")
         if candidate.wat_time:
@@ -1166,7 +1196,7 @@ def build_source_comparison_report(
                     "provider-source-url=" + str(event.get("source_url") or "unavailable"),
                     "provider-original-utc=" + str(event.get("release_at_utc") or "unavailable"),
                     "provider-source-timezone=" + str(event.get("release_tz") or "unavailable"),
-                    "provider-retrieved-at="
+                    "provider-updated-at="
                     + str(event.get("updated_at") or "unavailable"),
                     "provider-last-verified-at="
                     + str(event.get("last_verified_at") or "unavailable"),
@@ -1180,7 +1210,8 @@ def build_source_comparison_report(
                     ),
                     "actual="
                     + ("present_unverified" if event.get("actual") is not None else "unavailable"),
-                    "official-source-url=" + str(candidate.official_source_url or "unavailable"),
+                    "official-source-check-url="
+                    + str(candidate.official_source_url or "unavailable"),
                     "official-time-text="
                     + str(candidate.official_release_time_text or "unavailable"),
                 )

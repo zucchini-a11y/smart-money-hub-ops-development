@@ -359,7 +359,7 @@ class FinanceCalendarPrototypeTests(unittest.TestCase):
             observations=[
                 {
                     "source_rights": {
-                        "attribution": "Source: official publisher",
+                        "attribution": "Source <official publisher>",
                         "policy": "Retain source credit",
                     }
                 }
@@ -368,7 +368,7 @@ class FinanceCalendarPrototypeTests(unittest.TestCase):
         result = evaluate([event])
         candidate = result.candidates[0]
         self.assertEqual(candidate.source_rights_status, "supplied")
-        self.assertIn("Source: official publisher", str(candidate.source_rights_notice))
+        self.assertIn("Source <official publisher>", str(candidate.source_rights_notice))
         preview = render_weekly_preview(
             result, week_start=date(2026, 10, 26), week_end=date(2026, 11, 1)
         )
@@ -378,7 +378,9 @@ class FinanceCalendarPrototypeTests(unittest.TestCase):
         self.assertIn("Actual: Unavailable unless separately verified", preview)
         self.assertIn("Source rights notice:", preview)
         self.assertIn("13:30 WAT", preview)
-        self.assertIn("GDP &lt;estimate &amp; outlook&gt;", preview)
+        self.assertIn("Gross Domestic Product release", preview)
+        self.assertNotIn("GDP &lt;estimate", preview)
+        self.assertIn("Source &lt;official publisher&gt;", preview)
         self.assertIn("Previous: Unavailable", preview)
         comparison = build_source_comparison_report(result, generated_at=NOW)
         self.assertIn("previous=present_unverified", comparison)
