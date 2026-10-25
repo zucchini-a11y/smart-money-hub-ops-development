@@ -1612,6 +1612,29 @@ def build_source_comparison_report(
         f"Conflicts: {len(evaluation.conflicts)}",
         "",
     ]
+    lines.append("Provider source health:")
+    if evaluation.provider_source_health:
+        for source in evaluation.provider_source_health:
+            lines.append(
+                "  "
+                + " | ".join(
+                    (
+                        str(source.get("source_id") or "unknown"),
+                        "status=" + str(source.get("status") or "unavailable"),
+                        "freshness=" + str(source.get("freshness") or "unavailable"),
+                        "checked_at=" + str(source.get("checked_at") or "unavailable"),
+                        "fetched_at=" + str(source.get("fetched_at") or "unavailable"),
+                        "last_success_at="
+                        + str(source.get("last_success_at") or "unavailable"),
+                        "last_verified_at="
+                        + str(source.get("last_verified_at") or "unavailable"),
+                        "data_stale=" + str(source.get("data_stale", "unavailable")),
+                    )
+                )
+            )
+    else:
+        lines.append("  unavailable — no source-health rows supplied")
+    lines.append("")
     for category, candidates in groups.items():
         lines.append(f"{category.replace('_', ' ').title()} records:")
         if not candidates:
@@ -1651,6 +1674,8 @@ def build_source_comparison_report(
                         + str(candidate.provider_last_verified_at or "unavailable"),
                         "official-check-status=" + candidate.official_check_status,
                         "official-check-reason=" + candidate.official_check_reason,
+                        "official-date=" + candidate.official_date_status,
+                        "official-release-time=" + candidate.official_time_status,
                         "previous=" + field_status(candidate, "previous"),
                         "forecast=" + field_status(candidate, "forecast"),
                         "actual=" + field_status(candidate, "actual"),
