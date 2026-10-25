@@ -348,6 +348,31 @@ class FinanceCalendarPrototypeTests(unittest.TestCase):
         self.assertIn("No events passed both the freshness", preview)
         self.assertNotIn("Gross Domestic Product release", preview)
 
+    def test_stale_provider_snapshot_retains_official_check_provenance(self):
+        stale_status = provider_status(
+            snapshot={
+                "generated_at": (NOW - timedelta(hours=25)).isoformat(),
+                "age_seconds": 90_000,
+            }
+        )
+        result = evaluate(
+            [provider_event()], status=stale_status, evidence=[official_gdp()]
+        )
+        candidate = result.candidates[0]
+        self.assertEqual(candidate.verification_status, "held")
+        self.assertEqual(candidate.reason, "provider_snapshot_stale")
+        self.assertEqual(
+            candidate.official_check_status, "verified_date_and_time"
+        )
+        self.assertEqual(candidate.official_check_reason, "official_date_time_match")
+        self.assertEqual(
+            candidate.official_evidence_retrieved_at, NOW.isoformat()
+        )
+        self.assertIsNone(candidate.wat_time)
+        report = build_source_comparison_report(result, generated_at=NOW)
+        self.assertIn("official-check-status=verified_date_and_time", report)
+        self.assertIn("provider_snapshot_stale", report)
+
     def test_source_health_uses_its_six_hour_limit(self):
         status = provider_status(
             source_health=[

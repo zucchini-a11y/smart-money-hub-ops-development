@@ -1577,6 +1577,8 @@ def build_source_comparison_report(
                         ),
                         "provider-last-verified-at="
                         + str(candidate.provider_last_verified_at or "unavailable"),
+                        "official-check-status=" + candidate.official_check_status,
+                        "official-check-reason=" + candidate.official_check_reason,
                         "previous=" + field_status(candidate, "previous"),
                         "forecast=" + field_status(candidate, "forecast"),
                         "actual=" + field_status(candidate, "actual"),
