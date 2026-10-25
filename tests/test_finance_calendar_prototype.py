@@ -11,6 +11,7 @@ from smart_money_hub_bot.finance_calendar_prototype import (
     API_OVERVIEW_URL,
     FinanceCalendarError,
     FinanceCalendarPrototypeClient,
+    FreshnessPolicy,
     OfficialScheduleEvidence,
     _get_bytes,
     build_source_comparison_report,
@@ -111,13 +112,26 @@ def official_gdp(**overrides):
     return OfficialScheduleEvidence(**evidence)
 
 
-def evaluate(events, *, status=None, evidence=None, now=NOW, failures=None):
+def evaluate(
+    events,
+    *,
+    status=None,
+    evidence=None,
+    now=NOW,
+    failures=None,
+    freshness_policy=None,
+):
     return evaluate_provider_records(
         {"events": events, "attribution": ATTRIBUTION},
         status or provider_status(),
         evidence if evidence is not None else [official_gdp()],
         now=now,
         source_failures=failures,
+        **(
+            {"freshness_policy": freshness_policy}
+            if freshness_policy is not None
+            else {}
+        ),
     )
 
 
@@ -286,7 +300,10 @@ class FinanceCalendarPrototypeTests(unittest.TestCase):
             }
         )
         result = evaluate([provider_event()], status=stale_snapshot)
-        self.assertEqual(result.candidates[0].reason, "provider_snapshot_stale_or_unknown")
+        self.assertEqual(
+            result.candidates[0].reason,
+            "provider_snapshot_stale_or_unverifiable",
+        )
 
         stale_record = provider_event(
             last_verified_at=(NOW - timedelta(hours=25)).isoformat()
@@ -375,7 +392,7 @@ class FinanceCalendarPrototypeTests(unittest.TestCase):
         self.assertIn("Calendar data: <a href=\"https://www.financecalendar.com\">Finance Calendar</a>", preview)
         self.assertIn("Previous: Unavailable", preview)
         self.assertIn("Forecast/consensus: Unavailable", preview)
-        self.assertIn("Actual: Unavailable unless separately verified", preview)
+        self.assertIn("Actual: Unavailable.", preview)
         self.assertIn("Source rights notice:", preview)
         self.assertIn("13:30 WAT", preview)
         self.assertIn("Gross Domestic Product release", preview)
@@ -383,8 +400,10 @@ class FinanceCalendarPrototypeTests(unittest.TestCase):
         self.assertIn("Source &lt;official publisher&gt;", preview)
         self.assertIn("Previous: Unavailable", preview)
         comparison = build_source_comparison_report(result, generated_at=NOW)
-        self.assertIn("previous=present_unverified", comparison)
-        self.assertIn("forecast=present_unverified", comparison)
+        self.assertIn("previous=present_unverified; value_withheld", comparison)
+        self.assertIn("forecast=present_unverified; value_withheld", comparison)
+        self.assertIn("Generated at: 2026-10-25T03:00:00+00:00", preview)
+        self.assertIn("not a complete U.S. economic calendar", preview)
 
     def test_unreviewed_source_license_holds_event(self):
         result = evaluate([provider_event(source_license={"license": "restricted"})])
