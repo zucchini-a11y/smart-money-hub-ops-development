@@ -101,6 +101,9 @@ _SIGNATURE_FIELDS = (
     "source_url",
     "source_license",
     "source_rights",
+    "last_verified_at",
+    "data_stale",
+    "updated_at",
 )
 
 
@@ -282,6 +285,7 @@ class OfficialScheduleEvidence:
     retrieved_at: datetime
     release_at_utc: datetime | None = None
     source_timezone: str | None = None
+    reference_period: str | None = None
 
     def __post_init__(self) -> None:
         if self.retrieved_at.tzinfo is None:
@@ -440,6 +444,7 @@ def parse_census_release_calendar(
                     retrieved_at=retrieved_at,
                     release_at_utc=None,
                     source_timezone=None,
+                    reference_period=cells[3] if len(cells) > 3 else None,
                 )
             )
     return evidence
@@ -692,12 +697,13 @@ def _parse_timestamp(value: Any) -> datetime | None:
 
 
 def _record_identity(event: dict[str, Any]) -> tuple[Any, ...]:
+    event_id = str(event.get("id") or "")
     return (
         event.get("source_id") or "",
         event.get("series_code") or "",
-        event.get("date") or "",
+        ("id", event_id) if event_id else ("date", event.get("date") or ""),
         event.get("release_stage") or "",
-        event.get("period") or "",
+        "" if event_id else event.get("period") or "",
     )
 
 
@@ -756,13 +762,24 @@ def _matches_official(
     matches = [
         item
         for item in evidence
-        if item.series_code == code and item.event_date == event_date
+        if item.series_code == code
+        and (
+            not item.reference_period
+            or not event.get("period")
+            or item.reference_period.casefold() == str(event.get("period")).casefold()
+        )
+        and item.event_date == event_date
     ]
     if not matches:
-        other_dates = [
-            item for item in evidence if item.series_code == code
+        period_matches = [
+            item
+            for item in evidence
+            if item.series_code == code
+            and event.get("period")
+            and item.reference_period
+            and item.reference_period.casefold() == str(event.get("period")).casefold()
         ]
-        if other_dates:
+        if period_matches:
             return "conflict", "official_date_mismatch", None
         return "held", "official_source_not_verified", None
     for item in matches:
