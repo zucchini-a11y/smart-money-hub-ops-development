@@ -780,6 +780,7 @@ class PrototypeEvaluation:
     excluded_count: int = 0
     provider_health_status: str = "unavailable"
     provider_snapshot_age_seconds: int | None = None
+    provider_snapshot_reported_age_seconds: int | None = None
     snapshot_freshness_status: str = "unavailable"
     evaluated_at: datetime | None = None
     provider_attribution_present: bool = False
@@ -1013,7 +1014,7 @@ def evaluate_provider_records(
     snapshot = provider_status.get("snapshot")
     snapshot_age = snapshot.get("age_seconds") if isinstance(snapshot, dict) else None
     if isinstance(snapshot_age, (int, float)) and snapshot_age >= 0:
-        result.provider_snapshot_age_seconds = int(snapshot_age)
+        result.provider_snapshot_reported_age_seconds = int(snapshot_age)
     snapshot_generated = _parse_timestamp(
         snapshot.get("generated_at") if isinstance(snapshot, dict) else None
     )
@@ -1022,6 +1023,10 @@ def evaluate_provider_records(
         if snapshot_generated
         else None
     )
+    if snapshot_age_calculated is not None and snapshot_age_calculated >= timedelta(0):
+        result.provider_snapshot_age_seconds = int(
+            snapshot_age_calculated.total_seconds()
+        )
     snapshot_age_matches = bool(
         snapshot_age_calculated is not None
         and isinstance(snapshot_age, (int, float))
