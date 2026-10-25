@@ -610,6 +610,7 @@ def build_weekly_calendar_preview(
     *,
     week_start: date,
     now: datetime | None = None,
+    source_statuses: list[dict] | None = None,
 ) -> str:
     """Render admin-approved, fresh, independently date-verified events only."""
     observed = now or datetime.now(timezone.utc)
@@ -707,6 +708,29 @@ def build_weekly_calendar_preview(
         lines.append("")
     lines.extend(
         [
+            "",
+            "<b>SOURCE STATUS</b>",
+        ]
+    )
+    by_source = {
+        str(item.get("source_name")): item for item in (source_statuses or [])
+    }
+    for source in ("BEA", "Census", "Federal Reserve", "BLS", "DOL"):
+        status = by_source.get(source)
+        if status is None:
+            label = (
+                "UNAVAILABLE — SOURCE NOT VERIFIED"
+                if source in {"BLS", "DOL"}
+                else "No recent check recorded"
+            )
+        else:
+            label = str(status.get("status") or "UNKNOWN")
+            if status.get("failure_category"):
+                label += f" ({status['failure_category']})"
+        lines.append(f"{html.escape(source)}: {html.escape(label[:120])}")
+    lines.extend(
+        [
+            "",
             "Market reactions can differ from initial expectations. This calendar "
             "is not an entry signal.",
             "<b>NO CONFIRMATION, NO ENTRY.</b>",
