@@ -1304,7 +1304,9 @@ def render_weekly_preview(
         ),
         "Finance Calendar snapshot: "
         + (
-            f"{evaluation.provider_snapshot_age_seconds}s old; "
+            f"{evaluation.provider_snapshot_age_seconds}s calculated age; "
+            f"provider-reported age "
+            f"{evaluation.provider_snapshot_reported_age_seconds if evaluation.provider_snapshot_reported_age_seconds is not None else 'unavailable'}s; "
             f"{html.escape(evaluation.snapshot_freshness_status)}"
             if evaluation.provider_snapshot_age_seconds is not None
             else html.escape(evaluation.snapshot_freshness_status)
@@ -1476,6 +1478,12 @@ def build_source_comparison_report(
             if evaluation.provider_snapshot_age_seconds is not None
             else "unavailable"
         ),
+        "Provider-reported snapshot age seconds: "
+        + (
+            str(evaluation.provider_snapshot_reported_age_seconds)
+            if evaluation.provider_snapshot_reported_age_seconds is not None
+            else "unavailable"
+        ),
         f"Snapshot freshness: {evaluation.snapshot_freshness_status}",
         f"Allowlisted candidates: {len(evaluation.candidates)}",
         f"Verified schedule records: {len(groups['verified'])}",
@@ -1517,7 +1525,11 @@ def build_source_comparison_report(
                         "provider-updated-at="
                         + str(candidate.provider_updated_at or "unavailable"),
                         "provider-update-age-seconds="
-                        + str(candidate.provider_update_age_seconds or "unavailable"),
+                        + (
+                            str(candidate.provider_update_age_seconds)
+                            if candidate.provider_update_age_seconds is not None
+                            else "unavailable"
+                        ),
                         "provider-last-verified-at="
                         + str(candidate.provider_last_verified_at or "unavailable"),
                         "previous=" + field_status(candidate, "previous"),
