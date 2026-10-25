@@ -656,6 +656,8 @@ class CalendarCandidate:
     provider_health_status: str
     source_health_status: str
     source_freshness_status: str
+    source_health_checked_at: str | None = None
+    source_health_fetched_at: str | None = None
     official_source_name: str | None = None
     official_source_url: str | None = None
     wat_time: datetime | None = None
@@ -945,6 +947,12 @@ def evaluate_provider_records(
                 provider_health_status=result.provider_health_status,
                 source_health_status=source_health_status,
                 source_freshness_status=freshness,
+                source_health_checked_at=(
+                    str(health.get("checked_at")) if health.get("checked_at") else None
+                ),
+                source_health_fetched_at=(
+                    str(health.get("fetched_at")) if health.get("fetched_at") else None
+                ),
                 official_source_name=official.source_name if official else None,
                 official_source_url=official.source_url if official else None,
                 wat_time=wat_time,
@@ -1121,17 +1129,9 @@ def build_source_comparison_report(
                     candidate.reason,
                     f"provider-source-health={candidate.source_health_status}",
                     "provider-source-checked-at="
-                    + str(
-                        _source_health_rows(
-                            {
-                                "source_health": [
-                                    # The candidate retains the source status;
-                                    # timestamps are surfaced from its provider row below.
-                                ]
-                            }
-                        ).get("", {}).get("checked_at")
-                        or "unavailable"
-                    ),
+                    + str(candidate.source_health_checked_at or "unavailable"),
+                    "provider-source-fetched-at="
+                    + str(candidate.source_health_fetched_at or "unavailable"),
                     f"freshness={candidate.source_freshness_status}",
                     f"provider-impact={event.get('impact') or 'unavailable'}",
                     "provider-source-name=" + str(event.get("source_name") or "unavailable"),

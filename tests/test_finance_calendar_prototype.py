@@ -89,6 +89,7 @@ def provider_status(**overrides):
                 "source_id": "bea",
                 "status": "success",
                 "checked_at": (NOW - timedelta(minutes=6)).isoformat(),
+                "fetched_at": (NOW - timedelta(minutes=6)).isoformat(),
             }
         ],
     }
@@ -212,10 +213,32 @@ class FinanceCalendarPrototypeTests(unittest.TestCase):
 
         bad_source = provider_status(
             ok=False,
-            source_health=[{"source_id": "bea", "status": "degraded"}],
+            source_health=[
+                {
+                    "source_id": "bea",
+                    "status": "degraded",
+                    "checked_at": (NOW - timedelta(minutes=6)).isoformat(),
+                    "fetched_at": (NOW - timedelta(minutes=6)).isoformat(),
+                }
+            ],
         )
         held = evaluate([provider_event()], status=bad_source)
         self.assertEqual(held.candidates[0].reason, "provider_source_health_not_success")
+
+        stale_source = provider_status(
+            source_health=[
+                {
+                    "source_id": "bea",
+                    "status": "success",
+                    "checked_at": (NOW - timedelta(hours=25)).isoformat(),
+                    "fetched_at": (NOW - timedelta(hours=25)).isoformat(),
+                }
+            ]
+        )
+        held = evaluate([provider_event()], status=stale_source)
+        self.assertEqual(
+            held.candidates[0].reason, "provider_source_health_stale_or_unknown"
+        )
 
     def test_stale_snapshot_record_and_failed_official_check_are_held(self):
         stale_snapshot = provider_status(
@@ -250,6 +273,22 @@ class FinanceCalendarPrototypeTests(unittest.TestCase):
         self.assertEqual(result.candidates[0].verification_status, "conflict")
         self.assertEqual(result.candidates[0].reason, "official_time_mismatch")
         self.assertIsNone(result.candidates[0].wat_time)
+
+    def test_official_date_conflict_requires_same_reference_period(self):
+        event = provider_event(period="September 2026")
+        wrong_date = official_gdp(
+            event_date=date(2026, 10, 30), reference_period="September 2026"
+        )
+        result = evaluate([event], evidence=[wrong_date])
+        self.assertEqual(result.candidates[0].verification_status, "conflict")
+        self.assertEqual(result.candidates[0].reason, "official_date_mismatch")
+
+        unrelated_period = official_gdp(
+            event_date=date(2026, 10, 30), reference_period="August 2026"
+        )
+        result = evaluate([event], evidence=[unrelated_period])
+        self.assertEqual(result.candidates[0].verification_status, "held")
+        self.assertEqual(result.candidates[0].reason, "official_source_not_verified")
 
     def test_exact_duplicates_collapse_but_disagreeing_values_are_conflicts(self):
         event = provider_event()
@@ -298,6 +337,13 @@ class FinanceCalendarPrototypeTests(unittest.TestCase):
         self.assertIn("Actual: Not yet released", preview)
         self.assertIn("Source rights notice:", preview)
         self.assertIn("13:30 WAT", preview)
+
+    def test_unreviewed_source_license_holds_event(self):
+        result = evaluate([provider_event(source_license={"license": "restricted"})])
+        self.assertEqual(result.candidates[0].verification_status, "held")
+        self.assertEqual(
+            result.candidates[0].reason, "record_source_license_review_required"
+        )
 
     def test_fed_date_only_evidence_does_not_create_a_wat_time(self):
         event = provider_event(
