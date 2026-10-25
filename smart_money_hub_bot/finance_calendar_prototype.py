@@ -1022,13 +1022,20 @@ def render_weekly_preview(
             [
                 f"<b>{date_line}</b>",
                 f"🇺🇸 {title}",
-                f"Source: <a href=\"{html.escape(candidate.official_source_url or '', quote=True)}\">"
+                f"Provider source: <a href=\"{html.escape(str(event.get('source_url') or ''), quote=True)}\">"
+                f"{html.escape(str(event.get('source_name') or 'Finance Calendar event source'))}</a>",
+                f"Official corroboration: <a href=\"{html.escape(candidate.official_source_url or '', quote=True)}\">"
                 f"{html.escape(candidate.official_source_name or 'Official source')}</a>",
+                "Provider original timestamp: "
+                + html.escape(str(event.get("release_at_utc") or "unavailable"))
+                + " ("
+                + html.escape(str(event.get("release_tz") or "source timezone unavailable"))
+                + ").",
                 f"Finance Calendar impact: {html.escape(str(event.get('impact') or 'Unavailable'))} "
                 "(provider-supplied, not an official-source rating).",
                 "Previous: Unavailable unless separately verified from the official source.",
                 "Forecast/consensus: Unavailable; the provider says consensus estimates are not currently collected.",
-                "Actual: Not yet released for this scheduled event.",
+                "Actual: Unavailable unless separately verified from the official source.",
                 "",
             ]
         )
@@ -1046,8 +1053,12 @@ def render_weekly_preview(
             )
         else:
             lines.append(
-                "Source-specific rights notice: none supplied in this record; "
-                "Finance Calendar attribution still applies."
+                "Source-specific rights notice: "
+                + (
+                    "no separate rights notice supplied; source licence notice is retained."
+                    if candidate.source_license_notice
+                    else "none supplied in this record; Finance Calendar attribution still applies."
+                )
             )
         lines.append(
             "Possible relevance: This release may inform U.S. growth, inflation, "
@@ -1109,11 +1120,39 @@ def build_source_comparison_report(
                     candidate.verification_status,
                     candidate.reason,
                     f"provider-source-health={candidate.source_health_status}",
+                    "provider-source-checked-at="
+                    + str(
+                        _source_health_rows(
+                            {
+                                "source_health": [
+                                    # The candidate retains the source status;
+                                    # timestamps are surfaced from its provider row below.
+                                ]
+                            }
+                        ).get("", {}).get("checked_at")
+                        or "unavailable"
+                    ),
                     f"freshness={candidate.source_freshness_status}",
                     f"provider-impact={event.get('impact') or 'unavailable'}",
-                    f"previous={event.get('prior') or 'unavailable'}",
-                    f"forecast={event.get('consensus') or 'unavailable'}",
-                    f"actual={event.get('actual') or 'unavailable'}",
+                    "provider-source-name=" + str(event.get("source_name") or "unavailable"),
+                    "provider-source-url=" + str(event.get("source_url") or "unavailable"),
+                    "provider-original-utc=" + str(event.get("release_at_utc") or "unavailable"),
+                    "provider-source-timezone=" + str(event.get("release_tz") or "unavailable"),
+                    "provider-retrieved-at="
+                    + str(event.get("updated_at") or "unavailable"),
+                    "provider-last-verified-at="
+                    + str(event.get("last_verified_at") or "unavailable"),
+                    "previous="
+                    + ("present_unverified" if event.get("prior") is not None else "unavailable"),
+                    "forecast="
+                    + (
+                        "present_unverified"
+                        if event.get("consensus") is not None
+                        else "unavailable"
+                    ),
+                    "actual="
+                    + ("present_unverified" if event.get("actual") is not None else "unavailable"),
+                    "official-source-url=" + str(candidate.official_source_url or "unavailable"),
                 )
             )
         )
