@@ -142,7 +142,13 @@ class FinanceCalendarError(RuntimeError):
 
 @dataclass(frozen=True)
 class FreshnessPolicy:
-    """Independent, overridable limits for each data freshness layer."""
+    """Independent limits, overridable per source and freshness layer.
+
+    The six-hour aggregate snapshot/health windows are deliberately stricter
+    than the provider's undocumented refresh cadence. Record/evidence limits
+    differ by source; slower, scheduled Fed meeting-date evidence gets 72h,
+    while BLS/Census/DOL rows that can change near releases get 12h.
+    """
 
     provider_snapshot: timedelta = timedelta(hours=6)
     snapshot_age_tolerance: timedelta = timedelta(minutes=10)
@@ -931,9 +937,10 @@ def _matches_official(
             return "conflict", "official_date_mismatch", None
         return "held", "official_source_not_verified", None
     for item in matches:
-        if now.astimezone(timezone.utc) - item.retrieved_at.astimezone(
+        evidence_age = now.astimezone(timezone.utc) - item.retrieved_at.astimezone(
             timezone.utc
-        ) > freshness_limit:
+        )
+        if evidence_age < timedelta(0) or evidence_age > freshness_limit:
             continue
         provider_time = _parse_timestamp(event.get("release_at_utc"))
         if item.release_at_utc is None:
