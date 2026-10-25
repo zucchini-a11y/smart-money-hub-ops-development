@@ -253,6 +253,13 @@ class FinanceCalendarPrototypeTests(unittest.TestCase):
         self.assertEqual(
             no_official_check.candidates[0].reason, "official_source_not_verified"
         )
+        report = build_source_comparison_report(
+            no_official_check, generated_at=NOW
+        )
+        self.assertIn("Unavailable Source records:", report)
+        self.assertIn("provider-record-retrieved-at=", report)
+        self.assertIn("official-evidence-retrieved-at=unavailable", report)
+        self.assertIn("provider-update-age-seconds=300", report)
 
     def test_provider_wide_degraded_health_is_reported_but_source_health_is_checked(self):
         status = provider_status(ok=False)
