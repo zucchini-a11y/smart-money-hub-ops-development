@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import html
+import re
 import sqlite3
 from contextlib import closing
 from datetime import date, datetime, timedelta, timezone
@@ -37,7 +38,7 @@ _SOURCE_ALIASES = {
     "U.S. Department of Labor": "DOL",
 }
 _FIELD_MAP = {
-    "title": ("title", None),
+    "title": ("title", "title_verified"),
     "date": ("release_date_text", "date_verified"),
     "time": ("release_time_text", "time_verified"),
     "previous": ("previous_value", "previous_verified"),
@@ -46,6 +47,7 @@ _FIELD_MAP = {
     "impact": ("provider_impact", "impact_verified"),
 }
 _FIELD_SOURCE_COLUMNS = {
+    "title": "title_evidence_url",
     "date": "date_evidence_url",
     "time": "time_evidence_url",
     "previous": "previous_evidence_url",
@@ -77,7 +79,10 @@ def _safe_evidence_url(source_name: str, value: str) -> bool:
 
 def _event_date(record: dict) -> date | None:
     event_at = record.get("event_at_utc")
-    if isinstance(event_at, str):
+    if isinstance(event_at, str) and (
+        record.get("time_verified")
+        or record.get("timezone_status") == "verified_explicit_utc_offset"
+    ):
         try:
             parsed = datetime.fromisoformat(event_at.replace("Z", "+00:00"))
             if parsed.tzinfo is not None:
@@ -85,6 +90,17 @@ def _event_date(record: dict) -> date | None:
         except ValueError:
             pass
     raw = str(record.get("release_date_text") or "").strip()
+    range_match = re.fullmatch(
+        r"([A-Za-z]+)\s+(\d{1,2})[–-](\d{1,2}),\s*(\d{4})", raw
+    )
+    if range_match:
+        month_name, first, _last, year = range_match.groups()
+        try:
+            return date(
+                int(year), datetime.strptime(month_name, "%B").month, int(first)
+            )
+        except ValueError:
+            return None
     for pattern in ("%Y-%m-%d", "%B %d, %Y", "%b %d, %Y", "%a, %d %b %Y"):
         try:
             return datetime.strptime(raw, pattern).date()
@@ -113,6 +129,7 @@ class OfficialCalendarManagementRepository:
             additions = {
                 "review_status": "TEXT NOT NULL DEFAULT 'held'",
                 "entry_origin": "TEXT NOT NULL DEFAULT 'official_source'",
+                "title_verified": "INTEGER NOT NULL DEFAULT 0",
                 "date_verified": "INTEGER NOT NULL DEFAULT 0",
                 "time_verified": "INTEGER NOT NULL DEFAULT 0",
                 "previous_verified": "INTEGER NOT NULL DEFAULT 0",
@@ -120,6 +137,7 @@ class OfficialCalendarManagementRepository:
                 "actual_verified": "INTEGER NOT NULL DEFAULT 0",
                 "impact_verified": "INTEGER NOT NULL DEFAULT 0",
                 "date_evidence_url": "TEXT",
+                "title_evidence_url": "TEXT",
                 "time_evidence_url": "TEXT",
                 "previous_evidence_url": "TEXT",
                 "forecast_evidence_url": "TEXT",
@@ -155,10 +173,18 @@ class OfficialCalendarManagementRepository:
             connection.execute(
                 """
                 UPDATE usd_calendar_source_events
+                SET title_verified=1
+                WHERE entry_origin='official_source' AND title_verified=0
+                """
+            )
+            connection.execute(
+                """
+                UPDATE usd_calendar_source_events
                 SET date_verified=1
                 WHERE verification_status IN (
                     'verified_schedule',
-                    'date_time_listed_timezone_unverified'
+                    'date_time_listed_timezone_unverified',
+                    'verified_meeting_window_release_time_unavailable'
                 ) AND date_verified=0
                 """
             )
@@ -204,6 +230,14 @@ class OfficialCalendarManagementRepository:
             except (TypeError, ValueError):
                 stale = True
             row["is_stale"] = stale
+            source = str(row.get("source_name") or "")
+            status_key = _SOURCE_ALIASES.get(source, source)
+            if status_key in {"BLS", "DOL"} and status_key not in source_status:
+                row["source_health"] = "UNAVAILABLE — SOURCE NOT VERIFIED"
+            else:
+                row["source_health"] = source_status.get(status_key, {}).get(
+                    "status", "No source check recorded"
+                )
             health = str(row["source_health"] or "").casefold()
             if review_status == "rejected":
                 row["review_state"] = "rejected"
@@ -217,14 +251,6 @@ class OfficialCalendarManagementRepository:
                 row["review_state"] = "approved"
             else:
                 row["review_state"] = "held"
-            source = str(row.get("source_name") or "")
-            status_key = _SOURCE_ALIASES.get(source, source)
-            if status_key in {"BLS", "DOL"} and status_key not in source_status:
-                row["source_health"] = "UNAVAILABLE — SOURCE NOT VERIFIED"
-            else:
-                row["source_health"] = source_status.get(status_key, {}).get(
-                    "status", "No source check recorded"
-                )
 
         # Flag same-title/date records when independent sources disagree on
         # known timestamps or supplied figures; never pick a winner silently.
@@ -262,8 +288,11 @@ class OfficialCalendarManagementRepository:
         if date_filter:
             rows = [
                 row for row in rows
-                if date_filter.casefold()
-                in str(row.get("release_date_text") or "").casefold()
+                if (
+                    date_filter.casefold()
+                    in str(row.get("release_date_text") or "").casefold()
+                    or date_filter in str(_event_date(row) or "")
+                )
             ]
         status_filter = str(filters.get("status") or "").strip().casefold()
         if status_filter:
@@ -341,10 +370,40 @@ class OfficialCalendarManagementRepository:
                     timezone_status, _utc_text(now), _utc_text(now),
                 ),
             )
-            self._audit(
-                connection, external_id, "manual_add", None, None, title,
-                source_url, now,
-            )
+            inserted = connection.execute(
+                "SELECT changes()"
+            ).fetchone()[0] == 1
+            if not inserted:
+                existing = connection.execute(
+                    "SELECT event_at_utc, review_status FROM usd_calendar_source_events "
+                    "WHERE external_id=?",
+                    (external_id,),
+                ).fetchone()
+                conflict = bool(
+                    existing
+                    and existing["event_at_utc"]
+                    and event_at_utc
+                    and existing["event_at_utc"] != event_at_utc
+                )
+                if conflict:
+                    connection.execute(
+                        "UPDATE usd_calendar_source_events SET review_status='conflicting', "
+                        "updated_at_utc=? WHERE external_id=?",
+                        (_utc_text(now), external_id),
+                    )
+                self._audit(
+                    connection, external_id,
+                    "manual_duplicate_conflict" if conflict else "manual_duplicate_ignored",
+                    "release_time" if conflict else None,
+                    str(existing["event_at_utc"]) if conflict else None,
+                    event_at_utc if conflict else title,
+                    source_url, now,
+                )
+            else:
+                self._audit(
+                    connection, external_id, "manual_add", None, None, title,
+                    source_url, now,
+                )
         return external_id
 
     def set_field(
@@ -402,7 +461,11 @@ class OfficialCalendarManagementRepository:
                     current_date = date.fromisoformat(str(row["release_date_text"]))
                 except ValueError:
                     current_date = None
-                if current_date is not None and parsed.date() != current_date:
+                if current_date is None:
+                    raise CalendarManagementError(
+                        "Verify an exact YYYY-MM-DD release date before adding a time."
+                    )
+                if parsed.date() != current_date:
                     raise CalendarManagementError(
                         "Time date must match the separately recorded event date."
                     )
@@ -572,7 +635,7 @@ def build_weekly_calendar_preview(
             and parsed.hostname in set().union(*_SOURCE_HOSTS.values())
         )
         lines.append(f"<b>{title}</b>")
-        date_label = day.strftime("%a, %d %b %Y")
+        date_label = str(record.get("release_date_text") or day.strftime("%a, %d %b %Y"))
         event_at = record.get("event_at_utc")
         if record.get("time_verified") and event_at:
             try:
@@ -586,6 +649,10 @@ def build_weekly_calendar_preview(
             except ValueError:
                 pass
         lines.append(f"📅 {date_label} · United States")
+        if record.get("entry_origin") == "manual":
+            lines.append(
+                "Record origin: ADMIN-ENTERED — not automatically verified as an official event"
+            )
         impact = record.get("provider_impact")
         if record.get("impact_verified") and impact:
             lines.append(f"Impact: {html.escape(str(impact))} (source verified)")
