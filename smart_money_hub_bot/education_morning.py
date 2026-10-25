@@ -234,6 +234,12 @@ def _content_hash(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def _utc_text(value: datetime) -> str:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError("Timestamp must be timezone-aware.")
+    return value.astimezone(timezone.utc).isoformat(timespec="seconds")
+
+
 def render_morning_post(
     lesson: MorningLesson,
     *,

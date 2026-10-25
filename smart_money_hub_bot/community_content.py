@@ -668,6 +668,20 @@ class CommunityContentRepository:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def draft_versions(self, draft_id: str) -> list[dict[str, Any]]:
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                """
+                SELECT revision, content, content_source, saved_at_utc
+                FROM smh_content_draft_versions
+                WHERE draft_id=?
+                ORDER BY revision DESC
+                LIMIT 20
+                """,
+                (draft_id.strip().upper(),),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     @staticmethod
     def _dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
         return dict(row) if row else None

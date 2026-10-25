@@ -15,7 +15,7 @@ from smart_money_hub_bot.community_content import (
     CommunityContentManager,
     render_telegram_html,
 )
-from smart_money_hub_bot.repository import Repository
+from smart_money_hub_bot.storage import Repository
 from smart_money_hub_bot.telegram_api import TelegramAPIError
 
 

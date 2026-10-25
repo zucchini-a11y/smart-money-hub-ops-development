@@ -75,7 +75,11 @@ class TradeLedgerTests(unittest.TestCase):
         self.assertEqual(stats["breakeven"], 1)
         self.assertEqual(stats["win_rate"], "50.0")
         self.assertEqual(stats["win_rate_denominator"], "wins + losses; breakeven excluded")
-        self.assertEqual(stats["known_net_pips"], "0")
+        self.assertIsNone(stats["known_net_pips"])
+        self.assertEqual(
+            stats["net_pips_by_instrument_and_convention"]["XAUUSD|0.1"]["net"],
+            "0",
+        )
 
     def test_pips_are_calculated_only_with_explicit_pip_size(self):
         trade_id = self._trade()

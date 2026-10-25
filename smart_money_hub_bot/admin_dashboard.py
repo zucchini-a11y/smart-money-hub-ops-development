@@ -1080,6 +1080,9 @@ class AdminDashboard:
         commands = {
             "/content",
             "/contenthelp",
+            "/contenthistory",
+            "/contentfeedback",
+            "/draftversions",
             "/contentpause",
             "/contentresume",
             "/draft",
@@ -1107,6 +1110,12 @@ class AdminDashboard:
         try:
             if command in {"/content", "/contenthelp"}:
                 self._show_content_overview(chat_id)
+            elif command == "/contenthistory":
+                self._show_content_history(chat_id)
+            elif command == "/contentfeedback":
+                self._show_content_feedback(chat_id)
+            elif command == "/draftversions":
+                self._show_draft_versions(chat_id, positional)
             elif command == "/contentpause":
                 self.community_content.repository.set_enabled(False)
                 self.education_morning_store.set_enabled(False)
@@ -1225,6 +1234,7 @@ class AdminDashboard:
             "/weeklyreport destination=education|market",
             "/preview ID · /editdraft ID · /approve ID · /reject ID reason=...",
             "/publishcontent ID (explicit send after destination checks)",
+            "/contenthistory · /contentfeedback · /draftversions ID",
             "/schedule to view; use id=... category=... destination=... time=HH:MM "
             "timezone=Africa/Lagos frequency=daily|weekly enabled=true",
             "/recordtrade · /closetrade · /correcttrade · /verifytrade · /addpartialtp",
@@ -1248,6 +1258,50 @@ class AdminDashboard:
         self.api.send_message(
             chat_id, "\n".join(lines), self._dashboard_keyboard(), parse_mode="HTML"
         )
+
+    def _show_content_history(self, chat_id: int) -> None:
+        drafts = self.community_content.repository.list_drafts(limit=30)
+        if not drafts:
+            self.api.send_message(chat_id, "No content history is saved yet.")
+            return
+        lines = ["<b>CONTENT ARCHIVE</b>"]
+        lines.extend(
+            f"• <code>{html.escape(row['draft_id'])}</code> — "
+            f"{html.escape(row['category'])} — {html.escape(row['status'])} — "
+            f"rev {row['revision']} — {html.escape(row['created_at_utc'][:16])} UTC"
+            for row in drafts
+        )
+        self.api.send_message(chat_id, "\n".join(lines), parse_mode="HTML")
+
+    def _show_content_feedback(self, chat_id: int) -> None:
+        feedback = self.community_content.repository.recent_feedback(limit=10)
+        if not feedback:
+            self.api.send_message(chat_id, "No administrator feedback is saved yet.")
+            return
+        lines = ["<b>RECENT CONTENT FEEDBACK</b>"]
+        lines.extend(
+            f"• {html.escape(row['decision'])} on "
+            f"<code>{html.escape(row['category'])}</code>: "
+            f"{html.escape(row['details'] or 'No written note')}"
+            for row in feedback
+        )
+        self.api.send_message(chat_id, "\n".join(lines), parse_mode="HTML")
+
+    def _show_draft_versions(self, chat_id: int, positional: list[str]) -> None:
+        if not positional:
+            raise CommunityContentError("Usage: /draftversions DRAFT_ID")
+        versions = self.community_content.repository.draft_versions(positional[0])
+        if not versions:
+            self.api.send_message(chat_id, "No earlier version is saved for that draft.")
+            return
+        lines = [f"<b>EARLIER VERSIONS — {html.escape(positional[0].upper())}</b>"]
+        for version in versions:
+            lines.append(
+                f"\n<b>Revision {version['revision']} · "
+                f"{html.escape(version['saved_at_utc'][:16])} UTC</b>"
+            )
+            lines.append(render_telegram_html(version["content"]))
+        self.api.send_message(chat_id, "\n".join(lines), parse_mode="HTML")
 
     def _destination_id(self, label: str | None) -> int:
         if not label:
