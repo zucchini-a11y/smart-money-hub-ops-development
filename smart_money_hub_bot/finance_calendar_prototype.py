@@ -286,6 +286,7 @@ class OfficialScheduleEvidence:
     release_at_utc: datetime | None = None
     source_timezone: str | None = None
     reference_period: str | None = None
+    release_time_text: str | None = None
 
     def __post_init__(self) -> None:
         if self.retrieved_at.tzinfo is None:
@@ -445,6 +446,7 @@ def parse_census_release_calendar(
                     release_at_utc=None,
                     source_timezone=None,
                     reference_period=cells[3] if len(cells) > 3 else None,
+                    release_time_text=cells[2] if len(cells) > 2 else None,
                 )
             )
     return evidence
@@ -660,6 +662,7 @@ class CalendarCandidate:
     source_health_fetched_at: str | None = None
     official_source_name: str | None = None
     official_source_url: str | None = None
+    official_release_time_text: str | None = None
     wat_time: datetime | None = None
     source_license_notice: Any = None
     source_rights_notice: Any = None
@@ -675,6 +678,7 @@ class PrototypeEvaluation:
     provider_health_status: str = "unavailable"
     provider_snapshot_age_seconds: int | None = None
     provider_attribution_present: bool = False
+    provider_degraded_sources: list[str] = field(default_factory=list)
     source_failures: dict[str, str] = field(default_factory=dict)
 
     @property
@@ -844,6 +848,11 @@ def evaluate_provider_records(
         <= max_age
     )
     health_rows = _source_health_rows(provider_status)
+    result.provider_degraded_sources = sorted(
+        source_id
+        for source_id, row in health_rows.items()
+        if row.get("status") != "success"
+    )
     raw_events = calendar.get("events")
     if not isinstance(raw_events, list):
         raw_events = []
@@ -955,6 +964,9 @@ def evaluate_provider_records(
                 ),
                 official_source_name=official.source_name if official else None,
                 official_source_url=official.source_url if official else None,
+                official_release_time_text=(
+                    official.release_time_text if official else None
+                ),
                 wat_time=wat_time,
                 source_license_notice=event.get("source_license"),
                 source_rights_notice=(
@@ -1024,6 +1036,11 @@ def render_weekly_preview(
         date_line = event_date.strftime("%a, %d %b %Y")
         if candidate.wat_time:
             date_line += f" · {candidate.wat_time.strftime('%H:%M')} WAT"
+        elif candidate.official_release_time_text:
+            date_line += (
+                f" · official time {html.escape(candidate.official_release_time_text)}; "
+                "timezone unverified, WAT unavailable"
+            )
         else:
             date_line += " · time unavailable (official date only)"
         lines.extend(
@@ -1103,6 +1120,12 @@ def build_source_comparison_report(
         "NON-PRODUCTION SOURCE COMPARISON — ADMIN REVIEW",
         f"Generated: {generated_at.astimezone(timezone.utc).isoformat()}",
         f"Provider health: {evaluation.provider_health_status}",
+        "Provider-degraded source IDs: "
+        + (
+            ", ".join(evaluation.provider_degraded_sources)
+            if evaluation.provider_degraded_sources
+            else "none reported"
+        ),
         "Provider attribution present: "
         + ("yes" if evaluation.provider_attribution_present else "no"),
         "Snapshot age seconds: "
@@ -1153,6 +1176,8 @@ def build_source_comparison_report(
                     "actual="
                     + ("present_unverified" if event.get("actual") is not None else "unavailable"),
                     "official-source-url=" + str(candidate.official_source_url or "unavailable"),
+                    "official-time-text="
+                    + str(candidate.official_release_time_text or "unavailable"),
                 )
             )
         )
