@@ -13,6 +13,7 @@ from smart_money_hub_bot.education_morning import (
     MORNING_LESSONS,
     MORNING_TIME,
     MORNING_ZONE,
+    MorningLesson,
     render_morning_post,
 )
 from smart_money_hub_bot.education_polls import EXPECTED_EDUCATION_GROUP_ID
@@ -116,8 +117,10 @@ class EducationMorningTests(unittest.TestCase):
         chat_id, text, parse_mode = self.api.group_sends[0]
         self.assertEqual(chat_id, EXPECTED_EDUCATION_GROUP_ID)
         self.assertEqual(parse_mode, "HTML")
-        self.assertIn("GOOD MORNING | SMART MONEY HUB", text)
-        self.assertIn("TODAY’S LEARNING FOCUS", text)
+        self.assertIn("SMART MONEY HUB | TRADING EDUCATION", text)
+        self.assertIn("TODAY’S LESSON:", text)
+        self.assertNotIn("GOOD MORNING", text)
+        self.assertNotIn("TODAY’S LEARNING FOCUS", text)
         self.assertIn("NO CONFIRMATION, NO ENTRY.", text)
         run = EducationMorningStore(self.database).get("2026-10-26")
         self.assertEqual(run["status"], "sent")
@@ -190,11 +193,15 @@ class EducationMorningTests(unittest.TestCase):
         self.assertEqual(run["failure_category"], "interrupted_during_send")
 
     def test_telegram_html_is_escaped_well_formed_and_within_limit(self):
-        lesson = MORNING_LESSONS[0]
+        lesson = MorningLesson(
+            topic="test",
+            title="A & B < C",
+            lesson="Review <this> & consider the context.",
+            practice="Check <confirmation> before entry.",
+            keywords=("test",),
+        )
         text = render_morning_post(
             lesson,
-            greeting="Review <this> & plan calmly.",
-            closing="No rush—be precise.",
         )
         self.assertIn("&lt;this&gt; &amp;", text)
         parser = StrictTelegramHTML()
@@ -203,6 +210,25 @@ class EducationMorningTests(unittest.TestCase):
         self.assertEqual(parser.errors, [])
         self.assertEqual(parser.stack, [])
         self.assertLessEqual(len(text.encode("utf-16-le")) // 2, 4096)
+
+    def test_poi_education_post_uses_branded_lesson_layout_without_greeting(self):
+        lesson = next(item for item in MORNING_LESSONS if item.topic == "poi")
+        text = render_morning_post(lesson)
+        self.assertTrue(text.startswith("📊 <b>SMART MONEY HUB | TRADING EDUCATION</b>"))
+        self.assertIn(
+            "📚 <b>TODAY’S LESSON: A POINT OF INTEREST IS NOT AN ENTRY</b>",
+            text,
+        )
+        self.assertIn(
+            "A POI identifies where to pay attention, not when to enter.", text
+        )
+        self.assertIn("<b>BEFORE CONSIDERING ANY TRADE</b>", text)
+        self.assertIn(
+            "✅ Wait for price to confirm the setup; do not enter simply because it reached the zone.",
+            text,
+        )
+        self.assertIn("🛡️ <b>NO CONFIRMATION, NO ENTRY.</b>", text)
+        self.assertNotIn("GOOD MORNING", text.upper())
 
     def test_recent_group_archive_informs_topic_novelty_without_private_history(self):
         self.history.record_education_group_post(

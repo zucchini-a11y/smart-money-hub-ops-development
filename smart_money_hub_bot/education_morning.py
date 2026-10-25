@@ -32,6 +32,8 @@ class MorningLesson:
     lesson: str
     practice: str
     keywords: tuple[str, ...]
+    checklist: tuple[str, ...] = ()
+    takeaway: str | None = None
 
 
 class MorningPublishingError(RuntimeError):
@@ -67,9 +69,17 @@ MORNING_LESSONS: tuple[MorningLesson, ...] = (
     MorningLesson(
         "poi", "A POINT OF INTEREST IS NOT AN ENTRY",
         "A POI can help organize a chart, but price reaching an area does not "
-        "confirm that a trade is valid.",
+        "confirm that a trade is valid. A POI identifies where to pay attention, "
+        "not when to enter.",
         "List the confirmation and invalidation conditions before considering entry.",
         ("poi", "entry", "confirmation"),
+        checklist=(
+            "Identify the POI and its relevance to market structure.",
+            "Define the confirmation required by your trading plan.",
+            "Establish invalidation conditions before entry.",
+            "Wait for price to confirm the setup; do not enter simply because it reached the zone.",
+        ),
+        takeaway="A POI identifies where to pay attention, not when to enter.",
     ),
     MorningLesson(
         "fvg", "TREAT AN FVG AS A CHART CONCEPT",
@@ -213,19 +223,6 @@ MORNING_LESSONS: tuple[MorningLesson, ...] = (
     ),
 )
 
-_GREETINGS = (
-    "A fresh day to study with patience.",
-    "Start calmly and let your written plan lead.",
-    "Take a moment to prepare before opening the chart.",
-    "Begin with learning, not the urge to take a trade.",
-)
-_CLOSINGS = (
-    "Keep the process clear and protect your decision-making.",
-    "A missed setup is better than an unplanned entry.",
-    "Review carefully; no outcome is guaranteed.",
-)
-
-
 def _utf16_length(value: str) -> int:
     return len(value.encode("utf-16-le")) // 2
 
@@ -243,21 +240,33 @@ def _utc_text(value: datetime) -> str:
 def render_morning_post(
     lesson: MorningLesson,
     *,
-    greeting: str,
-    closing: str,
     saturday_poll_reminder: bool = False,
 ) -> str:
     lines = [
-        "🌅 <b>GOOD MORNING | SMART MONEY HUB</b>",
+        "📊 <b>SMART MONEY HUB | TRADING EDUCATION</b>",
         "",
-        html.escape(greeting),
-        "",
-        f"📚 <b>TODAY’S LEARNING FOCUS: {html.escape(lesson.title)}</b>",
+        f"📚 <b>TODAY’S LESSON: {html.escape(lesson.title)}</b>",
         "",
         html.escape(lesson.lesson),
         "",
-        f"✅ <b>TRY THIS:</b> {html.escape(lesson.practice)}",
     ]
+    if lesson.checklist:
+        lines.extend(
+            [
+                "<b>BEFORE CONSIDERING ANY TRADE</b>",
+                "",
+                *(f"✅ {html.escape(item)}" for item in lesson.checklist),
+            ]
+        )
+        if lesson.takeaway:
+            lines.extend(
+                [
+                    "",
+                    f"<b>REMEMBER:</b> {html.escape(lesson.takeaway)}",
+                ]
+            )
+    else:
+        lines.append(f"✅ <b>TRY THIS:</b> {html.escape(lesson.practice)}")
     if saturday_poll_reminder:
         lines.extend(
             [
@@ -268,8 +277,6 @@ def render_morning_post(
         )
     lines.extend(
         [
-            "",
-            html.escape(closing),
             "",
             "🛡️ <b>NO CONFIRMATION, NO ENTRY.</b>",
         ]
@@ -647,22 +654,17 @@ class EducationMorningPublisher:
     ) -> tuple[MorningLesson, str] | None:
         used = self.store.used_hashes()
         recent_text = self._recent_group_text(scheduled_date)
-        total = len(MORNING_LESSONS) * len(_GREETINGS) * len(_CLOSINGS)
+        total = len(MORNING_LESSONS)
         offset = scheduled_date.toordinal() % max(total, 1)
-        combinations = [
-            (lesson, greeting, closing_text)
-            for lesson in MORNING_LESSONS
-            for greeting in _GREETINGS
-            for closing_text in _CLOSINGS
+        lessons = [
+            MORNING_LESSONS[(offset + step) % total]
+            for step in range(total)
         ]
-        for step in range(len(combinations)):
-            lesson, greeting, closing_text = combinations[(offset + step) % total]
+        for lesson in lessons:
             if any(keyword.casefold() in recent_text for keyword in lesson.keywords):
                 continue
             content = render_morning_post(
                 lesson,
-                greeting=greeting,
-                closing=closing_text,
                 saturday_poll_reminder=scheduled_date.weekday() == 5,
             )
             digest = _content_hash(content)
@@ -670,11 +672,9 @@ class EducationMorningPublisher:
                 return lesson, content
         # Prefer a unique post over a duplicate if every topic was recently
         # covered; the per-run hash still prevents any exact repeated message.
-        for lesson, greeting, closing_text in combinations:
+        for lesson in lessons:
             content = render_morning_post(
                 lesson,
-                greeting=greeting,
-                closing=closing_text,
                 saturday_poll_reminder=scheduled_date.weekday() == 5,
             )
             if _content_hash(content) not in used:
