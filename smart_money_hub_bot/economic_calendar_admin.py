@@ -503,6 +503,27 @@ class OfficialCalendarManagementRepository:
                 )
         return external_id
 
+    @staticmethod
+    def _source_verified_fields(record: dict) -> dict[str, bool]:
+        return {
+            "title": True,
+            "date": str(record.get("verification_status"))
+            in {
+                "verified_schedule",
+                "date_time_listed_timezone_unverified",
+                "verified_meeting_window_release_time_unavailable",
+            },
+            "time": (
+                str(record.get("timezone_status"))
+                == "verified_explicit_utc_offset"
+                and bool(record.get("event_at_utc"))
+            ),
+            "previous": False,
+            "forecast": False,
+            "actual": False,
+            "impact": False,
+        }
+
     def set_field(
         self,
         external_id: str,
@@ -523,21 +544,62 @@ class OfficialCalendarManagementRepository:
             raise CalendarManagementError("A timezone-aware current time is required.")
         with closing(self._connection()) as connection, connection:
             connection.execute("BEGIN IMMEDIATE")
-            row = connection.execute(
-                "SELECT * FROM usd_calendar_source_events WHERE external_id=?",
+            overlay_row = connection.execute(
+                "SELECT * FROM usd_calendar_admin_review_records WHERE external_id=?",
                 (external_id,),
             ).fetchone()
-            if row is None:
-                raise CalendarManagementError("That event no longer exists.")
+            overlay = dict(overlay_row) if overlay_row else None
+            if overlay and overlay["entry_origin"] == "manual":
+                record = self._json_object(overlay.get("manual_data_json"))
+                origin = "manual"
+                overrides = {}
+                baseline = None
+                verified_fields = self._json_object(
+                    overlay.get("verified_fields_json")
+                )
+                evidence = self._json_object(overlay.get("evidence_json"))
+                source_conflict = False
+            else:
+                base_row = connection.execute(
+                    "SELECT * FROM usd_calendar_source_events WHERE external_id=?",
+                    (external_id,),
+                ).fetchone()
+                if base_row is None:
+                    raise CalendarManagementError("That event no longer exists.")
+                record = dict(base_row)
+                origin = "official_source"
+                current_fingerprint = self._fingerprint(record)
+                source_conflict = bool(
+                    overlay
+                    and overlay.get("base_fingerprint")
+                    and overlay["base_fingerprint"] != current_fingerprint
+                )
+                overrides = (
+                    {}
+                    if source_conflict or not overlay
+                    else self._json_object(overlay.get("overrides_json"))
+                )
+                record.update(overrides)
+                baseline = current_fingerprint
+                verified_fields = self._source_verified_fields(dict(base_row))
+                if overlay and not source_conflict:
+                    verified_fields.update(
+                        self._json_object(overlay.get("verified_fields_json"))
+                    )
+                evidence = (
+                    {}
+                    if source_conflict or not overlay
+                    else self._json_object(overlay.get("evidence_json"))
+                )
             source_name = _SOURCE_ALIASES.get(
-                str(row["source_name"]), str(row["source_name"])
+                str(record.get("source_name")), str(record.get("source_name"))
             )
             if not _safe_evidence_url(source_name, evidence_url):
                 raise CalendarManagementError(
                     "Evidence must be an HTTPS link on that source’s official domain."
                 )
             column, verified_column = _FIELD_MAP[field]
-            old_value = row[column]
+            old_value = record.get(column)
             if field == "date":
                 try:
                     value = date.fromisoformat(value).isoformat()
@@ -555,7 +617,9 @@ class OfficialCalendarManagementRepository:
                         "Time must include an explicit UTC offset; no timezone is assumed."
                     )
                 try:
-                    current_date = date.fromisoformat(str(row["release_date_text"]))
+                    current_date = date.fromisoformat(
+                        str(record["release_date_text"])
+                    )
                 except ValueError:
                     current_date = None
                 if current_date is None:
@@ -574,40 +638,84 @@ class OfficialCalendarManagementRepository:
                     "Impact must be Low, Medium, or High and needs its own evidence."
                 )
             if field == "date":
-                connection.execute(
-                    "UPDATE usd_calendar_source_events SET release_date_text=?, "
-                    "event_at_utc=NULL, release_time_text=NULL, time_verified=0, "
-                    "time_evidence_url=NULL, date_verified=?, date_evidence_url=?, "
-                    "review_status='held', updated_at_utc=? WHERE external_id=?",
-                    (value, int(verified), evidence_url, _utc_text(now), external_id),
+                record.update(
+                    release_date_text=value,
+                    event_at_utc=None,
+                    release_time_text=None,
+                    timezone_status="unverified_no_timezone_in_source",
                 )
+                verified_fields["time"] = False
+                evidence.pop("time", None)
             elif field == "time":
                 parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-                connection.execute(
-                    "UPDATE usd_calendar_source_events SET release_time_text=?, "
-                    "event_at_utc=?, timezone_status='verified_explicit_utc_offset', "
-                    "time_verified=?, time_evidence_url=?, review_status='held', "
-                    "updated_at_utc=? WHERE external_id=?",
-                    (
-                        value, _utc_text(parsed), int(verified), evidence_url,
-                        _utc_text(now), external_id,
+                record.update(
+                    release_time_text=value,
+                    event_at_utc=_utc_text(parsed),
+                    timezone_status=(
+                        "verified_explicit_utc_offset"
+                        if verified
+                        else "manual_timezone_unverified"
                     ),
                 )
             else:
-                evidence_column = _FIELD_SOURCE_COLUMNS.get(field)
-                assignments = [f"{column}=?", "review_status='held'", "updated_at_utc=?"]
-                values: list[object] = [value, _utc_text(now)]
-                if verified_column:
-                    assignments.append(f"{verified_column}=?")
-                    values.append(int(verified))
-                if evidence_column:
-                    assignments.append(f"{evidence_column}=?")
-                    values.append(evidence_url)
-                values.append(external_id)
+                record[column] = value
+            if field == "date":
+                verified_fields["date"] = bool(verified)
+            elif field == "time":
+                verified_fields["time"] = bool(verified)
+            else:
+                verified_fields[field] = bool(verified)
+            evidence[field] = evidence_url
+            if origin == "manual":
                 connection.execute(
-                    f"UPDATE usd_calendar_source_events SET {', '.join(assignments)} "
-                    "WHERE external_id=?",
-                    values,
+                    """
+                    UPDATE usd_calendar_admin_review_records
+                    SET manual_data_json=?, review_status='held',
+                        verified_fields_json=?, evidence_json=?, updated_at_utc=?
+                    WHERE external_id=?
+                    """,
+                    (
+                        json.dumps(record, ensure_ascii=False, sort_keys=True),
+                        json.dumps(verified_fields, sort_keys=True),
+                        json.dumps(evidence, sort_keys=True),
+                        _utc_text(now),
+                        external_id,
+                    ),
+                )
+            else:
+                if field == "date":
+                    overrides.pop("event_at_utc", None)
+                    overrides.pop("release_time_text", None)
+                    overrides.pop("timezone_status", None)
+                overrides[column] = record[column]
+                if field == "time":
+                    overrides.update(
+                        event_at_utc=record["event_at_utc"],
+                        timezone_status=record["timezone_status"],
+                    )
+                connection.execute(
+                    """
+                    INSERT INTO usd_calendar_admin_review_records (
+                        external_id, review_status, entry_origin, overrides_json,
+                        verified_fields_json, evidence_json, base_fingerprint,
+                        updated_at_utc
+                    ) VALUES (?, 'held', 'official_source', ?, ?, ?, ?, ?)
+                    ON CONFLICT(external_id) DO UPDATE SET
+                        review_status='held',
+                        overrides_json=excluded.overrides_json,
+                        verified_fields_json=excluded.verified_fields_json,
+                        evidence_json=excluded.evidence_json,
+                        base_fingerprint=excluded.base_fingerprint,
+                        updated_at_utc=excluded.updated_at_utc
+                    """,
+                    (
+                        external_id,
+                        json.dumps(overrides, ensure_ascii=False, sort_keys=True),
+                        json.dumps(verified_fields, sort_keys=True),
+                        json.dumps(evidence, sort_keys=True),
+                        baseline,
+                        _utc_text(now),
+                    ),
                 )
             self._audit(
                 connection, external_id,
