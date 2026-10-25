@@ -334,7 +334,7 @@ class FinanceCalendarPrototypeTests(unittest.TestCase):
         self.assertIn("Calendar data: <a href=\"https://www.financecalendar.com\">Finance Calendar</a>", preview)
         self.assertIn("Previous: Unavailable", preview)
         self.assertIn("Forecast/consensus: Unavailable", preview)
-        self.assertIn("Actual: Not yet released", preview)
+        self.assertIn("Actual: Unavailable unless separately verified", preview)
         self.assertIn("Source rights notice:", preview)
         self.assertIn("13:30 WAT", preview)
 
@@ -355,7 +355,14 @@ class FinanceCalendarPrototypeTests(unittest.TestCase):
             release_at_utc="2026-10-28T18:00:00+00:00",
         )
         status = provider_status(
-            source_health=[{"source_id": "fed", "status": "success"}]
+            source_health=[
+                {
+                    "source_id": "fed",
+                    "status": "success",
+                    "checked_at": (NOW - timedelta(minutes=6)).isoformat(),
+                    "fetched_at": (NOW - timedelta(minutes=6)).isoformat(),
+                }
+            ]
         )
         fed_evidence = OfficialScheduleEvidence(
             series_code="fomc",
