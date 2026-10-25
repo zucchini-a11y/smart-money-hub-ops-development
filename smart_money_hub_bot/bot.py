@@ -3158,12 +3158,28 @@ class SmartMoneyHubBot:
             self.education_morning.dispatch_due(current)
         except Exception:
             logger.exception("Could not dispatch the daily Education-group morning post.")
+        try:
+            self.admin_dashboard.community_content.dispatch_due(
+                now=current,
+                notify_admin=self._notify_content_admin,
+            )
+        except Exception:
+            logger.exception("Could not create scheduled community-content drafts.")
         if self.daily_calendar_brief is not None:
             try:
                 self.daily_calendar_brief.dispatch(current)
             except Exception:
                 logger.exception("Could not dispatch the daily USD/Gold calendar brief.")
         self.admin_dashboard.channel_posts.dispatch_due(current)
+
+    def _notify_content_admin(self, message: str) -> None:
+        """Send private status only; never send generated content to a group here."""
+        if self.admin_id is None:
+            return
+        try:
+            self.api.send_message(self.admin_id, message)
+        except TelegramAPIError:
+            logger.warning("Could not privately notify the administrator about content status.")
 
     def _dispatch_weekly_checkin(self, local_now: datetime) -> None:
         schedule_key = local_now.date().isoformat()
