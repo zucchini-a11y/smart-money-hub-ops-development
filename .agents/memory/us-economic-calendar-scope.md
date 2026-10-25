@@ -16,3 +16,9 @@ The calendar review screen is private-admin-only and read-only. It must not trig
 **Why:** the user explicitly required a review-only view that preserves source evidence without enabling live automation or inferred data.
 
 **How to apply:** expose saved records through the private admin dashboard using read-only database access; keep source ingestion, scheduling, and Telegram publishing as separate capabilities.
+
+As of 2026-10-25, direct requests in this Replit environment to both the official BLS release page and its `bls.ics` feed returned HTTP 403. The ICS parser can be tested with fixtures, but that is not evidence the live schedule was verified.
+
+**Why:** the environment blocked both official endpoints, so the bot must not represent parsed fixture support as current BLS coverage.
+
+**How to apply:** keep BLS marked unavailable until an actual official-source fetch succeeds; do not bypass the block with proxies or alternate unapproved sources.

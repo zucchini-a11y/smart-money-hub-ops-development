@@ -241,10 +241,13 @@ class DailyCalendarBriefTests(unittest.TestCase):
         self.assertEqual(controls[0]["callback_data"], "dailybrief:publish:2026-10-29")
         self.assertEqual(controls[1]["callback_data"], "dailybrief:cancel:2026-10-29")
 
-        self.assertEqual(publisher.publish_reviewed(BRIEF_DATE, now=NOW), "published")
+        restarted = self.make_publisher()
+        self.assertEqual(restarted.publish_reviewed(BRIEF_DATE, now=NOW), "published")
         self.assertEqual(len(self.api.channel_messages), 1)
         self.assertEqual(self.api.send_attempts, 1)
-        self.assertEqual(publisher.publish_reviewed(BRIEF_DATE, now=NOW), "not_awaiting_approval")
+        self.assertEqual(
+            publisher.publish_reviewed(BRIEF_DATE, now=NOW), "not_awaiting_approval"
+        )
         self.assertEqual(self.api.send_attempts, 1)
 
     def test_cancelled_or_skipped_brief_cannot_be_published_by_recovery(self) -> None:

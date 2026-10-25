@@ -393,6 +393,33 @@ class BotFlowTests(unittest.TestCase):
         self.bot.education_polls.dispatch_due.assert_called_once_with(now)
         self.bot.education_morning.dispatch_due.assert_called_once_with(now)
 
+    def test_daily_brief_recovery_callback_requires_admin_private_chat(self) -> None:
+        publisher = Mock()
+        self.bot.daily_calendar_brief = publisher
+        self.bot.admin_id = self.user_id + 1
+
+        self.bot._handle_daily_brief_callback(
+            "dailybrief:review",
+            chat_id=self.user_id,
+            telegram_id=self.user_id,
+            is_private=True,
+        )
+
+        publisher.prepare_held_review.assert_not_called()
+        self.assertIn("restricted to the admin", self.api.messages[-1]["text"])
+
+        self.bot.admin_id = self.user_id
+        publisher.prepare_held_review.return_value = ("not_recoverable:skipped", None)
+        self.bot._handle_daily_brief_callback(
+            "dailybrief:review",
+            chat_id=self.user_id,
+            telegram_id=self.user_id,
+            is_private=True,
+        )
+        self.assertIn("will not be sent late", self.api.messages[-1]["text"])
+        publisher.prepare_held_review.assert_called_once_with()
+        publisher.publish_reviewed.assert_not_called()
+
     def test_only_configured_market_analysis_channel_posts_are_archived(self) -> None:
         channel_id = -1004481197912
         bot = SmartMoneyHubBot(
