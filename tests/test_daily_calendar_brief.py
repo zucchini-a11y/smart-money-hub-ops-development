@@ -260,14 +260,14 @@ class DailyCalendarBriefTests(unittest.TestCase):
         self.assertEqual(publisher.publish_reviewed(BRIEF_DATE, now=NOW), "not_awaiting_approval")
         self.assertEqual(self.api.channel_messages, [])
 
-        skipped_date = date(2026, 10, 28)
+        skipped_now = datetime(2026, 10, 29, 23, 20, tzinfo=timezone.utc)
         self.assertEqual(
-            publisher.dispatch(datetime(2026, 10, 28, 22, 59, tzinfo=timezone.utc)),
+            publisher.dispatch(skipped_now),
             "skipped_late",
         )
         self.assertEqual(
-            publisher.prepare_held_review(now=NOW)[0],
-            "not_recoverable:held",
+            publisher.prepare_held_review(now=skipped_now)[0],
+            "not_recoverable:skipped",
         )
         self.assertEqual(self.api.channel_messages, [])
 
