@@ -302,7 +302,7 @@ class FinanceCalendarPrototypeTests(unittest.TestCase):
         result = evaluate([provider_event()], status=stale_snapshot)
         self.assertEqual(
             result.candidates[0].reason,
-            "provider_snapshot_stale_or_unverifiable",
+            "provider_snapshot_stale",
         )
 
         stale_record = provider_event(
@@ -402,7 +402,7 @@ class FinanceCalendarPrototypeTests(unittest.TestCase):
         result = evaluate([provider_event()], status=status)
         self.assertEqual(
             result.candidates[0].reason,
-            "provider_snapshot_stale_or_unverifiable",
+            "provider_snapshot_unverifiable",
         )
 
     def test_official_evidence_has_an_independent_freshness_limit(self):

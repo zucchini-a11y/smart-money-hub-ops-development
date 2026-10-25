@@ -1615,6 +1615,7 @@ __all__ = [
     "CalendarCandidate",
     "FinanceCalendarError",
     "FinanceCalendarPrototypeClient",
+    "FreshnessPolicy",
     "OfficialScheduleEvidence",
     "PrototypeEvaluation",
     "_get_bytes",
