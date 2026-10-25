@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from .channel_content import ROUTINE_POSTS
 from .channel_gemini import (
     GeminiChannelContentService,
     GeminiChannelGenerationError,
@@ -43,21 +42,6 @@ CONTENT_CATEGORIES = (
 )
 
 _WRITER_CATEGORY = {
-    "good_morning": "engagement",
-    "daily_motivation": "trading_psychology",
-    "session_update": "new_week_preparation",
-    "trading_day_open": "new_week_preparation",
-    "end_of_day": "weekly_market_recap",
-    "friday_recap": "weekly_market_recap",
-    "weekend_message": "engagement",
-    "sunday_preparation": "new_week_preparation",
-    "educational_reminder": "education",
-    "smc_quiz": "engagement",
-    "community_engagement": "engagement",
-    "discipline_reminder": "risk_management",
-}
-
-_FALLBACK_CATEGORY = {
     "good_morning": "engagement",
     "daily_motivation": "trading_psychology",
     "session_update": "new_week_preparation",
@@ -778,36 +762,28 @@ class CommunityContentManager:
         history = self.repository.list_drafts(limit=12)
         feedback = self.repository.recent_feedback(limit=5)
         content_source = "gemini"
-        content: str | None = None
-        if self.writer is not None:
-            try:
-                generated = self.writer.generate(
-                    schedule_date=current.astimezone(_WAT).date().isoformat(),
-                    schedule_time=current.astimezone(_WAT).strftime("%H:%M WAT"),
-                    preferred_category=writer_category,
-                    history=history,
-                    admin_feedback=feedback,
-                    verified_information=verified_information or [],
-                    promo_due=False,
-                    promo_username=None,
-                )
-                content = generated.content
-            except GeminiChannelGenerationError:
-                content_source = "approved_local_template"
-        else:
-            content_source = "approved_local_template"
-        if not content:
-            fallback_category = _FALLBACK_CATEGORY.get(category)
-            templates = ROUTINE_POSTS.get(fallback_category or "", ())
-            if not templates:
-                raise CommunityContentError(
-                    "No approved fallback exists for this category; the draft was not created."
-                )
-            index = int(current.astimezone(_WAT).date().strftime("%j")) % len(templates)
-            content = (
-                f"📚 SMART MONEY HUB\n\n"
-                f"{templates[index]}"
+        if self.writer is None:
+            raise CommunityContentError(
+                "Gemini drafting is not configured; no draft was created."
             )
+        try:
+            generated = self.writer.generate(
+                schedule_date=current.astimezone(_WAT).date().isoformat(),
+                schedule_time=current.astimezone(_WAT).strftime("%H:%M WAT"),
+                preferred_category=writer_category,
+                history=history,
+                admin_feedback=feedback,
+                verified_information=verified_information or [],
+                promo_due=False,
+                promo_username=None,
+            )
+        except GeminiChannelGenerationError as error:
+            category_name = re.sub(r"[^a-z0-9_]", "", error.category.casefold())[:60]
+            raise CommunityContentError(
+                f"Gemini drafting failed ({category_name or 'provider_error'}); "
+                "no draft was saved."
+            ) from None
+        content = generated.content
         return self.repository.create_draft(
             category=category,
             content=content,
@@ -1088,8 +1064,9 @@ class CommunityContentManager:
             raise CommunityContentError(
                 "Telegram send outcome is unknown. Check the destination before retrying."
             ) from None
-        message = result.get("message") if isinstance(result, dict) else None
-        message_id = message.get("message_id") if isinstance(message, dict) else None
+        # Telegram's sendMessage result is the Message object itself, including
+        # its message_id at the top level.
+        message_id = result.get("message_id") if isinstance(result, dict) else None
         if not isinstance(message_id, int):
             self.repository.finish_publication(
                 identifier,

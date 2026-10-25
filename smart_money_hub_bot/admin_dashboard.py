@@ -1047,6 +1047,13 @@ class AdminDashboard:
             self._content_edit_pending.pop(telegram_id, None)
             self.api.send_message(chat_id, "Draft edit cancelled; saved draft is unchanged.")
             return True
+        if text.lstrip().startswith("/"):
+            self.api.send_message(
+                chat_id,
+                "A draft replacement is still pending. Send the complete replacement "
+                "message, or use /cancel to leave the saved draft unchanged.",
+            )
+            return True
         draft_id = self._content_edit_pending.pop(telegram_id)
         try:
             self.community_content.repository.edit_draft(draft_id, text)
