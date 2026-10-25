@@ -1448,8 +1448,12 @@ def render_weekly_preview(
     if evaluation.provider_health_status != "healthy":
         lines.extend(
             [
-                "⚠️ Provider-wide health is degraded; each included event was "
-                "separately matched to fresh official-source evidence.",
+                (
+                    "⚠️ Provider-wide health is degraded; included events were "
+                    "separately matched to fresh official-source evidence."
+                    if rows
+                    else "⚠️ Provider-wide health is degraded; no event is presented."
+                ),
                 "",
             ]
         )
@@ -1477,11 +1481,14 @@ def build_source_comparison_report(
         "unavailable_source": [],
     }
     for candidate in evaluation.candidates:
-        if candidate.verification_status == "conflict":
+        if (
+            candidate.verification_status == "conflict"
+            or candidate.official_check_status == "conflict"
+        ):
             category = "conflicting"
         elif candidate.verification_status.startswith("verified"):
             category = "verified"
-        elif candidate.reason in {
+        elif candidate.official_check_reason in {
             "official_source_not_verified",
             "official_evidence_stale",
         }:
