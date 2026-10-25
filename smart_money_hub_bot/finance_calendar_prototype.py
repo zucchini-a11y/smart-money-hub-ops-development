@@ -762,6 +762,8 @@ class CalendarCandidate:
     official_evidence_retrieved_at: str | None = None
     official_check_status: str = "not_checked"
     official_check_reason: str = "not_checked"
+    official_date_status: str = "unavailable"
+    official_time_status: str = "unavailable"
     field_verification: dict[str, str] = field(default_factory=dict)
     verified_values: dict[str, Any] = field(default_factory=dict)
     field_conflicts: list[str] = field(default_factory=list)
@@ -787,6 +789,7 @@ class PrototypeEvaluation:
     evaluated_at: datetime | None = None
     provider_attribution_present: bool = False
     provider_degraded_sources: list[str] = field(default_factory=list)
+    provider_source_health: list[dict[str, Any]] = field(default_factory=list)
     source_failures: dict[str, str] = field(default_factory=dict)
 
     @property
@@ -1063,6 +1066,45 @@ def evaluate_provider_records(
         for source_id, row in health_rows.items()
         if row.get("status") != "success"
     )
+    now_utc = now.astimezone(timezone.utc)
+    for source_id, row in sorted(health_rows.items()):
+        checked_at = _parse_timestamp(row.get("checked_at"))
+        fetched_at = _parse_timestamp(row.get("fetched_at"))
+        last_success_at = _parse_timestamp(row.get("last_success_at"))
+        if last_success_at is None and row.get("status") == "success":
+            last_success_at = fetched_at
+        limit = freshness_policy.source_health_limit(source_id)
+        health_ages = [
+            now_utc - stamp.astimezone(timezone.utc)
+            for stamp in (checked_at, fetched_at)
+            if stamp
+        ]
+        if row.get("status") != "success":
+            health_freshness = str(row.get("status") or "unavailable")
+        elif not checked_at or not fetched_at:
+            health_freshness = "missing_timestamp"
+        elif any(age < timedelta(0) for age in health_ages):
+            health_freshness = "future_timestamp"
+        elif any(age > limit for age in health_ages):
+            health_freshness = "stale"
+        else:
+            health_freshness = "fresh"
+        result.provider_source_health.append(
+            {
+                "source_id": source_id,
+                "status": str(row.get("status") or "unavailable"),
+                "freshness": health_freshness,
+                "checked_at": str(row.get("checked_at") or "unavailable"),
+                "fetched_at": str(row.get("fetched_at") or "unavailable"),
+                "last_success_at": (
+                    last_success_at.astimezone(timezone.utc).isoformat()
+                    if last_success_at
+                    else "unavailable"
+                ),
+                "last_verified_at": str(row.get("last_verified_at") or "unavailable"),
+                "data_stale": row.get("data_stale", "unavailable"),
+            }
+        )
     raw_events = calendar.get("events")
     if not isinstance(raw_events, list):
         raw_events = []
