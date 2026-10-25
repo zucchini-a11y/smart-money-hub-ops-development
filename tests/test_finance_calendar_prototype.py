@@ -376,6 +376,21 @@ class FinanceCalendarPrototypeTests(unittest.TestCase):
             "verified_date_and_time",
         )
 
+    def test_report_lists_source_specific_timestamps_and_field_verification(self):
+        result = evaluate([provider_event()])
+        report = build_source_comparison_report(result, generated_at=NOW)
+        self.assertIn("Provider source health:", report)
+        self.assertIn("bea | status=success | freshness=fresh", report)
+        self.assertIn("checked_at=", report)
+        self.assertIn("fetched_at=", report)
+        self.assertIn("last_success_at=", report)
+        self.assertIn("last_verified_at=", report)
+        self.assertIn("official-date=verified", report)
+        self.assertIn("official-release-time=verified", report)
+        self.assertIn("previous=unavailable", report)
+        self.assertIn("forecast=unavailable", report)
+        self.assertIn("actual=unavailable", report)
+
     def test_healthy_provider_does_not_rescue_a_stale_event_record(self):
         event = provider_event(
             updated_at=(NOW - timedelta(minutes=5)).isoformat(),
@@ -575,6 +590,8 @@ class FinanceCalendarPrototypeTests(unittest.TestCase):
         result = evaluate([provider_event()], evidence=[wrong_time])
         self.assertEqual(result.candidates[0].verification_status, "conflict")
         self.assertEqual(result.candidates[0].reason, "official_time_mismatch")
+        self.assertEqual(result.candidates[0].official_date_status, "verified")
+        self.assertEqual(result.candidates[0].official_time_status, "conflict")
         self.assertIsNone(result.candidates[0].wat_time)
 
     def test_official_date_conflict_requires_same_reference_period(self):
@@ -585,6 +602,8 @@ class FinanceCalendarPrototypeTests(unittest.TestCase):
         result = evaluate([event], evidence=[wrong_date])
         self.assertEqual(result.candidates[0].verification_status, "conflict")
         self.assertEqual(result.candidates[0].reason, "official_date_mismatch")
+        self.assertEqual(result.candidates[0].official_date_status, "conflict")
+        self.assertEqual(result.candidates[0].official_time_status, "unverified")
 
         unrelated_period = official_gdp(
             event_date=date(2026, 10, 30), reference_period="August 2026"
