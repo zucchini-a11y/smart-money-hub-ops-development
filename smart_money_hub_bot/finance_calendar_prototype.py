@@ -760,6 +760,8 @@ class CalendarCandidate:
     provider_update_age_seconds: int | None = None
     provider_last_verified_at: str | None = None
     official_evidence_retrieved_at: str | None = None
+    official_check_status: str = "not_checked"
+    official_check_reason: str = "not_checked"
     field_verification: dict[str, str] = field(default_factory=dict)
     verified_values: dict[str, Any] = field(default_factory=dict)
     field_conflicts: list[str] = field(default_factory=list)
@@ -1162,6 +1164,15 @@ def evaluate_provider_records(
             and parsed_url.username is None
             and parsed_url.password is None
         )
+        official_limit = freshness_policy.official_limit(source_id)
+        official_check_status, official_check_reason, observed_official = (
+            _matches_official(
+                event,
+                evidence,
+                now=now,
+                freshness_limit=official_limit,
+            )
+        )
 
         if not result.provider_attribution_present:
             status, reason = "held", "provider_attribution_missing"
@@ -1198,15 +1209,13 @@ def evaluate_provider_records(
             status, reason = "held", "record_source_license_review_required"
             official = None
         else:
-            official_limit = freshness_policy.official_limit(source_id)
-            status, reason, official = _matches_official(
-                event,
-                evidence,
-                now=now,
-                freshness_limit=official_limit,
+            status, reason, official = (
+                official_check_status,
+                official_check_reason,
+                observed_official,
             )
         field_verification, verified_values, field_conflicts = _verify_figure_fields(
-            event, official
+            event, official or observed_official
         )
         if field_conflicts:
             status, reason = "conflict", "official_value_mismatch"
@@ -1222,6 +1231,7 @@ def evaluate_provider_records(
         wat_time: datetime | None = None
         if status == "verified_date_and_time" and official:
             wat_time = official.release_at_utc.astimezone(_WAT)
+        provenance_evidence = official or observed_official
         result.candidates.append(
             CalendarCandidate(
                 event=event,
@@ -1253,21 +1263,27 @@ def evaluate_provider_records(
                     else None
                 ),
                 official_evidence_retrieved_at=(
-                    official.retrieved_at.astimezone(timezone.utc).isoformat()
-                    if official
+                    provenance_evidence.retrieved_at.astimezone(timezone.utc).isoformat()
+                    if provenance_evidence
                     else None
                 ),
+                official_check_status=official_check_status,
+                official_check_reason=official_check_reason,
                 field_verification=field_verification,
                 verified_values=verified_values,
                 field_conflicts=field_conflicts,
-                official_source_name=official.source_name if official else None,
+                official_source_name=(
+                    provenance_evidence.source_name if provenance_evidence else None
+                ),
                 official_source_url=(
-                    official.source_url
-                    if official
+                    provenance_evidence.source_url
+                    if provenance_evidence
                     else _OFFICIAL_SOURCE_URL_BY_SERIES.get(code)
                 ),
                 official_release_time_text=(
-                    official.release_time_text if official else None
+                    provenance_evidence.release_time_text
+                    if provenance_evidence
+                    else None
                 ),
                 wat_time=wat_time,
                 source_license_notice=event.get("source_license"),
