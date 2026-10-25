@@ -92,8 +92,22 @@ class FakeTelegramAPI:
         )
         return {"message_id": 987}
 
-    def send_message(self, chat_id: int, text: str) -> None:
-        self.admin_messages.append({"chat_id": chat_id, "text": text})
+    def send_message(
+        self,
+        chat_id: int,
+        text: str,
+        reply_markup: dict | None = None,
+        *,
+        parse_mode: str | None = None,
+    ) -> None:
+        self.admin_messages.append(
+            {
+                "chat_id": chat_id,
+                "text": text,
+                "reply_markup": reply_markup,
+                "parse_mode": parse_mode,
+            }
+        )
 
 
 class DailyCalendarBriefTests(unittest.TestCase):
@@ -201,6 +215,61 @@ class DailyCalendarBriefTests(unittest.TestCase):
         self.assertEqual(self.api.channel_messages, [])
         self.assertEqual(len(self.api.admin_messages), 1)
         self.assertIn("No channel post was sent", self.api.admin_messages[0]["text"])
+
+    def test_held_brief_requires_private_preview_and_explicit_publish_action(self) -> None:
+        publisher = self.make_publisher()
+        store = DailyCalendarBriefStore(self.database)
+        self.assertTrue(store.reserve(BRIEF_DATE, NOW))
+        store.finish(
+            BRIEF_DATE,
+            status="held",
+            now=NOW,
+            failure_category="source_temporarily_unavailable",
+        )
+
+        status, preview = publisher.prepare_held_review(now=NOW)
+
+        self.assertEqual(status, "awaiting_approval")
+        self.assertIsNotNone(preview)
+        self.assertIn("Not published", preview)
+        self.assertIn("Market Analysis", preview)
+        self.assertEqual(self.api.channel_messages, [])
+        self.assertEqual(self.api.send_attempts, 0)
+        self.assertEqual(len(self.api.admin_messages), 1)
+        controls = self.api.admin_messages[0]["reply_markup"]["inline_keyboard"][0]
+        self.assertEqual(controls[0]["text"], "Publish Now")
+        self.assertEqual(controls[0]["callback_data"], "dailybrief:publish:2026-10-29")
+        self.assertEqual(controls[1]["callback_data"], "dailybrief:cancel:2026-10-29")
+
+        self.assertEqual(publisher.publish_reviewed(BRIEF_DATE, now=NOW), "published")
+        self.assertEqual(len(self.api.channel_messages), 1)
+        self.assertEqual(self.api.send_attempts, 1)
+        self.assertEqual(publisher.publish_reviewed(BRIEF_DATE, now=NOW), "not_awaiting_approval")
+        self.assertEqual(self.api.send_attempts, 1)
+
+    def test_cancelled_or_skipped_brief_cannot_be_published_by_recovery(self) -> None:
+        publisher = self.make_publisher()
+        store = DailyCalendarBriefStore(self.database)
+        self.assertTrue(store.reserve(BRIEF_DATE, NOW))
+        store.finish(BRIEF_DATE, status="held", now=NOW)
+        self.assertEqual(publisher.prepare_held_review(now=NOW)[0], "awaiting_approval")
+        self.assertTrue(publisher.cancel_review(BRIEF_DATE, now=NOW))
+        self.assertEqual(
+            store.get(BRIEF_DATE)["failure_category"], "admin_cancelled_retry"
+        )
+        self.assertEqual(publisher.publish_reviewed(BRIEF_DATE, now=NOW), "not_awaiting_approval")
+        self.assertEqual(self.api.channel_messages, [])
+
+        skipped_date = date(2026, 10, 28)
+        self.assertEqual(
+            publisher.dispatch(datetime(2026, 10, 28, 22, 59, tzinfo=timezone.utc)),
+            "skipped_late",
+        )
+        self.assertEqual(
+            publisher.prepare_held_review(now=NOW)[0],
+            "not_recoverable:held",
+        )
+        self.assertEqual(self.api.channel_messages, [])
 
     def test_uncertain_telegram_send_is_not_retried(self) -> None:
         self.api.uncertain_send = True
