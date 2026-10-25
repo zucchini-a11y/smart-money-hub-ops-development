@@ -94,6 +94,9 @@ class GeminiChannelContentTests(unittest.TestCase):
         self.assertIn("orders naturally accumulate", instruction)
         self.assertIn("risk_management", instruction)
         self.assertIn("VERIFIED INFORMATION", instruction)
+        self.assertIn("confident, ambitious, conversational community voice", instruction)
+        self.assertIn("Do not copy the examples or claim profits", instruction)
+        self.assertIn("recent published channel history", instruction)
         self.assertEqual(draft.category, "education")
         self.assertTrue(draft.content.startswith("💧 SMART MONEY HUB | LIQUIDITY"))
 

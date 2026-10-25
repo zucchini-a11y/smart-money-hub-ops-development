@@ -42,6 +42,32 @@ class TelegramUpdateSubscriptionTests(unittest.TestCase):
             },
         )
 
+    def test_send_photo_with_result_uses_file_id_and_html_caption(self) -> None:
+        api = TelegramAPI("synthetic-test-token")
+        keyboard = {"inline_keyboard": [[{"text": "Open", "url": "https://t.me/example"}]]}
+        with patch.object(
+            api, "_request", return_value={"message_id": 19}
+        ) as request:
+            result = api.send_photo_with_result(
+                -100123,
+                "synthetic-file-id",
+                caption="📊 <b>SMART MONEY HUB</b>",
+                reply_markup=keyboard,
+                parse_mode="HTML",
+            )
+
+        self.assertEqual(result, {"message_id": 19})
+        request.assert_called_once_with(
+            "sendPhoto",
+            {
+                "chat_id": -100123,
+                "photo": "synthetic-file-id",
+                "caption": "📊 <b>SMART MONEY HUB</b>",
+                "reply_markup": keyboard,
+                "parse_mode": "HTML",
+            },
+        )
+
     def test_edit_message_text_preserves_inline_button_and_html(self) -> None:
         api = TelegramAPI("synthetic-test-token")
         keyboard = {"inline_keyboard": [[{"text": "Vote", "url": "https://t.me/c/1/2"}]]}

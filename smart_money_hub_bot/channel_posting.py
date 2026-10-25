@@ -11,8 +11,6 @@ from zoneinfo import ZoneInfo
 
 from .channel_content import (
     CHANNEL_CONTENT_CATEGORIES,
-    compose_promo_post,
-    compose_routine_post,
     describe_channel_post_rejection,
     is_promotional_content,
     normalize_weekend_brand_header,
@@ -207,7 +205,7 @@ class ChannelPostManager:
             "Admin preview: 18:00 WAT the evening before; one hour before if missing.",
             "Destination: the configured Market Analysis channel only.",
             "Pause/resume affects all scheduled channel posts, including weekdays.",
-            "Gemini drafts weekend posts using archived channel posts and saved admin feedback.",
+            "Gemini drafts scheduled Market Analysis posts using archived channel posts and saved admin feedback.",
             f"Publishing: {'PAUSED' if paused else 'ACTIVE'}",
             (
                 "Bot promotion interval: about once every "
@@ -344,6 +342,30 @@ class ChannelPostManager:
             else:
                 self.api.send_message(chat_id, "That channel post is no longer available.")
             return True
+        if action == "photo" and len(parts) == 4:
+            post = self._post_from_callback(parts[3])
+            if not post:
+                self.api.send_message(chat_id, "That channel post is no longer available.")
+                return True
+            if self.store.request_channel_post_photo(
+                int(post["id"]),
+                admin_id=admin_id,
+                at=current_utc.isoformat(),
+            ):
+                self.api.send_message(
+                    chat_id,
+                    "Send one photo now. It will be attached to this scheduled "
+                    "Market Analysis post and published at its scheduled time only "
+                    "if all checks pass. If no photo arrives before the review "
+                    "deadline, the text-only post remains eligible to publish.",
+                )
+            else:
+                self.api.send_message(
+                    chat_id,
+                    "The five-minute review window is closed or this post is no "
+                    "longer waiting for review. No photo was attached.",
+                )
+            return True
         if action in {
             "edit",
             "revise",
@@ -456,6 +478,76 @@ class ChannelPostManager:
             return True
         return False
 
+    def handle_admin_photo(
+        self,
+        chat_id: int,
+        admin_id: int,
+        photos: Any,
+        *,
+        is_private: bool,
+        now: datetime | None = None,
+    ) -> bool:
+        if (
+            not is_private
+            or self.admin_id is None
+            or admin_id != self.admin_id
+            or chat_id != self.admin_id
+        ):
+            return False
+        current_utc = self._as_utc(now or datetime.now(timezone.utc))
+        post = self.store.pending_channel_post_photo_for_admin(
+            admin_id,
+            at=current_utc.isoformat(),
+        )
+        if post is None:
+            return False
+        if not isinstance(photos, list) or not photos:
+            self.api.send_message(chat_id, "Telegram did not provide a usable photo.")
+            return True
+        photo = max(
+            (
+                item
+                for item in photos
+                if isinstance(item, dict)
+                and isinstance(item.get("file_id"), str)
+                and 0 < len(item["file_id"].strip()) <= 2048
+            ),
+            key=lambda item: (
+                item.get("file_size")
+                if isinstance(item.get("file_size"), int)
+                and not isinstance(item.get("file_size"), bool)
+                else 0
+            ),
+            default=None,
+        )
+        if photo is None:
+            self.api.send_message(
+                chat_id,
+                "I could not read a valid Telegram photo. Send one image again "
+                "before the review window closes, or the text-only post will remain.",
+            )
+            return True
+        saved = self.store.attach_channel_post_photo(
+            int(post["id"]),
+            photo["file_id"],
+            admin_id=admin_id,
+            at=current_utc.isoformat(),
+        )
+        if saved:
+            self.api.send_message(
+                chat_id,
+                "Photo attached to the scheduled post. It will publish with the "
+                "post at the scheduled WAT time if all checks pass. You can still "
+                "Cancel the post during the review window.",
+            )
+        else:
+            self.api.send_message(
+                chat_id,
+                "The review window closed before the photo was saved. No photo was "
+                "attached; the scheduled text follows the existing review rules.",
+            )
+        return True
+
     def handle_edit_message(
         self, chat_id: int, admin_id: int, text: str, is_private: bool
     ) -> bool:
@@ -485,7 +577,7 @@ class ChannelPostManager:
                 details=feedback,
             )
             settings = self.store.get_channel_posting_settings()
-            revised = self._generate_weekend_post(
+            revised = self._generate_gemini_post(
                 post,
                 preferred_category=str(post["requested_category"]),
                 sequence=int(settings["next_category_index"]),
@@ -783,13 +875,12 @@ class ChannelPostManager:
             post = self._create_post(target_date)
         if (
             post
-            and target_date.weekday() in {5, 6}
             and post.get("generation_source") == "local"
             and not post.get("admin_edit_approved")
             and post["status"]
             not in {"published", "rejected", "skipped", "awaiting_edit"}
         ):
-            post = self._hold_legacy_weekend_draft(post)
+            post = self._hold_legacy_channel_draft(post)
         if (
             post
             and post["status"] not in {"rejected", "skipped", "published"}
@@ -827,77 +918,17 @@ class ChannelPostManager:
                     failure_category="gemini_bot_username_unverified",
                     settings=settings,
                 )
-        if target_date.weekday() in {5, 6}:
-            return self._create_weekend_post(
-                target_date,
-                requested_category,
-                schedule_time,
-                is_promo,
-                username,
-                sequence,
-                settings,
-            )
+        return self._create_gemini_post(
+            target_date,
+            requested_category,
+            schedule_time,
+            is_promo,
+            username,
+            sequence,
+            settings,
+        )
 
-        routine = compose_routine_post(requested_category, sequence)
-        category = (
-            "weekly_market_recap_evergreen"
-            if requested_category == "weekly_market_recap"
-            else requested_category
-        )
-        feature_index = int(settings["next_promo_feature_index"])
-        content = (
-            compose_promo_post(routine, username, feature_index, hook_index=sequence)
-            if is_promo and username
-            else routine
-        )
-        if self._is_duplicate(content):
-            for variant in range(1, 6):
-                routine = compose_routine_post(requested_category, sequence + variant)
-                content = (
-                    compose_promo_post(
-                        routine,
-                        username,
-                        feature_index,
-                        hook_index=sequence + variant,
-                    )
-                    if is_promo and username
-                    else routine
-                )
-                if not self._is_duplicate(content):
-                    break
-            else:
-                logger.warning("Channel post draft withheld: duplicate content detected.")
-                return None
-        rejection = validate_channel_post(
-            content,
-            is_promo=is_promo,
-            bot_username=username,
-        )
-        if not rejection:
-            rejection = validate_weekend_post_format(content)
-        if rejection:
-            logger.error("Channel post draft withheld category=%s.", rejection)
-            return None
-        post, created = self.store.create_scheduled_channel_post(
-            schedule_date=target_date.isoformat(),
-            schedule_time=schedule_time,
-            requested_category=requested_category,
-            category=category,
-            content=content,
-            destination_chat_id=int(self.destination_chat_id or 0),
-            is_promo=is_promo,
-            bot_username=username,
-            next_category_index=sequence + 1,
-            next_promo_feature_index=feature_index + 1 if is_promo else feature_index,
-            last_promo_date=(
-                target_date.isoformat()
-                if is_promo
-                else settings.get("last_promo_date")
-            ),
-        )
-        return post if created or post else None
-
-    def _create_weekend_post(
+    def _create_gemini_post(
         self,
         target_date: date,
         preferred_category: str,
@@ -925,14 +956,14 @@ class ChannelPostManager:
         )
         if not created:
             return post
-        return self._generate_weekend_post(
+        return self._generate_gemini_post(
             post,
             preferred_category=preferred_category,
             sequence=sequence,
             settings=settings,
         )
 
-    def _generate_weekend_post(
+    def _generate_gemini_post(
         self,
         post: dict[str, Any],
         *,
@@ -975,7 +1006,7 @@ class ChannelPostManager:
             )
         except Exception:
             logger.warning(
-                "Weekend Gemini draft failed category=unexpected_provider_error."
+                "Market Analysis Gemini draft failed category=unexpected_provider_error."
             )
             return self._record_generation_failure(
                 post,
@@ -1006,13 +1037,18 @@ class ChannelPostManager:
         next_feature_index = int(settings["next_promo_feature_index"])
         last_promo_date = settings.get("last_promo_date")
         advance_rotation = revision_feedback is None
+        saved_category = (
+            "weekly_market_recap_evergreen"
+            if draft.category == "weekly_market_recap" and not verified_information
+            else draft.category
+        )
         if post["is_promo"] and advance_rotation:
             next_feature_index += 1
             last_promo_date = str(post["schedule_date"])
         action = "gemini_revised" if revision_feedback else "gemini_generated"
         if not self.store.complete_channel_post_generation(
             int(post["id"]),
-            category=draft.category,
+            category=saved_category,
             content=content,
             bot_username=post.get("bot_username"),
             next_category_index=sequence + 1 if advance_rotation else sequence,
@@ -1029,8 +1065,8 @@ class ChannelPostManager:
             )
         saved = self.store.get_channel_post(int(post["id"])) or post
         logger.info(
-            "Weekend channel draft generated category=%s promo=%s.",
-            draft.category,
+            "Market Analysis Gemini draft generated category=%s promo=%s.",
+            saved_category,
             bool(post["is_promo"]),
         )
         return saved
@@ -1064,7 +1100,7 @@ class ChannelPostManager:
                 return
             post = {**post, "bot_username": username}
         settings = self.store.get_channel_posting_settings()
-        generated = self._generate_weekend_post(
+        generated = self._generate_gemini_post(
             post,
             preferred_category=str(post["requested_category"]),
             sequence=int(settings["next_category_index"]),
@@ -1098,7 +1134,7 @@ class ChannelPostManager:
             )
             return
         settings = self.store.get_channel_posting_settings()
-        revised = self._generate_weekend_post(
+        revised = self._generate_gemini_post(
             post,
             preferred_category=str(post["requested_category"]),
             sequence=int(settings["next_category_index"]),
@@ -1167,14 +1203,14 @@ class ChannelPostManager:
             rejected_content=rejected_content,
         )
         logger.warning(
-            "Weekend channel draft held failure_category=%s.",
+            "Market Analysis draft held failure_category=%s.",
             category,
         )
         saved = self.store.get_channel_post(int(post["id"])) or post
         self._notify_failure(saved, category)
         return saved
 
-    def _hold_legacy_weekend_draft(
+    def _hold_legacy_channel_draft(
         self, post: dict[str, Any]
     ) -> dict[str, Any]:
         if post.get("failure_category") != "gemini_legacy_draft_held":
@@ -1229,10 +1265,14 @@ class ChannelPostManager:
             f"Scheduled: {local_schedule.strftime('%A, %d %B %Y at %H:%M WAT')}\n"
             "Decision window: 5 minutes, ending at the scheduled time.\n\n"
             f"{post['content']}\n\n"
+            "Would you like to add a picture? Tap “Add photo” and send one image "
+            "privately to this bot. If you do not send a photo, the post will be "
+            "text-only. No review response is required for automatic publication "
+            "at the scheduled time if all checks pass.\n\n"
             "Choose Approve to allow automatic publication at the scheduled time, "
             "Edit to submit a checked replacement, or Cancel to skip this post. "
             "If you do not respond by the scheduled time, the reviewed draft will "
-            "publish automatically if all checks pass."
+            "publish automatically, including any photo you attached, if all checks pass."
         )
         markup = {
             "inline_keyboard": [
@@ -1253,7 +1293,13 @@ class ChannelPostManager:
                             f"admin:channel_posts:review_cancel:{post_id}"
                         ),
                     },
-                ]
+                ],
+                [
+                    {
+                        "text": "📷 Add photo",
+                        "callback_data": f"admin:channel_posts:photo:{post_id}",
+                    }
+                ],
             ]
         }
         try:
@@ -1307,15 +1353,14 @@ class ChannelPostManager:
             scheduled_date, scheduled_time, tzinfo=self.timezone
         )
         if (
-            scheduled_date.weekday() in {5, 6}
-            and post.get("generation_source") != "gemini"
+            post.get("generation_source") == "local"
             and not post.get("admin_edit_approved")
         ):
-            self._hold_legacy_weekend_draft(post)
+            self._hold_legacy_channel_draft(post)
             if not automatic:
                 self.api.send_message(
                     self.admin_id,
-                    "This weekend draft has not passed Gemini review or administrator "
+                    "This draft has not passed Gemini review or administrator "
                     "editing. It remains on hold; use Retry Gemini draft or Edit Post "
                     "before publishing.",
                 )
@@ -1381,6 +1426,10 @@ class ChannelPostManager:
             channel_text = render_weekend_post_html(str(post["content"]))
         except ValueError as error:
             self._fail_before_send(post, str(error), admin_id)
+            return
+        photo_file_id = str(post.get("photo_file_id") or "").strip()
+        if photo_file_id and len(str(post["content"]).encode("utf-16-le")) // 2 > 1024:
+            self._fail_before_send(post, "photo_caption_too_long", admin_id)
             return
         try:
             bot_info = self.api.get_me()
@@ -1467,12 +1516,21 @@ class ChannelPostManager:
             else None
         )
         try:
-            result = self.api.send_message_with_result(
-                int(self.destination_chat_id),
-                channel_text,
-                markup,
-                parse_mode="HTML",
-            )
+            if photo_file_id:
+                result = self.api.send_photo_with_result(
+                    int(self.destination_chat_id),
+                    photo_file_id,
+                    caption=channel_text,
+                    reply_markup=markup,
+                    parse_mode="HTML",
+                )
+            else:
+                result = self.api.send_message_with_result(
+                    int(self.destination_chat_id),
+                    channel_text,
+                    markup,
+                    parse_mode="HTML",
+                )
             message_id = result.get("message_id")
             if not isinstance(message_id, int):
                 self.store.fail_channel_post_publish(

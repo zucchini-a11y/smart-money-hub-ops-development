@@ -71,7 +71,7 @@ def main() -> None:
             "Gemini Coach enabled with the fixed free-tier model %s.", GEMINI_MODEL
         )
         logging.getLogger(__name__).info(
-            "Weekend channel drafts use the primary Gemini model only; "
+            "Scheduled Market Analysis posts use the primary Gemini model only; "
             "provider failures hold the draft."
         )
     else:

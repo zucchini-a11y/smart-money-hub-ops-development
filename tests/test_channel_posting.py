@@ -170,6 +170,37 @@ class FakeTelegramAPI:
         self.channel_messages.append(result)
         return result
 
+    def send_photo_with_result(
+        self,
+        chat_id: int,
+        photo_file_id: str,
+        *,
+        caption: str,
+        reply_markup=None,
+        parse_mode=None,
+    ) -> dict:
+        self.channel_attempts.append(
+            {
+                "chat_id": chat_id,
+                "photo": photo_file_id,
+                "caption": caption,
+                "reply_markup": reply_markup,
+                "parse_mode": parse_mode,
+            }
+        )
+        if self.send_failures:
+            raise self.send_failures.pop(0)
+        result = {
+            "chat_id": chat_id,
+            "photo": photo_file_id,
+            "caption": caption,
+            "reply_markup": reply_markup,
+            "parse_mode": parse_mode,
+            "message_id": 9000 + len(self.channel_attempts),
+        }
+        self.channel_messages.append(result)
+        return result
+
 
 class FakeChannelWriter:
     def __init__(self) -> None:
@@ -458,7 +489,7 @@ class ChannelPostingTests(unittest.TestCase):
             )
         )
 
-        saved = self.manager._generate_weekend_post(
+        saved = self.manager._generate_gemini_post(
             post,
             preferred_category="education",
             sequence=sequence,
@@ -604,6 +635,8 @@ class ChannelPostingTests(unittest.TestCase):
         assert post is not None
         assert post["schedule_time"] == "10:00"
         assert post["preview_sent_at"] is not None
+        self.assertEqual(post["generation_source"], "gemini")
+        self.assertEqual(len(self.writer.calls), 1)
         assert api.messages[-1]["chat_id"] == ADMIN_ID
         assert api.channel_messages == []
 
@@ -620,6 +653,12 @@ class ChannelPostingTests(unittest.TestCase):
             ],
             ["✅ Approve", "✏️ Edit", "❌ Cancel"],
         )
+        self.assertEqual(
+            review["reply_markup"]["inline_keyboard"][1][0]["text"],
+            "📷 Add photo",
+        )
+        self.assertIn("If you do not send a photo", review["text"])
+        self.assertIn("No review response is required", review["text"])
         manager.dispatch_due(final_review_time(26))
         manager.handle_callback(
             ADMIN_ID,
@@ -639,8 +678,106 @@ class ChannelPostingTests(unittest.TestCase):
         assert {message["chat_id"] for message in api.channel_attempts} == {CHANNEL_ID}
         assert api.channel_messages[0]["parse_mode"] == "HTML"
         assert api.channel_messages[0]["text"].startswith(
-            "<b>📚 SMART MONEY HUB</b>"
+            "<b>📚 SMART MONEY HUB | EDUCATION</b>"
         )
+
+    def test_weekday_gemini_failure_holds_post_without_local_fallback(self) -> None:
+        self.writer.failures.append(
+            GeminiChannelGenerationError("gemini_rate_limit", 429)
+        )
+
+        self.manager.dispatch_due(local_time(26, 9, 15))
+
+        post = self.store.get_scheduled_channel_post("2026-10-26")
+        assert post is not None
+        self.assertEqual(post["status"], "failed")
+        self.assertEqual(post["generation_source"], "gemini_pending")
+        self.assertEqual(post["content"], "")
+        self.assertEqual(len(self.writer.calls), 1)
+        self.assertEqual(self.api.channel_messages, [])
+        self.assertFalse(
+            any(
+                "FINAL SCHEDULED POST REVIEW" in message["text"]
+                for message in self.api.messages
+            )
+        )
+        self.assertTrue(
+            any(
+                "no Market Analysis post was sent" in message["text"]
+                for message in self.api.messages
+            )
+        )
+
+    def test_photo_uploaded_during_final_review_publishes_with_post_once(self) -> None:
+        self.manager.dispatch_due(local_time(26, 9, 15))
+        post = self.store.get_scheduled_channel_post("2026-10-26")
+        assert post is not None
+        self.manager.dispatch_due(final_review_time(26))
+
+        self.assertTrue(
+            self.manager.handle_callback(
+                ADMIN_ID,
+                ADMIN_ID,
+                f"admin:channel_posts:photo:{post['id']}",
+                local_time(26, 9, 56),
+            )
+        )
+
+        # The requested upload survives a bot restart because the pending state
+        # and the eventual Telegram file_id are stored with the scheduled post.
+        restarted_store = Repository(
+            f"{self.temp_dir.name}/channel-posts.sqlite3"
+        )
+        restarted_manager = ChannelPostManager(
+            self.api,
+            restarted_store,
+            ADMIN_ID,
+            CHANNEL_ID,
+            channel_writer=self.writer,
+        )
+        self.assertTrue(
+            restarted_manager.handle_admin_photo(
+                ADMIN_ID,
+                ADMIN_ID,
+                [
+                    {"file_id": "small-photo-id", "file_size": 100},
+                    {"file_id": "large-photo-id", "file_size": 500},
+                ],
+                is_private=True,
+                now=local_time(26, 9, 57),
+            )
+        )
+        saved = restarted_store.get_channel_post(post["id"])
+        assert saved is not None
+        self.assertEqual(saved["photo_file_id"], "large-photo-id")
+        self.assertEqual(saved["review_status"], "pending")
+
+        restarted_manager.dispatch_due(local_time(26, 10))
+        restarted_manager.dispatch_due(local_time(26, 10, 1))
+
+        saved = restarted_store.get_channel_post(post["id"])
+        assert saved is not None
+        self.assertEqual(saved["status"], "published")
+        self.assertEqual(len(self.api.channel_messages), 1)
+        self.assertEqual(self.api.channel_messages[0]["photo"], "large-photo-id")
+        self.assertEqual(self.api.channel_messages[0]["chat_id"], CHANNEL_ID)
+        self.assertEqual(self.api.channel_messages[0]["parse_mode"], "HTML")
+        self.assertIn("<b>", self.api.channel_messages[0]["caption"])
+
+    def test_no_review_or_photo_response_publishes_text_only_at_schedule(self) -> None:
+        self.manager.dispatch_due(local_time(26, 9, 15))
+        post = self.store.get_scheduled_channel_post("2026-10-26")
+        assert post is not None
+        self.manager.dispatch_due(final_review_time(26))
+        self.manager.dispatch_due(local_time(26, 10))
+
+        saved = self.store.get_channel_post(post["id"])
+        assert saved is not None
+        self.assertEqual(saved["status"], "published")
+        self.assertEqual(saved["review_status"], "timed_out")
+        self.assertEqual(len(self.api.channel_messages), 1)
+        self.assertNotIn("photo", self.api.channel_messages[0])
+        self.assertEqual(self.api.channel_messages[0]["chat_id"], CHANNEL_ID)
 
     def test_review_approval_is_persisted_until_scheduled_publication(self) -> None:
         manager, store, api = self.manager, self.store, self.api
@@ -867,7 +1004,7 @@ class ChannelPostingTests(unittest.TestCase):
         assert not self.api.channel_messages
         assert any(
             "Gemini reached a usage or rate limit" in message["text"]
-            and "no weekend post was sent" in message["text"]
+            and "no Market Analysis post was sent" in message["text"]
             for message in self.api.messages
         )
         assert len(self.writer.calls) == 1
@@ -907,7 +1044,6 @@ class ChannelPostingTests(unittest.TestCase):
                 for button in row
             )
         )
-
         self.manager.handle_callback(
             ADMIN_ID,
             ADMIN_ID,
@@ -935,6 +1071,33 @@ class ChannelPostingTests(unittest.TestCase):
         self.manager.dispatch_due(local_time(24, 10))
         assert self.store.get_channel_post(legacy["id"])["status"] == "published"
         assert len(self.api.channel_messages) == 1
+
+    def test_legacy_local_weekday_draft_is_held_until_gemini_replaces_it(self) -> None:
+        legacy, created = self.store.create_scheduled_channel_post(
+            schedule_date="2026-10-26",
+            schedule_time="10:00",
+            requested_category="education",
+            category="education",
+            content="Old weekday draft.\n\nNO CONFIRMATION, NO ENTRY.",
+            destination_chat_id=CHANNEL_ID,
+            is_promo=False,
+            bot_username=None,
+            next_category_index=1,
+            next_promo_feature_index=0,
+            last_promo_date=None,
+        )
+        self.assertTrue(created)
+
+        self.manager.dispatch_due(local_time(25, 18))
+
+        held = self.store.get_channel_post(legacy["id"])
+        assert held is not None
+        self.assertEqual(held["status"], "failed")
+        self.assertEqual(held["failure_category"], "gemini_legacy_draft_held")
+        self.assertEqual(held["content"], "Old weekday draft.\n\nNO CONFIRMATION, NO ENTRY.")
+        self.assertEqual(held["generation_source"], "local")
+        self.assertEqual(self.api.channel_messages, [])
+        self.assertEqual(len(self.writer.calls), 0)
 
     def test_restart_does_not_cancel_an_admin_edit_already_in_progress(self) -> None:
         legacy, _ = self.store.create_scheduled_channel_post(
@@ -976,7 +1139,7 @@ class ChannelPostingTests(unittest.TestCase):
             next_promo_feature_index=0,
             last_promo_date=None,
         )
-        held = self.manager._hold_legacy_weekend_draft(legacy)
+        held = self.manager._hold_legacy_channel_draft(legacy)
         self.assertEqual(held["status"], "failed")
 
         self.manager.show_post(ADMIN_ID, held)
@@ -1540,7 +1703,7 @@ class ChannelPostingTests(unittest.TestCase):
         )
         self.writer.drafts.append(ChannelDraft("education", rejected))
 
-        saved = self.manager._generate_weekend_post(
+        saved = self.manager._generate_gemini_post(
             post,
             preferred_category="education",
             sequence=sequence,

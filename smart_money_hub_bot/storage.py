@@ -261,6 +261,12 @@ class Repository:
                         review_sent_at TEXT,
                         review_deadline_at TEXT,
                         review_decision_at TEXT,
+                        photo_file_id TEXT,
+                        photo_admin_id INTEGER,
+                        photo_added_at TEXT,
+                        photo_upload_pending INTEGER NOT NULL DEFAULT 0
+                            CHECK (photo_upload_pending IN (0, 1)),
+                        photo_upload_admin_id INTEGER,
                         created_at TEXT NOT NULL,
                         updated_at TEXT NOT NULL
                     );
@@ -573,6 +579,14 @@ class Repository:
                     ("review_sent_at", "TEXT"),
                     ("review_deadline_at", "TEXT"),
                     ("review_decision_at", "TEXT"),
+                    ("photo_file_id", "TEXT"),
+                    ("photo_admin_id", "INTEGER"),
+                    ("photo_added_at", "TEXT"),
+                    (
+                        "photo_upload_pending",
+                        "INTEGER NOT NULL DEFAULT 0 CHECK (photo_upload_pending IN (0, 1))",
+                    ),
+                    ("photo_upload_admin_id", "INTEGER"),
                 ):
                     self._ensure_table_column(
                         connection, "scheduled_channel_posts", column, definition
@@ -1084,6 +1098,131 @@ class Repository:
                 (post_id,),
             ).fetchone()
             return dict(row) if row else None
+        finally:
+            connection.close()
+
+    def request_channel_post_photo(
+        self, post_id: int, *, admin_id: int, at: str
+    ) -> bool:
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE scheduled_channel_posts
+                    SET photo_upload_pending = 1, photo_upload_admin_id = ?,
+                        updated_at = ?
+                    WHERE id = ? AND status = 'draft' AND review_status = 'pending'
+                        AND review_deadline_at >= ?
+                    """,
+                    (admin_id, at, post_id, at),
+                )
+                if cursor.rowcount:
+                    connection.execute(
+                        """
+                        INSERT INTO channel_post_actions
+                            (post_id, action, admin_id, details, created_at)
+                        VALUES (?, 'photo_upload_requested', ?,
+                            'admin requested optional channel-post photo', ?)
+                        """,
+                        (post_id, admin_id, at),
+                    )
+                return bool(cursor.rowcount)
+        finally:
+            connection.close()
+
+    def pending_channel_post_photo_for_admin(
+        self, admin_id: int, *, at: str
+    ) -> dict[str, Any] | None:
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                """
+                SELECT * FROM scheduled_channel_posts
+                WHERE photo_upload_pending = 1 AND photo_upload_admin_id = ?
+                    AND status = 'draft' AND review_status = 'pending'
+                    AND review_deadline_at >= ?
+                ORDER BY id DESC LIMIT 1
+                """,
+                (admin_id, at),
+            ).fetchone()
+            return dict(row) if row else None
+        finally:
+            connection.close()
+
+    def attach_channel_post_photo(
+        self,
+        post_id: int,
+        photo_file_id: str,
+        *,
+        admin_id: int,
+        at: str,
+    ) -> bool:
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE scheduled_channel_posts
+                    SET photo_file_id = ?, photo_admin_id = ?, photo_added_at = ?,
+                        photo_upload_pending = 0, photo_upload_admin_id = NULL,
+                        updated_at = ?
+                    WHERE id = ? AND photo_upload_pending = 1
+                        AND photo_upload_admin_id = ? AND status = 'draft'
+                        AND review_status = 'pending' AND review_deadline_at >= ?
+                    """,
+                    (
+                        photo_file_id,
+                        admin_id,
+                        at,
+                        at,
+                        post_id,
+                        admin_id,
+                        at,
+                    ),
+                )
+                if cursor.rowcount:
+                    connection.execute(
+                        """
+                        INSERT INTO channel_post_actions
+                            (post_id, action, admin_id, details, created_at)
+                        VALUES (?, 'photo_attached', ?,
+                            'optional Telegram photo attached to scheduled post', ?)
+                        """,
+                        (post_id, admin_id, at),
+                    )
+                return bool(cursor.rowcount)
+        finally:
+            connection.close()
+
+    def cancel_channel_post_photo_request(
+        self, post_id: int, *, admin_id: int, at: str
+    ) -> bool:
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE scheduled_channel_posts
+                    SET photo_upload_pending = 0, photo_upload_admin_id = NULL,
+                        updated_at = ?
+                    WHERE id = ? AND photo_upload_pending = 1
+                        AND photo_upload_admin_id = ? AND status = 'draft'
+                        AND review_status = 'pending'
+                    """,
+                    (at, post_id, admin_id),
+                )
+                if cursor.rowcount:
+                    connection.execute(
+                        """
+                        INSERT INTO channel_post_actions
+                            (post_id, action, admin_id, details, created_at)
+                        VALUES (?, 'photo_upload_cancelled', ?,
+                            'optional photo upload cancelled', ?)
+                        """,
+                        (post_id, admin_id, at),
+                    )
+                return bool(cursor.rowcount)
         finally:
             connection.close()
 
@@ -2162,11 +2301,15 @@ class Repository:
                     UPDATE scheduled_channel_posts
                     SET review_status = ?, review_decision_at = ?,
                         status = CASE WHEN ? = 'cancelled' THEN 'skipped' ELSE status END,
+                        photo_upload_pending = CASE
+                            WHEN ? = 'cancelled' THEN 0 ELSE photo_upload_pending END,
+                        photo_upload_admin_id = CASE
+                            WHEN ? = 'cancelled' THEN NULL ELSE photo_upload_admin_id END,
                         updated_at = ?
                     WHERE id = ? AND status = 'draft' AND review_status = 'pending'
                         AND review_deadline_at >= ?
                     """,
-                    (decision, at, decision, at, post_id, at),
+                    (decision, at, decision, decision, decision, at, post_id, at),
                 )
                 if cursor.rowcount:
                     connection.execute(
@@ -2189,6 +2332,7 @@ class Repository:
                     """
                     UPDATE scheduled_channel_posts
                     SET review_status = 'timed_out', review_decision_at = ?,
+                        photo_upload_pending = 0, photo_upload_admin_id = NULL,
                         updated_at = ?
                     WHERE id = ? AND status = 'draft' AND review_status = 'pending'
                         AND review_deadline_at <= ?

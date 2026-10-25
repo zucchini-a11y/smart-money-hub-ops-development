@@ -3,7 +3,7 @@
 - [Smart Money Hub Coach rules](smart-money-hub-coach-rules.md) — treat H1/M5, 2% risk, 1:3 planned R:R, 3% daily loss, and 1:1 break-even as preferences, not proof of validity.
 - [Verify Telegram command delivery](telegram-command-verification.md) — test new commands through the update handler before reporting them active.
 - [Telegram polling cleanup](telegram-polling-cleanup.md) — check for a leftover poller before treating a Telegram getUpdates conflict as a credential problem.
-- [Weekend post originality](weekend-post-originality.md) — use recent channel history to avoid repeating topics and layouts, not only exact wording.
+- [Market Analysis editorial style](weekend-post-originality.md) — match recent channel context, keep posts fresh, and avoid unsupported performance claims.
 - [U.S. economic calendar scope](us-economic-calendar-scope.md) — use official U.S. sources, include DOL and Census, exclude ISM and geopolitical news.
 - [Gemini free-tier policy](gemini-free-tier-policy.md) — member text/history may go to Google's free tier; keep billing off and never silently use paid models.
 - [Google Gemini docs access](gemini-docs-access.md) — if documentation callbacks return 402, direct fetch from official Google docs may still work.

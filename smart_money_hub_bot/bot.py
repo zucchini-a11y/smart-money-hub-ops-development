@@ -941,6 +941,21 @@ class SmartMoneyHubBot:
         sender = message.get("from") or {}
         chat = message.get("chat") or {}
         if (
+            isinstance(message.get("photo"), list)
+            and isinstance(sender, dict)
+            and isinstance(chat, dict)
+            and isinstance(sender.get("id"), int)
+            and isinstance(chat.get("id"), int)
+            and chat.get("type") == "private"
+        ):
+            if self.admin_dashboard.channel_posts.handle_admin_photo(
+                int(chat["id"]),
+                int(sender["id"]),
+                message["photo"],
+                is_private=True,
+            ):
+                return
+        if (
             not isinstance(text, str)
             and isinstance(chat, dict)
             and chat.get("id") == self.education_group_id

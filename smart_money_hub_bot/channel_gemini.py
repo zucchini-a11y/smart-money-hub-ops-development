@@ -124,7 +124,7 @@ class GeminiChannelContentService:
         except HTTPError as error:
             category = self._http_failure_category(int(error.code))
             logger.warning(
-                "Weekend Gemini draft failed category=%s http_status=%s "
+                "Market Analysis Gemini draft failed category=%s http_status=%s "
                 "elapsed_ms=%s request_id=%s.",
                 category,
                 error.code,
@@ -159,7 +159,7 @@ class GeminiChannelContentService:
 
         finish_reason, raw_text = self._extract_text(data)
         logger.info(
-            "Weekend Gemini response received model=%s http_status=%s "
+            "Market Analysis Gemini response received model=%s http_status=%s "
             "finish_reason=%s elapsed_ms=%s request_id=%s.",
             self.model,
             status,
@@ -177,7 +177,7 @@ class GeminiChannelContentService:
             return self._parse_draft(raw_text)
         except GeminiChannelGenerationError as error:
             logger.warning(
-                "Weekend Gemini draft rejected category=%s http_status=%s "
+                "Market Analysis Gemini draft rejected category=%s http_status=%s "
                 "request_id=%s.",
                 error.category,
                 status,
@@ -229,6 +229,15 @@ class GeminiChannelContentService:
             "end with one useful question or short assignment. Use concise bullets "
             "where they improve clarity, and avoid hashtags, walls of text, and "
             "excessive emojis. "
+             "Use a confident, ambitious, conversational community voice inspired by "
+             "the supplied examples: positive, energetic, and forward-looking, with "
+             "lifestyle or end-of-week reflection only when it fits the scheduled "
+             "time and actual channel context. Let recent published channel history "
+             "shape references and tone, while choosing a genuinely fresh topic. "
+             "Do not copy the examples or claim profits, winning trades, successful "
+             "weekly performance, or that the group 'destroyed' a week unless those "
+             "specific results are present in VERIFIED INFORMATION. Never promise "
+             "income or imply that hard work guarantees trading profits. "
             "Preserve the exact rule NO CONFIRMATION, NO ENTRY. Never issue or imply a trade signal, "
             "entry instruction, buy/sell direction, guaranteed outcome, or urgency. "
              "Never invent prices, chart states, economic releases, news, performance, "
@@ -381,7 +390,7 @@ class GeminiChannelContentService:
     @staticmethod
     def _log_failure(category: str, started: float, request_id: str) -> None:
         logger.warning(
-            "Weekend Gemini draft failed category=%s elapsed_ms=%s request_id=%s.",
+            "Market Analysis Gemini draft failed category=%s elapsed_ms=%s request_id=%s.",
             category,
             _elapsed_ms(started),
             request_id,

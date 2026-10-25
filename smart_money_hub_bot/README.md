@@ -91,7 +91,7 @@ Editable content is in:
 - `grading.py` — deterministic written-answer rubric behind a replaceable evaluator interface. No AI connection is enabled.
 - `coach.py` — local SMC explanations, the provider interface, and deterministic fallback.
 - `gemini_coach.py` — direct Gemini API client pinned to the free-tier model, with bounded history and sanitized error handling.
-- `channel_gemini.py` — primary-model-only weekend post writer; failures never fall back to local or alternate-model content.
+- `channel_gemini.py` — primary-model-only scheduled Market Analysis post writer; failures never fall back to local or alternate-model content.
 - `news_intelligence.py` — isolated, currently inactive news-source adapters, verification, persistence, calendar formatting, and verified-fact Gemini analysis.
 - `message_router.py` — routes simple conversation intents, approved knowledge matches, and fallback Coach replies.
 - `question_detection.py`, `knowledge_base.py`, and the `knowledge_*.py` modules — question triage, lexical retrieval, research/draft validation, approval, versions, and member feedback.

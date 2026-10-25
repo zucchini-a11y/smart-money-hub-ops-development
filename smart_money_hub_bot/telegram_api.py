@@ -184,6 +184,28 @@ class TelegramAPI:
         result = self._request("sendMessage", payload)
         return result if isinstance(result, dict) else {}
 
+    def send_photo_with_result(
+        self,
+        chat_id: int,
+        photo_file_id: str,
+        *,
+        caption: str,
+        reply_markup: dict[str, Any] | None = None,
+        parse_mode: str | None = None,
+    ) -> dict[str, Any]:
+        """Send a Telegram-hosted photo by file_id with a formatted caption."""
+        payload: dict[str, Any] = {
+            "chat_id": chat_id,
+            "photo": photo_file_id,
+            "caption": caption,
+        }
+        if reply_markup is not None:
+            payload["reply_markup"] = reply_markup
+        if parse_mode is not None:
+            payload["parse_mode"] = parse_mode
+        result = self._request("sendPhoto", payload)
+        return result if isinstance(result, dict) else {}
+
     def send_document(
         self,
         chat_id: int,
