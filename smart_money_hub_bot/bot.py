@@ -3162,6 +3162,7 @@ class SmartMoneyHubBot:
             self.admin_dashboard.community_content.dispatch_due(
                 now=current,
                 notify_admin=self._notify_content_admin,
+                api=self.api,
             )
         except Exception:
             logger.exception("Could not create scheduled community-content drafts.")

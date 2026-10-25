@@ -42,6 +42,7 @@ class FailingWriter:
 class FakeAPI:
     def __init__(self) -> None:
         self.messages: list[tuple[int, str, dict]] = []
+        self.documents: list[tuple[int, str, bytes, str | None]] = []
         self.send_count = 0
         self.chat_type = "supergroup"
         self.member_status = "administrator"
@@ -50,6 +51,10 @@ class FakeAPI:
 
     def send_message(self, chat_id, text, reply_markup=None, *, parse_mode=None, **_kwargs):
         self.messages.append((chat_id, text, {"parse_mode": parse_mode, "keyboard": reply_markup}))
+
+    def send_document(self, chat_id, filename, content, *, caption=None):
+        self.documents.append((chat_id, filename, bytes(content), caption))
+        return {"message_id": 555}
 
     def get_chat(self, chat_id):
         return {"id": chat_id, "type": self.chat_type}
@@ -127,6 +132,71 @@ class CommunityContentTests(unittest.TestCase):
         restored.dispatch_due(now=NOW, notify_admin=notifications.append)
         self.assertEqual(len(restored.repository.list_drafts(limit=5)), 1)
         self.assertEqual(self.writer.calls, 1)
+
+    def test_routine_auto_publication_needs_both_explicit_opt_ins(self):
+        repo = self.manager.repository
+        repo.set_enabled(True, now=NOW)
+        self.manager.save_schedule(
+            schedule_id="daily-routine",
+            category="good_morning",
+            destination_chat_id=GROUP_ID,
+            timezone_name="Africa/Lagos",
+            local_time="08:00",
+            frequency="weekly",
+            weekday=6,
+            enabled=True,
+            approval_mode="auto",
+            now=NOW,
+        )
+        api = FakeAPI()
+        # The schedule alone is not enough; global auto-publishing remains off.
+        self.manager.dispatch_due(now=NOW, api=api)
+        self.assertEqual(api.send_count, 0)
+        self.assertEqual(repo.list_drafts(limit=1)[0]["status"], "draft")
+
+    def test_explicitly_enabled_routine_schedule_publishes_once_after_checks(self):
+        repo = self.manager.repository
+        repo.set_enabled(True, now=NOW)
+        repo.set_setting("auto_publish_enabled", "1", now=NOW)
+        self.manager.save_schedule(
+            schedule_id="daily-routine-auto",
+            category="good_morning",
+            destination_chat_id=GROUP_ID,
+            timezone_name="Africa/Lagos",
+            local_time="08:00",
+            frequency="weekly",
+            weekday=6,
+            enabled=True,
+            approval_mode="auto",
+            now=NOW,
+        )
+        api = FakeAPI()
+        notifications: list[str] = []
+        self.manager.dispatch_due(now=NOW, api=api, notify_admin=notifications.append)
+        self.manager.dispatch_due(now=NOW, api=api, notify_admin=notifications.append)
+        self.assertEqual(api.send_count, 1)
+        draft = repo.list_drafts(limit=1)[0]
+        self.assertEqual(draft["status"], "published")
+        self.assertTrue(any("was published" in notice for notice in notifications))
+
+    def test_statistics_and_promotional_schedules_cannot_be_set_to_auto(self):
+        for category in ("weekly_results", "successful_trade_recap", "premium_invitation"):
+            with self.subTest(category=category):
+                with self.assertRaisesRegex(
+                    CommunityContentError, "administrator review"
+                ):
+                    self.manager.save_schedule(
+                        schedule_id=f"unsafe-{category}",
+                        category=category,
+                        destination_chat_id=GROUP_ID,
+                        timezone_name="Africa/Lagos",
+                        local_time="08:00",
+                        frequency="weekly",
+                        weekday=6,
+                        enabled=True,
+                        approval_mode="auto",
+                        now=NOW,
+                    )
 
     def test_gemini_failure_holds_without_local_content_substitution(self):
         manager = CommunityContentManager(
@@ -258,6 +328,48 @@ class CommunityContentTests(unittest.TestCase):
             )
         )
         self.assertIn("Automatic publishing: DISABLED", api.messages[-1][1])
+
+    def test_resume_enables_draft_creation_but_not_automatic_publication(self):
+        api = FakeAPI()
+        dashboard = AdminDashboard(
+            api,
+            Repository(self.database),
+            ADMIN_ID,
+            main_channel_id=-100111,
+            education_group_id=GROUP_ID,
+        )
+        self.assertTrue(
+            dashboard.handle_community_content_command(
+                ADMIN_ID, ADMIN_ID, True, "/contentresume"
+            )
+        )
+        self.assertTrue(dashboard.community_content.repository.enabled())
+        self.assertEqual(
+            dashboard.community_content.repository.setting("auto_publish_enabled"),
+            "0",
+        )
+        self.assertIn("Automatic publishing remains disabled", api.messages[-1][1])
+
+    def test_admin_csv_export_uses_document_api_without_changing_ledger(self):
+        api = FakeAPI()
+        dashboard = AdminDashboard(
+            api,
+            Repository(self.database),
+            ADMIN_ID,
+            main_channel_id=-100111,
+            education_group_id=GROUP_ID,
+        )
+        self.assertTrue(
+            dashboard.handle_community_content_command(
+                ADMIN_ID, ADMIN_ID, True, "/exportstats"
+            )
+        )
+        self.assertEqual(len(api.documents), 1)
+        chat_id, filename, content, caption = api.documents[0]
+        self.assertEqual(chat_id, ADMIN_ID)
+        self.assertEqual(filename, "smart-money-hub-trade-ledger.csv")
+        self.assertIn(b"verification_status", content)
+        self.assertIn("unverified rows", caption)
 
 
 if __name__ == "__main__":

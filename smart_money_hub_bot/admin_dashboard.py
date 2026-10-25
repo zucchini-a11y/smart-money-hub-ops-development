@@ -1083,6 +1083,7 @@ class AdminDashboard:
             "/contenthistory",
             "/contentfeedback",
             "/draftversions",
+            "/contentautopublish",
             "/contentpause",
             "/contentresume",
             "/draft",
@@ -1133,6 +1134,47 @@ class AdminDashboard:
                     "is set for 08:00 WAT. Other configured schedules create review drafts "
                     "only. Automatic publishing remains disabled.",
                 )
+            elif command == "/contentautopublish":
+                if not positional:
+                    enabled = (
+                        self.community_content.repository.setting(
+                            "auto_publish_enabled"
+                        )
+                        == "1"
+                    )
+                    self.api.send_message(
+                        chat_id,
+                        "Routine auto-publishing is "
+                        f"{'ENABLED' if enabled else 'DISABLED'}. "
+                        "Use /contentautopublish enable or disable. "
+                        "Only schedules marked approval=auto for routine categories "
+                        "are eligible; trade-result and promotional categories stay "
+                        "in administrator review.",
+                    )
+                elif positional[0].casefold() in {"enable", "on"}:
+                    self.community_content.repository.set_setting(
+                        "auto_publish_enabled", "1"
+                    )
+                    self.api.send_message(
+                        chat_id,
+                        "Routine auto-publishing is enabled. Only explicitly enabled "
+                        "routine schedules marked approval=auto can publish, after "
+                        "content and Telegram destination checks. Trade results and "
+                        "promotions remain in administrator review.",
+                    )
+                elif positional[0].casefold() in {"disable", "off"}:
+                    self.community_content.repository.set_setting(
+                        "auto_publish_enabled", "0"
+                    )
+                    self.api.send_message(
+                        chat_id,
+                        "Routine auto-publishing is disabled. Existing schedules and "
+                        "drafts remain saved.",
+                    )
+                else:
+                    raise CommunityContentError(
+                        "Usage: /contentautopublish enable|disable"
+                    )
             elif command == "/draft":
                 self._create_content_draft(chat_id, positional, values)
             elif command == "/weeklyreport":
@@ -1235,6 +1277,7 @@ class AdminDashboard:
             "/preview ID · /editdraft ID · /approve ID · /reject ID reason=...",
             "/publishcontent ID (explicit send after destination checks)",
             "/contenthistory · /contentfeedback · /draftversions ID",
+            "/contentautopublish enable|disable (off by default; routine posts only)",
             "/schedule to view; use id=... category=... destination=... time=HH:MM "
             "timezone=Africa/Lagos frequency=daily|weekly enabled=true",
             "/recordtrade · /closetrade · /correcttrade · /verifytrade · /addpartialtp",
@@ -1254,7 +1297,11 @@ class AdminDashboard:
             )
         else:
             lines.append("• No saved drafts")
-        lines.append(f"\nConfigured schedules: {len(schedules)} (manual review; no auto-publish)")
+        lines.append(
+            f"\nConfigured schedules: {len(schedules)} "
+            f"(routine auto-publish "
+            f"{'enabled' if self.community_content.repository.setting('auto_publish_enabled') == '1' else 'disabled'})"
+        )
         self.api.send_message(
             chat_id, "\n".join(lines), self._dashboard_keyboard(), parse_mode="HTML"
         )
@@ -1389,7 +1436,7 @@ class AdminDashboard:
                 f"• {row['schedule_id']}: {row['category']} at {row['local_time']} "
                 f"{row['timezone_name']} ({row['frequency']}); "
                 f"{'enabled' if row['enabled'] else 'paused'}; destination "
-                f"{row['destination_chat_id']}"
+                f"{row['destination_chat_id']}; approval={row['approval_mode']}"
                 for row in schedules
             )
             self.api.send_message(chat_id, "\n".join(lines))
@@ -1406,6 +1453,7 @@ class AdminDashboard:
             frequency=values.get("frequency", ""),
             weekday=weekday,
             enabled=enabled,
+            approval_mode=values.get("approval", "manual").casefold(),
         )
         self.api.send_message(
             chat_id,

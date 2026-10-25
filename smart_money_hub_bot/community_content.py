@@ -41,6 +41,23 @@ CONTENT_CATEGORIES = (
     "discipline_reminder",
 )
 
+AUTO_PUBLISH_CATEGORIES = frozenset(
+    {
+        "good_morning",
+        "daily_motivation",
+        "session_update",
+        "trading_day_open",
+        "end_of_day",
+        "friday_recap",
+        "weekend_message",
+        "sunday_preparation",
+        "educational_reminder",
+        "smc_quiz",
+        "community_engagement",
+        "discipline_reminder",
+    }
+)
+
 _WRITER_CATEGORY = {
     "good_morning": "engagement",
     "daily_motivation": "trading_psychology",
@@ -89,6 +106,23 @@ def render_telegram_html(content: str) -> str:
     if len(result.encode("utf-16-le")) // 2 > _MAX_MESSAGE_UTF16:
         raise CommunityContentError("Content exceeds Telegram's 4096-character limit.")
     return result
+
+
+def validate_content(category: str, content: str) -> str:
+    normalized = str(content).strip()
+    first_line = normalized.splitlines()[0].strip() if normalized else ""
+    if not _HEADER_LINE.match(first_line):
+        raise CommunityContentError(
+            "The draft must start with the SMART MONEY HUB brand header."
+        )
+    if _PROMISES.search(normalized):
+        raise CommunityContentError(
+            "The draft contains a prohibited trading promise or signal phrase."
+        )
+    if category not in CONTENT_CATEGORIES:
+        raise CommunityContentError("Choose a supported content category.")
+    render_telegram_html(normalized)
+    return normalized
 
 
 class CommunityContentRepository:
@@ -245,16 +279,7 @@ class CommunityContentRepository:
         stats_period_end: str | None = None,
         now: datetime | None = None,
     ) -> str:
-        normalized = str(content).strip()
-        if category not in CONTENT_CATEGORIES:
-            raise CommunityContentError("Choose a supported content category.")
-        if not normalized:
-            raise CommunityContentError("A blank draft cannot be saved.")
-        if _PROMISES.search(normalized):
-            raise CommunityContentError(
-                "The draft contains a prohibited trading promise or signal phrase."
-            )
-        render_telegram_html(normalized)
+        normalized = validate_content(category, content)
         observed = self._utc(now)
         content_hash = hashlib.sha256(
             f"{category}\0{destination_chat_id}\0{normalized}".encode("utf-8")
@@ -320,10 +345,6 @@ class CommunityContentRepository:
     def edit_draft(
         self, draft_id: str, content: str, *, now: datetime | None = None
     ) -> None:
-        normalized = str(content).strip()
-        if not normalized or _PROMISES.search(normalized):
-            raise CommunityContentError("The edited draft is blank or unsafe.")
-        render_telegram_html(normalized)
         with closing(self._connect()) as connection, connection:
             row = connection.execute(
                 "SELECT * FROM smh_content_drafts WHERE draft_id=?",
@@ -333,6 +354,7 @@ class CommunityContentRepository:
                 raise CommunityContentError("Draft not found.")
             if row["status"] not in {"draft", "approved"}:
                 raise CommunityContentError("Only an unpublished draft can be edited.")
+            normalized = validate_content(row["category"], content)
             connection.execute(
                 """
                 INSERT OR IGNORE INTO smh_content_draft_versions (
@@ -549,6 +571,7 @@ class CommunityContentRepository:
         frequency: str,
         weekday: int | None = None,
         enabled: bool = False,
+        approval_mode: str = "manual",
         now: datetime | None = None,
     ) -> None:
         if category not in CONTENT_CATEGORIES:
@@ -571,6 +594,12 @@ class CommunityContentRepository:
             raise CommunityContentError("A weekly schedule needs weekday 0–6.")
         if frequency == "daily":
             weekday = None
+        if approval_mode not in {"manual", "auto"}:
+            raise CommunityContentError("Approval mode must be manual or auto.")
+        if approval_mode == "auto" and category not in AUTO_PUBLISH_CATEGORIES:
+            raise CommunityContentError(
+                "This content category must remain in administrator review."
+            )
         observed = self._utc(now)
         with closing(self._connect()) as connection, connection:
             connection.execute(
@@ -579,7 +608,7 @@ class CommunityContentRepository:
                     schedule_id, category, destination_chat_id, timezone_name,
                     local_time, frequency, weekday, enabled, approval_mode,
                     created_at_utc, updated_at_utc
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'manual', ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(schedule_id) DO UPDATE SET
                     category=excluded.category,
                     destination_chat_id=excluded.destination_chat_id,
@@ -588,7 +617,7 @@ class CommunityContentRepository:
                     frequency=excluded.frequency,
                     weekday=excluded.weekday,
                     enabled=excluded.enabled,
-                    approval_mode='manual',
+                    approval_mode=excluded.approval_mode,
                     updated_at_utc=excluded.updated_at_utc
                 """,
                 (
@@ -600,6 +629,7 @@ class CommunityContentRepository:
                     frequency,
                     weekday,
                     int(enabled),
+                    approval_mode,
                     observed,
                     observed,
                 ),
@@ -952,6 +982,7 @@ class CommunityContentManager:
         frequency: str,
         weekday: int | None = None,
         enabled: bool = False,
+        approval_mode: str = "manual",
         now: datetime | None = None,
     ) -> None:
         if int(destination_chat_id) not in self.allowed_destinations:
@@ -967,6 +998,7 @@ class CommunityContentManager:
             frequency=frequency,
             weekday=weekday,
             enabled=enabled,
+            approval_mode=approval_mode,
             now=now,
         )
 
@@ -983,6 +1015,11 @@ class CommunityContentManager:
         draft = self.repository.get_draft(identifier)
         if not draft:
             raise CommunityContentError("Draft not found.")
+        if self.repository.publication_started(identifier):
+            raise CommunityContentError(
+                "This draft already has a recorded send attempt. Check its publication "
+                "status and destination before any retry."
+            )
         if draft["status"] != "approved":
             raise CommunityContentError(
                 "Only an explicitly approved draft can be published."
@@ -1109,8 +1146,9 @@ class CommunityContentManager:
         *,
         now: datetime | None = None,
         notify_admin: Any | None = None,
+        api: Any | None = None,
     ) -> None:
-        """Create due drafts only; this scheduler never publishes them."""
+        """Create due drafts; auto-send is gated, opt-in, and routine-only."""
         current = now or datetime.now(timezone.utc)
         if current.tzinfo is None:
             raise ValueError("Scheduler time must be timezone-aware.")
@@ -1141,6 +1179,53 @@ class CommunityContentManager:
                     int(schedule["destination_chat_id"]),
                     now=current,
                 )
+                auto_publish = (
+                    schedule["approval_mode"] == "auto"
+                    and self.repository.setting("auto_publish_enabled") == "1"
+                    and schedule["category"] in AUTO_PUBLISH_CATEGORIES
+                    and api is not None
+                )
+                if auto_publish:
+                    self.repository.decide(
+                        draft_id,
+                        "approved",
+                        admin_id=0,
+                        reason="Auto-publish enabled for this routine schedule.",
+                        now=current,
+                    )
+                    try:
+                        result = self.publish_approved(
+                            draft_id, admin_id=0, api=api, now=current
+                        )
+                    except CommunityContentError as error:
+                        self.repository.finish_schedule_run(
+                            schedule["schedule_id"],
+                            local_date,
+                            status="failed",
+                            draft_id=draft_id,
+                            failure_category="auto_publish_failed",
+                            now=current,
+                        )
+                        if notify_admin:
+                            notify_admin(
+                                f"Scheduled draft {draft_id} was held; no successful "
+                                f"publication was confirmed. {str(error)[:180]}"
+                            )
+                        continue
+                    self.repository.finish_schedule_run(
+                        schedule["schedule_id"],
+                        local_date,
+                        status="draft_created",
+                        draft_id=draft_id,
+                        now=current,
+                    )
+                    if notify_admin:
+                        notify_admin(
+                            f"Scheduled routine post {draft_id} was published to its "
+                            f"configured destination (Telegram message "
+                            f"{result['telegram_message_id']})."
+                        )
+                    continue
                 self.repository.finish_schedule_run(
                     schedule["schedule_id"],
                     local_date,
