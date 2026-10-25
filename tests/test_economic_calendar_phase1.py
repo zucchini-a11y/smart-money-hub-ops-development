@@ -87,6 +87,70 @@ class EconomicCalendarPhaseOneTests(unittest.TestCase):
         )
         self.assertEqual(records, [])
 
+    def test_bls_ics_verifies_only_cpi_ppi_and_employment_with_source_timezone(self):
+        body = b"""BEGIN:VCALENDAR
+BEGIN:VEVENT
+SUMMARY:Consumer Price Index
+DTSTART;TZID=America/New_York:20261112T083000
+END:VEVENT
+BEGIN:VEVENT
+SUMMARY:Producer Price Index
+DTSTART;TZID=America/New_York:20261113T083000
+END:VEVENT
+BEGIN:VEVENT
+SUMMARY:The Employment Situation
+DTSTART;TZID=America/New_York:20261106T083000
+END:VEVENT
+BEGIN:VEVENT
+SUMMARY:Productivity and Costs
+DTSTART;TZID=America/New_York:20261105T083000
+END:VEVENT
+END:VCALENDAR
+"""
+        records = parse_bls_release_ics(
+            body,
+            retrieved_at=NOW,
+            start_at=NOW,
+            end_at=datetime(2027, 1, 1, tzinfo=timezone.utc),
+        )
+
+        self.assertEqual(
+            {record.title for record in records},
+            {
+                "Consumer Price Index (CPI)",
+                "Producer Price Index (PPI)",
+                "Employment Situation",
+            },
+        )
+        cpi = next(record for record in records if "CPI" in record.title)
+        self.assertEqual(cpi.event_at_utc, datetime(2026, 11, 12, 13, 30, tzinfo=timezone.utc))
+        self.assertEqual(cpi.timezone_status, "verified_source_timezone:America/New_York")
+        self.assertIn("TZID=America/New_York", cpi.release_time_text)
+        self.assertEqual(cpi.source_name, "U.S. Bureau of Labor Statistics")
+        self.assertEqual(cpi.source_url, "https://www.bls.gov/schedule/news_release/bls.ics")
+        self.assertIsNone(cpi.forecast)
+        self.assertIsNone(cpi.previous)
+        self.assertIsNone(cpi.provider_impact)
+
+    def test_bls_floating_event_time_is_not_converted_to_wat(self):
+        body = b"""BEGIN:VCALENDAR
+BEGIN:VEVENT
+SUMMARY:Consumer Price Index
+DTSTART:20261210T083000
+END:VEVENT
+END:VCALENDAR
+"""
+        records = parse_bls_release_ics(
+            body,
+            retrieved_at=NOW,
+            start_at=NOW,
+            end_at=datetime(2027, 1, 1, tzinfo=timezone.utc),
+        )
+
+        self.assertEqual(len(records), 1)
+        self.assertIsNone(records[0].event_at_utc)
+        self.assertEqual(records[0].timezone_status, "unverified_missing_source_timezone")
+
     def test_census_retail_schedule_keeps_time_unconverted_without_timezone_evidence(self):
         page = b"""
         <table id="calendar">
