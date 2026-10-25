@@ -527,8 +527,8 @@ class OfficialCalendarManagementRepository:
         with closing(self._connection()) as connection, connection:
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
-                "SELECT review_status, date_verified, title_verified, is_stale "
-                "WHERE external_id=?",
+                "SELECT review_status, date_verified, title_verified "
+                "FROM usd_calendar_source_events WHERE external_id=?",
                 (external_id,),
             ).fetchone()
             if row is None:
@@ -536,6 +536,10 @@ class OfficialCalendarManagementRepository:
             if status == "approved" and not row["date_verified"]:
                 raise CalendarManagementError(
                     "Verify the event date from its official source before approval."
+                )
+            if status == "approved" and not row["title_verified"]:
+                raise CalendarManagementError(
+                    "Verify the event title from its official source before approval."
                 )
             old = str(row["review_status"])
             connection.execute(
@@ -558,6 +562,23 @@ class OfficialCalendarManagementRepository:
                     (external_id, min(max(limit, 1), 50)),
                 ).fetchall()
             ]
+
+    @staticmethod
+    def reference_for(external_id: str) -> str:
+        return hashlib.sha256(external_id.encode("utf-8")).hexdigest()[:16]
+
+    def resolve_reference(self, reference: str) -> str:
+        if not re.fullmatch(r"[a-f0-9]{16}", reference):
+            raise CalendarManagementError("That calendar record link is invalid.")
+        with closing(self._connection()) as connection:
+            rows = connection.execute(
+                "SELECT external_id FROM usd_calendar_source_events"
+            ).fetchall()
+        for row in rows:
+            external_id = str(row["external_id"])
+            if self.reference_for(external_id) == reference:
+                return external_id
+        raise CalendarManagementError("That calendar record no longer exists.")
 
     @staticmethod
     def _audit(
@@ -600,6 +621,7 @@ def build_weekly_calendar_preview(
         day = _event_date(record)
         if (
             record.get("review_status") == "approved"
+            and record.get("title_verified")
             and record.get("date_verified")
             and day is not None
             and week_start <= day < end_date

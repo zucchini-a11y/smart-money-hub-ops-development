@@ -589,8 +589,9 @@ class AdminDashboard:
             self._show_calendar_weekly_preview(chat_id, telegram_id)
         elif data.startswith("admin:market_awareness:status:"):
             payload = data[len("admin:market_awareness:status:"):]
-            status, external_id = payload.split(":", maxsplit=1)
             try:
+                status, reference = payload.split(":", maxsplit=1)
+                external_id = self.calendar_manager.resolve_reference(reference)
                 self.calendar_manager.set_review_status(
                     external_id, status, now=datetime.now(timezone.utc)
                 )
@@ -601,7 +602,12 @@ class AdminDashboard:
                     chat_id, page=0, notice=f"Review status saved: {status}."
                 )
         elif data.startswith("admin:market_awareness:edit:"):
-            external_id = data[len("admin:market_awareness:edit:"):]
+            reference = data[len("admin:market_awareness:edit:"):]
+            try:
+                external_id = self.calendar_manager.resolve_reference(reference)
+            except CalendarManagementError as error:
+                self.api.send_message(chat_id, str(error))
+                return
             self._calendar_pending[telegram_id] = ("edit", external_id)
             self.api.send_message(
                 chat_id,
@@ -611,7 +617,12 @@ class AdminDashboard:
                 "Send /cancel to stop.",
             )
         elif data.startswith("admin:market_awareness:verify:"):
-            external_id = data[len("admin:market_awareness:verify:"):]
+            reference = data[len("admin:market_awareness:verify:"):]
+            try:
+                external_id = self.calendar_manager.resolve_reference(reference)
+            except CalendarManagementError as error:
+                self.api.send_message(chat_id, str(error))
+                return
             self._calendar_pending[telegram_id] = ("verify", external_id)
             self.api.send_message(
                 chat_id,
@@ -622,7 +633,12 @@ class AdminDashboard:
                 "admin attestation and is recorded in the audit history. /cancel stops.",
             )
         elif data.startswith("admin:market_awareness:audit:"):
-            external_id = data[len("admin:market_awareness:audit:"):]
+            reference = data[len("admin:market_awareness:audit:"):]
+            try:
+                external_id = self.calendar_manager.resolve_reference(reference)
+            except CalendarManagementError as error:
+                self.api.send_message(chat_id, str(error))
+                return
             self._show_calendar_audit(chat_id, external_id)
         elif data == "admin:members":
             self._show_members(chat_id, page=0, sort="joined")
@@ -900,34 +916,35 @@ class AdminDashboard:
         if selected := records[page * CALENDAR_REVIEW_PAGE_SIZE : (page + 1) * CALENDAR_REVIEW_PAGE_SIZE]:
             for item in selected:
                 external_id = str(item.get("external_id") or "")
+                reference = self.calendar_manager.reference_for(external_id)
                 keyboard_rows.extend(
                     [
                         [
                             {
                                 "text": f"✅ Approve {item.get('title', 'event')[:18]}",
-                                "callback_data": f"admin:market_awareness:status:approved:{external_id}",
+                                "callback_data": f"admin:market_awareness:status:approved:{reference}",
                             },
                             {
                                 "text": "⏸ Hold",
-                                "callback_data": f"admin:market_awareness:status:held:{external_id}",
+                                "callback_data": f"admin:market_awareness:status:held:{reference}",
                             },
                             {
                                 "text": "❌ Reject",
-                                "callback_data": f"admin:market_awareness:status:rejected:{external_id}",
+                                "callback_data": f"admin:market_awareness:status:rejected:{reference}",
                             },
                         ],
                         [
                             {
                                 "text": "✏️ Edit field",
-                                "callback_data": f"admin:market_awareness:edit:{external_id}",
+                                "callback_data": f"admin:market_awareness:edit:{reference}",
                             },
                             {
                                 "text": "🔐 Verify field",
-                                "callback_data": f"admin:market_awareness:verify:{external_id}",
+                                "callback_data": f"admin:market_awareness:verify:{reference}",
                             },
                             {
                                 "text": "🧾 Audit",
-                                "callback_data": f"admin:market_awareness:audit:{external_id}",
+                                "callback_data": f"admin:market_awareness:audit:{reference}",
                             },
                         ],
                     ]
