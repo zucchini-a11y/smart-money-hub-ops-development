@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import html
+import json
 import re
 import sqlite3
 from contextlib import closing
@@ -120,39 +121,19 @@ class OfficialCalendarManagementRepository:
         self.database_path = Path(database_path)
         OfficialCalendarRepository(self.database_path)
         with closing(sqlite3.connect(self.database_path)) as connection, connection:
-            columns = {
-                row[1]
-                for row in connection.execute(
-                    "PRAGMA table_info(usd_calendar_source_events)"
-                ).fetchall()
-            }
-            additions = {
-                "review_status": "TEXT NOT NULL DEFAULT 'held'",
-                "entry_origin": "TEXT NOT NULL DEFAULT 'official_source'",
-                "title_verified": "INTEGER NOT NULL DEFAULT 0",
-                "date_verified": "INTEGER NOT NULL DEFAULT 0",
-                "time_verified": "INTEGER NOT NULL DEFAULT 0",
-                "previous_verified": "INTEGER NOT NULL DEFAULT 0",
-                "forecast_verified": "INTEGER NOT NULL DEFAULT 0",
-                "actual_verified": "INTEGER NOT NULL DEFAULT 0",
-                "impact_verified": "INTEGER NOT NULL DEFAULT 0",
-                "date_evidence_url": "TEXT",
-                "title_evidence_url": "TEXT",
-                "time_evidence_url": "TEXT",
-                "previous_evidence_url": "TEXT",
-                "forecast_evidence_url": "TEXT",
-                "actual_evidence_url": "TEXT",
-                "impact_evidence_url": "TEXT",
-                "updated_at_utc": "TEXT",
-            }
-            for name, declaration in additions.items():
-                if name not in columns:
-                    connection.execute(
-                        f"ALTER TABLE usd_calendar_source_events "
-                        f"ADD COLUMN {name} {declaration}"
-                    )
             connection.executescript(
                 """
+                CREATE TABLE IF NOT EXISTS usd_calendar_admin_review_records (
+                    external_id TEXT PRIMARY KEY,
+                    review_status TEXT NOT NULL DEFAULT 'held',
+                    entry_origin TEXT NOT NULL,
+                    overrides_json TEXT NOT NULL DEFAULT '{}',
+                    manual_data_json TEXT,
+                    verified_fields_json TEXT NOT NULL DEFAULT '{}',
+                    evidence_json TEXT NOT NULL DEFAULT '{}',
+                    base_fingerprint TEXT,
+                    updated_at_utc TEXT NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS usd_calendar_admin_audit (
                     audit_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     external_id TEXT NOT NULL,
@@ -166,34 +147,6 @@ class OfficialCalendarManagementRepository:
                 );
                 CREATE INDEX IF NOT EXISTS idx_usd_calendar_audit_event
                     ON usd_calendar_admin_audit(external_id, audit_id);
-                """
-            )
-            # Existing verified source rows retain their independent source-backed
-            # date/time evidence; all other values remain unverified.
-            connection.execute(
-                """
-                UPDATE usd_calendar_source_events
-                SET title_verified=1
-                WHERE entry_origin='official_source' AND title_verified=0
-                """
-            )
-            connection.execute(
-                """
-                UPDATE usd_calendar_source_events
-                SET date_verified=1
-                WHERE verification_status IN (
-                    'verified_schedule',
-                    'date_time_listed_timezone_unverified',
-                    'verified_meeting_window_release_time_unavailable'
-                ) AND date_verified=0
-                """
-            )
-            connection.execute(
-                """
-                UPDATE usd_calendar_source_events
-                SET time_verified=1
-                WHERE timezone_status='verified_explicit_utc_offset'
-                    AND event_at_utc IS NOT NULL AND time_verified=0
                 """
             )
 
