@@ -549,6 +549,14 @@ class OfficialCalendarRepository:
 
     def save_records(self, records: list[OfficialCalendarRecord]) -> None:
         with closing(sqlite3.connect(self.database_path)) as connection, connection:
+            connection.row_factory = sqlite3.Row
+            schema_columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(usd_calendar_source_events)"
+                )
+            }
+            has_review_fields = "title_verified" in schema_columns
             for record in records:
                 event_at = (
                     record.event_at_utc.astimezone(timezone.utc).isoformat(
@@ -557,6 +565,28 @@ class OfficialCalendarRepository:
                     if record.event_at_utc
                     else None
                 )
+                previous = None
+                changed_values: dict[str, tuple[str | None, str | None]] = {}
+                if has_review_fields:
+                    previous = connection.execute(
+                        "SELECT * FROM usd_calendar_source_events WHERE external_id=?",
+                        (record.external_id,),
+                    ).fetchone()
+                if previous is not None:
+                    for field_name, old_column, new_value in (
+                        ("title", "title", record.title),
+                        ("date", "release_date_text", record.release_date_text),
+                        ("time", "event_at_utc", event_at),
+                        ("previous", "previous_value", record.previous),
+                        ("forecast", "forecast_value", record.forecast),
+                        ("actual", "actual_value", record.actual),
+                        ("impact", "provider_impact", record.provider_impact),
+                    ):
+                        if previous[old_column] != new_value:
+                            changed_values[field_name] = (
+                                None if previous[old_column] is None else str(previous[old_column]),
+                                None if new_value is None else str(new_value),
+                            )
                 connection.execute(
                     """
                     INSERT INTO usd_calendar_source_events (
@@ -600,6 +630,73 @@ class OfficialCalendarRepository:
                         ),
                     ),
                 )
+                if has_review_fields:
+                    updates = [
+                        "title_verified=1",
+                        "title_evidence_url=?",
+                        "date_verified=1",
+                        "date_evidence_url=?",
+                    ]
+                    values: list[object] = [record.source_url, record.source_url]
+                    if record.timezone_status == "verified_explicit_utc_offset" and event_at:
+                        updates.extend(
+                            [
+                                "time_verified=1",
+                                "time_evidence_url=?",
+                            ]
+                        )
+                        values.append(record.source_url)
+                    elif "time_verified" in schema_columns:
+                        updates.extend(["time_verified=0", "time_evidence_url=NULL"])
+                    for field_name in {"previous", "forecast", "actual", "impact"} & set(changed_values):
+                        verified_column = {
+                            "previous": "previous_verified",
+                            "forecast": "forecast_verified",
+                            "actual": "actual_verified",
+                            "impact": "impact_verified",
+                        }[field_name]
+                        evidence_column = {
+                            "previous": "previous_evidence_url",
+                            "forecast": "forecast_evidence_url",
+                            "actual": "actual_evidence_url",
+                            "impact": "impact_evidence_url",
+                        }[field_name]
+                        if verified_column in schema_columns:
+                            updates.extend(
+                                [f"{verified_column}=0", f"{evidence_column}=NULL"]
+                            )
+                    if changed_values:
+                        updates.append("review_status='held'")
+                    updates.append("updated_at_utc=?")
+                    values.extend(
+                        [
+                            record.retrieved_at.astimezone(timezone.utc).isoformat(
+                                timespec="seconds"
+                            ),
+                            record.external_id,
+                        ]
+                    )
+                    connection.execute(
+                        f"UPDATE usd_calendar_source_events SET {', '.join(updates)} "
+                        "WHERE external_id=?",
+                        values,
+                    )
+                    for field_name, (old_value, new_value) in changed_values.items():
+                        connection.execute(
+                            """
+                            INSERT INTO usd_calendar_admin_audit (
+                                external_id, action, field_name, old_value, new_value,
+                                evidence_url, actor, occurred_at_utc
+                            ) VALUES (?, 'official_source_update', ?, ?, ?, ?, 'official source', ?)
+                            """,
+                            (
+                                record.external_id, field_name, old_value, new_value,
+                                record.source_url,
+                                record.retrieved_at.astimezone(timezone.utc).isoformat(
+                                    timespec="seconds"
+                                ),
+                            ),
+                        )
 
     def list_records(self) -> list[dict]:
         with closing(sqlite3.connect(self.database_path)) as connection, connection:
