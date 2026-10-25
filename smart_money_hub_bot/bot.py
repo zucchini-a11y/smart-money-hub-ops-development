@@ -2291,6 +2291,89 @@ class SmartMoneyHubBot:
             request_id,
         )
 
+    def _handle_daily_brief_callback(
+        self,
+        data: str,
+        *,
+        chat_id: int,
+        telegram_id: int,
+        is_private: bool,
+    ) -> None:
+        if (
+            self.admin_id is None
+            or telegram_id != self.admin_id
+            or not is_private
+            or chat_id != telegram_id
+        ):
+            self.api.send_message(chat_id, "This action is restricted to the admin.")
+            return
+        publisher = self.daily_calendar_brief
+        if publisher is None:
+            self.api.send_message(
+                chat_id, "Daily USD & Gold brief recovery is not enabled."
+            )
+            return
+
+        if data == "dailybrief:review":
+            result, _preview = publisher.prepare_held_review()
+            if result == "awaiting_approval":
+                return
+            if result.startswith("not_recoverable:"):
+                status = result.split(":", 1)[1]
+                explanation = (
+                    "Today's brief was skipped after its publication window; "
+                    "it will not be sent late."
+                    if status == "skipped"
+                    else "Today's brief is already published; it cannot be sent again."
+                    if status == "published"
+                    else f"Today's brief is {status}; there is nothing to recover."
+                )
+                self.api.send_message(chat_id, explanation)
+            elif result == "not_found":
+                self.api.send_message(
+                    chat_id, "There is no saved held daily brief for today."
+                )
+            else:
+                self.api.send_message(
+                    chat_id,
+                    f"Review could not be prepared ({result}). No channel post was sent.",
+                )
+            return
+
+        match = re.fullmatch(
+            r"dailybrief:(publish|cancel):(\d{4}-\d{2}-\d{2})", data
+        )
+        if not match:
+            self.api.send_message(chat_id, "That daily brief action is invalid.")
+            return
+        action, raw_date = match.groups()
+        try:
+            brief_date = datetime.strptime(raw_date, "%Y-%m-%d").date()
+        except ValueError:
+            self.api.send_message(chat_id, "That daily brief date is invalid.")
+            return
+        if action == "cancel":
+            cancelled = publisher.cancel_review(brief_date)
+            self.api.send_message(
+                chat_id,
+                "Cancelled. The brief remains unpublished."
+                if cancelled
+                else "There is no pending review to cancel.",
+            )
+            return
+
+        result = publisher.publish_reviewed(brief_date)
+        if result == "published":
+            self.api.send_message(
+                chat_id,
+                "Telegram confirmed the approved daily brief was published once.",
+            )
+        elif result != "preview_updated":
+            self.api.send_message(
+                chat_id,
+                f"The brief was not published ({result}). No automatic retry will occur.",
+            )
+
     def _handle_coach_feedback(
         self,
         chat_id: int,
