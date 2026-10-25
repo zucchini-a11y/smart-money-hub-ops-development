@@ -155,6 +155,42 @@ class OfficialCalendarManagementRepository:
         connection.row_factory = sqlite3.Row
         return connection
 
+    @staticmethod
+    def _fingerprint(record: dict) -> str:
+        keys = (
+            "source_name", "title", "source_url", "release_date_text",
+            "release_time_text", "event_at_utc", "previous_value",
+            "forecast_value", "actual_value", "provider_impact",
+            "verification_status",
+        )
+        payload = {key: record.get(key) for key in keys}
+        return hashlib.sha256(
+            json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
+        ).hexdigest()
+
+    def _base_records(self) -> dict[str, dict]:
+        return {
+            str(row["external_id"]): row
+            for row in OfficialCalendarReadRepository(self.database_path).list_records()
+        }
+
+    def _review_records(self) -> dict[str, dict]:
+        with closing(self._connection()) as connection:
+            return {
+                str(row["external_id"]): dict(row)
+                for row in connection.execute(
+                    "SELECT * FROM usd_calendar_admin_review_records"
+                ).fetchall()
+            }
+
+    @staticmethod
+    def _json_object(value: object) -> dict:
+        try:
+            parsed = json.loads(str(value or "{}"))
+            return parsed if isinstance(parsed, dict) else {}
+        except (TypeError, ValueError):
+            return {}
+
     def list_records(
         self,
         filters: dict[str, str] | None = None,
@@ -164,66 +200,94 @@ class OfficialCalendarManagementRepository:
         observed = now or datetime.now(timezone.utc)
         if observed.tzinfo is None:
             raise ValueError("now must be timezone-aware.")
-        rows = OfficialCalendarReadRepository(self.database_path).list_records()
-        statuses = OfficialCalendarReadRepository(self.database_path).list_source_status()
-        source_status = {str(row.get("source_name")): row for row in statuses}
-        observed_utc = observed.astimezone(timezone.utc)
-        for row in rows:
-            review_status = str(row.get("review_status") or "held")
-            retrieval = row.get("retrieved_at_utc")
-            try:
-                retrieved = datetime.fromisoformat(str(retrieval).replace("Z", "+00:00"))
-                stale = (
-                    retrieved.tzinfo is None
-                    or observed_utc - retrieved.astimezone(timezone.utc)
-                    < timedelta(0)
-                    or observed_utc - retrieved.astimezone(timezone.utc)
-                    > CALENDAR_STALE_AFTER
-                )
-            except (TypeError, ValueError):
-                stale = True
-            row["is_stale"] = stale
-            source = str(row.get("source_name") or "")
-            status_key = _SOURCE_ALIASES.get(source, source)
-            if status_key in {"BLS", "DOL"} and status_key not in source_status:
-                row["source_health"] = "UNAVAILABLE — SOURCE NOT VERIFIED"
-            else:
-                row["source_health"] = source_status.get(status_key, {}).get(
-                    "status", "No source check recorded"
-                )
-            health = str(row["source_health"] or "").casefold()
-            if review_status == "rejected":
-                row["review_state"] = "rejected"
-            elif review_status == "conflicting":
-                row["review_state"] = "conflicting"
-            elif stale:
-                row["review_state"] = "stale"
-            elif "unavailable" in health or "not verified" in health:
-                row["review_state"] = "unavailable-source"
-            elif review_status == "approved":
-                row["review_state"] = "approved"
-            else:
-                row["review_state"] = "held"
-
-        # Flag same-title/date records when independent sources disagree on
-        # known timestamps or supplied figures; never pick a winner silently.
-        groups: dict[tuple[str, str], list[dict]] = {}
-        for row in rows:
-            day = _event_date(row)
-            title = " ".join(str(row.get("title") or "").casefold().split())
-            if day and title:
-                groups.setdefault((title, day.isoformat()), []).append(row)
-        for group in groups.values():
-            if len(group) < 2:
+        base_rows = self._base_records()
+        overlays = self._review_records()
+        source_status = {
+            str(row.get("source_name")): row
+            for row in OfficialCalendarReadRepository(self.database_path).list_source_status()
+        }
+        rows: list[dict] = []
+        source_date_verification = {
+            "verified_schedule",
+            "date_time_listed_timezone_unverified",
+            "verified_meeting_window_release_time_unavailable",
+        }
+        for external_id, base in base_rows.items():
+            overlay = overlays.get(external_id)
+            if overlay and overlay.get("entry_origin") == "manual":
                 continue
-            for field in ("event_at_utc", "previous_value", "forecast_value", "actual_value"):
-                known = {str(row.get(field)) for row in group if row.get(field) not in (None, "")}
-                if len(known) > 1:
-                    for row in group:
-                        if row["review_state"] not in {"rejected", "stale"}:
-                            row["review_state"] = "conflicting"
-                    break
-
+            review_status = str((overlay or {}).get("review_status") or "held")
+            verified_fields = {
+                "title": True,
+                "date": str(base.get("verification_status")) in source_date_verification,
+                "time": (
+                    str(base.get("timezone_status")) == "verified_explicit_utc_offset"
+                    and bool(base.get("event_at_utc"))
+                ),
+                "previous": False,
+                "forecast": False,
+                "actual": False,
+                "impact": False,
+            }
+            evidence: dict = {}
+            conflict = False
+            row = dict(base)
+            if overlay:
+                conflict = bool(
+                    overlay.get("base_fingerprint")
+                    and overlay["base_fingerprint"] != self._fingerprint(base)
+                )
+                if not conflict:
+                    row.update(self._json_object(overlay.get("overrides_json")))
+                verified_fields.update(
+                    self._json_object(overlay.get("verified_fields_json"))
+                )
+                evidence.update(self._json_object(overlay.get("evidence_json")))
+            if verified_fields.get("title"):
+                evidence.setdefault("title", base.get("source_url"))
+            if verified_fields.get("date"):
+                evidence.setdefault("date", base.get("source_url"))
+            if verified_fields.get("time"):
+                evidence.setdefault("time", base.get("source_url"))
+            rows.append(
+                self._decorate_record(
+                    row,
+                    review_status=review_status,
+                    entry_origin="official_source",
+                    verified_fields=verified_fields,
+                    evidence=evidence,
+                    observed=observed,
+                    source_status=source_status,
+                    source_conflict=conflict,
+                )
+            )
+        for external_id, overlay in overlays.items():
+            if overlay.get("entry_origin") != "manual":
+                continue
+            manual_data = self._json_object(overlay.get("manual_data_json"))
+            if not manual_data:
+                continue
+            rows.append(
+                self._decorate_record(
+                    manual_data,
+                    review_status=str(overlay.get("review_status") or "held"),
+                    entry_origin="manual",
+                    verified_fields=self._json_object(
+                        overlay.get("verified_fields_json")
+                    ),
+                    evidence=self._json_object(overlay.get("evidence_json")),
+                    observed=observed,
+                    source_status=source_status,
+                    source_conflict=False,
+                )
+            )
+        rows.sort(
+            key=lambda row: (
+                str(row.get("release_date_text") or ""),
+                str(row.get("release_time_text") or ""),
+                str(row.get("title") or ""),
+            )
+        )
         filters = filters or {}
         for key, row_key in (
             ("event", "title"),
@@ -237,20 +301,90 @@ class OfficialCalendarManagementRepository:
                     row for row in rows
                     if needle in str(row.get(row_key) or "").casefold()
                 ]
-        date_filter = str(filters.get("date") or "").strip()
+        date_filter = str(filters.get("date") or "").strip().casefold()
         if date_filter:
             rows = [
                 row for row in rows
-                if (
-                    date_filter.casefold()
-                    in str(row.get("release_date_text") or "").casefold()
-                    or date_filter in str(_event_date(row) or "")
-                )
+                if date_filter in str(row.get("release_date_text") or "").casefold()
+                or date_filter in str(_event_date(row) or "")
             ]
         status_filter = str(filters.get("status") or "").strip().casefold()
         if status_filter:
-            rows = [row for row in rows if row["review_state"] == status_filter]
+            rows = [row for row in rows if row.get("review_state") == status_filter]
         return rows
+
+    @staticmethod
+    def _decorate_record(
+        row: dict,
+        *,
+        review_status: str,
+        entry_origin: str,
+        verified_fields: dict,
+        evidence: dict,
+        observed: datetime,
+        source_status: dict[str, dict],
+        source_conflict: bool,
+    ) -> dict:
+        result = dict(row)
+        result["entry_origin"] = entry_origin
+        result["review_status"] = review_status
+        for field_name, column in (
+            ("title", "title_verified"),
+            ("date", "date_verified"),
+            ("time", "time_verified"),
+            ("previous", "previous_verified"),
+            ("forecast", "forecast_verified"),
+            ("actual", "actual_verified"),
+            ("impact", "impact_verified"),
+        ):
+            result[column] = bool(verified_fields.get(field_name))
+        for field_name, column in (
+            ("title", "title_evidence_url"),
+            ("date", "date_evidence_url"),
+            ("time", "time_evidence_url"),
+            ("previous", "previous_evidence_url"),
+            ("forecast", "forecast_evidence_url"),
+            ("actual", "actual_evidence_url"),
+            ("impact", "impact_evidence_url"),
+        ):
+            result[column] = evidence.get(field_name)
+        source = str(result.get("source_name") or "")
+        key = _SOURCE_ALIASES.get(source, source)
+        health_row = source_status.get(key)
+        if health_row is None and key in {"BLS", "DOL"}:
+            result["source_health"] = "UNAVAILABLE — SOURCE NOT VERIFIED"
+        else:
+            result["source_health"] = (
+                (health_row or {}).get("status") or "No source check recorded"
+            )
+        retrieval = result.get("retrieved_at_utc")
+        try:
+            retrieved = datetime.fromisoformat(str(retrieval).replace("Z", "+00:00"))
+            stale = (
+                retrieved.tzinfo is None
+                or observed.astimezone(timezone.utc)
+                - retrieved.astimezone(timezone.utc) < timedelta(0)
+                or observed.astimezone(timezone.utc)
+                - retrieved.astimezone(timezone.utc) > CALENDAR_STALE_AFTER
+            )
+        except (TypeError, ValueError):
+            stale = True
+        result["is_stale"] = stale
+        health = str(result["source_health"]).casefold()
+        if review_status == "rejected":
+            state = "rejected"
+        elif source_conflict or review_status == "conflicting":
+            state = "conflicting"
+        elif stale:
+            state = "stale"
+        elif "unavailable" in health or "not verified" in health:
+            state = "unavailable-source"
+        elif review_status == "approved":
+            state = "approved"
+        else:
+            state = "held"
+        result["review_state"] = state
+        return result
 
     def add_manual_record(
         self,
@@ -306,41 +440,38 @@ class OfficialCalendarManagementRepository:
         external_id = "manual:" + hashlib.sha256(
             "|".join((source_name, title.casefold(), parsed_date.isoformat())).encode()
         ).hexdigest()[:24]
+        manual_data = {
+            "external_id": external_id,
+            "source_name": source_name,
+            "title": title,
+            "source_url": source_url,
+            "release_date_text": parsed_date.isoformat(),
+            "release_time_text": release_time or None,
+            "event_at_utc": event_at_utc,
+            "affected_instrument": "USD / XAUUSD",
+            "timezone_status": timezone_status,
+            "previous_value": None,
+            "forecast_value": None,
+            "actual_value": None,
+            "provider_impact": None,
+            "verification_status": "manual_unverified",
+            "retrieved_at_utc": _utc_text(now),
+        }
         with closing(self._connection()) as connection, connection:
-            connection.execute(
-                """
-                INSERT OR IGNORE INTO usd_calendar_source_events (
-                    external_id, source_name, title, source_url, release_date_text,
-                    release_time_text, event_at_utc, affected_instrument,
-                    timezone_status, verification_status, retrieved_at_utc,
-                    review_status, entry_origin, updated_at_utc
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'USD / XAUUSD', ?,
-                          'manual_unverified', ?, 'held', 'manual', ?)
-                """,
-                (
-                    external_id, source_name, title, source_url,
-                    parsed_date.isoformat(), release_time or None, event_at_utc,
-                    timezone_status, _utc_text(now), _utc_text(now),
-                ),
-            )
-            inserted = connection.execute(
-                "SELECT changes()"
-            ).fetchone()[0] == 1
-            if not inserted:
-                existing = connection.execute(
-                    "SELECT event_at_utc, review_status FROM usd_calendar_source_events "
-                    "WHERE external_id=?",
-                    (external_id,),
-                ).fetchone()
+            existing = connection.execute(
+                "SELECT * FROM usd_calendar_admin_review_records WHERE external_id=?",
+                (external_id,),
+            ).fetchone()
+            if existing:
+                existing_data = self._json_object(existing["manual_data_json"])
                 conflict = bool(
-                    existing
-                    and existing["event_at_utc"]
+                    existing_data.get("event_at_utc")
                     and event_at_utc
-                    and existing["event_at_utc"] != event_at_utc
+                    and existing_data["event_at_utc"] != event_at_utc
                 )
                 if conflict:
                     connection.execute(
-                        "UPDATE usd_calendar_source_events SET review_status='conflicting', "
+                        "UPDATE usd_calendar_admin_review_records SET review_status='conflicting', "
                         "updated_at_utc=? WHERE external_id=?",
                         (_utc_text(now), external_id),
                     )
@@ -348,11 +479,24 @@ class OfficialCalendarManagementRepository:
                     connection, external_id,
                     "manual_duplicate_conflict" if conflict else "manual_duplicate_ignored",
                     "release_time" if conflict else None,
-                    str(existing["event_at_utc"]) if conflict else None,
+                    str(existing_data.get("event_at_utc")) if conflict else None,
                     event_at_utc if conflict else title,
                     source_url, now,
                 )
             else:
+                connection.execute(
+                    """
+                    INSERT INTO usd_calendar_admin_review_records (
+                        external_id, review_status, entry_origin, manual_data_json,
+                        verified_fields_json, evidence_json, updated_at_utc
+                    ) VALUES (?, 'held', 'manual', ?, '{}', '{}', ?)
+                    """,
+                    (
+                        external_id,
+                        json.dumps(manual_data, ensure_ascii=False, sort_keys=True),
+                        _utc_text(now),
+                    ),
+                )
                 self._audit(
                     connection, external_id, "manual_add", None, None, title,
                     source_url, now,
