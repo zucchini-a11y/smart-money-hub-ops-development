@@ -1292,6 +1292,57 @@ class Repository:
         finally:
             connection.close()
 
+    def list_upcoming_channel_posts(
+        self,
+        *,
+        from_date: str,
+        destination_chat_id: int | None,
+        limit: int = 5,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        if destination_chat_id is None:
+            return []
+        connection = self._connect()
+        try:
+            rows = connection.execute(
+                """
+                SELECT * FROM scheduled_channel_posts
+                WHERE destination_chat_id = ?
+                  AND (
+                    schedule_date >= ?
+                    OR status NOT IN ('published', 'rejected', 'skipped')
+                  )
+                ORDER BY schedule_date ASC, id ASC
+                LIMIT ? OFFSET ?
+                """,
+                (destination_chat_id, from_date, limit, offset),
+            ).fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            connection.close()
+
+    def count_upcoming_channel_posts(
+        self, *, from_date: str, destination_chat_id: int | None
+    ) -> int:
+        if destination_chat_id is None:
+            return 0
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                """
+                SELECT COUNT(*) FROM scheduled_channel_posts
+                WHERE destination_chat_id = ?
+                  AND (
+                    schedule_date >= ?
+                    OR status NOT IN ('published', 'rejected', 'skipped')
+                  )
+                """,
+                (destination_chat_id, from_date),
+            ).fetchone()
+            return int(row[0] if row else 0)
+        finally:
+            connection.close()
+
     def get_recent_channel_post_contents(
         self, *, limit: int = 30, chat_id: int | None = None
     ) -> list[dict[str, Any]]:

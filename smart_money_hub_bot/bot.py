@@ -415,6 +415,7 @@ class SmartMoneyHubBot:
             main_channel_id,
             channel_writer,
             education_group_id=education_group_id,
+            daily_brief_enabled=daily_calendar_brief is not None,
         )
         self.education_polls = EducationPollPublisher(
             api,

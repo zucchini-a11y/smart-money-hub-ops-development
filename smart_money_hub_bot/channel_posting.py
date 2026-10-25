@@ -23,6 +23,7 @@ from .channel_gemini import (
     GeminiChannelContentService,
     GeminiChannelGenerationError,
 )
+from .daily_calendar_brief import DAILY_BRIEF_TIME, DailyCalendarBriefStore
 from .storage import Repository
 from .telegram_api import TelegramAPI, TelegramAPIError
 
@@ -36,6 +37,7 @@ SUNDAY_PUBLISH_TIME = wall_time(hour=18)
 EVENING_PREVIEW_TIME = wall_time(hour=18)
 PREVIEW_RETRY_DELAY = timedelta(minutes=5)
 FINAL_REVIEW_LEAD = timedelta(minutes=5)
+CHANNEL_POSTS_PAGE_SIZE = 5
 MAX_AUTOMATIC_RATE_LIMIT_RETRIES = 1
 _USERNAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]{4,31}$")
 _SHARED_FOOTER = re.compile(
@@ -65,12 +67,16 @@ class ChannelPostManager:
         destination_chat_id: int | None,
         *,
         channel_writer: GeminiChannelContentService | None = None,
+        daily_brief_store: DailyCalendarBriefStore | None = None,
+        daily_brief_enabled: bool = False,
     ) -> None:
         self.api = api
         self.store = store
         self.admin_id = admin_id
         self.destination_chat_id = destination_chat_id
         self.channel_writer = channel_writer
+        self.daily_brief_store = daily_brief_store
+        self.daily_brief_enabled = daily_brief_enabled
         self.timezone = CHANNEL_TIMEZONE
         self._recovered_inflight = False
 
@@ -193,14 +199,52 @@ class ChannelPostManager:
         elif status == "retry_wait" and self._retry_is_due(post, current_utc):
             self._publish(post, current_utc, automatic=True)
 
-    def show_controls(self, chat_id: int) -> None:
+    def show_controls(
+        self,
+        chat_id: int,
+        *,
+        page: int = 0,
+        now: datetime | None = None,
+    ) -> None:
         settings = self.store.get_channel_posting_settings()
         paused = bool(settings["paused"])
-        pending = self.store.list_channel_posts(limit=5, pending_only=True)
+        current_utc = self._as_utc(now or datetime.now(timezone.utc))
+        local_now = current_utc.astimezone(self.timezone)
+        from_date = local_now.date().isoformat()
+        upcoming_count = self.store.count_upcoming_channel_posts(
+            from_date=from_date,
+            destination_chat_id=self.destination_chat_id,
+        )
+        page_count = max(
+            1,
+            (upcoming_count + CHANNEL_POSTS_PAGE_SIZE - 1)
+            // CHANNEL_POSTS_PAGE_SIZE,
+        )
+        page = min(max(page, 0), page_count - 1)
+        upcoming = self.store.list_upcoming_channel_posts(
+            from_date=from_date,
+            destination_chat_id=self.destination_chat_id,
+            limit=CHANNEL_POSTS_PAGE_SIZE,
+            offset=page * CHANNEL_POSTS_PAGE_SIZE,
+        )
         recent = self.store.list_channel_posts(limit=5)
+        today_brief = (
+            self.daily_brief_store.get(local_now.date())
+            if self.daily_brief_enabled and self.daily_brief_store is not None
+            else None
+        )
+        next_brief_date = local_now.date()
+        if self.daily_brief_enabled and (
+            today_brief is not None
+            or local_now.time().replace(tzinfo=None) > DAILY_BRIEF_TIME
+        ):
+            next_brief_date += timedelta(days=1)
         lines = [
             "CHANNEL CONTENT SCHEDULER",
-            "Review previews below. Eligible posts may publish at their scheduled time unless you pause, reject, or skip them.",
+            (
+                f"Saved posts in queue: {upcoming_count} "
+                f"(page {page + 1} of {page_count}). Use each Preview button to read the complete post."
+            ),
             "Weekday/Saturday schedule: 10:00 WAT; Sunday: 18:00 WAT.",
             "Admin preview: 18:00 WAT the evening before; one hour before if missing.",
             "Destination: the configured Market Analysis channel only.",
@@ -219,16 +263,62 @@ class ChannelPostManager:
                 f"{'ACTIVE' if settings.get('weekend_auto_publish_enabled') else 'WAITING FOR TEMPLATE APPROVAL'}"
             ),
             "",
-            "Pending posts:",
+            "Saved queue:",
         ]
-        if pending:
-            for post in pending:
+        if upcoming:
+            for post in upcoming:
+                try:
+                    scheduled_date = datetime.fromisoformat(
+                        str(post["schedule_date"])
+                    ).date()
+                    publish_time = self._publish_time(scheduled_date)
+                    scheduled_time = publish_time.strftime("%H:%M")
+                    passed_note = (
+                        " · scheduled time passed"
+                        if scheduled_date < local_now.date()
+                        or (
+                            scheduled_date == local_now.date()
+                            and publish_time
+                            <= local_now.time().replace(tzinfo=None)
+                        )
+                        else ""
+                    )
+                except (TypeError, ValueError):
+                    scheduled_time = "time unavailable"
+                    passed_note = ""
+                promo_note = " · bot awareness" if post["is_promo"] else ""
                 lines.append(
-                    f"• {post['schedule_date']} — {self._category_label(post['category'])} "
-                    f"({self._status_label(post)})"
+                    f"• {post['schedule_date']} at {scheduled_time} WAT — "
+                    f"{self._category_label(post['category'])}{promo_note} — "
+                    f"{self._status_label(post)}{passed_note}"
                 )
         else:
-            lines.append("• None")
+            lines.append("• No saved upcoming posts.")
+        if self.daily_brief_enabled:
+            brief_status = (
+                str(today_brief.get("status"))
+                if today_brief
+                else "not generated yet"
+            )
+            lines.extend(
+                [
+                    "",
+                    "Daily USD & Gold brief:",
+                    (
+                        f"Today's run: {brief_status}. Next scheduled slot: "
+                        f"{next_brief_date.isoformat()} at 00:00 WAT."
+                    ),
+                    "The brief is generated separately; it is not a saved draft until the source checks run.",
+                ]
+            )
+        else:
+            lines.extend(
+                [
+                    "",
+                    "Daily USD & Gold brief:",
+                    "Not enabled in the current runtime configuration; no next run is scheduled.",
+                ]
+            )
         lines.extend(["", "Recent archive:"])
         if recent:
             for post in recent:
@@ -241,7 +331,7 @@ class ChannelPostManager:
             lines.append("• No posts recorded yet.")
 
         keyboard_rows: list[list[dict[str, str]]] = []
-        for post in pending[:4]:
+        for post in upcoming:
             keyboard_rows.append(
                 [
                     {
@@ -250,12 +340,39 @@ class ChannelPostManager:
                     }
                 ]
             )
-        if recent:
+        if upcoming_count > CHANNEL_POSTS_PAGE_SIZE:
+            navigation: list[dict[str, str]] = []
+            if page > 0:
+                navigation.append(
+                    {
+                        "text": "⬅️ Previous",
+                        "callback_data": f"admin:channel_posts:upcoming:{page - 1}",
+                    }
+                )
+            if page + 1 < page_count:
+                navigation.append(
+                    {
+                        "text": "Next ➡️",
+                        "callback_data": f"admin:channel_posts:upcoming:{page + 1}",
+                    }
+                )
+            if navigation:
+                keyboard_rows.append(navigation)
+        if recent and recent[0].get("status") in {"published", "rejected", "skipped"}:
             keyboard_rows.append(
                 [
                     {
                         "text": f"👁 Preview Latest — {recent[0]['schedule_date']}",
                         "callback_data": f"admin:channel_posts:preview:{recent[0]['id']}",
+                    }
+                ]
+            )
+        if today_brief and today_brief.get("status") in {"held", "awaiting_approval"}:
+            keyboard_rows.append(
+                [
+                    {
+                        "text": "🧾 Review Held Daily Brief",
+                        "callback_data": "dailybrief:review",
                     }
                 ]
             )
@@ -305,7 +422,15 @@ class ChannelPostManager:
     ) -> bool:
         current_utc = self._as_utc(now or datetime.now(timezone.utc))
         if data == "admin:channel_posts":
-            self.show_controls(chat_id)
+            self.show_controls(chat_id, now=current_utc)
+            return True
+        page_match = re.fullmatch(r"admin:channel_posts:upcoming:(\d+)", data)
+        if page_match:
+            self.show_controls(
+                chat_id,
+                page=int(page_match.group(1)),
+                now=current_utc,
+            )
             return True
         if data == "admin:channel_posts:pause":
             self.store.set_channel_posting_paused(True, admin_id=admin_id)

@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 from .channel_posting import ChannelPostManager
 from .channel_gemini import GeminiChannelContentService
+from .daily_calendar_brief import DailyCalendarBriefStore
 from .community_content import (
     CONTENT_CATEGORIES,
     CommunityContentError,
@@ -83,6 +84,7 @@ class AdminDashboard:
         channel_writer: GeminiChannelContentService | None = None,
         calendar_review: OfficialCalendarReadRepository | None = None,
         education_group_id: int | None = None,
+        daily_brief_enabled: bool = False,
     ) -> None:
         self.api = api
         self.store = store
@@ -114,6 +116,8 @@ class AdminDashboard:
             admin_id,
             main_channel_id,
             channel_writer=channel_writer,
+            daily_brief_store=DailyCalendarBriefStore(store.database_path),
+            daily_brief_enabled=daily_brief_enabled,
         )
         self._search_pending: set[int] = set()
         self._broadcast_pending: set[int] = set()
