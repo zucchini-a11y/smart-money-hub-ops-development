@@ -1368,6 +1368,59 @@ class Repository:
         finally:
             connection.close()
 
+    def recent_education_group_posts(
+        self,
+        chat_id: int,
+        *,
+        since: str,
+        limit: int = 30,
+    ) -> list[dict[str, Any]]:
+        """Read a bounded group-only archive for topic novelty checks."""
+        safe_limit = max(1, min(int(limit), 50))
+        connection = self._connect()
+        try:
+            rows = connection.execute(
+                """
+                SELECT topic_name, message_kind, content, posted_at
+                FROM education_group_posts
+                WHERE chat_id = ?
+                  AND posted_at >= ?
+                  AND source_status IN ('configured_admin', 'bot_authored')
+                ORDER BY posted_at DESC, id DESC
+                LIMIT ?
+                """,
+                (chat_id, since, safe_limit),
+            ).fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            connection.close()
+
+    def recent_education_poll_runs(
+        self,
+        *,
+        since: str,
+        limit: int = 12,
+    ) -> list[dict[str, Any]]:
+        """Return recent persisted poll schedule metadata without member data."""
+        safe_limit = max(1, min(int(limit), 30))
+        connection = self._connect()
+        try:
+            rows = connection.execute(
+                """
+                SELECT scenario_index, source, scheduled_at, status
+                FROM education_poll_runs
+                WHERE scheduled_at >= ?
+                  AND group_message_id IS NOT NULL
+                  AND status IN ('group_sent', 'published')
+                ORDER BY scheduled_at DESC, id DESC
+                LIMIT ?
+                """,
+                (since, safe_limit),
+            ).fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            connection.close()
+
     def record_education_group_question(
         self,
         *,

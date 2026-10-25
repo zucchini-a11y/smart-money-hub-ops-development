@@ -385,6 +385,14 @@ class BotFlowTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 
+    def test_daily_education_morning_publisher_uses_existing_scheduler_tick(self) -> None:
+        now = datetime(2026, 10, 26, 7, 0, tzinfo=timezone.utc)
+        self.bot.education_polls.dispatch_due = Mock()
+        self.bot.education_morning.dispatch_due = Mock()
+        self.bot._dispatch_due_reminders(now)
+        self.bot.education_polls.dispatch_due.assert_called_once_with(now)
+        self.bot.education_morning.dispatch_due.assert_called_once_with(now)
+
     def test_only_configured_market_analysis_channel_posts_are_archived(self) -> None:
         channel_id = -1004481197912
         bot = SmartMoneyHubBot(

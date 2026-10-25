@@ -28,6 +28,7 @@ from .group_knowledge import (
 )
 from .daily_calendar_brief import DailyCalendarBriefPublisher
 from .education_polls import EducationPollPublisher, is_on_demand_poll_request
+from .education_morning import EducationMorningPublisher
 from .message_router import CoachMessageRouter
 from .personal_reminders import (
     ReminderRequest,
@@ -416,6 +417,13 @@ class SmartMoneyHubBot:
             admin_id=admin_id,
             education_group_id=education_group_id,
             channel_id=self.admin_dashboard.channel_posts.destination_chat_id,
+        )
+        self.education_morning = EducationMorningPublisher(
+            api,
+            database_path,
+            admin_id=admin_id,
+            education_group_id=education_group_id,
+            group_history_store=self.store,
         )
         self.daily_calendar_brief = daily_calendar_brief
         self.reminder_zone = ZoneInfo(reminder_timezone)
@@ -3124,6 +3132,10 @@ class SmartMoneyHubBot:
             self.education_polls.dispatch_due(current)
         except Exception:
             logger.exception("Could not dispatch scheduled Education group polls.")
+        try:
+            self.education_morning.dispatch_due(current)
+        except Exception:
+            logger.exception("Could not dispatch the daily Education-group morning post.")
         if self.daily_calendar_brief is not None:
             try:
                 self.daily_calendar_brief.dispatch(current)

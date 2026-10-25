@@ -112,6 +112,10 @@ def main() -> None:
             education_group_id=education_group_id,
             daily_calendar_brief=daily_calendar_brief,
         )
+        logging.getLogger(__name__).info(
+            "Education-group morning learning posts scheduled daily for 08:00 WAT; "
+            "weekly Education polls remain scheduled for Saturday 21:00 WAT."
+        )
     except (ValueError, ZoneInfoNotFoundError):
         raise SystemExit(
             "Check SMH_REMINDER_TIMEZONE and SMH_SUNDAY_REMINDER_TIME; "

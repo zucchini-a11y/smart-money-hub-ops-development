@@ -121,3 +121,18 @@ These checks need no Telegram token and make no network requests:
 ```bash
 python3 -m unittest discover -s tests -v
 ```
+
+## Education-group morning notes
+
+The bot schedules one short Education-group learning note per Africa/Lagos date
+at **08:00 WAT**. It uses a vetted evergreen lesson bank and a persistent
+SQLite delivery ledger; exact message variations are not reused. Recent
+admin-authored and bot-authored group posts and stored quiz topics are used
+locally to reduce topic repetition. The bot cannot reconstruct Telegram history
+that it did not receive and archive. Saturday morning notes mention the existing
+weekly Education poll at **21:00 WAT**; that poll schedule remains unchanged.
+If the bot misses the five-minute delivery window, the destination cannot be
+verified, or a send has uncertain delivery, it holds or skips the post and
+notifies the administrator rather than sending late or retrying a possible
+duplicate. This group feature does not use Gemini or send to the Market
+Analysis channel.
