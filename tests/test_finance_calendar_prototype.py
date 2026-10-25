@@ -245,6 +245,8 @@ class FinanceCalendarPrototypeTests(unittest.TestCase):
         self.assertEqual(result.candidates[0].wat_time.hour, 13)
         self.assertEqual(result.candidates[0].wat_time.minute, 30)
         self.assertEqual(result.candidates[0].reason, "official_date_time_match")
+        self.assertEqual(result.candidates[0].official_date_status, "verified")
+        self.assertEqual(result.candidates[0].official_time_status, "verified")
 
         no_official_check = evaluate([event], evidence=[])
         self.assertEqual(
@@ -269,6 +271,11 @@ class FinanceCalendarPrototypeTests(unittest.TestCase):
         report = build_source_comparison_report(result, generated_at=NOW)
         self.assertIn("Provider health: degraded", report)
         self.assertIn("provider-source-health=success", report)
+        self.assertIn("Provider source health:", report)
+        self.assertIn("bea | status=success | freshness=fresh", report)
+        self.assertIn("last_success_at=", report)
+        self.assertIn("official-date=verified", report)
+        self.assertIn("official-release-time=verified", report)
 
         bad_source = provider_status(
             ok=False,
@@ -328,6 +335,72 @@ class FinanceCalendarPrototypeTests(unittest.TestCase):
         self.assertEqual(result.candidates[0].verification_status, "held")
         report = build_source_comparison_report(result, generated_at=NOW)
         self.assertIn("OFFICIAL SOURCE CHECK FAILED: BEA: permission_error_403", report)
+
+    def test_stale_snapshot_recovers_only_after_fresh_snapshot_and_evidence(self):
+        stale = provider_status(
+            snapshot={
+                "generated_at": (NOW - timedelta(hours=25)).isoformat(),
+                "age_seconds": 90_000,
+            }
+        )
+        stale_result = evaluate([provider_event()], status=stale)
+        self.assertEqual(stale_result.candidates[0].reason, "provider_snapshot_stale")
+
+        fresh_result = evaluate(
+            [provider_event()],
+            status=provider_status(
+                snapshot={
+                    "generated_at": (NOW - timedelta(minutes=10)).isoformat(),
+                    "age_seconds": 600,
+                }
+            ),
+            evidence=[official_gdp(retrieved_at=NOW - timedelta(minutes=2))],
+        )
+        self.assertEqual(fresh_result.verified_count, 1)
+        self.assertEqual(
+            fresh_result.candidates[0].verification_status,
+            "verified_date_and_time",
+        )
+
+    def test_degraded_provider_status_can_recover_without_weakening_source_checks(self):
+        event = provider_event()
+        degraded = evaluate([event], status=provider_status(ok=False))
+        self.assertEqual(degraded.provider_health_status, "degraded")
+        self.assertEqual(degraded.verified_count, 1)
+
+        healthy = evaluate([event], status=provider_status(ok=True))
+        self.assertEqual(healthy.provider_health_status, "healthy")
+        self.assertEqual(healthy.verified_count, 1)
+        self.assertEqual(
+            healthy.candidates[0].verification_status,
+            "verified_date_and_time",
+        )
+
+    def test_healthy_provider_does_not_rescue_a_stale_event_record(self):
+        event = provider_event(
+            updated_at=(NOW - timedelta(minutes=5)).isoformat(),
+            last_verified_at=(NOW - timedelta(hours=25)).isoformat(),
+        )
+        result = evaluate([event], status=provider_status(ok=True))
+        self.assertEqual(result.provider_health_status, "healthy")
+        self.assertEqual(result.candidates[0].reason, "record_verification_stale")
+        self.assertEqual(result.verified_count, 0)
+
+    def test_official_source_recovery_restores_only_with_fresh_evidence(self):
+        event = provider_event()
+        unavailable = evaluate([event], evidence=[])
+        self.assertEqual(
+            unavailable.candidates[0].official_check_reason,
+            "official_source_not_verified",
+        )
+        recovered = evaluate(
+            [event], evidence=[official_gdp(retrieved_at=NOW - timedelta(minutes=1))]
+        )
+        self.assertEqual(recovered.verified_count, 1)
+        self.assertEqual(
+            recovered.candidates[0].official_check_status,
+            "verified_date_and_time",
+        )
 
     def test_snapshot_age_mismatch_is_held_even_when_provider_reports_freshness(self):
         status = provider_status(
@@ -617,6 +690,8 @@ class FinanceCalendarPrototypeTests(unittest.TestCase):
         self.assertEqual(
             result.candidates[0].verification_status, "verified_date_only"
         )
+        self.assertEqual(result.candidates[0].official_date_status, "verified")
+        self.assertEqual(result.candidates[0].official_time_status, "unavailable")
         self.assertIsNone(result.candidates[0].wat_time)
 
     def test_dst_aware_bls_ics_parser_preserves_source_timezone_and_converts_to_wat(self):
