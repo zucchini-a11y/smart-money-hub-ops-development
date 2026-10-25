@@ -183,6 +183,44 @@ class FinanceCalendarPrototypeTests(unittest.TestCase):
         self.assertEqual(raised.exception.http_status, 429)
         self.assertEqual(delays, [])
 
+    def test_transient_service_error_retries_once_and_recovers(self):
+        attempts = []
+        delays = []
+
+        def opener(request, timeout):
+            attempts.append(request.full_url)
+            if len(attempts) == 1:
+                raise HTTPError(request.full_url, 503, "Unavailable", {}, None)
+            return FakeResponse(b'{"ok":true}')
+
+        body, _headers = _get_bytes(
+            "https://www.financecalendar.com/wp-json/fc/v1/status",
+            opener=opener,
+            sleep=delays.append,
+            now=NOW,
+        )
+        self.assertEqual(json.loads(body), {"ok": True})
+        self.assertEqual(len(attempts), 2)
+        self.assertEqual(delays, [1.0])
+
+    def test_permission_failure_is_sanitized_and_not_retried(self):
+        attempts = []
+
+        def opener(request, timeout):
+            attempts.append(request.full_url)
+            raise HTTPError(request.full_url, 403, "Forbidden", {}, None)
+
+        with self.assertRaises(FinanceCalendarError) as raised:
+            _get_bytes(
+                "https://www.bls.gov/schedule/news_release/bls.ics",
+                opener=opener,
+                sleep=lambda _: self.fail("403 should not retry"),
+                now=NOW,
+            )
+        self.assertEqual(raised.exception.category, "permission_error")
+        self.assertEqual(raised.exception.http_status, 403)
+        self.assertEqual(len(attempts), 1)
+
     def test_http_200_and_provider_verified_flags_do_not_replace_official_match(self):
         event = provider_event()
         result = evaluate([event])
@@ -315,6 +353,9 @@ class FinanceCalendarPrototypeTests(unittest.TestCase):
 
     def test_missing_values_rights_and_attribution_are_explicit_in_preview(self):
         event = provider_event(
+            prior="2.0%",
+            consensus="2.1%",
+            title="GDP <estimate & outlook>",
             observations=[
                 {
                     "source_rights": {
@@ -337,6 +378,11 @@ class FinanceCalendarPrototypeTests(unittest.TestCase):
         self.assertIn("Actual: Unavailable unless separately verified", preview)
         self.assertIn("Source rights notice:", preview)
         self.assertIn("13:30 WAT", preview)
+        self.assertIn("GDP &lt;estimate &amp; outlook&gt;", preview)
+        self.assertIn("Previous: Unavailable", preview)
+        comparison = build_source_comparison_report(result, generated_at=NOW)
+        self.assertIn("previous=present_unverified", comparison)
+        self.assertIn("forecast=present_unverified", comparison)
 
     def test_unreviewed_source_license_holds_event(self):
         result = evaluate([provider_event(source_license={"license": "restricted"})])
@@ -428,6 +474,8 @@ END:VCALENDAR
         census = parse_census_release_calendar(census_body, retrieved_at=NOW)
         self.assertEqual(census[0].series_code, "us-retail-sales")
         self.assertIsNone(census[0].release_at_utc)
+        self.assertEqual(census[0].release_time_text, "8:30 AM")
+        self.assertIsNone(census[0].source_timezone)
 
 
 if __name__ == "__main__":

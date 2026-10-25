@@ -709,13 +709,12 @@ def _parse_timestamp(value: Any) -> datetime | None:
 
 
 def _record_identity(event: dict[str, Any]) -> tuple[Any, ...]:
-    event_id = str(event.get("id") or "")
     return (
         event.get("source_id") or "",
         event.get("series_code") or "",
-        ("id", event_id) if event_id else ("date", event.get("date") or ""),
+        event.get("date") or "",
         event.get("release_stage") or "",
-        "" if event_id else event.get("period") or "",
+        event.get("period") or "",
     )
 
 
