@@ -309,7 +309,9 @@ class FinanceCalendarPrototypeTests(unittest.TestCase):
             last_verified_at=(NOW - timedelta(hours=25)).isoformat()
         )
         result = evaluate([stale_record])
-        self.assertEqual(result.candidates[0].reason, "record_stale_or_unverified")
+        self.assertEqual(
+            result.candidates[0].reason, "record_verification_stale"
+        )
 
         result = evaluate(
             [provider_event()],
@@ -375,7 +377,7 @@ class FinanceCalendarPrototypeTests(unittest.TestCase):
         )
         result = evaluate([event], status=status, evidence=[])
         self.assertEqual(
-            result.candidates[0].reason, "record_stale_or_unverified"
+            result.candidates[0].reason, "record_verification_stale"
         )
 
         stricter = FreshnessPolicy(
@@ -384,7 +386,7 @@ class FinanceCalendarPrototypeTests(unittest.TestCase):
         event = provider_event(last_verified_at=(NOW - timedelta(hours=3)).isoformat())
         result = evaluate([event], freshness_policy=stricter)
         self.assertEqual(
-            result.candidates[0].reason, "record_stale_or_unverified"
+            result.candidates[0].reason, "record_verification_stale"
         )
 
     def test_future_record_update_and_missing_timestamps_are_not_fresh(self):
