@@ -389,6 +389,20 @@ class FinanceCalendarPrototypeTests(unittest.TestCase):
             result.candidates[0].reason, "provider_source_health_stale_or_unknown"
         )
 
+        missing_health_times = provider_status(
+            source_health=[
+                {
+                    "source_id": "bea",
+                    "status": "success",
+                }
+            ]
+        )
+        result = evaluate([provider_event()], status=missing_health_times)
+        self.assertEqual(
+            result.candidates[0].reason,
+            "provider_source_health_stale_or_unknown",
+        )
+
     def test_record_freshness_is_source_specific_and_configurable(self):
         event = provider_event(
             series_code="us-cpi",
