@@ -24,7 +24,7 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlparse
 from urllib.request import Request, urlopen
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .news_intelligence import NewsRepository, NewsSourceError
 
@@ -37,7 +37,7 @@ FED_FOMC_CALENDAR_URL = (
 CENSUS_RELEASE_CALENDAR_URL = (
     "https://www.census.gov/economic-indicators/calendar-listview.html"
 )
-BLS_RELEASE_SCHEDULE_URL = "https://www.bls.gov/schedule/news_release/"
+BLS_RELEASE_SCHEDULE_URL = "https://www.bls.gov/schedule/news_release/bls.ics"
 DOL_CLAIMS_SCHEDULE_URL = "https://www.dol.gov/agencies/eta/ui/claims"
 
 _ALLOWED_HOSTS = frozenset(
@@ -119,7 +119,7 @@ def _fetch_bytes(
     request = Request(
         url,
         headers={
-            "Accept": "application/json, text/html",
+            "Accept": "application/json, text/html, text/calendar",
             "User-Agent": "SmartMoneyHubOfficialCalendar/1.0",
         },
     )
@@ -299,6 +299,98 @@ class _CensusCalendarParser(HTMLParser):
             self.in_row = False
         elif tag == "table" and self.in_calendar:
             self.in_calendar = False
+
+
+def parse_bls_release_ics(
+    body: bytes,
+    *,
+    retrieved_at: datetime,
+    start_at: datetime,
+    end_at: datetime,
+) -> list[OfficialCalendarRecord]:
+    """Parse only official BLS CPI, PPI, and Employment Situation schedule items."""
+    if any(value.tzinfo is None for value in (retrieved_at, start_at, end_at)):
+        raise ValueError("Calendar range and retrieval time must be timezone-aware.")
+
+    text = body.decode("utf-8", "replace")
+    text = re.sub(r"\r?\n[ \t]", "", text)
+    titles = (
+        (("consumer price index",), "Consumer Price Index (CPI)"),
+        (("producer price index",), "Producer Price Index (PPI)"),
+        (("employment situation", "nonfarm payroll"), "Employment Situation"),
+    )
+    records: list[OfficialCalendarRecord] = []
+
+    for block in re.findall(r"BEGIN:VEVENT(.*?)END:VEVENT", text, re.S):
+        summary_match = re.search(r"^SUMMARY(?:;[^:]*)?:(.*)$", block, re.M)
+        start_match = re.search(r"^DTSTART(?:;[^:]*)?:.*$", block, re.M)
+        if not summary_match or not start_match:
+            continue
+        summary = summary_match.group(1).strip().casefold()
+        title = next(
+            (
+                label
+                for phrases, label in titles
+                if any(phrase in summary for phrase in phrases)
+            ),
+            None,
+        )
+        if title is None:
+            continue
+
+        property_line = start_match.group(0)
+        if ":" not in property_line:
+            continue
+        property_name, raw_value = property_line.split(":", 1)
+        raw_value = raw_value.strip()
+        try:
+            source_date = datetime.strptime(raw_value[:8], "%Y%m%d").date()
+        except ValueError:
+            continue
+
+        event_at_utc: datetime | None = None
+        timezone_status = "unverified_missing_source_timezone"
+        tzid_match = re.search(r"(?:^|;)TZID=(?:\"([^\"]+)\"|([^;:]+))", property_name)
+        tzid = next((value for value in tzid_match.groups() if value), None) if tzid_match else None
+        if re.fullmatch(r"\d{8}T\d{6}Z", raw_value):
+            event_at_utc = datetime.strptime(raw_value, "%Y%m%dT%H%M%SZ").replace(
+                tzinfo=timezone.utc
+            )
+            timezone_status = "verified_source_timezone:UTC"
+        elif re.fullmatch(r"\d{8}T\d{6}", raw_value) and tzid:
+            try:
+                source_zone = ZoneInfo(tzid)
+                source_time = datetime.strptime(
+                    raw_value, "%Y%m%dT%H%M%S"
+                ).replace(tzinfo=source_zone)
+            except (ValueError, ZoneInfoNotFoundError):
+                source_zone = None
+            if source_zone is not None:
+                event_at_utc = source_time.astimezone(timezone.utc)
+                timezone_status = f"verified_source_timezone:{tzid}"
+        elif re.fullmatch(r"\d{8}", raw_value):
+            timezone_status = "date_only_no_time"
+
+        if not start_at.date() <= source_date <= end_at.date():
+            continue
+
+        records.append(
+            OfficialCalendarRecord(
+                external_id=_event_id("bls", title, source_date.isoformat()),
+                source_name="U.S. Bureau of Labor Statistics",
+                affected_instrument="USD / XAUUSD",
+                title=title,
+                source_url=BLS_RELEASE_SCHEDULE_URL,
+                retrieved_at=retrieved_at,
+                release_date_text=source_date.isoformat(),
+                release_time_text=property_line,
+                event_at_utc=event_at_utc,
+                timezone_status=timezone_status,
+                verification_status="verified_schedule",
+            )
+        )
+
+    return records
 
 
 def parse_census_retail_calendar(
@@ -1003,7 +1095,16 @@ def fetch_and_store_official_schedules(
             CENSUS_RELEASE_CALENDAR_URL,
             lambda body: parse_census_retail_calendar(body, retrieved_at=observed),
         ),
-        ("BLS", BLS_RELEASE_SCHEDULE_URL, None),
+        (
+            "BLS",
+            BLS_RELEASE_SCHEDULE_URL,
+            lambda body: parse_bls_release_ics(
+                body,
+                retrieved_at=observed,
+                start_at=start_at,
+                end_at=end_at,
+            ),
+        ),
         ("DOL", DOL_CLAIMS_SCHEDULE_URL, None),
     )
     for source_name, url, parser in sources:
@@ -1053,6 +1154,7 @@ __all__ = [
     "fetch_and_store_official_schedules",
     "fetch_with_bounded_backoff",
     "parse_bea_release_dates",
+    "parse_bls_release_ics",
     "parse_census_retail_calendar",
     "parse_fed_fomc_calendar",
 ]
