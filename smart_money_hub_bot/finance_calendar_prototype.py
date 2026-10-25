@@ -970,6 +970,24 @@ def _matches_official(
     return "held", "official_evidence_stale", None
 
 
+def _official_date_time_statuses(status: str, reason: str) -> tuple[str, str]:
+    if status == "verified_date_and_time":
+        return "verified", "verified"
+    if status == "verified_date_only":
+        return "verified", "unavailable"
+    if reason == "official_date_mismatch":
+        return "conflict", "unverified"
+    if reason == "official_time_mismatch":
+        return "verified", "conflict"
+    if reason == "official_evidence_stale":
+        return "stale", "stale"
+    if reason == "official_source_not_verified":
+        return "unavailable", "unavailable"
+    if reason == "invalid_event_date":
+        return "invalid", "unverified"
+    return "unverified", "unverified"
+
+
 def evaluate_provider_records(
     calendar: dict[str, Any],
     provider_status: dict[str, Any],
@@ -1215,6 +1233,9 @@ def evaluate_provider_records(
                 freshness_limit=official_limit,
             )
         )
+        official_date_status, official_time_status = _official_date_time_statuses(
+            official_check_status, official_check_reason
+        )
 
         if not result.provider_attribution_present:
             status, reason = "held", "provider_attribution_missing"
@@ -1311,6 +1332,8 @@ def evaluate_provider_records(
                 ),
                 official_check_status=official_check_status,
                 official_check_reason=official_check_reason,
+                official_date_status=official_date_status,
+                official_time_status=official_time_status,
                 field_verification=field_verification,
                 verified_values=verified_values,
                 field_conflicts=field_conflicts,
