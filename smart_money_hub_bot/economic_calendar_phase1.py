@@ -706,6 +706,10 @@ def format_calendar_admin_review(
         lines.append(f"Instrument: {instrument}")
         lines.append(f"Source: {source}")
         lines.append(f"Entry: {origin} · Review: {review_state}")
+        lines.append(
+            "Title independently checked: "
+            + ("YES" if item.get("title_verified") else "NO")
+        )
         source_url = str(item.get("source_url") or "")
         if len(source_url) <= 350 and _safe_source_url(source_url):
             lines.append(
@@ -789,6 +793,7 @@ def format_calendar_admin_review(
                 f" ({'verified' if item.get(verified_key) else 'not independently verified'})"
             )
         for label, key in (
+            ("Title evidence", "title_evidence_url"),
             ("Date evidence", "date_evidence_url"),
             ("Time evidence", "time_evidence_url"),
             ("Previous evidence", "previous_evidence_url"),

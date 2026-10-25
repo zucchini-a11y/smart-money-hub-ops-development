@@ -1026,6 +1026,7 @@ class AdminDashboard:
             self.calendar_manager.list_records(now=now),
             week_start=week_start,
             now=now,
+            source_statuses=self.calendar_review.list_source_status(),
         )
         self.api.send_message(
             chat_id,
