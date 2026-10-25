@@ -10,6 +10,7 @@ from .channel_gemini import GeminiChannelContentService
 from .economic_calendar_phase1 import (
     CALENDAR_REVIEW_PAGE_SIZE,
     OfficialCalendarReadRepository,
+    fetch_and_store_official_schedules,
     format_calendar_admin_review,
 )
 from .economic_calendar_admin import (
@@ -585,6 +586,31 @@ class AdminDashboard:
                 "Example: BEA | GDP release | 2026-10-29 | 2026-10-29T12:30:00Z | "
                 "https://www.bea.gov/news/schedule",
             )
+        elif data == "admin:market_awareness:refresh":
+            try:
+                result = fetch_and_store_official_schedules(
+                    self.store.database_path,
+                    now=datetime.now(timezone.utc),
+                )
+            except Exception:
+                # The source adapter records sanitized failure categories in
+                # SQLite. Do not include provider response bodies in Telegram.
+                self.api.send_message(
+                    chat_id,
+                    "Official-source refresh did not complete. Check the source "
+                    "health and failure category in Market Awareness Review.",
+                )
+            else:
+                summary = "\n".join(
+                    f"{html.escape(str(source))}: {html.escape(str(status))}"
+                    for source, status in sorted(result.items())
+                )
+                self.api.send_message(
+                    chat_id,
+                    "Official-source refresh finished. These are source-ingestion "
+                    "results only; nothing was published.\n\n" + summary,
+                )
+            self._show_market_awareness_review(chat_id, page=0)
         elif data == "admin:market_awareness:preview":
             self._show_calendar_weekly_preview(chat_id, telegram_id)
         elif data.startswith("admin:market_awareness:status:"):
@@ -904,6 +930,7 @@ class AdminDashboard:
         keyboard_rows: list[list[dict[str, str]]] = [
             [
                 {"text": "➕ Add Manual Event", "callback_data": "admin:market_awareness:add"},
+                {"text": "🔄 Refresh Official Sources", "callback_data": "admin:market_awareness:refresh"},
                 {"text": "🔎 Filters", "callback_data": "admin:market_awareness:filters"},
             ],
             [
