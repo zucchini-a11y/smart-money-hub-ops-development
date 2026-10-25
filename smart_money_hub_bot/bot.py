@@ -1010,6 +1010,11 @@ class SmartMoneyHubBot:
                     chat_id, telegram_id, is_private, text
                 )
                 return
+        if is_private and self.admin_dashboard.content_edit_is_pending(telegram_id):
+            if self.admin_dashboard.handle_content_edit_message(
+                chat_id, telegram_id, is_private, text
+            ):
+                return
         requested_action = self._requested_member_action(text)
         session = self.sessions.get(telegram_id)
         has_pending_admin_action = (
@@ -1021,6 +1026,10 @@ class SmartMoneyHubBot:
             or (
                 is_private
                 and self.admin_dashboard.has_channel_post_edit_pending(telegram_id)
+            )
+            or (
+                is_private
+                and self.admin_dashboard.content_edit_is_pending(telegram_id)
             )
         )
         if (
@@ -1195,6 +1204,10 @@ class SmartMoneyHubBot:
             self.admin_dashboard.cancel_channel_promo(telegram_id)
             self.admin_dashboard.cancel_calendar_action(telegram_id)
             self.admin_dashboard.open(chat_id, telegram_id, is_private)
+            return
+        if self.admin_dashboard.handle_community_content_command(
+            chat_id, telegram_id, is_private, text
+        ):
             return
         if self.admin_dashboard.handle_group_morning_command(
             chat_id, telegram_id, is_private, command

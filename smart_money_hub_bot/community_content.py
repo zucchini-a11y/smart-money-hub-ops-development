@@ -852,10 +852,11 @@ class CommunityContentManager:
                 else "Win rate: Unavailable (no decisive closed trades)"
             ),
         ]
-        if stats["known_net_pips"] is not None:
+        for summary in stats["net_pips_by_instrument_and_convention"].values():
             lines.append(
-                f"Net pips: {stats['known_net_pips']} "
-                f"(documented pip-size convention; sample {stats['pips_sample_size']})"
+                f"Net pips for {summary['instrument']} "
+                f"(pip size {summary['pip_size']}): {summary['net']} "
+                f"(sample {summary['sample_size']})"
             )
         for currency, result in stats["realized_pl_by_currency"].items():
             lines.append(

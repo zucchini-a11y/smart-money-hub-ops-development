@@ -1,6 +1,7 @@
 """Small standard-library client for the Telegram Bot HTTP API."""
 
 import json
+import uuid
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -181,6 +182,88 @@ class TelegramAPI:
         if parse_mode is not None:
             payload["parse_mode"] = parse_mode
         result = self._request("sendMessage", payload)
+        return result if isinstance(result, dict) else {}
+
+    def send_document(
+        self,
+        chat_id: int,
+        filename: str,
+        content: bytes,
+        *,
+        caption: str | None = None,
+    ) -> dict[str, Any]:
+        """Send a generated document without exposing the token in errors."""
+        safe_name = filename.replace('"', "").replace("\r", "").replace("\n", "")[:120]
+        boundary = "----smh-" + uuid.uuid4().hex
+        parts = [
+            f"--{boundary}\r\nContent-Disposition: form-data; name=\"chat_id\"\r\n\r\n"
+            f"{int(chat_id)}\r\n".encode("utf-8")
+        ]
+        if caption:
+            parts.append(
+                f"--{boundary}\r\nContent-Disposition: form-data; name=\"caption\"\r\n\r\n"
+                f"{caption}\r\n".encode("utf-8")
+            )
+        parts.append(
+            (
+                f"--{boundary}\r\nContent-Disposition: form-data; "
+                f'name="document"; filename="{safe_name}"\r\n'
+                "Content-Type: text/csv; charset=utf-8\r\n\r\n"
+            ).encode("utf-8")
+            + bytes(content)
+            + b"\r\n"
+        )
+        parts.append(f"--{boundary}--\r\n".encode("ascii"))
+        request = Request(
+            self._base_url + "sendDocument",
+            data=b"".join(parts),
+            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+            method="POST",
+        )
+        try:
+            with urlopen(request, timeout=20) as response:
+                raw_response = response.read()
+        except HTTPError as error:
+            parsed: dict[str, Any] = {}
+            try:
+                body = json.loads(error.read().decode("utf-8"))
+                if isinstance(body, dict):
+                    parsed = body
+            except (UnicodeDecodeError, json.JSONDecodeError, AttributeError):
+                pass
+            description = str(parsed.get("description", f"HTTP {error.code}"))
+            parameters = parsed.get("parameters")
+            retry_after = (
+                parameters.get("retry_after")
+                if isinstance(parameters, dict)
+                else None
+            )
+            raise TelegramAPIError(
+                description,
+                http_status=error.code,
+                error_code=parsed.get("error_code"),
+                retry_after=retry_after if isinstance(retry_after, int) else None,
+            ) from None
+        except (URLError, TimeoutError, OSError):
+            raise TelegramAPIError(
+                "Telegram document request failed.",
+                delivery_unknown=True,
+            ) from None
+        try:
+            parsed_response = json.loads(raw_response.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            raise TelegramAPIError(
+                "Telegram returned an unreadable document response.",
+                delivery_unknown=True,
+            ) from None
+        if not isinstance(parsed_response, dict) or not parsed_response.get("ok"):
+            description = (
+                parsed_response.get("description", "Telegram request was not successful.")
+                if isinstance(parsed_response, dict)
+                else "Telegram returned an unexpected response."
+            )
+            raise TelegramAPIError(str(description))
+        result = parsed_response.get("result")
         return result if isinstance(result, dict) else {}
 
     def edit_message_text(

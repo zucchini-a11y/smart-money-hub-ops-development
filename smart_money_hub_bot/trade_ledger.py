@@ -16,6 +16,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 
 class TradeLedgerError(ValueError):
@@ -549,10 +550,18 @@ class TradeLedger:
         params: list[Any] = []
         if start:
             clauses.append("opened_at_utc >= ?")
-            params.append(datetime.combine(start, datetime.min.time(), timezone.utc).isoformat())
+            start_local = datetime.combine(
+                start, datetime.min.time(), ZoneInfo("Africa/Lagos")
+            )
+            params.append(start_local.astimezone(timezone.utc).isoformat())
         if end:
             clauses.append("opened_at_utc < ?")
-            params.append(datetime.combine(end, datetime.max.time(), timezone.utc).isoformat())
+            end_exclusive_local = datetime.combine(
+                end + timedelta(days=1),
+                datetime.min.time(),
+                ZoneInfo("Africa/Lagos"),
+            )
+            params.append(end_exclusive_local.astimezone(timezone.utc).isoformat())
         if instrument:
             clauses.append("instrument = ?")
             params.append(instrument.strip().upper())
@@ -595,11 +604,12 @@ class TradeLedger:
         losses = sum(row["outcome"] == "loss" for row in verified_closed)
         breakeven = sum(row["outcome"] == "breakeven" for row in verified_closed)
         decisive = wins + losses
-        pips = [
-            Decimal(row["net_pips"])
-            for row in verified_closed
-            if row["net_pips"] is not None
-        ]
+        pips_by_convention: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        for row in verified_closed:
+            if row["net_pips"] is not None and row["pip_size"] is not None:
+                pips_by_convention.setdefault(
+                    (row["instrument"], row["pip_size"]), []
+                ).append(row)
         by_currency: dict[str, list[Decimal]] = {}
         for row in verified_closed:
             if row["realized_pl"] is not None and row["currency"]:
@@ -626,6 +636,41 @@ class TradeLedger:
             if row["status"] == "closed"
             and row["outcome"] in {"win", "loss", "breakeven", "partial"}
         ]
+        pips_summary: dict[str, dict[str, Any]] = {}
+        for (symbol, pip_size), pips_rows in sorted(pips_by_convention.items()):
+            values = [Decimal(row["net_pips"]) for row in pips_rows]
+            wins_for_symbol = [
+                Decimal(row["net_pips"])
+                for row in pips_rows
+                if row["outcome"] == "win"
+            ]
+            losses_for_symbol = [
+                Decimal(row["net_pips"])
+                for row in pips_rows
+                if row["outcome"] == "loss"
+            ]
+            pips_summary[f"{symbol}|{pip_size}"] = {
+                "instrument": symbol,
+                "pip_size": pip_size,
+                "net": format(sum(values, Decimal(0)).normalize(), "f"),
+                "sample_size": len(values),
+                "average_win": self._average(wins_for_symbol),
+                "average_loss": self._average(losses_for_symbol),
+                "largest_win": (
+                    format(max(wins_for_symbol).normalize(), "f")
+                    if wins_for_symbol else None
+                ),
+                "largest_loss": (
+                    format(min(losses_for_symbol).normalize(), "f")
+                    if losses_for_symbol else None
+                ),
+            }
+        same_convention = (
+            len(pips_summary) == 1
+            and instrument is not None
+            and next(iter(pips_summary.values()))["instrument"]
+            == instrument.strip().upper()
+        )
         return {
             "period_start": start.isoformat() if start else None,
             "period_end": end.isoformat() if end else None,
@@ -643,23 +688,30 @@ class TradeLedger:
                 else None
             ),
             "win_rate_denominator": "wins + losses; breakeven excluded",
-            "known_net_pips": format(sum(pips, Decimal(0)).normalize(), "f")
-            if pips else None,
-            "pips_sample_size": len(pips),
-            "average_win_pips": self._average(
-                [Decimal(row["net_pips"]) for row in verified_closed
-                 if row["outcome"] == "win" and row["net_pips"] is not None]
+            "known_net_pips": (
+                next(iter(pips_summary.values()))["net"] if same_convention else None
             ),
-            "average_loss_pips": self._average(
-                [Decimal(row["net_pips"]) for row in verified_closed
-                 if row["outcome"] == "loss" and row["net_pips"] is not None]
+            "pips_sample_size": (
+                next(iter(pips_summary.values()))["sample_size"]
+                if same_convention else 0
+            ),
+            "average_win_pips": (
+                next(iter(pips_summary.values()))["average_win"]
+                if same_convention else None
+            ),
+            "average_loss_pips": (
+                next(iter(pips_summary.values()))["average_loss"]
+                if same_convention else None
             ),
             "largest_win_pips": (
-                format(max(pips).normalize(), "f") if pips and max(pips) > 0 else None
+                next(iter(pips_summary.values()))["largest_win"]
+                if same_convention else None
             ),
             "largest_loss_pips": (
-                format(min(pips).normalize(), "f") if pips and min(pips) < 0 else None
+                next(iter(pips_summary.values()))["largest_loss"]
+                if same_convention else None
             ),
+            "net_pips_by_instrument_and_convention": pips_summary,
             "full_tp_hits": sum(row["full_tp_hit"] for row in verified_closed),
             "partial_tp_records": sum(
                 len(json.loads(row["partial_tps_json"])) for row in verified_closed

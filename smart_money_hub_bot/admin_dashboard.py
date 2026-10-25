@@ -1,6 +1,6 @@
 """Private, Telegram-ID-gated admin dashboard for member reporting."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 import html
 import shlex
 from typing import Any
@@ -88,6 +88,7 @@ class AdminDashboard:
         self.store = store
         self.admin_id = admin_id
         self.main_channel_id = main_channel_id
+        self.education_group_id = education_group_id
         self.calendar_review = calendar_review or OfficialCalendarReadRepository(
             store.database_path
         )
@@ -579,6 +580,8 @@ class AdminDashboard:
             self._show_market_awareness_review(chat_id, page=0)
         elif data == "admin:group_morning":
             self._show_education_morning(chat_id)
+        elif data == "admin:content":
+            self._show_content_overview(chat_id)
         elif data in {
             "admin:group_morning:pause",
             "admin:group_morning:resume",
@@ -944,6 +947,7 @@ class AdminDashboard:
                 ],
                 [{"text": "🗓️ Channel Content", "callback_data": "admin:channel_posts"}],
                 [{"text": "🌅 Education Morning Posts", "callback_data": "admin:group_morning"}],
+                [{"text": "🧾 Content & Trade Records", "callback_data": "admin:content"}],
                 [{"text": "📨 Send One-Time DM", "callback_data": "admin:dm_broadcast"}],
                 [{"text": "📣 Promote Bot in Channel", "callback_data": "admin:channel_promo"}],
                 [{"text": "🏠 Main Menu", "callback_data": "nav:home"}],
@@ -962,19 +966,21 @@ class AdminDashboard:
         if not self._authorize(chat_id, telegram_id, is_private):
             return True
         if command == "/contentpause":
+            self.community_content.repository.set_enabled(False)
             self.education_morning_store.set_enabled(False)
             self._show_education_morning(
                 chat_id,
                 notice="Daily Education-group morning posts are paused.",
             )
         elif command == "/contentresume":
+            self.community_content.repository.set_enabled(True)
             self.education_morning_store.set_enabled(True)
             self._show_education_morning(
                 chat_id,
                 notice="Daily Education-group morning posts are enabled for 08:00 WAT.",
             )
         else:
-            self._show_education_morning(chat_id)
+            self._show_content_overview(chat_id)
         return True
 
     def _show_education_morning(
@@ -1005,6 +1011,564 @@ class AdminDashboard:
             ]]
         }
         self.api.send_message(chat_id, "\n".join(lines), keyboard, parse_mode="HTML")
+
+    @staticmethod
+    def _content_command_parts(text: str) -> tuple[str, list[str], dict[str, str]]:
+        parts = shlex.split(text)
+        if not parts:
+            return "", [], {}
+        command = parts[0].split("@", 1)[0].casefold()
+        positional: list[str] = []
+        values: dict[str, str] = {}
+        for item in parts[1:]:
+            if "=" in item:
+                key, value = item.split("=", 1)
+                values[key.strip().casefold()] = value.strip()
+            else:
+                positional.append(item)
+        return command, positional, values
+
+    def content_edit_is_pending(self, telegram_id: int) -> bool:
+        return telegram_id in self._content_edit_pending
+
+    def handle_content_edit_message(
+        self,
+        chat_id: int,
+        telegram_id: int,
+        is_private: bool,
+        text: str,
+    ) -> bool:
+        if telegram_id not in self._content_edit_pending:
+            return False
+        if not self._authorize(chat_id, telegram_id, is_private):
+            self._content_edit_pending.pop(telegram_id, None)
+            return True
+        if text.strip().casefold() == "/cancel":
+            self._content_edit_pending.pop(telegram_id, None)
+            self.api.send_message(chat_id, "Draft edit cancelled; saved draft is unchanged.")
+            return True
+        draft_id = self._content_edit_pending.pop(telegram_id)
+        try:
+            self.community_content.repository.edit_draft(draft_id, text)
+            self.api.send_message(
+                chat_id,
+                f"Draft {html.escape(draft_id)} updated and returned to review. "
+                "It was not published.",
+            )
+        except CommunityContentError as error:
+            self.api.send_message(chat_id, html.escape(str(error)))
+        return True
+
+    def handle_community_content_command(
+        self,
+        chat_id: int,
+        telegram_id: int,
+        is_private: bool,
+        text: str,
+    ) -> bool:
+        try:
+            command, positional, values = self._content_command_parts(text)
+        except ValueError:
+            return False
+        commands = {
+            "/content",
+            "/contenthelp",
+            "/contentpause",
+            "/contentresume",
+            "/draft",
+            "/weeklyreport",
+            "/preview",
+            "/editdraft",
+            "/approve",
+            "/reject",
+            "/publishcontent",
+            "/schedule",
+            "/stats",
+            "/recordtrade",
+            "/closetrade",
+            "/correcttrade",
+            "/verifytrade",
+            "/addpartialtp",
+            "/trades",
+            "/tradeaudit",
+            "/exportstats",
+        }
+        if command not in commands:
+            return False
+        if not self._authorize(chat_id, telegram_id, is_private):
+            return True
+        try:
+            if command in {"/content", "/contenthelp"}:
+                self._show_content_overview(chat_id)
+            elif command == "/contentpause":
+                self.community_content.repository.set_enabled(False)
+                self.education_morning_store.set_enabled(False)
+                self.api.send_message(
+                    chat_id,
+                    "Scheduled content is paused. Existing drafts and schedules were preserved; "
+                    "nothing was sent.",
+                )
+            elif command == "/contentresume":
+                self.community_content.repository.set_enabled(True)
+                self.education_morning_store.set_enabled(True)
+                self.api.send_message(
+                    chat_id,
+                    "Scheduled content is enabled. The daily Education-group morning post "
+                    "is set for 08:00 WAT. Other configured schedules create review drafts "
+                    "only. Automatic publishing remains disabled.",
+                )
+            elif command == "/draft":
+                self._create_content_draft(chat_id, positional, values)
+            elif command == "/weeklyreport":
+                self._create_weekly_report(chat_id, values)
+            elif command == "/preview":
+                self._preview_content_draft(chat_id, positional)
+            elif command == "/editdraft":
+                if not positional:
+                    raise CommunityContentError("Usage: /editdraft DRAFT_ID")
+                draft = self.community_content.repository.get_draft(positional[0])
+                if not draft or draft["status"] not in {"draft", "approved"}:
+                    raise CommunityContentError("That unpublished draft cannot be edited.")
+                self._content_edit_pending[telegram_id] = draft["draft_id"]
+                self.api.send_message(
+                    chat_id,
+                    "Send the complete replacement message now. Use /cancel to stop. "
+                    "This edits the saved draft only; it does not publish.",
+                )
+            elif command == "/approve":
+                if not positional:
+                    raise CommunityContentError("Usage: /approve DRAFT_ID")
+                self.community_content.repository.decide(
+                    positional[0], "approved", admin_id=telegram_id
+                )
+                self.api.send_message(
+                    chat_id,
+                    f"Draft {html.escape(positional[0].upper())} approved. "
+                    "It will not publish automatically; use /publishcontent only after "
+                    "reviewing the destination.",
+                )
+            elif command == "/reject":
+                if not positional or not values.get("reason"):
+                    raise CommunityContentError(
+                        'Usage: /reject DRAFT_ID reason="why it was rejected"'
+                    )
+                self.community_content.repository.decide(
+                    positional[0],
+                    "rejected",
+                    admin_id=telegram_id,
+                    reason=values["reason"],
+                )
+                self.api.send_message(
+                    chat_id, f"Draft {html.escape(positional[0].upper())} rejected and retained."
+                )
+            elif command == "/publishcontent":
+                if not positional:
+                    raise CommunityContentError("Usage: /publishcontent DRAFT_ID")
+                result = self.community_content.publish_approved(
+                    positional[0], admin_id=telegram_id, api=self.api
+                )
+                self.api.send_message(
+                    chat_id,
+                    "Published after destination and permission checks. "
+                    f"Draft {html.escape(result['draft_id'])}; "
+                    f"message ID {result['telegram_message_id']}.",
+                )
+            elif command == "/schedule":
+                self._handle_content_schedule(chat_id, positional, values)
+            elif command == "/stats":
+                self._show_trade_statistics(chat_id, positional, values)
+            elif command == "/recordtrade":
+                self._record_trade(chat_id, values)
+            elif command == "/closetrade":
+                self._close_trade(chat_id, values)
+            elif command == "/correcttrade":
+                self._correct_trade(chat_id, values)
+            elif command == "/verifytrade":
+                self._verify_trade(chat_id, values)
+            elif command == "/addpartialtp":
+                self._add_partial_tp(chat_id, values)
+            elif command == "/trades":
+                self._list_trades(chat_id, values)
+            elif command == "/tradeaudit":
+                self._show_trade_audit(chat_id, positional)
+            elif command == "/exportstats":
+                self._export_trade_ledger(chat_id)
+        except (
+            CommunityContentError,
+            TradeLedgerError,
+            ValueError,
+            KeyError,
+        ) as error:
+            self.api.send_message(chat_id, html.escape(str(error)))
+        return True
+
+    def _show_content_overview(self, chat_id: int) -> None:
+        schedules = self.community_content.repository.list_schedules()
+        drafts = self.community_content.repository.list_drafts(limit=5)
+        lines = [
+            "<b>SMART MONEY HUB CONTENT &amp; VERIFIED TRADE RECORDS</b>",
+            f"Scheduled draft generation: "
+            f"{'ENABLED' if self.community_content.repository.enabled() else 'PAUSED'}",
+            "Automatic publishing: DISABLED",
+            "Morning Education-group post: "
+            f"{'ENABLED' if self.education_morning_store.is_enabled() else 'PAUSED'} "
+            "(daily, 08:00 WAT)",
+            "",
+            "Commands: /draft CATEGORY destination=education|market",
+            "/weeklyreport destination=education|market",
+            "/preview ID · /editdraft ID · /approve ID · /reject ID reason=...",
+            "/publishcontent ID (explicit send after destination checks)",
+            "/schedule to view; use id=... category=... destination=... time=HH:MM "
+            "timezone=Africa/Lagos frequency=daily|weekly enabled=true",
+            "/recordtrade · /closetrade · /correcttrade · /verifytrade · /addpartialtp",
+            "/stats · /trades · /tradeaudit ID · /exportstats",
+            "",
+            f"Content categories: {', '.join(CONTENT_CATEGORIES)}",
+            "Trade results use the separate ledger only. Unverified records are excluded "
+            "from performance claims.",
+            "",
+            "<b>Recent drafts</b>",
+        ]
+        if drafts:
+            lines.extend(
+                f"• {html.escape(draft['draft_id'])} — "
+                f"{html.escape(draft['category'])} — {html.escape(draft['status'])}"
+                for draft in drafts
+            )
+        else:
+            lines.append("• No saved drafts")
+        lines.append(f"\nConfigured schedules: {len(schedules)} (manual review; no auto-publish)")
+        self.api.send_message(
+            chat_id, "\n".join(lines), self._dashboard_keyboard(), parse_mode="HTML"
+        )
+
+    def _destination_id(self, label: str | None) -> int:
+        if not label:
+            raise CommunityContentError(
+                "Choose destination=education or destination=market."
+            )
+        normalized = label.strip().casefold()
+        if normalized in {"education", "group"} and self.education_group_id:
+            return int(self.education_group_id)
+        if normalized in {"market", "market_analysis", "channel"} and self.main_channel_id:
+            return int(self.main_channel_id)
+        try:
+            candidate = int(normalized)
+        except ValueError:
+            raise CommunityContentError("That destination is not configured.") from None
+        if candidate not in self.community_content.allowed_destinations:
+            raise CommunityContentError("That destination is not configured.")
+        return candidate
+
+    def _create_content_draft(
+        self, chat_id: int, positional: list[str], values: dict[str, str]
+    ) -> None:
+        if not positional:
+            raise CommunityContentError(
+                "Usage: /draft CATEGORY destination=education|market"
+            )
+        destination = self._destination_id(values.get("destination"))
+        draft_id = self.community_content.generate_draft(
+            positional[0].strip().casefold(),
+            destination,
+            trade_id=values.get("trade_id"),
+            stats_start=date.fromisoformat(values["start"]) if values.get("start") else None,
+            stats_end=date.fromisoformat(values["end"]) if values.get("end") else None,
+        )
+        self._preview_content_draft(chat_id, [draft_id])
+
+    def _create_weekly_report(
+        self, chat_id: int, values: dict[str, str]
+    ) -> None:
+        destination = self._destination_id(values.get("destination"))
+        end = date.fromisoformat(values["end"]) if values.get("end") else datetime.now(
+            ZoneInfo("Africa/Lagos")
+        ).date()
+        start = date.fromisoformat(values["start"]) if values.get("start") else end - timedelta(days=6)
+        draft_id = self.community_content.generate_draft(
+            "weekly_results",
+            destination,
+            stats_start=start,
+            stats_end=end,
+        )
+        self._preview_content_draft(chat_id, [draft_id])
+
+    def _preview_content_draft(self, chat_id: int, positional: list[str]) -> None:
+        if not positional:
+            drafts = self.community_content.repository.list_drafts(limit=1)
+            if not drafts:
+                raise CommunityContentError("There is no saved draft to preview.")
+            draft = drafts[0]
+        else:
+            draft = self.community_content.repository.get_draft(positional[0])
+        if not draft:
+            raise CommunityContentError("Draft not found.")
+        self.api.send_message(
+            chat_id,
+            f"<b>Draft {html.escape(draft['draft_id'])}</b> · "
+            f"{html.escape(draft['status'])} · not published",
+            parse_mode="HTML",
+        )
+        self.api.send_message(
+            chat_id,
+            render_telegram_html(draft["content"]),
+            parse_mode="HTML",
+        )
+
+    def _handle_content_schedule(
+        self, chat_id: int, positional: list[str], values: dict[str, str]
+    ) -> None:
+        if not values:
+            schedules = self.community_content.repository.list_schedules()
+            if not schedules:
+                self.api.send_message(chat_id, "No content schedules are configured.")
+                return
+            lines = ["Saved schedules (all require manual review):"]
+            lines.extend(
+                f"• {row['schedule_id']}: {row['category']} at {row['local_time']} "
+                f"{row['timezone_name']} ({row['frequency']}); "
+                f"{'enabled' if row['enabled'] else 'paused'}; destination "
+                f"{row['destination_chat_id']}"
+                for row in schedules
+            )
+            self.api.send_message(chat_id, "\n".join(lines))
+            return
+        destination = self._destination_id(values.get("destination"))
+        enabled = values.get("enabled", "false").casefold() in {"true", "yes", "1", "on"}
+        weekday = int(values["weekday"]) if values.get("weekday") else None
+        self.community_content.save_schedule(
+            schedule_id=values.get("id", positional[0] if positional else ""),
+            category=values.get("category", ""),
+            destination_chat_id=destination,
+            timezone_name=values.get("timezone", "Africa/Lagos"),
+            local_time=values.get("time", ""),
+            frequency=values.get("frequency", ""),
+            weekday=weekday,
+            enabled=enabled,
+        )
+        self.api.send_message(
+            chat_id,
+            "Schedule saved. It can create drafts after /contentresume; "
+            "every draft still requires manual review and publishing remains off.",
+        )
+
+    def _show_trade_statistics(
+        self, chat_id: int, positional: list[str], values: dict[str, str]
+    ) -> None:
+        start = date.fromisoformat(values["start"]) if values.get("start") else None
+        end = date.fromisoformat(values["end"]) if values.get("end") else None
+        instrument = values.get("instrument")
+        if positional and positional[0].casefold() in {
+            "daily", "weekly", "monthly", "yearly"
+        }:
+            today = datetime.now(ZoneInfo("Africa/Lagos")).date()
+            period = positional[0].casefold()
+            if period == "daily":
+                start = end = today
+            elif period == "weekly":
+                start, end = today - timedelta(days=6), today
+            elif period == "monthly":
+                start, end = today.replace(day=1), today
+            else:
+                start, end = today.replace(month=1, day=1), today
+        stats = self.trade_ledger.calculate_statistics(
+            start=start, end=end, instrument=instrument
+        )
+        lines = [
+            "VERIFIED TRADE LEDGER STATISTICS",
+            f"Period: {stats['period_start'] or 'all'} to {stats['period_end'] or 'all'}",
+            f"Verified closed sample: {stats['verified_closed_sample']}",
+            f"Excluded unverified closed records: {stats['unverified_closed_excluded']}",
+            f"Wins / losses / breakeven: {stats['wins']} / {stats['losses']} / {stats['breakeven']}",
+            f"Win rate: {stats['win_rate'] or 'Unavailable'} "
+            f"({stats['win_rate_denominator']})",
+            f"Full TP hits: {stats['full_tp_hits']} · Partial TPs: {stats['partial_tp_records']}",
+        ]
+        if stats["net_pips_by_instrument_and_convention"]:
+            lines.append("Recorded pips by instrument and pip-size convention:")
+            for summary in stats["net_pips_by_instrument_and_convention"].values():
+                lines.append(
+                    f"• {summary['instrument']} / {summary['pip_size']}: "
+                    f"net {summary['net']} pips; average win "
+                    f"{summary['average_win'] or 'Unavailable'}; average loss "
+                    f"{summary['average_loss'] or 'Unavailable'} "
+                    f"(n={summary['sample_size']})"
+                )
+        else:
+            lines.append("Recorded pips: Unavailable")
+        if stats["realized_pl_by_currency"]:
+            lines.append("Recorded monetary P/L by currency:")
+            for currency, item in stats["realized_pl_by_currency"].items():
+                lines.append(
+                    f"• {currency}: {item['net']} net; profit factor "
+                    f"{item['profit_factor'] or 'Unavailable'} (n={item['sample_size']})"
+                )
+        lines.append("Member journals are not included in these results.")
+        self.api.send_message(chat_id, "\n".join(lines))
+
+    def _record_trade(self, chat_id: int, values: dict[str, str]) -> None:
+        if not all(key in values for key in ("instrument", "direction", "opened_at", "entry")):
+            raise CommunityContentError(
+                "Usage: /recordtrade instrument=XAUUSD direction=BUY "
+                "opened_at=ISO_WITH_OFFSET entry=... stop=... targets=..."
+            )
+        trade_id = self.trade_ledger.record_trade(
+            instrument=values["instrument"],
+            direction=values["direction"],
+            opened_at=values["opened_at"],
+            entry_price=values["entry"],
+            stop_loss=values.get("stop"),
+            planned_targets=values.get("targets", "").split(",")
+            if values.get("targets") else [],
+            source_evidence=values.get("evidence", ""),
+            notes=values.get("notes", ""),
+        )
+        self.api.send_message(
+            chat_id,
+            f"Trade {html.escape(trade_id)} saved as OPEN and UNVERIFIED. "
+            "No results claim will include it until you verify evidence.",
+        )
+
+    def _close_trade(self, chat_id: int, values: dict[str, str]) -> None:
+        required = {"id", "outcome", "closed_at"}
+        if not required.issubset(values):
+            raise CommunityContentError(
+                "Usage: /closetrade id=... outcome=win|loss|breakeven|partial "
+                "closed_at=ISO_WITH_OFFSET exit=... net_pips=... pip_size=... "
+                "pl=... currency=USD"
+            )
+        self.trade_ledger.close_trade(
+            values["id"],
+            outcome=values["outcome"],
+            closed_at=values["closed_at"],
+            exit_price=values.get("exit"),
+            net_pips=values.get("net_pips"),
+            pip_size=values.get("pip_size"),
+            realized_pl=values.get("pl"),
+            currency=values.get("currency"),
+            full_tp_hit=values.get("full_tp", "false").casefold()
+            in {"true", "yes", "1"},
+        )
+        self.api.send_message(
+            chat_id,
+            "Trade closed. It remains unverified until /verifytrade is completed.",
+        )
+
+    def _correct_trade(self, chat_id: int, values: dict[str, str]) -> None:
+        if "id" not in values or "reason" not in values:
+            raise CommunityContentError(
+                'Usage: /correcttrade id=... reason="..." field=value'
+            )
+        aliases = {
+            "entry": "entry_price",
+            "exit": "exit_price",
+            "net_pips": "net_pips",
+            "pip_size": "pip_size",
+            "pl": "realized_pl",
+            "currency": "currency",
+            "outcome": "outcome",
+            "opened_at": "opened_at_utc",
+            "closed_at": "closed_at_utc",
+            "notes": "notes",
+            "evidence": "source_evidence",
+            "stop": "stop_loss",
+            "targets": "planned_targets_json",
+        }
+        changes = {
+            aliases[key]: (
+                value.split(",") if key == "targets" else value
+            )
+            for key, value in values.items()
+            if key in aliases
+        }
+        if not changes:
+            raise CommunityContentError("Provide at least one supported correction field.")
+        self.trade_ledger.correct_trade(
+            values["id"], changes, reason=values["reason"]
+        )
+        self.api.send_message(chat_id, "Correction saved with an audit record.")
+
+    def _verify_trade(self, chat_id: int, values: dict[str, str]) -> None:
+        if not {"id", "verified", "evidence"}.issubset(values):
+            raise CommunityContentError(
+                'Usage: /verifytrade id=... verified=true|false evidence="source checked"'
+            )
+        verified = values["verified"].casefold() in {"true", "yes", "1"}
+        self.trade_ledger.set_verification(
+            values["id"], verified=verified, evidence=values["evidence"]
+        )
+        self.api.send_message(
+            chat_id,
+            "Verification status updated. Verified records may be used in ledger summaries.",
+        )
+
+    def _add_partial_tp(self, chat_id: int, values: dict[str, str]) -> None:
+        if not {"id", "price", "closed_at"}.issubset(values):
+            raise CommunityContentError(
+                "Usage: /addpartialtp id=... price=... closed_at=ISO_WITH_OFFSET percent=..."
+            )
+        self.trade_ledger.add_partial_take_profit(
+            values["id"],
+            price=values["price"],
+            closed_at=values["closed_at"],
+            percent_closed=values.get("percent"),
+        )
+        self.api.send_message(chat_id, "Partial take-profit saved in the existing trade record.")
+
+    def _list_trades(self, chat_id: int, values: dict[str, str]) -> None:
+        records = self.trade_ledger.list_trades(
+            instrument=values.get("instrument"), limit=25
+        )
+        if not records:
+            self.api.send_message(chat_id, "No trade-ledger records found.")
+            return
+        lines = ["Trade ledger (most recent 25):"]
+        lines.extend(
+            f"• {row['trade_id']} · {row['instrument']} {row['direction']} · "
+            f"{row['status']}/{row['outcome']} · {row['verification_status']} · "
+            f"{row['opened_at_utc'][:10]}"
+            for row in records
+        )
+        self.api.send_message(chat_id, "\n".join(lines))
+
+    def _show_trade_audit(self, chat_id: int, positional: list[str]) -> None:
+        if not positional:
+            raise CommunityContentError("Usage: /tradeaudit TRADE_ID")
+        audit = self.trade_ledger.audit_history(positional[0])
+        if not audit:
+            raise CommunityContentError("No audit entries found for that trade.")
+        lines = [f"Audit history for {html.escape(positional[0].upper())}:"]
+        lines.extend(
+            f"• {html.escape(row['occurred_at_utc'])} — "
+            f"{html.escape(row['action'])}"
+            + (f": {html.escape(row['reason'])}" if row["reason"] else "")
+            for row in audit
+        )
+        self.api.send_message(chat_id, "\n".join(lines), parse_mode="HTML")
+
+    def _export_trade_ledger(self, chat_id: int) -> None:
+        content = self.trade_ledger.export_csv().encode("utf-8")
+        try:
+            result = self.api.send_document(
+                chat_id,
+                "smart-money-hub-trade-ledger.csv",
+                content,
+                caption=(
+                    "Administrator export. Includes verification state; "
+                    "unverified rows are not used in performance claims."
+                ),
+            )
+        except TelegramAPIError as error:
+            category = (
+                f"telegram_http_{error.http_status}"
+                if error.http_status
+                else "telegram_document_error"
+            )
+            raise CommunityContentError(
+                f"CSV export could not be sent ({category})."
+            ) from None
+        if not isinstance(result, dict) or not result.get("message_id"):
+            raise CommunityContentError("Telegram did not confirm the CSV document message.")
 
     def _show_market_awareness_review(
         self, chat_id: int, *, page: int, notice: str | None = None
