@@ -2,11 +2,18 @@
 
 from datetime import datetime, timedelta, timezone
 import html
+import shlex
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from .channel_posting import ChannelPostManager
 from .channel_gemini import GeminiChannelContentService
+from .community_content import (
+    CONTENT_CATEGORIES,
+    CommunityContentError,
+    CommunityContentManager,
+    render_telegram_html,
+)
 from .economic_calendar_phase1 import (
     CALENDAR_REVIEW_PAGE_SIZE,
     OfficialCalendarReadRepository,
@@ -18,6 +25,8 @@ from .economic_calendar_admin import (
     OfficialCalendarManagementRepository,
     build_weekly_calendar_preview,
 )
+from .education_morning import EducationMorningStore
+from .trade_ledger import TradeLedger, TradeLedgerError
 from .knowledge_approval import can_approve
 from .knowledge_drafting import parse_research_material, validate_answer_draft
 from .knowledge_research import UnavailableResearchProvider
@@ -73,6 +82,7 @@ class AdminDashboard:
         main_channel_id: int | None = None,
         channel_writer: GeminiChannelContentService | None = None,
         calendar_review: OfficialCalendarReadRepository | None = None,
+        education_group_id: int | None = None,
     ) -> None:
         self.api = api
         self.store = store
@@ -83,6 +93,19 @@ class AdminDashboard:
         )
         self.calendar_manager = OfficialCalendarManagementRepository(
             store.database_path
+        )
+        self.education_morning_store = EducationMorningStore(store.database_path)
+        allowed_destinations: dict[int, str] = {}
+        if main_channel_id is not None:
+            allowed_destinations[int(main_channel_id)] = "channel"
+        if education_group_id is not None:
+            allowed_destinations[int(education_group_id)] = "supergroup"
+        self.trade_ledger = TradeLedger(store.database_path)
+        self.community_content = CommunityContentManager(
+            store.database_path,
+            writer=channel_writer,
+            trade_ledger=self.trade_ledger,
+            allowed_destinations=allowed_destinations,
         )
         self.channel_posts = ChannelPostManager(
             api,
@@ -98,6 +121,7 @@ class AdminDashboard:
         self._knowledge_pending: dict[int, tuple[str, int]] = {}
         self._calendar_pending: dict[int, tuple[str, str | None]] = {}
         self._calendar_filters: dict[int, dict[str, str]] = {}
+        self._content_edit_pending: dict[int, str] = {}
 
     def search_is_pending(self, telegram_id: int) -> bool:
         return telegram_id in self._search_pending
@@ -553,6 +577,22 @@ class AdminDashboard:
             self._show_dashboard(chat_id)
         elif data == "admin:market_awareness":
             self._show_market_awareness_review(chat_id, page=0)
+        elif data == "admin:group_morning":
+            self._show_education_morning(chat_id)
+        elif data in {
+            "admin:group_morning:pause",
+            "admin:group_morning:resume",
+        }:
+            enabled = data.endswith(":resume")
+            self.education_morning_store.set_enabled(enabled)
+            self._show_education_morning(
+                chat_id,
+                notice=(
+                    "Daily morning posts enabled for 08:00 WAT."
+                    if enabled
+                    else "Daily morning posts paused. No scheduled post was sent."
+                ),
+            )
         elif data.startswith("admin:market_awareness:page:"):
             self._show_market_awareness_review(
                 chat_id, page=self._calendar_review_page(data)
@@ -903,11 +943,68 @@ class AdminDashboard:
                     }
                 ],
                 [{"text": "🗓️ Channel Content", "callback_data": "admin:channel_posts"}],
+                [{"text": "🌅 Education Morning Posts", "callback_data": "admin:group_morning"}],
                 [{"text": "📨 Send One-Time DM", "callback_data": "admin:dm_broadcast"}],
                 [{"text": "📣 Promote Bot in Channel", "callback_data": "admin:channel_promo"}],
                 [{"text": "🏠 Main Menu", "callback_data": "nav:home"}],
             ]
         }
+
+    def handle_group_morning_command(
+        self,
+        chat_id: int,
+        telegram_id: int,
+        is_private: bool,
+        command: str,
+    ) -> bool:
+        if command not in {"/content", "/contentpause", "/contentresume"}:
+            return False
+        if not self._authorize(chat_id, telegram_id, is_private):
+            return True
+        if command == "/contentpause":
+            self.education_morning_store.set_enabled(False)
+            self._show_education_morning(
+                chat_id,
+                notice="Daily Education-group morning posts are paused.",
+            )
+        elif command == "/contentresume":
+            self.education_morning_store.set_enabled(True)
+            self._show_education_morning(
+                chat_id,
+                notice="Daily Education-group morning posts are enabled for 08:00 WAT.",
+            )
+        else:
+            self._show_education_morning(chat_id)
+        return True
+
+    def _show_education_morning(
+        self, chat_id: int, *, notice: str | None = None
+    ) -> None:
+        enabled = self.education_morning_store.is_enabled()
+        lines = [
+            "🌅 <b>EDUCATION-GROUP MORNING POSTS</b>",
+            "Schedule: daily at 08:00 WAT (Africa/Lagos)",
+            f"Status: {'ENABLED' if enabled else 'PAUSED'}",
+            "Destination: configured Education group only",
+            "Delivery: one post per WAT date; missed windows are skipped.",
+            "Recent archived group posts and poll topics help avoid repetition.",
+            "Auto-publication of other content remains off unless separately configured.",
+        ]
+        if notice:
+            lines.insert(0, html.escape(notice))
+        keyboard = {
+            "inline_keyboard": [[
+                {
+                    "text": "Pause" if enabled else "Enable daily posts",
+                    "callback_data": (
+                        "admin:group_morning:pause"
+                        if enabled else "admin:group_morning:resume"
+                    ),
+                },
+                {"text": "Admin menu", "callback_data": "admin:home"},
+            ]]
+        }
+        self.api.send_message(chat_id, "\n".join(lines), keyboard, parse_mode="HTML")
 
     def _show_market_awareness_review(
         self, chat_id: int, *, page: int, notice: str | None = None

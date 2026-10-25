@@ -300,6 +300,45 @@ class EducationMorningStore:
                 )
                 """
             )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS education_morning_settings (
+                    setting_key TEXT PRIMARY KEY,
+                    setting_value TEXT NOT NULL,
+                    updated_at_utc TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO education_morning_settings (
+                    setting_key, setting_value, updated_at_utc
+                ) VALUES ('enabled', '0', '1970-01-01T00:00:00+00:00')
+                """
+            )
+
+    def is_enabled(self) -> bool:
+        with closing(sqlite3.connect(self.database_path)) as connection:
+            row = connection.execute(
+                "SELECT setting_value FROM education_morning_settings "
+                "WHERE setting_key='enabled'"
+            ).fetchone()
+        return bool(row and str(row[0]) == "1")
+
+    def set_enabled(self, enabled: bool, *, now: datetime | None = None) -> None:
+        observed = _utc_text(now or datetime.now(timezone.utc))
+        with closing(sqlite3.connect(self.database_path)) as connection, connection:
+            connection.execute(
+                """
+                INSERT INTO education_morning_settings (
+                    setting_key, setting_value, updated_at_utc
+                ) VALUES ('enabled', ?, ?)
+                ON CONFLICT(setting_key) DO UPDATE SET
+                    setting_value=excluded.setting_value,
+                    updated_at_utc=excluded.updated_at_utc
+                """,
+                ("1" if enabled else "0", observed),
+            )
 
     def get(self, schedule_date: str) -> dict[str, Any] | None:
         with closing(sqlite3.connect(self.database_path)) as connection:
@@ -415,6 +454,8 @@ class EducationMorningPublisher:
         current = now or datetime.now(timezone.utc)
         if current.tzinfo is None:
             current = current.replace(tzinfo=timezone.utc)
+        if not self.store.is_enabled():
+            return
         local_now = current.astimezone(MORNING_ZONE)
         if local_now.time().replace(tzinfo=None) < MORNING_TIME:
             return

@@ -130,6 +130,8 @@ class EconomicCalendarAdminTests(unittest.TestCase):
         updated = self.admin.list_records(now=NOW)[0]
         self.assertFalse(updated["actual_verified"])
         self.assertIsNone(OfficialCalendarReadRepository(self.database).list_records()[0]["actual_value"])
+        self.admin.set_review_status(record.external_id, "approved", now=NOW)
+        updated = self.admin.list_records(now=NOW)[0]
         report = build_weekly_calendar_preview(
             [updated],
             week_start=date(2026, 10, 26),
@@ -239,7 +241,7 @@ class EconomicCalendarAdminTests(unittest.TestCase):
                   "checked_at_utc": NOW.isoformat()}],
                 page=page,
                 page_size=2,
-                checked_at=NOW,
+                now=NOW,
             )
             self.assertEqual(page_count, 3)
             event_dates.extend(

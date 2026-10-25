@@ -19,6 +19,7 @@ from smart_money_hub_bot.education_polls import EXPECTED_EDUCATION_GROUP_ID
 from smart_money_hub_bot.storage import Repository
 
 WAT = ZoneInfo("Africa/Lagos")
+NOW = datetime(2026, 10, 25, 12, 0, tzinfo=timezone.utc)
 
 
 class StrictTelegramHTML(HTMLParser):
@@ -91,6 +92,21 @@ class EducationMorningTests(unittest.TestCase):
             education_group_id=EXPECTED_EDUCATION_GROUP_ID,
             group_history_store=self.history,
         )
+        self.publisher.store.set_enabled(True, now=NOW)
+
+    def test_morning_auto_posts_are_paused_by_default(self):
+        store = EducationMorningStore(Path(self.temp_dir.name) / "paused.sqlite3")
+        paused = EducationMorningPublisher(
+            self.api,
+            Path(self.temp_dir.name) / "paused.sqlite3",
+            admin_id=self.admin_id,
+            education_group_id=EXPECTED_EDUCATION_GROUP_ID,
+            group_history_store=self.history,
+        )
+        paused.dispatch_due(datetime(2026, 10, 26, 8, 0, tzinfo=WAT))
+        self.assertFalse(store.is_enabled())
+        self.assertEqual(self.api.group_sends, [])
+        self.assertIsNone(store.get("2026-10-26"))
 
     def test_daily_schedule_sends_once_at_0800_wat_and_archives_post(self):
         due = datetime(2026, 10, 26, 8, 0, tzinfo=WAT)

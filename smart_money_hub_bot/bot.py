@@ -409,7 +409,12 @@ class SmartMoneyHubBot:
         self.admin_id = admin_id
         self.education_group_id = education_group_id
         self.admin_dashboard = AdminDashboard(
-            api, self.store, admin_id, main_channel_id, channel_writer
+            api,
+            self.store,
+            admin_id,
+            main_channel_id,
+            channel_writer,
+            education_group_id=education_group_id,
         )
         self.education_polls = EducationPollPublisher(
             api,
@@ -1190,6 +1195,10 @@ class SmartMoneyHubBot:
             self.admin_dashboard.cancel_channel_promo(telegram_id)
             self.admin_dashboard.cancel_calendar_action(telegram_id)
             self.admin_dashboard.open(chat_id, telegram_id, is_private)
+            return
+        if self.admin_dashboard.handle_group_morning_command(
+            chat_id, telegram_id, is_private, command
+        ):
             return
         if command == "/cancel" and (
             self.admin_dashboard.search_is_pending(telegram_id)

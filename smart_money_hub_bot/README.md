@@ -125,7 +125,9 @@ python3 -m unittest discover -s tests -v
 ## Education-group morning notes
 
 The bot schedules one short Education-group learning note per Africa/Lagos date
-at **08:00 WAT**. It uses a vetted evergreen lesson bank and a persistent
+at **08:00 WAT** when the administrator has enabled scheduled content. New
+installations remain paused until `/contentresume`; `/contentpause` pauses it.
+It uses a vetted evergreen lesson bank and a persistent
 SQLite delivery ledger; exact message variations are not reused. Recent
 admin-authored and bot-authored group posts and stored quiz topics are used
 locally to reduce topic repetition. The bot cannot reconstruct Telegram history
