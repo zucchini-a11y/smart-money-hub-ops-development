@@ -998,16 +998,6 @@ def fetch_and_store_official_schedules(
             CENSUS_RELEASE_CALENDAR_URL,
             lambda body: parse_census_retail_calendar(body, retrieved_at=observed),
         ),
-        (
-            "Federal Reserve",
-            FED_FOMC_CALENDAR_URL,
-            lambda body: parse_fed_fomc_calendar(
-                body,
-                retrieved_at=observed,
-                start_at=start_at,
-                end_at=end_at,
-            ),
-        ),
         ("BLS", BLS_RELEASE_SCHEDULE_URL, None),
         ("DOL", DOL_CLAIMS_SCHEDULE_URL, None),
     )
