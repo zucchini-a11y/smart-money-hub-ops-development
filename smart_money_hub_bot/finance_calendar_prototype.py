@@ -755,6 +755,11 @@ class CalendarCandidate:
     source_freshness_status: str
     source_health_checked_at: str | None = None
     source_health_fetched_at: str | None = None
+    record_retrieved_at: str | None = None
+    provider_updated_at: str | None = None
+    provider_update_age_seconds: int | None = None
+    provider_last_verified_at: str | None = None
+    official_evidence_retrieved_at: str | None = None
     field_verification: dict[str, str] = field(default_factory=dict)
     verified_values: dict[str, Any] = field(default_factory=dict)
     field_conflicts: list[str] = field(default_factory=list)
@@ -850,21 +855,25 @@ def _verify_figure_fields(
     verified_fields = evidence.verified_fields if evidence else frozenset()
     for provider_key, display_name, evidence_key in mappings:
         provider_value = event.get(provider_key)
-        if provider_value is None:
-            statuses[display_name] = "unavailable"
-            continue
-        if display_name not in verified_fields or evidence is None:
-            statuses[display_name] = "present_unverified"
-            continue
-        official_value = getattr(evidence, evidence_key)
-        if official_value is None:
-            statuses[display_name] = "official_value_unavailable"
-        elif _field_value_matches(provider_value, official_value):
+        if evidence and display_name in verified_fields:
+            official_value = getattr(evidence, evidence_key)
+        else:
+            official_value = None
+        if official_value is not None:
+            if provider_value is not None and not _field_value_matches(
+                provider_value, official_value
+            ):
+                statuses[display_name] = "conflict"
+                conflicts.append(display_name)
+                continue
             statuses[display_name] = "verified"
             verified_values[display_name] = official_value
+        elif provider_value is None:
+            statuses[display_name] = "unavailable"
+        elif display_name in verified_fields:
+            statuses[display_name] = "official_value_unavailable"
         else:
-            statuses[display_name] = "conflict"
-            conflicts.append(display_name)
+            statuses[display_name] = "present_unverified"
     return statuses, verified_values, conflicts
 
 
@@ -1246,12 +1255,43 @@ def render_weekly_preview(
         "<b>USD &amp; GOLD — WEEKLY ECONOMIC CALENDAR</b>",
         f"{week_start.strftime('%d %b')}–{week_end.strftime('%d %b %Y')}",
         "",
+        "Generated at: "
+        + (
+            html.escape(evaluation.evaluated_at.astimezone(timezone.utc).isoformat())
+            if evaluation.evaluated_at
+            else "unavailable"
+        ),
+        "Finance Calendar snapshot: "
+        + (
+            f"{evaluation.provider_snapshot_age_seconds}s old; "
+            f"{html.escape(evaluation.snapshot_freshness_status)}"
+            if evaluation.provider_snapshot_age_seconds is not None
+            else html.escape(evaluation.snapshot_freshness_status)
+        ),
+        "Coverage is limited to allowlisted U.S. releases with fresh official-source "
+        "evidence; this is not a complete U.S. economic calendar.",
         "Finance Calendar is a secondary event-discovery source. "
-        "Official-source matches are shown below.",
+        "Only official-source matches are shown below.",
         "",
     ]
     if not rows:
-        lines.append("No events passed the official-source checks for this week.")
+        lines.append(
+            "No events passed both the freshness and official-source checks for this week."
+        )
+
+    def figure_text(candidate: CalendarCandidate, field_name: str, label: str) -> str:
+        field_status = candidate.field_verification.get(field_name, "unavailable")
+        if field_status == "verified":
+            value = html.escape(str(candidate.verified_values[field_name])[:100])
+            return f"{label}: {value} (officially verified)"
+        if field_status == "present_unverified":
+            return f"{label}: Unavailable — provider value not independently verified."
+        if field_status == "conflict":
+            return f"{label}: Held — conflicting source values."
+        if field_status == "official_value_unavailable":
+            return f"{label}: Unavailable in the official source."
+        return f"{label}: Unavailable."
+
     for candidate in rows:
         event = candidate.event
         series_code = str(event.get("series_code") or "")
@@ -1284,9 +1324,9 @@ def render_weekly_preview(
                 + ").",
                 f"Finance Calendar impact: {html.escape(str(event.get('impact') or 'Unavailable'))} "
                 "(provider-supplied, not an official-source rating).",
-                "Previous: Unavailable unless separately verified from the official source.",
-                "Forecast/consensus: Unavailable; the provider says consensus estimates are not currently collected.",
-                "Actual: Unavailable unless separately verified from the official source.",
+                figure_text(candidate, "previous", "Previous"),
+                figure_text(candidate, "forecast", "Forecast/consensus"),
+                figure_text(candidate, "actual", "Actual"),
                 "",
             ]
         )
