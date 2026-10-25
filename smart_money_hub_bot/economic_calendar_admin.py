@@ -288,6 +288,28 @@ class OfficialCalendarManagementRepository:
                 str(row.get("title") or ""),
             )
         )
+        source_groups: dict[tuple[str, str], list[dict]] = {}
+        for row in rows:
+            day = _event_date(row)
+            title = " ".join(str(row.get("title") or "").casefold().split())
+            if day and title:
+                source_groups.setdefault((title, day.isoformat()), []).append(row)
+        for group in source_groups.values():
+            if len(group) < 2:
+                continue
+            for field in (
+                "event_at_utc", "previous_value", "forecast_value", "actual_value"
+            ):
+                values = {
+                    str(row.get(field))
+                    for row in group
+                    if row.get(field) not in (None, "")
+                }
+                if len(values) > 1:
+                    for row in group:
+                        if row["review_state"] not in {"rejected", "stale"}:
+                            row["review_state"] = "conflicting"
+                    break
         filters = filters or {}
         for key, row_key in (
             ("event", "title"),
@@ -729,28 +751,109 @@ class OfficialCalendarManagementRepository:
     ) -> None:
         if status not in {"approved", "held", "rejected"}:
             raise CalendarManagementError("Unsupported review decision.")
+        if status == "approved":
+            candidate = next(
+                (
+                    item
+                    for item in self.list_records(now=now)
+                    if item.get("external_id") == external_id
+                ),
+                None,
+            )
+            if candidate and candidate.get("review_state") in {
+                "conflicting", "stale", "unavailable-source"
+            }:
+                raise CalendarManagementError(
+                    "This record is conflicting, stale, or from an unavailable source. "
+                    "Resolve that issue before approval."
+                )
         with closing(self._connection()) as connection, connection:
             connection.execute("BEGIN IMMEDIATE")
-            row = connection.execute(
-                "SELECT review_status, date_verified, title_verified "
-                "FROM usd_calendar_source_events WHERE external_id=?",
+            overlay_row = connection.execute(
+                "SELECT * FROM usd_calendar_admin_review_records WHERE external_id=?",
                 (external_id,),
             ).fetchone()
-            if row is None:
-                raise CalendarManagementError("That event no longer exists.")
-            if status == "approved" and not row["date_verified"]:
+            overlay = dict(overlay_row) if overlay_row else None
+            if overlay and overlay["entry_origin"] == "manual":
+                record = self._json_object(overlay.get("manual_data_json"))
+                verified = self._json_object(overlay.get("verified_fields_json"))
+                origin = "manual"
+                baseline = None
+                conflict = False
+            else:
+                base_row = connection.execute(
+                    "SELECT * FROM usd_calendar_source_events WHERE external_id=?",
+                    (external_id,),
+                ).fetchone()
+                if base_row is None:
+                    raise CalendarManagementError("That event no longer exists.")
+                record = dict(base_row)
+                baseline = self._fingerprint(record)
+                conflict = bool(
+                    overlay
+                    and overlay.get("base_fingerprint")
+                    and overlay["base_fingerprint"] != baseline
+                )
+                origin = "official_source"
+                verified = self._source_verified_fields(record)
+                if overlay and not conflict:
+                    verified.update(
+                        self._json_object(overlay.get("verified_fields_json"))
+                    )
+            if status == "approved" and conflict:
+                raise CalendarManagementError(
+                    "The source record changed since its last review. Recheck its fields before approval."
+                )
+            if status == "approved" and not verified.get("date"):
                 raise CalendarManagementError(
                     "Verify the event date from its official source before approval."
                 )
-            if status == "approved" and not row["title_verified"]:
+            if status == "approved" and not verified.get("title"):
                 raise CalendarManagementError(
                     "Verify the event title from its official source before approval."
                 )
-            old = str(row["review_status"])
+            old = str((overlay or {}).get("review_status") or "held")
+            if conflict and status == "held" and origin == "official_source":
+                verified = self._source_verified_fields(record)
+                overrides = {}
+                evidence = {}
+            else:
+                overrides = self._json_object(
+                    (overlay or {}).get("overrides_json")
+                )
+                evidence = self._json_object((overlay or {}).get("evidence_json"))
+            manual_data = (
+                json.dumps(record, ensure_ascii=False, sort_keys=True)
+                if origin == "manual"
+                else None
+            )
             connection.execute(
-                "UPDATE usd_calendar_source_events SET review_status=?, "
-                "updated_at_utc=? WHERE external_id=?",
-                (status, _utc_text(now), external_id),
+                """
+                INSERT INTO usd_calendar_admin_review_records (
+                    external_id, review_status, entry_origin, overrides_json,
+                    manual_data_json, verified_fields_json, evidence_json,
+                    base_fingerprint, updated_at_utc
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(external_id) DO UPDATE SET
+                    review_status=excluded.review_status,
+                    overrides_json=excluded.overrides_json,
+                    manual_data_json=COALESCE(excluded.manual_data_json, manual_data_json),
+                    verified_fields_json=excluded.verified_fields_json,
+                    evidence_json=excluded.evidence_json,
+                    base_fingerprint=excluded.base_fingerprint,
+                    updated_at_utc=excluded.updated_at_utc
+                """,
+                (
+                    external_id,
+                    status,
+                    origin,
+                    json.dumps(overrides, ensure_ascii=False, sort_keys=True),
+                    manual_data,
+                    json.dumps(verified, sort_keys=True),
+                    json.dumps(evidence, sort_keys=True),
+                    baseline,
+                    _utc_text(now),
+                ),
             )
             self._audit(
                 connection, external_id, f"review_{status}", "review_status",
@@ -829,6 +932,10 @@ def build_weekly_calendar_preview(
             record.get("review_status") == "approved"
             and record.get("title_verified")
             and record.get("date_verified")
+            and (
+                record.get("entry_origin") == "manual"
+                or record.get("source_health") == "verified_schedule"
+            )
             and day is not None
             and week_start <= day < end_date
             and not record.get("is_stale", True)
