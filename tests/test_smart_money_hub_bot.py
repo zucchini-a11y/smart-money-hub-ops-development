@@ -2140,7 +2140,7 @@ class BotFlowTests(unittest.TestCase):
         )
         self.assertIn("private chat", self.api.messages[-1]["text"])
 
-    def test_scheduled_reminders_are_private_opt_in_and_idempotent(self) -> None:
+    def test_sunday_checkins_are_private_default_on_idempotent_and_honor_optouts(self) -> None:
         self.bot.store.register_user(
             telegram_id=101,
             username="private_member",
@@ -2150,6 +2150,25 @@ class BotFlowTests(unittest.TestCase):
             at="2026-10-03T10:00:00+00:00",
         )
         self.assertTrue(self.bot.store.set_reminders_enabled(101, True))
+        self.bot.store.register_user(
+            telegram_id=303,
+            username="new_private_member",
+            first_name="Nneka",
+            chat_id=303,
+            is_private=True,
+            at="2026-10-03T10:00:00+00:00",
+        )
+        self.bot.store.register_user(
+            telegram_id=404,
+            username="opted_out_member",
+            first_name="Kemi",
+            chat_id=404,
+            is_private=True,
+            at="2026-10-03T10:00:00+00:00",
+        )
+        self.assertTrue(self.bot.store.sunday_checkin_enabled(303))
+        self.assertTrue(self.bot.store.set_reminders_enabled(404, False))
+        self.assertFalse(self.bot.store.sunday_checkin_enabled(404))
         self.bot.store.register_user(
             telegram_id=202,
             username="group_member",
@@ -2169,8 +2188,11 @@ class BotFlowTests(unittest.TestCase):
             message for message in self.api.messages
             if message["text"].startswith("🧠 Sunday Check-In")
         ]
-        self.assertEqual(len(scheduled), 1)
-        self.assertEqual(scheduled[0]["chat_id"], 101)
+        self.assertEqual(len(scheduled), 2)
+        self.assertEqual(
+            [message["chat_id"] for message in scheduled],
+            [101, 303],
+        )
 
         self._message("/stop", user_id=101, chat_id=101)
         self.bot._dispatch_due_reminders(
@@ -2180,7 +2202,11 @@ class BotFlowTests(unittest.TestCase):
             message for message in self.api.messages
             if message["text"].startswith("🧠 Sunday Check-In")
         ]
-        self.assertEqual(len(scheduled), 1)
+        self.assertEqual(len(scheduled), 3)
+        self.assertEqual(
+            [message["chat_id"] for message in scheduled],
+            [101, 303, 303],
+        )
 
     def test_configured_admin_can_set_one_time_reminder_in_natural_language(self) -> None:
         self.bot.admin_id = self.user_id
@@ -2400,15 +2426,18 @@ class BotFlowTests(unittest.TestCase):
         self._click("menu:reminders")
         self.assertIn("Zoom class check-ins: Automatic", self.api.messages[-1]["text"])
         self.assertIn("All scheduled reminders: Active", self.api.messages[-1]["text"])
+        self.assertTrue(self.bot.store.sunday_checkin_enabled(self.user_id))
         self.assertFalse(self.bot.store.reminders_enabled(self.user_id))
         self._click("reminders:weekly:toggle")
-        self.assertTrue(self.bot.store.reminders_enabled(self.user_id))
+        self.assertFalse(self.bot.store.sunday_checkin_enabled(self.user_id))
+        self.assertFalse(self.bot.store.reminders_enabled(self.user_id))
         self.assertFalse(self.bot.store.reminders_stopped(self.user_id))
         self._click("reminders:off")
         self.assertTrue(self.bot.store.reminders_stopped(self.user_id))
         self.assertIn("All scheduled reminders: Stopped", self.api.messages[-1]["text"])
         self._click("reminders:on")
         self.assertFalse(self.bot.store.reminders_stopped(self.user_id))
+        self.assertTrue(self.bot.store.sunday_checkin_enabled(self.user_id))
 
     def test_run_does_not_change_an_existing_webhook(self) -> None:
         self.api.webhook_info = {"url": "https://example.invalid/webhook"}
@@ -2608,6 +2637,15 @@ class StorageMigrationTests(unittest.TestCase):
                 VALUES (555, 'existing_member', '2026-01-01', '2026-01-01')
                 """
             )
+            connection.execute(
+                """
+                INSERT INTO users (
+                    telegram_id, username, started_at, last_interaction_at,
+                    reminders_enabled
+                )
+                VALUES (556, 'existing_opted_in', '2026-01-02', '2026-01-02', 1)
+                """
+            )
             connection.commit()
             connection.close()
 
@@ -2616,6 +2654,9 @@ class StorageMigrationTests(unittest.TestCase):
             self.assertEqual(member["username"], "existing_member")
             self.assertEqual(member["zoom_class_reminders_enabled"], 0)
             self.assertEqual(member["reminders_stopped"], 0)
+            self.assertEqual(member["sunday_checkin_opt_out"], 1)
+            opted_in = repository.get_user(556)
+            self.assertEqual(opted_in["sunday_checkin_opt_out"], 0)
 
     def test_legacy_assessment_rows_survive_repeated_database_initialization(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

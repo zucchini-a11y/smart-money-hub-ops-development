@@ -21,7 +21,7 @@ The bot uses long polling. Run only one process with this token at a time. Teleg
 - **Learn SMC:** short lessons on structure, BOS/CHoCH, liquidity, order blocks, FVG/IFVG, POIs, confirmation, retests, risk, and psychology.
 - **DM Coach:** private conversations route greetings, thanks, farewells, acknowledgements, SMC keywords, wins or losses, setup questions, and unrelated requests to different responses. Simple replies stay local and fast. When configured, Gemini provides natural responses using a bounded history retrieved only for that member. Genuine questions can be rated Helpful, Not helpful, or Still unclear. `/coach` opens the coaching menu.
 - **Interactive coaching:** Chat with Coach, adaptive three-question SMC challenges, guided setup and mistake reviews, short lessons, and an optional daily knowledge challenge. Challenges rotate a larger question bank, avoid recent repeats, and adapt difficulty. They are started by the member; they are not sent as unsolicited DMs.
-- **Reminders:** optional weekly Sunday check-in at 09:00 and automatic Monday/Thursday Zoom-class check-ins at 19:00 and 20:00 (`Africa/Lagos` by default). `/stop` turns off all scheduled reminders and `/resume` turns them back on. Members must start the bot in a private chat to receive DMs. A trade journal also returns an immediate review reminder.
+- **Reminders:** weekly Sunday check-in at 09:00 for private-chat starters by default, plus automatic Monday/Thursday Zoom-class check-ins at 19:00 and 20:00 (`Africa/Lagos` by default). Members can turn the Sunday check-in off; `/stop` turns off all scheduled reminders and `/resume` turns them back on. Members must start the bot in a private chat to receive DMs. A trade journal also returns an immediate review reminder.
 - **Quick commands:** `/menu` opens the main menu, `/coach` opens coaching modes, `/clearcoach` asks to clear your saved Coach conversations, `/progress` shows a private progress summary, and `/reminders` shows the reminder schedule and controls. Progress and reminder details are only shown in a private chat.
 
 The education and journal flows emphasize confirmation, retests, liquidity and displacement context, valid POIs, avoiding chase entries, and risk management. The bot is for education and record-keeping; it does not predict trades or promise profits. Back and Main Menu buttons are available through active flows.
@@ -70,14 +70,14 @@ The separate `news_intelligence.py` module includes source parsing, SQLite histo
 
 ## Reminder schedule
 
-The default weekly check-in is Sunday at **09:00 Africa/Lagos**. Zoom-class reminders are sent at **19:00** and **20:00** on Mondays and Thursdays. Optional environment variables:
+The Sunday check-in is sent at **09:00 Africa/Lagos** to private-chat starters by default. A member can turn it off in Reminder Settings; `/stop` disables every scheduled reminder. Zoom-class reminders are sent at **19:00** and **20:00** on Mondays and Thursdays. Optional environment variables:
 
 - `SMH_REMINDER_TIMEZONE` — an IANA timezone, default `Africa/Lagos`.
 - `SMH_SUNDAY_REMINDER_TIME` — 24-hour local time, default `09:00`.
 - `SMH_MAIN_CHANNEL_ID` — numeric ID of the Telegram channel for admin-confirmed bot promotions.
 - `SMH_DATABASE_PATH` — SQLite file location, default `data/smart_money_hub.sqlite3`.
 
-Only members who have started the bot in a private chat are eligible for automatic Zoom-class check-ins. Sunday check-ins remain optional. `/stop` disables all scheduled reminders until the member resumes them in Reminder Settings. If Telegram reports that a chat is blocked or unavailable, all reminders for that member are stopped. Each scheduled reminder is recorded to prevent duplicates across workflow restarts.
+Only members who have started the bot in a private chat can receive DMs. New private-chat starters receive the Sunday check-in unless they turn it off; members whose existing Sunday setting was Off remain excluded during migration. `/stop` disables all scheduled reminders until the member resumes them in Reminder Settings. If Telegram reports that a chat is blocked or unavailable, all reminders for that member are stopped. Each scheduled reminder is recorded to prevent duplicates across workflow restarts.
 
 ## Data and editing
 

@@ -51,7 +51,8 @@ class Repository:
                         last_checkin_at TEXT,
                         reminders_enabled INTEGER NOT NULL DEFAULT 0,
                         zoom_class_reminders_enabled INTEGER NOT NULL DEFAULT 0,
-                        reminders_stopped INTEGER NOT NULL DEFAULT 0
+                        reminders_stopped INTEGER NOT NULL DEFAULT 0,
+                        sunday_checkin_opt_out INTEGER NOT NULL DEFAULT 0
                     );
 
                     CREATE TABLE IF NOT EXISTS bot_runtime_state (
@@ -539,6 +540,10 @@ class Repository:
                     );
                     """
                 )
+                existing_user_columns = {
+                    str(row["name"])
+                    for row in connection.execute("PRAGMA table_info(users)").fetchall()
+                }
                 self._ensure_user_column(
                     connection,
                     "zoom_class_reminders_enabled",
@@ -549,6 +554,21 @@ class Repository:
                     "reminders_stopped",
                     "INTEGER NOT NULL DEFAULT 0",
                 )
+                self._ensure_user_column(
+                    connection,
+                    "sunday_checkin_opt_out",
+                    "INTEGER NOT NULL DEFAULT 0",
+                )
+                if "sunday_checkin_opt_out" not in existing_user_columns:
+                    # Existing Sunday reminders were opt-in. Preserve every current
+                    # Off setting as an opt-out during the default-on migration.
+                    connection.execute(
+                        """
+                        UPDATE users
+                        SET sunday_checkin_opt_out =
+                            CASE WHEN reminders_enabled = 0 THEN 1 ELSE 0 END
+                        """
+                    )
                 self._ensure_table_column(
                     connection,
                     "knowledge_items",
@@ -2824,6 +2844,10 @@ class Repository:
         user = self.get_user(telegram_id)
         return bool(user and user["reminders_enabled"])
 
+    def sunday_checkin_enabled(self, telegram_id: int) -> bool:
+        user = self.get_user(telegram_id)
+        return bool(user and not user["sunday_checkin_opt_out"])
+
     def set_reminders_enabled(self, telegram_id: int, enabled: bool) -> bool:
         connection = self._connect()
         try:
@@ -2838,10 +2862,13 @@ class Repository:
                     return False
                 connection.execute(
                     """
-                    UPDATE users SET reminders_enabled = ?, last_interaction_at = ?
+                    UPDATE users
+                    SET reminders_enabled = ?,
+                        sunday_checkin_opt_out = ?,
+                        last_interaction_at = ?
                     WHERE telegram_id = ?
                     """,
-                    (int(enabled), utc_now(), telegram_id),
+                    (int(enabled), int(not enabled), utc_now(), telegram_id),
                 )
             return True
         finally:
@@ -3023,7 +3050,7 @@ class Repository:
                 WHERE started_at IS NOT NULL
                   AND is_private = 1
                   AND chat_id IS NOT NULL
-                  AND reminders_enabled = 1
+                  AND sunday_checkin_opt_out = 0
                   AND reminders_stopped = 0
                 ORDER BY telegram_id
                 """

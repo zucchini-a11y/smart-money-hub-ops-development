@@ -2877,8 +2877,11 @@ class SmartMoneyHubBot:
         )
 
     def _show_reminder_settings(self, chat_id: int, telegram_id: int) -> None:
-        weekly_enabled = self.store.reminders_enabled(telegram_id)
         reminders_stopped = self.store.reminders_stopped(telegram_id)
+        weekly_enabled = (
+            self.store.sunday_checkin_enabled(telegram_id)
+            and not reminders_stopped
+        )
         is_ceo = (
             self.admin_id is not None
             and telegram_id == self.admin_id
@@ -2933,8 +2936,8 @@ class SmartMoneyHubBot:
             f"({self.reminder_zone.key}).\n"
             f"All scheduled reminders: {all_state}.\n\n"
             f"{personal_note}"
-            "Only members who have started the bot in a private chat receive DMs. "
-            "Use /stop to turn scheduled reminders off."
+            "Sunday check-ins go to private-chat starters by default; turn them off "
+            "here or use /stop to stop all scheduled reminders."
         )
         self.api.send_message(
             chat_id, settings_text, self._menu_keyboard(settings_rows)
@@ -3125,7 +3128,7 @@ class SmartMoneyHubBot:
         current = (
             self.store.class_reminders_enabled(telegram_id)
             if reminder_setting == "class"
-            else self.store.reminders_enabled(telegram_id)
+            else self.store.sunday_checkin_enabled(telegram_id)
         )
         enabled = not current
         if enabled and not is_private:

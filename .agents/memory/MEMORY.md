@@ -10,5 +10,6 @@
 - [Coach reply navigation](coach-reply-navigation.md) — keep repeated Coaching Modes buttons off replies while preserving main-menu access.
 - [Telegram typing indicator](telegram-typing-indicator.md) — the Coach's refreshed `sendChatAction` indicator was confirmed visible in Telegram.
 - [Personal reminder scope](personal-reminder-scope.md) — only the configured CEO can create one-time personal reminders; recurring stays out unless requested.
+- [Sunday check-in audience](sunday-checkin-audience.md) — send by default to private-chat starters, but preserve opt-outs and global reminder stops.
 - [Bot downtime recovery](bot-downtime-recovery.md) — detect long gaps between successful Telegram polls, then acknowledge on each member’s next private interaction.
 - [Bot downtime recovery](bot-downtime-recovery.md) — detect long gaps between successful Telegram polls, then acknowledge on each member’s next private interaction.
