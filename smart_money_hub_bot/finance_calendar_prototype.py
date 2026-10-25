@@ -868,6 +868,20 @@ def evaluate_provider_records(
         source_id = _SOURCE_BY_SERIES.get(code, "")
         health = health_rows.get(source_id, {})
         source_health_status = str(health.get("status") or "unavailable")
+        source_checked_at = _parse_timestamp(health.get("checked_at"))
+        source_fetched_at = _parse_timestamp(health.get("fetched_at"))
+        source_health_fresh = bool(
+            source_checked_at
+            and source_fetched_at
+            and timedelta(0)
+            <= now.astimezone(timezone.utc)
+            - source_checked_at.astimezone(timezone.utc)
+            <= max_age
+            and timedelta(0)
+            <= now.astimezone(timezone.utc)
+            - source_fetched_at.astimezone(timezone.utc)
+            <= max_age
+        )
         freshness = "fresh" if snapshot_fresh else "stale_or_unknown_snapshot"
         record_verified_at = _parse_timestamp(event.get("last_verified_at"))
         age_at = now.astimezone(timezone.utc)
@@ -904,8 +918,14 @@ def evaluate_provider_records(
         elif source_health_status != "success":
             status, reason = "held", "provider_source_health_not_success"
             official = None
+        elif not source_health_fresh:
+            status, reason = "held", "provider_source_health_stale_or_unknown"
+            official = None
         elif not link_ok:
             status, reason = "held", "original_source_link_missing_or_invalid"
+            official = None
+        elif event.get("source_license"):
+            status, reason = "held", "record_source_license_review_required"
             official = None
         else:
             status, reason, official = _matches_official(
