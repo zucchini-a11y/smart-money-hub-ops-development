@@ -16,6 +16,7 @@ from smart_money_hub_bot.economic_calendar_phase1 import (
     fetch_with_bounded_backoff,
     format_calendar_admin_review,
     parse_bea_release_dates,
+    parse_bls_release_ics,
     parse_census_retail_calendar,
 )
 from smart_money_hub_bot.news_intelligence import NewsRepository, NewsSourceError
