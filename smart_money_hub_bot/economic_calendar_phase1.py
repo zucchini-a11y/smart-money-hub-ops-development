@@ -232,7 +232,12 @@ def parse_bea_release_dates(
                 continue
             records.append(
                 OfficialCalendarRecord(
-                    external_id=_event_id("bea", title, event_at.isoformat()),
+                    # Keep the same event identity if the official source revises
+                    # the release time on that date, so admin review can flag the
+                    # changed source fingerprint instead of creating a duplicate.
+                    external_id=_event_id(
+                        "bea", title, event_at.date().isoformat()
+                    ),
                     source_name="U.S. Bureau of Economic Analysis",
                     affected_instrument="USD / XAUUSD",
                     title=title,

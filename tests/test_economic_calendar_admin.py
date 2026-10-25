@@ -138,7 +138,9 @@ class EconomicCalendarAdminTests(unittest.TestCase):
                 {"source_name": "BEA", "status": "verified_schedule"}
             ],
         )
-        self.assertIn("Actual: Unavailable", report)
+        self.assertIn(
+            "Actual: Unavailable — not independently verified", report
+        )
         self.assertNotIn("Actual: 4.2", report)
 
     def test_manual_field_verification_is_separate_and_wat_is_not_assumed(self):
@@ -183,7 +185,7 @@ class EconomicCalendarAdminTests(unittest.TestCase):
         self.admin.set_review_status(record.external_id, "approved", now=NOW)
         changed = parse_bea_release_dates(
             {
-                "GDP (revised label)": {
+                "Personal Income and Outlays": {
                     "release_dates": ["2026-10-29T12:30:00+00:00"]
                 }
             },
@@ -227,9 +229,9 @@ class EconomicCalendarAdminTests(unittest.TestCase):
 
     def test_pagination_has_no_missing_or_duplicate_review_records(self):
         for day in range(25, 30):
-            self._seed_bea(f"Release {day}", day=day)
+            self._seed_bea(day=day)
         records = self.admin.list_records(now=NOW)
-        page_titles = []
+        event_dates = []
         for page in range(3):
             text, page_count = format_calendar_admin_review(
                 records,
@@ -240,12 +242,16 @@ class EconomicCalendarAdminTests(unittest.TestCase):
                 checked_at=NOW,
             )
             self.assertEqual(page_count, 3)
-            page_titles.extend(
-                title for title in (f"Release {day}" for day in range(25, 30))
-                if f"<b>{title}</b>" in text
+            event_dates.extend(
+                event_date
+                for event_date in (f"{day:02} Oct 2026 13:30 WAT" for day in range(25, 30))
+                if event_date in text
             )
-        self.assertCountEqual(page_titles, [f"Release {day}" for day in range(25, 30)])
-        self.assertEqual(len(page_titles), len(set(page_titles)))
+        self.assertCountEqual(
+            event_dates,
+            [f"{day:02} Oct 2026 13:30 WAT" for day in range(25, 30)],
+        )
+        self.assertEqual(len(event_dates), len(set(event_dates)))
 
     def test_review_overlay_and_audit_survive_repository_restart(self):
         record = self._seed_bea()
@@ -261,14 +267,8 @@ class EconomicCalendarAdminTests(unittest.TestCase):
         self.assertTrue(row["forecast_verified"])
         self.assertEqual(restarted.list_audit(record.external_id)[0]["action"],
                          "field_verified")
-        columns = {
-            row[1]
-            for row in OfficialCalendarReadRepository(self.database)
-            ._connection().__enter__().execute(
-                "PRAGMA table_info(usd_calendar_source_events)"
-            )
-        }
-        self.assertNotIn("review_status", columns)
+        source_record = OfficialCalendarReadRepository(self.database).list_records()[0]
+        self.assertNotIn("review_status", source_record)
 
 
 if __name__ == "__main__":
