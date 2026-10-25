@@ -183,6 +183,7 @@ class DailyCalendarBriefStore:
                         status TEXT NOT NULL,
                         attempts INTEGER NOT NULL DEFAULT 1,
                         content_sha256 TEXT,
+                        review_content TEXT,
                         telegram_message_id INTEGER,
                         failure_category TEXT,
                         created_at_utc TEXT NOT NULL,
@@ -190,6 +191,17 @@ class DailyCalendarBriefStore:
                     )
                     """
                 )
+                columns = {
+                    str(row[1])
+                    for row in connection.execute(
+                        "PRAGMA table_info(usd_gold_daily_brief_runs)"
+                    ).fetchall()
+                }
+                if "review_content" not in columns:
+                    connection.execute(
+                        "ALTER TABLE usd_gold_daily_brief_runs "
+                        "ADD COLUMN review_content TEXT"
+                    )
 
     def reserve(self, brief_date: date, now: datetime) -> tuple[bool, str | None]:
         observed = _as_utc(now).isoformat(timespec="seconds")
@@ -225,7 +237,13 @@ class DailyCalendarBriefStore:
         message_id: int | None = None,
         failure_category: str | None = None,
     ) -> None:
-        if status not in {"published", "held", "delivery_unknown", "skipped"}:
+        if status not in {
+            "published",
+            "held",
+            "delivery_unknown",
+            "skipped",
+            "awaiting_approval",
+        }:
             raise ValueError("Invalid daily brief delivery status.")
         content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest() if content else None
         with closing(sqlite3.connect(self.database_path)) as connection:
@@ -256,6 +274,68 @@ class DailyCalendarBriefStore:
                 (brief_date.isoformat(),),
             ).fetchone()
             return dict(row) if row else None
+
+    def save_review(
+        self, brief_date: date, content: str, *, now: datetime
+    ) -> bool:
+        content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        with closing(sqlite3.connect(self.database_path)) as connection:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE usd_gold_daily_brief_runs
+                    SET status='awaiting_approval', review_content=?,
+                        content_sha256=?, failure_category=NULL, updated_at_utc=?
+                    WHERE brief_date=? AND status IN ('held','awaiting_approval')
+                      AND telegram_message_id IS NULL
+                    """,
+                    (
+                        content,
+                        content_hash,
+                        _as_utc(now).isoformat(timespec="seconds"),
+                        brief_date.isoformat(),
+                    ),
+                )
+                return cursor.rowcount == 1
+
+    def cancel_review(self, brief_date: date, *, now: datetime) -> bool:
+        with closing(sqlite3.connect(self.database_path)) as connection:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE usd_gold_daily_brief_runs
+                    SET status='held', review_content=NULL, content_sha256=NULL,
+                        failure_category='admin_cancelled_retry', updated_at_utc=?
+                    WHERE brief_date=? AND status='awaiting_approval'
+                      AND telegram_message_id IS NULL
+                    """,
+                    (
+                        _as_utc(now).isoformat(timespec="seconds"),
+                        brief_date.isoformat(),
+                    ),
+                )
+                return cursor.rowcount == 1
+
+    def claim_reviewed_send(
+        self, brief_date: date, content: str, *, now: datetime
+    ) -> bool:
+        content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        with closing(sqlite3.connect(self.database_path)) as connection:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE usd_gold_daily_brief_runs
+                    SET status='sending', attempts=attempts+1, updated_at_utc=?
+                    WHERE brief_date=? AND status='awaiting_approval'
+                      AND content_sha256=? AND telegram_message_id IS NULL
+                    """,
+                    (
+                        _as_utc(now).isoformat(timespec="seconds"),
+                        brief_date.isoformat(),
+                        content_hash,
+                    ),
+                )
+                return cursor.rowcount == 1
 
 
 class DailyCalendarBriefPublisher:
@@ -452,6 +532,255 @@ class DailyCalendarBriefPublisher:
         )
         if not can_post:
             raise ValueError("daily_brief_posting_permission_missing")
+
+    def prepare_held_review(
+        self, *, now: datetime | None = None
+    ) -> tuple[str, str | None]:
+        """Prepare a private preview for today's held brief; never publish here."""
+        current = _as_utc(now or datetime.now(timezone.utc))
+        brief_date = current.astimezone(WAT).date()
+        if self.admin_id is None or self.channel_id is None:
+            return "disabled", None
+        run = self.store.get(brief_date)
+        if run is None:
+            return "not_found", None
+        if run.get("status") not in {"held", "awaiting_approval"}:
+            return f"not_recoverable:{run.get('status')}", None
+
+        try:
+            report = self._prepare_verified_report(brief_date, current)
+            preview = self._review_preview(brief_date, report)
+            if _utf16_length(preview) > TELEGRAM_MESSAGE_LIMIT_UTF16:
+                raise ValueError("daily_brief_review_exceeds_telegram_limit")
+            if not self.store.save_review(brief_date, report, now=current):
+                return "status_changed", None
+            self._send_review_preview(brief_date, preview)
+        except (TelegramAPIError, OSError, sqlite3.Error) as error:
+            category = (
+                str(error)
+                if str(error) == "daily_brief_review_exceeds_telegram_limit"
+                else "daily_brief_review_delivery_failed"
+                if isinstance(error, TelegramAPIError)
+                else "daily_brief_preparation_failed"
+            )
+            self._notify_admin(
+                brief_date,
+                category,
+                "The held brief remains unpublished. Review preparation or delivery failed.",
+            )
+            return category, None
+        except ValueError as error:
+            category = str(error)
+            self.store.finish(
+                brief_date,
+                status="held",
+                now=current,
+                failure_category=category,
+            )
+            self._notify_admin(
+                brief_date,
+                category,
+                "The held brief remains unpublished because a required source or destination check failed.",
+            )
+            return category, None
+        except Exception:
+            self.store.finish(
+                brief_date,
+                status="held",
+                now=current,
+                failure_category="daily_brief_preparation_failed",
+            )
+            self._notify_admin(
+                brief_date,
+                "daily_brief_preparation_failed",
+                "The held brief remains unpublished after a preparation error.",
+            )
+            logger.exception("Held daily brief review preparation failed safely.")
+            return "daily_brief_preparation_failed", None
+        return "awaiting_approval", preview
+
+    def publish_reviewed(
+        self, brief_date: date, *, now: datetime | None = None
+    ) -> str:
+        """Publish only after an admin preview; recheck sources and destination."""
+        current = _as_utc(now or datetime.now(timezone.utc))
+        if current.astimezone(WAT).date() != brief_date:
+            return "not_current_date"
+        run = self.store.get(brief_date)
+        if not run or run.get("status") != "awaiting_approval":
+            return "not_awaiting_approval"
+        saved_content = run.get("review_content")
+        if not isinstance(saved_content, str) or not saved_content:
+            return "review_content_missing"
+
+        try:
+            report = self._prepare_verified_report(brief_date, current)
+        except (TelegramAPIError, ValueError, OSError, sqlite3.Error) as error:
+            category = str(error) if isinstance(error, ValueError) else (
+                "destination_verification_unavailable"
+                if isinstance(error, TelegramAPIError)
+                else "daily_brief_preparation_failed"
+            )
+            self.store.finish(
+                brief_date,
+                status="held",
+                now=current,
+                failure_category=category,
+            )
+            self._notify_admin(
+                brief_date,
+                category,
+                "The brief was not published because a current source or destination check failed.",
+            )
+            return "held"
+
+        if report != saved_content:
+            preview = self._review_preview(brief_date, report)
+            if _utf16_length(preview) > TELEGRAM_MESSAGE_LIMIT_UTF16:
+                self.store.finish(
+                    brief_date,
+                    status="held",
+                    now=current,
+                    failure_category="daily_brief_review_exceeds_telegram_limit",
+                )
+                return "review_too_long"
+            if not self.store.save_review(brief_date, report, now=current):
+                return "status_changed"
+            try:
+                self._send_review_preview(brief_date, preview)
+            except TelegramAPIError:
+                self._notify_admin(
+                    brief_date,
+                    "daily_brief_review_delivery_failed",
+                    "The refreshed preview could not be delivered. The brief remains unpublished.",
+                )
+                return "preview_delivery_failed"
+            return "preview_updated"
+
+        if not self.store.claim_reviewed_send(brief_date, report, now=current):
+            return "status_changed"
+        try:
+            result = self.api.send_message_with_result(
+                int(self.channel_id), report, parse_mode="HTML"
+            )
+            message_id = result.get("message_id") if isinstance(result, dict) else None
+            if not isinstance(message_id, int) or message_id <= 0:
+                raise TelegramAPIError(
+                    "Telegram did not confirm the channel message.",
+                    delivery_unknown=True,
+                )
+            self.store.finish(
+                brief_date,
+                status="published",
+                now=datetime.now(timezone.utc),
+                content=report,
+                message_id=message_id,
+            )
+            logger.info(
+                "Held daily USD/Gold brief published after admin approval "
+                "(date=%s, message_confirmed=true).",
+                brief_date.isoformat(),
+            )
+            return "published"
+        except TelegramAPIError as error:
+            status = "delivery_unknown" if error.delivery_unknown else "held"
+            category = (
+                "telegram_delivery_unknown"
+                if error.delivery_unknown
+                else f"telegram_http_{error.http_status}"
+                if error.http_status
+                else "telegram_send_failed"
+            )
+            self.store.finish(
+                brief_date,
+                status=status,
+                now=current,
+                failure_category=category,
+            )
+            self._notify_admin(
+                brief_date,
+                category,
+                "The approved brief was not confirmed as published. It will not be resent automatically.",
+            )
+            return status
+        except Exception:
+            self.store.finish(
+                brief_date,
+                status="delivery_unknown",
+                now=current,
+                failure_category="telegram_delivery_unknown",
+            )
+            self._notify_admin(
+                brief_date,
+                "telegram_delivery_unknown",
+                "The approved brief's delivery could not be confirmed. Automatic resend is disabled.",
+            )
+            logger.exception("Approved held daily brief send outcome is uncertain.")
+            return "delivery_unknown"
+
+    def cancel_review(self, brief_date: date, *, now: datetime | None = None) -> bool:
+        return self.store.cancel_review(
+            brief_date,
+            now=_as_utc(now or datetime.now(timezone.utc)),
+        )
+
+    def _prepare_verified_report(self, brief_date: date, current: datetime) -> str:
+        self.source_refresh(self.database_path, now=current)
+        statuses = self.calendar.list_source_status()
+        bea = next((row for row in statuses if row.get("source_name") == "BEA"), None)
+        checked_at = _parse_utc(bea.get("checked_at_utc")) if bea else None
+        source_age = current - checked_at if checked_at else None
+        if (
+            not bea
+            or bea.get("status") != "verified_schedule"
+            or source_age is None
+            or source_age < timedelta(0)
+            or source_age > CALENDAR_STALE_AFTER
+        ):
+            raise ValueError(
+                str(bea.get("failure_category") or "bea_source_not_verified")
+                if bea
+                else "bea_source_not_verified"
+            )
+        report = build_daily_usd_gold_brief(
+            brief_date,
+            self.calendar.list_records(),
+            statuses,
+            now=current,
+        )
+        self._verify_destination()
+        return report
+
+    def _review_preview(self, brief_date: date, report: str) -> str:
+        return (
+            "<b>HELD DAILY BRIEF — ADMIN REVIEW</b>\n"
+            "Not published. Approve below to publish once.\n"
+            f"Destination: Market Analysis (ID {MARKET_ANALYSIS_CHANNEL_ID})\n"
+            f"Scheduled date: {brief_date.isoformat()} at 00:00 WAT\n\n"
+            f"{report}"
+        )
+
+    def _send_review_preview(self, brief_date: date, preview: str) -> None:
+        keyboard = {
+            "inline_keyboard": [
+                [
+                    {
+                        "text": "Publish Now",
+                        "callback_data": f"dailybrief:publish:{brief_date.isoformat()}",
+                    },
+                    {
+                        "text": "Cancel",
+                        "callback_data": f"dailybrief:cancel:{brief_date.isoformat()}",
+                    },
+                ]
+            ]
+        }
+        self.api.send_message(
+            int(self.admin_id),
+            preview,
+            keyboard,
+            parse_mode="HTML",
+        )
 
     def _notify_admin(self, brief_date: date, category: str, explanation: str) -> None:
         if self.admin_id is None:
