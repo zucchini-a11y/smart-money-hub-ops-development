@@ -1,7 +1,9 @@
 """Private, Telegram-ID-gated admin dashboard for member reporting."""
 
 from datetime import datetime, timedelta, timezone
+import html
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from .channel_posting import ChannelPostManager
 from .channel_gemini import GeminiChannelContentService
@@ -9,6 +11,11 @@ from .economic_calendar_phase1 import (
     CALENDAR_REVIEW_PAGE_SIZE,
     OfficialCalendarReadRepository,
     format_calendar_admin_review,
+)
+from .economic_calendar_admin import (
+    CalendarManagementError,
+    OfficialCalendarManagementRepository,
+    build_weekly_calendar_preview,
 )
 from .knowledge_approval import can_approve
 from .knowledge_drafting import parse_research_material, validate_answer_draft
@@ -73,6 +80,9 @@ class AdminDashboard:
         self.calendar_review = calendar_review or OfficialCalendarReadRepository(
             store.database_path
         )
+        self.calendar_manager = OfficialCalendarManagementRepository(
+            store.database_path
+        )
         self.channel_posts = ChannelPostManager(
             api,
             store,
@@ -85,6 +95,8 @@ class AdminDashboard:
         self._broadcast_drafts: dict[int, str] = {}
         self._channel_promo_pending: set[int] = set()
         self._knowledge_pending: dict[int, tuple[str, int]] = {}
+        self._calendar_pending: dict[int, tuple[str, str | None]] = {}
+        self._calendar_filters: dict[int, dict[str, str]] = {}
 
     def search_is_pending(self, telegram_id: int) -> bool:
         return telegram_id in self._search_pending
@@ -137,6 +149,17 @@ class AdminDashboard:
 
     def has_knowledge_state(self, telegram_id: int) -> bool:
         return telegram_id in self._knowledge_pending
+
+    def calendar_is_pending(self, telegram_id: int) -> bool:
+        return self.admin_id is not None and telegram_id == self.admin_id and (
+            telegram_id in self._calendar_pending
+        )
+
+    def cancel_calendar_action(self, telegram_id: int) -> None:
+        self._calendar_pending.pop(telegram_id, None)
+
+    def has_calendar_state(self, telegram_id: int) -> bool:
+        return telegram_id in self._calendar_pending
 
     def open(self, chat_id: int, telegram_id: int, is_private: bool) -> None:
         if self._authorize(chat_id, telegram_id, is_private):
@@ -264,6 +287,86 @@ class AdminDashboard:
             return
         self.cancel_knowledge_action(telegram_id)
         self._show_knowledge_item(chat_id, item_id, notice=notice)
+
+    def handle_calendar_message(
+        self, chat_id: int, telegram_id: int, is_private: bool, text: str
+    ) -> None:
+        if not self._authorize(chat_id, telegram_id, is_private):
+            self.cancel_calendar_action(telegram_id)
+            return
+        pending = self._calendar_pending.get(telegram_id)
+        if pending is None:
+            return
+        action, field = pending
+        try:
+            if action == "filter":
+                assert field is not None
+                value = text.strip()
+                filters = self._calendar_filters.setdefault(telegram_id, {})
+                if value.casefold() in {"all", "clear", "none"}:
+                    filters.pop(field, None)
+                    notice = f"Filter cleared: {field}."
+                else:
+                    filters[field] = value[:100]
+                    notice = f"Filter applied: {field}."
+                self.cancel_calendar_action(telegram_id)
+                self._show_market_awareness_review(chat_id, page=0, notice=notice)
+                return
+            if action == "add":
+                parts = [part.strip() for part in text.split("|", maxsplit=4)]
+                if len(parts) != 5:
+                    raise CalendarManagementError(
+                        "Use: SOURCE | EVENT | YYYY-MM-DD | ISO time with offset "
+                        "(or blank) | official HTTPS source URL."
+                    )
+                external_id = self.calendar_manager.add_manual_record(
+                    source_name=parts[0],
+                    title=parts[1],
+                    release_date=parts[2],
+                    release_time=parts[3],
+                    source_url=parts[4],
+                    now=datetime.now(timezone.utc),
+                )
+                self.cancel_calendar_action(telegram_id)
+                self.api.send_message(
+                    chat_id,
+                    "Manual event saved as HELD / UNVERIFIED. It is not eligible "
+                    "for a weekly preview until each required field is checked. "
+                    f"Record: <code>{external_id}</code>",
+                    parse_mode="HTML",
+                )
+                self._show_market_awareness_review(chat_id, page=0)
+                return
+            if action in {"edit", "verify"}:
+                parts = [part.strip() for part in text.split("|", maxsplit=2)]
+                if len(parts) != 3:
+                    raise CalendarManagementError(
+                        "Use: FIELD | VALUE | official HTTPS evidence URL. "
+                        "Fields: title, date, time, previous, forecast, actual, impact."
+                    )
+                self.calendar_manager.set_field(
+                    str(field),
+                    parts[0].casefold(),
+                    parts[1],
+                    parts[2],
+                    verified=action == "verify",
+                    now=datetime.now(timezone.utc),
+                )
+                self.cancel_calendar_action(telegram_id)
+                message = (
+                    "Field verification recorded from the linked official source."
+                    if action == "verify"
+                    else "Edit saved, verification cleared, and the entry returned to HELD."
+                )
+                self.api.send_message(chat_id, message)
+                self._show_market_awareness_review(chat_id, page=0)
+                return
+            raise CalendarManagementError("That calendar action is no longer active.")
+        except CalendarManagementError as error:
+            self.api.send_message(
+                chat_id,
+                f"{error}\n\nSend /cancel to stop this action.",
+            )
 
     def _prompt_for_broadcast_text(self, chat_id: int, notice: str | None = None) -> None:
         prefix = f"{notice}\n\n" if notice else ""
@@ -415,6 +518,8 @@ class AdminDashboard:
     ) -> None:
         if not self._authorize(chat_id, telegram_id, is_private):
             return
+        if not data.startswith("admin:market_awareness"):
+            self.cancel_calendar_action(telegram_id)
         self.cancel_knowledge_action(telegram_id)
         broadcast_actions = {
             "admin:dm_broadcast",
@@ -451,6 +556,74 @@ class AdminDashboard:
             self._show_market_awareness_review(
                 chat_id, page=self._calendar_review_page(data)
             )
+        elif data == "admin:market_awareness:filters":
+            self._show_market_awareness_filters(chat_id, telegram_id)
+        elif data == "admin:market_awareness:filters:clear":
+            self._calendar_filters.pop(telegram_id, None)
+            self._show_market_awareness_review(
+                chat_id, page=0, notice="All calendar filters cleared."
+            )
+        elif data.startswith("admin:market_awareness:filter:"):
+            field = data.rsplit(":", maxsplit=1)[1]
+            if field not in {"date", "event", "source", "impact", "status", "verification"}:
+                self._show_market_awareness_review(chat_id, page=0)
+            else:
+                self._calendar_pending[telegram_id] = ("filter", field)
+                self.api.send_message(
+                    chat_id,
+                    f"Send a value for the {field} filter. Send “all” to clear just this filter, or /cancel.",
+                )
+        elif data == "admin:market_awareness:add":
+            self._calendar_pending[telegram_id] = ("add", None)
+            self.api.send_message(
+                chat_id,
+                "Add a manual event. It will remain HELD and UNVERIFIED until you "
+                "independently verify its fields.\n\n"
+                "Send: SOURCE | EVENT | YYYY-MM-DD | ISO time with explicit offset "
+                "(or blank) | official HTTPS source URL\n"
+                "Sources: BEA, Census, BLS, DOL, Federal Reserve.\n"
+                "Example: BEA | GDP release | 2026-10-29 | 2026-10-29T12:30:00Z | "
+                "https://www.bea.gov/news/schedule",
+            )
+        elif data == "admin:market_awareness:preview":
+            self._show_calendar_weekly_preview(chat_id, telegram_id)
+        elif data.startswith("admin:market_awareness:status:"):
+            payload = data[len("admin:market_awareness:status:"):]
+            status, external_id = payload.split(":", maxsplit=1)
+            try:
+                self.calendar_manager.set_review_status(
+                    external_id, status, now=datetime.now(timezone.utc)
+                )
+            except CalendarManagementError as error:
+                self.api.send_message(chat_id, str(error))
+            else:
+                self._show_market_awareness_review(
+                    chat_id, page=0, notice=f"Review status saved: {status}."
+                )
+        elif data.startswith("admin:market_awareness:edit:"):
+            external_id = data[len("admin:market_awareness:edit:"):]
+            self._calendar_pending[telegram_id] = ("edit", external_id)
+            self.api.send_message(
+                chat_id,
+                "Send: FIELD | VALUE | official HTTPS evidence URL.\n"
+                "Fields: title, date, time, previous, forecast, actual, impact. "
+                "An edit clears that field’s verification and returns the entry to HELD. "
+                "Send /cancel to stop.",
+            )
+        elif data.startswith("admin:market_awareness:verify:"):
+            external_id = data[len("admin:market_awareness:verify:"):]
+            self._calendar_pending[telegram_id] = ("verify", external_id)
+            self.api.send_message(
+                chat_id,
+                "Independently check the official page, then send: "
+                "FIELD | VERIFIED VALUE | official HTTPS evidence URL.\n"
+                "Fields: date, time, previous, forecast, actual, impact. "
+                "Time must include its explicit UTC offset. Verification is an "
+                "admin attestation and is recorded in the audit history. /cancel stops.",
+            )
+        elif data.startswith("admin:market_awareness:audit:"):
+            external_id = data[len("admin:market_awareness:audit:"):]
+            self._show_calendar_audit(chat_id, external_id)
         elif data == "admin:members":
             self._show_members(chat_id, page=0, sort="joined")
         elif data.startswith("admin:members:"):
@@ -694,8 +867,11 @@ class AdminDashboard:
             ]
         }
 
-    def _show_market_awareness_review(self, chat_id: int, *, page: int) -> None:
-        records = self.calendar_review.list_records()
+    def _show_market_awareness_review(
+        self, chat_id: int, *, page: int, notice: str | None = None
+    ) -> None:
+        filters = self._calendar_filters.get(self.admin_id or -1, {})
+        records = self.calendar_manager.list_records(filters)
         statuses = self.calendar_review.list_source_status()
         page_count = max(
             1,
@@ -709,7 +885,53 @@ class AdminDashboard:
             page=page,
             page_size=CALENDAR_REVIEW_PAGE_SIZE,
         )
-        keyboard_rows: list[list[dict[str, str]]] = []
+        keyboard_rows: list[list[dict[str, str]]] = [
+            [
+                {"text": "➕ Add Manual Event", "callback_data": "admin:market_awareness:add"},
+                {"text": "🔎 Filters", "callback_data": "admin:market_awareness:filters"},
+            ],
+            [
+                {
+                    "text": "🗓️ Weekly Preview",
+                    "callback_data": "admin:market_awareness:preview",
+                }
+            ],
+        ]
+        if selected := records[page * CALENDAR_REVIEW_PAGE_SIZE : (page + 1) * CALENDAR_REVIEW_PAGE_SIZE]:
+            for item in selected:
+                external_id = str(item.get("external_id") or "")
+                keyboard_rows.extend(
+                    [
+                        [
+                            {
+                                "text": f"✅ Approve {item.get('title', 'event')[:18]}",
+                                "callback_data": f"admin:market_awareness:status:approved:{external_id}",
+                            },
+                            {
+                                "text": "⏸ Hold",
+                                "callback_data": f"admin:market_awareness:status:held:{external_id}",
+                            },
+                            {
+                                "text": "❌ Reject",
+                                "callback_data": f"admin:market_awareness:status:rejected:{external_id}",
+                            },
+                        ],
+                        [
+                            {
+                                "text": "✏️ Edit field",
+                                "callback_data": f"admin:market_awareness:edit:{external_id}",
+                            },
+                            {
+                                "text": "🔐 Verify field",
+                                "callback_data": f"admin:market_awareness:verify:{external_id}",
+                            },
+                            {
+                                "text": "🧾 Audit",
+                                "callback_data": f"admin:market_awareness:audit:{external_id}",
+                            },
+                        ],
+                    ]
+                )
         if page_count > 1:
             navigation: list[dict[str, str]] = []
             if page > 0:
@@ -741,8 +963,88 @@ class AdminDashboard:
         )
         self.api.send_message(
             chat_id,
-            text,
+            (f"<b>{html.escape(notice)}</b>\n\n" if notice else "") + text,
             {"inline_keyboard": keyboard_rows},
+            parse_mode="HTML",
+        )
+
+    def _show_market_awareness_filters(
+        self, chat_id: int, telegram_id: int
+    ) -> None:
+        filters = self._calendar_filters.get(telegram_id, {})
+        lines = ["<b>CALENDAR FILTERS</b>"]
+        lines.extend(
+            f"{key.title()}: {html.escape(value)}"
+            for key, value in sorted(filters.items())
+        )
+        if not filters:
+            lines.append("No filters are active.")
+        rows = [
+            [
+                {"text": "Date", "callback_data": "admin:market_awareness:filter:date"},
+                {"text": "Event", "callback_data": "admin:market_awareness:filter:event"},
+                {"text": "Source", "callback_data": "admin:market_awareness:filter:source"},
+            ],
+            [
+                {"text": "Impact", "callback_data": "admin:market_awareness:filter:impact"},
+                {"text": "Review status", "callback_data": "admin:market_awareness:filter:status"},
+                {"text": "Verification", "callback_data": "admin:market_awareness:filter:verification"},
+            ],
+            [
+                {"text": "Clear all", "callback_data": "admin:market_awareness:filters:clear"},
+                {"text": "Back", "callback_data": "admin:market_awareness"},
+            ],
+        ]
+        self.api.send_message(
+            chat_id, "\n".join(lines), {"inline_keyboard": rows}, parse_mode="HTML"
+        )
+
+    def _show_calendar_weekly_preview(
+        self, chat_id: int, telegram_id: int
+    ) -> None:
+        now = datetime.now(timezone.utc)
+        local_today = now.astimezone(ZoneInfo("Africa/Lagos")).date()
+        week_start = local_today - timedelta(days=local_today.weekday())
+        report = build_weekly_calendar_preview(
+            self.calendar_manager.list_records(now=now),
+            week_start=week_start,
+            now=now,
+        )
+        self.api.send_message(
+            chat_id,
+            report,
+            self._admin_navigation(
+                [[{"text": "Back to Calendar Review", "callback_data": "admin:market_awareness"}]]
+            ),
+            parse_mode="HTML",
+        )
+
+    def _show_calendar_audit(self, chat_id: int, external_id: str) -> None:
+        entries = self.calendar_manager.list_audit(external_id)
+        lines = [
+            "<b>CALENDAR AUDIT HISTORY</b>",
+            f"Record: <code>{html.escape(external_id)}</code>",
+            "",
+        ]
+        if not entries:
+            lines.append("No admin changes are recorded.")
+        for entry in entries:
+            timestamp = html.escape(str(entry.get("occurred_at_utc") or "unknown"))
+            action = html.escape(str(entry.get("action") or "unknown"))
+            field = html.escape(str(entry.get("field_name") or "record"))
+            new_value = html.escape(str(entry.get("new_value") or "—")[:100])
+            evidence = str(entry.get("evidence_url") or "")
+            lines.append(f"{timestamp} · {action} · {field}: {new_value}")
+            if evidence.startswith("https://"):
+                lines.append(
+                    f'Source: <a href="{html.escape(evidence, quote=True)}">official evidence</a>'
+                )
+        self.api.send_message(
+            chat_id,
+            "\n".join(lines),
+            self._admin_navigation(
+                [[{"text": "Back to Calendar Review", "callback_data": "admin:market_awareness"}]]
+            ),
             parse_mode="HTML",
         )
 

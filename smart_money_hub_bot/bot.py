@@ -844,6 +844,7 @@ class SmartMoneyHubBot:
             self.admin_dashboard.cancel_search(telegram_id)
             self.admin_dashboard.cancel_broadcast(telegram_id)
             self.admin_dashboard.cancel_channel_promo(telegram_id)
+            self.admin_dashboard.cancel_calendar_action(telegram_id)
             self._show_main_menu(chat_id)
         elif action == "assessment":
             self._begin_assessment(
@@ -1002,6 +1003,7 @@ class SmartMoneyHubBot:
             self.admin_dashboard.search_is_pending(telegram_id)
             or self.admin_dashboard.broadcast_is_pending(telegram_id)
             or self.admin_dashboard.knowledge_is_pending(telegram_id)
+            or self.admin_dashboard.calendar_is_pending(telegram_id)
             or self.admin_dashboard.has_channel_promo_state(telegram_id)
             or (
                 is_private
@@ -1178,6 +1180,7 @@ class SmartMoneyHubBot:
             self.admin_dashboard.cancel_search(telegram_id)
             self.admin_dashboard.cancel_broadcast(telegram_id)
             self.admin_dashboard.cancel_channel_promo(telegram_id)
+            self.admin_dashboard.cancel_calendar_action(telegram_id)
             self.admin_dashboard.open(chat_id, telegram_id, is_private)
             return
         if command == "/cancel" and (
@@ -1185,11 +1188,13 @@ class SmartMoneyHubBot:
             or self.admin_dashboard.has_broadcast_state(telegram_id)
             or self.admin_dashboard.has_channel_promo_state(telegram_id)
             or self.admin_dashboard.has_knowledge_state(telegram_id)
+            or self.admin_dashboard.has_calendar_state(telegram_id)
         ):
             self.admin_dashboard.cancel_search(telegram_id)
             self.admin_dashboard.cancel_broadcast(telegram_id)
             self.admin_dashboard.cancel_channel_promo(telegram_id)
             self.admin_dashboard.cancel_knowledge_action(telegram_id)
+            self.admin_dashboard.cancel_calendar_action(telegram_id)
             self.admin_dashboard.open(chat_id, telegram_id, is_private)
             return
         session = self.sessions.get(telegram_id)
@@ -1213,6 +1218,12 @@ class SmartMoneyHubBot:
         if self.admin_dashboard.knowledge_is_pending(telegram_id):
             logger.info("Coach bypassed: pending admin knowledge flow.")
             self.admin_dashboard.handle_knowledge_message(
+                chat_id, telegram_id, is_private, text
+            )
+            return
+        if self.admin_dashboard.calendar_is_pending(telegram_id):
+            logger.info("Coach bypassed: pending admin calendar-review flow.")
+            self.admin_dashboard.handle_calendar_message(
                 chat_id, telegram_id, is_private, text
             )
             return
@@ -1446,6 +1457,7 @@ class SmartMoneyHubBot:
             self.admin_dashboard.cancel_broadcast(telegram_id)
         if not data.startswith("admin:"):
             self.admin_dashboard.cancel_knowledge_action(telegram_id)
+            self.admin_dashboard.cancel_calendar_action(telegram_id)
 
         feedback_match = re.fullmatch(
             r"coach:feedback:(\d+):(helpful|unhelpful|unclear)", data

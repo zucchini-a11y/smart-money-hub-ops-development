@@ -11,6 +11,8 @@ import hashlib
 import html
 import json
 import logging
+import calendar
+import re
 import socket
 import sqlite3
 import time
@@ -29,6 +31,9 @@ from .news_intelligence import NewsRepository, NewsSourceError
 logger = logging.getLogger(__name__)
 
 BEA_RELEASE_DATES_URL = "https://apps.bea.gov/API/signup/release_dates.json"
+FED_FOMC_CALENDAR_URL = (
+    "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
+)
 CENSUS_RELEASE_CALENDAR_URL = (
     "https://www.census.gov/economic-indicators/calendar-listview.html"
 )
@@ -42,6 +47,7 @@ _ALLOWED_HOSTS = frozenset(
         "www.census.gov",
         "www.bls.gov",
         "www.dol.gov",
+        "www.federalreserve.gov",
     }
 )
 _WAT = ZoneInfo("Africa/Lagos")
@@ -340,6 +346,125 @@ def parse_census_retail_calendar(
     return results
 
 
+class _FedMeetingCalendarParser(HTMLParser):
+    """Extract only official FOMC meeting windows; not statement release times."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.current_year: int | None = None
+        self.in_heading = False
+        self.row_depth = 0
+        self.div_classes: list[str] = []
+        self.current_row: dict[str, str] | None = None
+        self.rows: list[tuple[int, str, str]] = []
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        attributes = dict(attrs)
+        classes = attributes.get("class", "")
+        if tag == "h4":
+            self.in_heading = True
+        if tag != "div":
+            return
+        is_row = "fomc-meeting" in classes and "fomc-meeting__" not in classes
+        if self.current_row is None and is_row:
+            self.current_row = {"month": "", "date": ""}
+            self.row_depth = 1
+            self.div_classes = [classes]
+        elif self.current_row is not None:
+            self.row_depth += 1
+            self.div_classes.append(classes)
+
+    def handle_data(self, data: str) -> None:
+        text = " ".join(data.split())
+        if not text:
+            return
+        if self.in_heading:
+            match = re.search(r"\b(20\d{2})\s+FOMC Meetings\b", text)
+            if match:
+                self.current_year = int(match.group(1))
+        if self.current_row is None or self.current_year is None:
+            return
+        for classes in reversed(self.div_classes):
+            if "fomc-meeting__month" in classes:
+                self.current_row["month"] += " " + text
+                break
+            if "fomc-meeting__date" in classes:
+                self.current_row["date"] += " " + text
+                break
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "h4":
+            self.in_heading = False
+        elif tag == "div" and self.current_row is not None:
+            if self.div_classes:
+                self.div_classes.pop()
+            self.row_depth -= 1
+            if self.row_depth <= 0:
+                month = " ".join(self.current_row["month"].split())
+                meeting_dates = " ".join(self.current_row["date"].split())
+                if month and meeting_dates and self.current_year:
+                    self.rows.append((self.current_year, month, meeting_dates))
+                self.current_row = None
+                self.div_classes = []
+
+
+def parse_fed_fomc_calendar(
+    body: bytes,
+    *,
+    retrieved_at: datetime,
+    start_at: datetime,
+    end_at: datetime,
+) -> list[OfficialCalendarRecord]:
+    """Parse official meeting date ranges without inventing a decision time."""
+    if any(value.tzinfo is None for value in (retrieved_at, start_at, end_at)):
+        raise ValueError("Calendar range and retrieval time must be timezone-aware.")
+    parser = _FedMeetingCalendarParser()
+    try:
+        parser.feed(body.decode("utf-8", "replace"))
+    except Exception:
+        raise NewsSourceError("malformed_fed_calendar") from None
+    records: list[OfficialCalendarRecord] = []
+    for year, month_name, meeting_range in parser.rows:
+        try:
+            month = list(calendar.month_name).index(month_name)
+        except ValueError:
+            continue
+        match = re.search(r"(\d{1,2})(?:\s*[-–]\s*(\d{1,2}))?\s*\*?", meeting_range)
+        if not match:
+            continue
+        first_day = int(match.group(1))
+        last_day = int(match.group(2) or match.group(1))
+        try:
+            range_start = datetime(year, month, first_day, tzinfo=timezone.utc)
+            range_end = datetime(year, month, last_day, 23, 59, tzinfo=timezone.utc)
+        except ValueError:
+            continue
+        if range_end < start_at.astimezone(timezone.utc) or range_start > end_at.astimezone(timezone.utc):
+            continue
+        label = (
+            f"{month_name} {first_day}–{last_day}, {year}"
+            if first_day != last_day
+            else f"{month_name} {first_day}, {year}"
+        )
+        title = f"FOMC meeting window ({label})"
+        records.append(
+            OfficialCalendarRecord(
+                external_id=_event_id("federal_reserve", title, label),
+                source_name="Federal Reserve",
+                affected_instrument="USD / XAUUSD",
+                title=title,
+                source_url=FED_FOMC_CALENDAR_URL,
+                retrieved_at=retrieved_at,
+                release_date_text=label,
+                release_time_text=None,
+                event_at_utc=None,
+                timezone_status="meeting_window_no_release_time",
+                verification_status="verified_meeting_window_release_time_unavailable",
+            )
+        )
+    return records
+
+
 class OfficialCalendarRepository:
     """Persistent source evidence/status; never sends Telegram messages."""
 
@@ -575,9 +700,12 @@ def format_calendar_admin_review(
             item.get("affected_instrument") or "USD / XAUUSD", limit=60
         )
         source = _review_escape(item.get("source_name") or "Unknown", limit=80)
+        origin = "MANUAL" if item.get("entry_origin") == "manual" else "OFFICIAL SOURCE"
+        review_state = _review_escape(item.get("review_state") or item.get("review_status") or "held", limit=40)
         lines.append(f"<b>{title}</b>")
         lines.append(f"Instrument: {instrument}")
         lines.append(f"Source: {source}")
+        lines.append(f"Entry: {origin} · Review: {review_state}")
         source_url = str(item.get("source_url") or "")
         if len(source_url) <= 350 and _safe_source_url(source_url):
             lines.append(
@@ -631,6 +759,17 @@ def format_calendar_admin_review(
             item.get("verification_status") or "UNAVAILABLE", limit=80
         )
         lines.append(f"Verification: {verification}")
+        lines.append(
+            "Date independently checked: "
+            + ("YES" if item.get("date_verified") else "NO")
+        )
+        if timezone_status == "verified_explicit_utc_offset":
+            lines.append(
+                "Release time independently checked: "
+                + ("YES" if item.get("time_verified") else "NO")
+            )
+        else:
+            lines.append("Release time independently checked: NO — timezone not verified")
         for label, key in (
             ("Previous", "previous_value"),
             ("Forecast", "forecast_value"),
@@ -638,15 +777,35 @@ def format_calendar_admin_review(
             ("Impact classification", "provider_impact"),
         ):
             value = item.get(key)
+            verified_key = {
+                "previous_value": "previous_verified",
+                "forecast_value": "forecast_verified",
+                "actual_value": "actual_verified",
+                "provider_impact": "impact_verified",
+            }[key]
             lines.append(
                 f"{label}: "
                 f"{_review_escape(value, limit=80) if value not in (None, '') else 'UNAVAILABLE — not supplied'}"
+                f" ({'verified' if item.get(verified_key) else 'not independently verified'})"
             )
+        for label, key in (
+            ("Date evidence", "date_evidence_url"),
+            ("Time evidence", "time_evidence_url"),
+            ("Previous evidence", "previous_evidence_url"),
+            ("Forecast evidence", "forecast_evidence_url"),
+            ("Actual evidence", "actual_evidence_url"),
+            ("Impact evidence", "impact_evidence_url"),
+        ):
+            evidence_url = str(item.get(key) or "")
+            if evidence_url and _safe_source_url(evidence_url):
+                lines.append(
+                    f'{label}: <a href="{html.escape(evidence_url, quote=True)}">official evidence</a>'
+                )
         lines.append("")
 
     statuses = {str(row.get("source_name")): row for row in source_status}
     lines.append("<b>SOURCE HEALTH</b>")
-    for source in ("BEA", "Census", "BLS", "DOL"):
+    for source in ("BEA", "Census", "Federal Reserve", "BLS", "DOL"):
         status = statuses.get(source)
         if status is None:
             label = (
@@ -834,6 +993,16 @@ def fetch_and_store_official_schedules(
             CENSUS_RELEASE_CALENDAR_URL,
             lambda body: parse_census_retail_calendar(body, retrieved_at=observed),
         ),
+        (
+            "Federal Reserve",
+            FED_FOMC_CALENDAR_URL,
+            lambda body: parse_fed_fomc_calendar(
+                body,
+                retrieved_at=observed,
+                start_at=start_at,
+                end_at=end_at,
+            ),
+        ),
         ("BLS", BLS_RELEASE_SCHEDULE_URL, None),
         ("DOL", DOL_CLAIMS_SCHEDULE_URL, None),
     )
@@ -877,6 +1046,7 @@ __all__ = [
     "BLS_RELEASE_SCHEDULE_URL",
     "CENSUS_RELEASE_CALENDAR_URL",
     "DOL_CLAIMS_SCHEDULE_URL",
+    "FED_FOMC_CALENDAR_URL",
     "OfficialCalendarRecord",
     "OfficialCalendarRepository",
     "build_calendar_phase_one_report",
@@ -884,4 +1054,5 @@ __all__ = [
     "fetch_with_bounded_backoff",
     "parse_bea_release_dates",
     "parse_census_retail_calendar",
+    "parse_fed_fomc_calendar",
 ]
