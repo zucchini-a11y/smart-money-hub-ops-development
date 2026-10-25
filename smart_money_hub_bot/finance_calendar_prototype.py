@@ -15,6 +15,7 @@ import socket
 import time
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation
 from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
 from typing import Any, Callable, Iterable
@@ -137,6 +138,61 @@ class FinanceCalendarError(RuntimeError):
         super().__init__(category)
         self.category = category
         self.http_status = http_status
+
+
+@dataclass(frozen=True)
+class FreshnessPolicy:
+    """Independent, overridable limits for each data freshness layer."""
+
+    provider_snapshot: timedelta = timedelta(hours=6)
+    snapshot_age_tolerance: timedelta = timedelta(minutes=10)
+    source_health: dict[str, timedelta] = field(
+        default_factory=lambda: {
+            "bea": timedelta(hours=6),
+            "fed": timedelta(hours=6),
+            "bls": timedelta(hours=6),
+            "census": timedelta(hours=6),
+            "dol": timedelta(hours=6),
+        }
+    )
+    record_verification: dict[str, timedelta] = field(
+        default_factory=lambda: {
+            "bea": timedelta(hours=24),
+            "fed": timedelta(hours=72),
+            "bls": timedelta(hours=12),
+            "census": timedelta(hours=12),
+            "dol": timedelta(hours=12),
+        }
+    )
+    official_evidence: dict[str, timedelta] = field(
+        default_factory=lambda: {
+            "bea": timedelta(hours=24),
+            "fed": timedelta(hours=72),
+            "bls": timedelta(hours=12),
+            "census": timedelta(hours=12),
+            "dol": timedelta(hours=12),
+        }
+    )
+
+    @staticmethod
+    def _limit(
+        configured: dict[str, timedelta], source_id: str, default: timedelta
+    ) -> timedelta:
+        return configured.get(source_id, default)
+
+    def source_health_limit(self, source_id: str) -> timedelta:
+        return self._limit(self.source_health, source_id, timedelta(hours=6))
+
+    def record_limit(self, source_id: str) -> timedelta:
+        return self._limit(
+            self.record_verification, source_id, timedelta(hours=12)
+        )
+
+    def official_limit(self, source_id: str) -> timedelta:
+        return self._limit(self.official_evidence, source_id, timedelta(hours=12))
+
+
+DEFAULT_FRESHNESS_POLICY = FreshnessPolicy()
 
 
 def _safe_fetch_url(url: str) -> bool:
@@ -310,6 +366,10 @@ class OfficialScheduleEvidence:
     source_timezone: str | None = None
     reference_period: str | None = None
     release_time_text: str | None = None
+    verified_fields: frozenset[str] = frozenset()
+    previous_value: Any = None
+    forecast_value: Any = None
+    actual_value: Any = None
 
     def __post_init__(self) -> None:
         if self.retrieved_at.tzinfo is None:
@@ -689,6 +749,9 @@ class CalendarCandidate:
     source_freshness_status: str
     source_health_checked_at: str | None = None
     source_health_fetched_at: str | None = None
+    field_verification: dict[str, str] = field(default_factory=dict)
+    verified_values: dict[str, Any] = field(default_factory=dict)
+    field_conflicts: list[str] = field(default_factory=list)
     official_source_name: str | None = None
     official_source_url: str | None = None
     official_release_time_text: str | None = None
@@ -706,6 +769,8 @@ class PrototypeEvaluation:
     excluded_count: int = 0
     provider_health_status: str = "unavailable"
     provider_snapshot_age_seconds: int | None = None
+    snapshot_freshness_status: str = "unavailable"
+    evaluated_at: datetime | None = None
     provider_attribution_present: bool = False
     provider_degraded_sources: list[str] = field(default_factory=list)
     source_failures: dict[str, str] = field(default_factory=dict)
@@ -748,6 +813,55 @@ def _record_signature(event: dict[str, Any]) -> tuple[Any, ...]:
     )
 
 
+def _field_value_matches(provider_value: Any, official_value: Any) -> bool:
+    if isinstance(provider_value, (int, float)) and isinstance(
+        official_value, (int, float)
+    ):
+        return Decimal(str(provider_value)) == Decimal(str(official_value))
+    provider_text = str(provider_value).strip()
+    official_text = str(official_value).strip()
+    try:
+        return Decimal(provider_text.replace(",", "")) == Decimal(
+            official_text.replace(",", "")
+        )
+    except InvalidOperation:
+        return provider_text.casefold() == official_text.casefold()
+
+
+def _verify_figure_fields(
+    event: dict[str, Any],
+    evidence: OfficialScheduleEvidence | None,
+) -> tuple[dict[str, str], dict[str, Any], list[str]]:
+    """Verify each figure independently; a schedule match proves no values."""
+    mappings = (
+        ("prior", "previous", "previous_value"),
+        ("consensus", "forecast", "forecast_value"),
+        ("actual", "actual", "actual_value"),
+    )
+    statuses: dict[str, str] = {}
+    verified_values: dict[str, Any] = {}
+    conflicts: list[str] = []
+    verified_fields = evidence.verified_fields if evidence else frozenset()
+    for provider_key, display_name, evidence_key in mappings:
+        provider_value = event.get(provider_key)
+        if provider_value is None:
+            statuses[display_name] = "unavailable"
+            continue
+        if display_name not in verified_fields or evidence is None:
+            statuses[display_name] = "present_unverified"
+            continue
+        official_value = getattr(evidence, evidence_key)
+        if official_value is None:
+            statuses[display_name] = "official_value_unavailable"
+        elif _field_value_matches(provider_value, official_value):
+            statuses[display_name] = "verified"
+            verified_values[display_name] = official_value
+        else:
+            statuses[display_name] = "conflict"
+            conflicts.append(display_name)
+    return statuses, verified_values, conflicts
+
+
 def _deduplicate(
     events: Iterable[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], int]:
@@ -786,7 +900,7 @@ def _matches_official(
     evidence: list[OfficialScheduleEvidence],
     *,
     now: datetime,
-    max_age: timedelta,
+    freshness_limit: timedelta,
 ) -> tuple[str, str, OfficialScheduleEvidence | None]:
     code = str(event.get("series_code") or "")
     try:
@@ -819,7 +933,7 @@ def _matches_official(
     for item in matches:
         if now.astimezone(timezone.utc) - item.retrieved_at.astimezone(
             timezone.utc
-        ) > max_age:
+        ) > freshness_limit:
             continue
         provider_time = _parse_timestamp(event.get("release_at_utc"))
         if item.release_at_utc is None:
@@ -841,12 +955,30 @@ def evaluate_provider_records(
     *,
     now: datetime,
     source_failures: dict[str, str] | None = None,
-    max_age: timedelta = timedelta(hours=24),
+    freshness_policy: FreshnessPolicy = DEFAULT_FRESHNESS_POLICY,
+    max_age: timedelta | None = None,
 ) -> PrototypeEvaluation:
     """Evaluate allowlisted provider rows without trusting provider verification."""
     if now.tzinfo is None:
         raise ValueError("now must be timezone-aware.")
+    if max_age is not None:
+        # Preserve the earlier prototype test seam while exposing independent
+        # per-layer/per-source policy through freshness_policy.
+        freshness_policy = FreshnessPolicy(
+            provider_snapshot=max_age,
+            snapshot_age_tolerance=freshness_policy.snapshot_age_tolerance,
+            source_health={
+                source_id: max_age for source_id in _SOURCE_HOSTS
+            },
+            record_verification={
+                source_id: max_age for source_id in _SOURCE_HOSTS
+            },
+            official_evidence={
+                source_id: max_age for source_id in _SOURCE_HOSTS
+            },
+        )
     result = PrototypeEvaluation(
+        evaluated_at=now,
         source_failures=dict(source_failures or {}),
         provider_attribution_present=(
             isinstance(calendar.get("attribution"), dict)
@@ -869,11 +1001,32 @@ def evaluate_provider_records(
     snapshot_generated = _parse_timestamp(
         snapshot.get("generated_at") if isinstance(snapshot, dict) else None
     )
+    snapshot_age_calculated = (
+        now.astimezone(timezone.utc) - snapshot_generated.astimezone(timezone.utc)
+        if snapshot_generated
+        else None
+    )
+    snapshot_age_matches = bool(
+        snapshot_age_calculated is not None
+        and isinstance(snapshot_age, (int, float))
+        and snapshot_age >= 0
+        and snapshot_age_calculated >= timedelta(0)
+        and abs(
+            snapshot_age_calculated.total_seconds() - float(snapshot_age)
+        )
+        <= freshness_policy.snapshot_age_tolerance.total_seconds()
+    )
     snapshot_fresh = bool(
-        snapshot_generated
-        and now.astimezone(timezone.utc)
-        - snapshot_generated.astimezone(timezone.utc)
-        <= max_age
+        snapshot_age_matches
+        and snapshot_age_calculated is not None
+        and snapshot_age_calculated <= freshness_policy.provider_snapshot
+    )
+    result.snapshot_freshness_status = (
+        "fresh"
+        if snapshot_fresh
+        else "age_mismatch"
+        if snapshot_generated and isinstance(snapshot_age, (int, float)) and not snapshot_age_matches
+        else "stale_or_unverifiable"
     )
     health_rows = _source_health_rows(provider_status)
     result.provider_degraded_sources = sorted(
@@ -909,30 +1062,43 @@ def evaluate_provider_records(
         source_health_status = str(health.get("status") or "unavailable")
         source_checked_at = _parse_timestamp(health.get("checked_at"))
         source_fetched_at = _parse_timestamp(health.get("fetched_at"))
+        source_health_limit = freshness_policy.source_health_limit(source_id)
         source_health_fresh = bool(
             source_checked_at
             and source_fetched_at
             and timedelta(0)
             <= now.astimezone(timezone.utc)
             - source_checked_at.astimezone(timezone.utc)
-            <= max_age
+            <= source_health_limit
             and timedelta(0)
             <= now.astimezone(timezone.utc)
             - source_fetched_at.astimezone(timezone.utc)
-            <= max_age
+            <= source_health_limit
         )
-        freshness = "fresh" if snapshot_fresh else "stale_or_unknown_snapshot"
+        freshness = (
+            "snapshot_fresh"
+            if snapshot_fresh
+            else f"snapshot_{result.snapshot_freshness_status}"
+        )
         record_verified_at = _parse_timestamp(event.get("last_verified_at"))
         age_at = now.astimezone(timezone.utc)
+        record_limit = freshness_policy.record_limit(source_id)
         record_age_fresh = bool(
             record_verified_at
             and timedelta(0)
             <= age_at - record_verified_at.astimezone(timezone.utc)
-            <= max_age
+            <= record_limit
             and event.get("data_stale") is False
         )
         if not record_age_fresh:
-            freshness = "stale_or_unverified_record"
+            freshness += ";record_stale_or_unverified"
+        else:
+            freshness += ";record_fresh"
+        freshness += (
+            ";source_health_fresh"
+            if source_health_fresh
+            else ";source_health_stale_or_unknown"
+        )
 
         source_url = event.get("source_url")
         parsed_url = urlparse(source_url) if isinstance(source_url, str) else None
@@ -949,7 +1115,7 @@ def evaluate_provider_records(
             status, reason = "held", "provider_attribution_missing"
             official = None
         elif not snapshot_fresh:
-            status, reason = "held", "provider_snapshot_stale_or_unknown"
+            status, reason = "held", f"provider_snapshot_{result.snapshot_freshness_status}"
             official = None
         elif not record_age_fresh:
             status, reason = "held", "record_stale_or_unverified"
@@ -967,11 +1133,26 @@ def evaluate_provider_records(
             status, reason = "held", "record_source_license_review_required"
             official = None
         else:
+            official_limit = freshness_policy.official_limit(source_id)
             status, reason, official = _matches_official(
-                event, evidence, now=now, max_age=max_age
+                event,
+                evidence,
+                now=now,
+                freshness_limit=official_limit,
             )
-            if status.startswith("verified") and not result.provider_attribution_present:
-                status, reason, official = "held", "provider_attribution_missing", None
+        field_verification, verified_values, field_conflicts = _verify_figure_fields(
+            event, official
+        )
+        if field_conflicts:
+            status, reason = "conflict", "official_value_mismatch"
+            result.conflicts.append(
+                {
+                    "series_code": code,
+                    "event_date": str(event.get("date") or "unavailable"),
+                    "category": "official_figure_value_conflict",
+                    "fields": sorted(field_conflicts),
+                }
+            )
 
         wat_time: datetime | None = None
         if status == "verified_date_and_time" and official:
@@ -990,6 +1171,9 @@ def evaluate_provider_records(
                 source_health_fetched_at=(
                     str(health.get("fetched_at")) if health.get("fetched_at") else None
                 ),
+                field_verification=field_verification,
+                verified_values=verified_values,
+                field_conflicts=field_conflicts,
                 official_source_name=official.source_name if official else None,
                 official_source_url=(
                     official.source_url
