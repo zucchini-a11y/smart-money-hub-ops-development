@@ -1709,6 +1709,12 @@ class AdminDashboard:
                     "callback_data": "admin:market_awareness:preview",
                 }
             ],
+            [
+                {
+                    "text": "🧾 Review Held Daily Brief",
+                    "callback_data": "dailybrief:review",
+                }
+            ],
         ]
         if selected := records[page * CALENDAR_REVIEW_PAGE_SIZE : (page + 1) * CALENDAR_REVIEW_PAGE_SIZE]:
             for item in selected:

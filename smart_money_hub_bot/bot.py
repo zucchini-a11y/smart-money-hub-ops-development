@@ -1504,6 +1504,15 @@ class SmartMoneyHubBot:
             self.admin_dashboard.cancel_knowledge_action(telegram_id)
             self.admin_dashboard.cancel_calendar_action(telegram_id)
 
+        if data.startswith("dailybrief:"):
+            self._handle_daily_brief_callback(
+                data,
+                chat_id=chat_id,
+                telegram_id=telegram_id,
+                is_private=is_private,
+            )
+            return
+
         feedback_match = re.fullmatch(
             r"coach:feedback:(\d+):(helpful|unhelpful|unclear)", data
         )
