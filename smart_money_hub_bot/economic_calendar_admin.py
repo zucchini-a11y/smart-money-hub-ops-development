@@ -527,7 +527,7 @@ class OfficialCalendarManagementRepository:
         with closing(self._connection()) as connection, connection:
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
-                "SELECT review_status, date_verified FROM usd_calendar_source_events "
+                "SELECT review_status, date_verified, title_verified, is_stale "
                 "WHERE external_id=?",
                 (external_id,),
             ).fetchone()
