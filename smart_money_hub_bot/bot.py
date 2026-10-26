@@ -31,6 +31,11 @@ from .education_polls import EducationPollPublisher, is_on_demand_poll_request
 from .education_morning import EducationMorningPublisher
 from .message_router import CoachMessageRouter
 from .personal_reply_assistant import (
+    BUSINESS_REPLY_CONSENT_ACK,
+    BUSINESS_REPLY_CONSENT_NOTICE,
+    BUSINESS_REPLY_DECLINED_ACK,
+    BUSINESS_REPLY_DELETE_ACK,
+    BUSINESS_REPLY_STOP_ACK,
     PersonalReplyGenerationError,
     PersonalTelegramReplyAssistant,
 )
@@ -685,6 +690,115 @@ class SmartMoneyHubBot:
             return
 
         chat_id = int(chat["id"])
+        normalized_text = " ".join(text.casefold().split())
+        consent = self.store.get_personal_business_reply_consent(
+            connection_id, chat_id
+        )
+        affirmative = normalized_text in {
+            "yes",
+            "i agree",
+            "yes i agree",
+            "agree",
+            "opt in",
+            "opt-in",
+        }
+        negative = normalized_text in {"no", "no thanks", "decline", "stop", "/stop"}
+
+        if not consent or consent["consent_state"] != "consented":
+            initial_status = (
+                "consent_action" if affirmative or negative else "consent_required"
+            )
+            if not self.store.create_personal_business_reply_turn(
+                connection_id=connection_id,
+                chat_id=chat_id,
+                incoming_message_id=message_id,
+                incoming_text="",
+                status=initial_status,
+            ):
+                logger.info(
+                    "Skipped a duplicate Telegram Business message "
+                    "(update_id=%s).",
+                    update_id if update_id is not None else "unavailable",
+                )
+                return
+
+            notice_sent = bool(consent and consent["notice_sent"])
+            if affirmative and notice_sent:
+                self.store.set_personal_business_reply_consent(
+                    connection_id=connection_id,
+                    chat_id=chat_id,
+                    state="consented",
+                )
+                self._send_business_notice(
+                    chat_id, connection_id, BUSINESS_REPLY_CONSENT_ACK
+                )
+                return
+            if negative:
+                self.store.set_personal_business_reply_consent(
+                    connection_id=connection_id,
+                    chat_id=chat_id,
+                    state="declined",
+                )
+                self._send_business_notice(
+                    chat_id, connection_id, BUSINESS_REPLY_DECLINED_ACK
+                )
+                return
+
+            if not consent or consent["consent_state"] == "declined":
+                self.store.set_personal_business_reply_consent(
+                    connection_id=connection_id,
+                    chat_id=chat_id,
+                    state="pending",
+                )
+                consent = self.store.get_personal_business_reply_consent(
+                    connection_id, chat_id
+                )
+
+            if consent and consent["consent_state"] == "pending" and not consent["notice_sent"]:
+                if self._send_business_notice(
+                    chat_id, connection_id, BUSINESS_REPLY_CONSENT_NOTICE
+                ):
+                    self.store.mark_personal_business_reply_notice_sent(
+                        connection_id, chat_id
+                    )
+            return
+
+        if normalized_text in {"stop", "/stop"}:
+            if not self.store.create_personal_business_reply_turn(
+                connection_id=connection_id,
+                chat_id=chat_id,
+                incoming_message_id=message_id,
+                incoming_text="",
+                status="consent_action",
+            ):
+                return
+            self.store.set_personal_business_reply_consent(
+                connection_id=connection_id,
+                chat_id=chat_id,
+                state="declined",
+            )
+            self._send_business_notice(
+                chat_id, connection_id, BUSINESS_REPLY_STOP_ACK
+            )
+            return
+
+        if normalized_text in {"delete", "/delete"}:
+            if not self.store.create_personal_business_reply_turn(
+                connection_id=connection_id,
+                chat_id=chat_id,
+                incoming_message_id=message_id,
+                incoming_text="",
+                status="consent_action",
+            ):
+                return
+            self.store.delete_personal_business_reply_history(
+                connection_id, chat_id
+            )
+            self._send_business_notice(
+                chat_id, connection_id, BUSINESS_REPLY_DELETE_ACK
+            )
+            return
+
         if not self.store.create_personal_business_reply_turn(
             connection_id=connection_id,
             chat_id=chat_id,
@@ -782,6 +896,31 @@ class SmartMoneyHubBot:
             "Telegram Business reply sent (update_id=%s).",
             update_id if update_id is not None else "unavailable",
         )
+
+    def _send_business_notice(
+        self, chat_id: int, connection_id: str, text: str
+    ) -> bool:
+        try:
+            self.api.send_message_with_result(
+                chat_id,
+                text,
+                business_connection_id=connection_id,
+            )
+            return True
+        except TelegramAPIError as error:
+            category = (
+                "delivery_unknown"
+                if error.delivery_unknown
+                else "permission_error"
+                if error.error_code == 403
+                else "telegram_rejected"
+            )
+            logger.warning(
+                "Telegram Business privacy notice was not confirmed "
+                "(category=%s).",
+                category,
+            )
+            return False
 
     def _handle_edited_business_message(self, message: dict[str, Any]) -> None:
         connection_id = message.get("business_connection_id")
