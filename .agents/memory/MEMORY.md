@@ -14,3 +14,4 @@
 - [Bot downtime recovery](bot-downtime-recovery.md) — detect long gaps between successful Telegram polls, then acknowledge on each member’s next private interaction.
 - [Bot downtime recovery](bot-downtime-recovery.md) — detect long gaps between successful Telegram polls, then acknowledge on each member’s next private interaction.
 - [Telegram Business reply disclosure](telegram-business-consent.md) — automatic replies use a brief disclosure in the first reply, with no separate YES/NO prompt.
+- [Session-open channel posts](session-open-channel-posts.md) — the owner approved additional weekday Tokyo, London, and New York prep posts using DST-aware WAT times.

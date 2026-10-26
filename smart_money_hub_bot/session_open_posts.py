@@ -84,6 +84,50 @@ _STATUS_VALUES = (
 _CANONICAL = re.compile(r"[^a-z0-9]+")
 
 
+def validate_session_open_post(content: str, post: dict[str, Any]) -> str | None:
+    """Apply the normal channel gates plus the fixed session-post layout."""
+    rejection = validate_channel_post(
+        content,
+        is_promo=False,
+        verified_information=(),
+    ) or validate_weekend_post_format(content)
+    if rejection:
+        return rejection
+    if str(post.get("category") or "") != "new_week_preparation":
+        return "session_category_mismatch"
+    upper = content.upper()
+    if "SESSION OPEN" not in upper:
+        return "session_headline_missing"
+    session_code = str(post.get("session_code") or "")
+    required_names = {
+        "asia": ("ASIA", "TOKYO"),
+        "london": ("LONDON",),
+        "new_york": ("NEW YORK",),
+    }.get(session_code, ())
+    if required_names and not any(name in upper for name in required_names):
+        return "session_name_missing"
+    local_time = str(post.get("session_local_time") or "").strip()
+    wat_time = str(post.get("schedule_time_wat") or "").strip()
+    if not local_time or local_time not in content or not wat_time:
+        return "session_schedule_time_missing"
+    if f"{wat_time} WAT".upper() not in upper:
+        return "session_wat_time_missing"
+    if not any(
+        heading in upper
+        for heading in (
+            "WHAT TO PREPARE",
+            "CONDITIONS TO WATCH",
+            "SESSION CHECKLIST",
+        )
+    ):
+        return "session_template_section_missing"
+    if "RISK REMINDER" not in upper and "RISK CHECK" not in upper:
+        return "session_risk_reminder_missing"
+    if "NO CONFIRMATION, NO ENTRY." not in upper:
+        return "session_golden_rule_missing"
+    return None
+
+
 def session_occurrences(target_date: date) -> list[SessionOccurrence]:
     """Return the three conventional local opens for a weekday in WAT and UTC."""
     if target_date.weekday() >= 5:
@@ -157,6 +201,7 @@ class SessionOpenPostStore:
                     review_sent_at TEXT,
                     review_deadline_at TEXT,
                     edit_admin_id INTEGER,
+                    edit_previous_status TEXT,
                     photo_file_id TEXT,
                     photo_upload_pending INTEGER NOT NULL DEFAULT 0
                         CHECK (photo_upload_pending IN (0, 1)),
@@ -178,6 +223,17 @@ class SessionOpenPostStore:
                 ON session_open_channel_posts (status, schedule_at_utc)
                 """
             )
+            columns = {
+                str(row["name"])
+                for row in connection.execute(
+                    "PRAGMA table_info(session_open_channel_posts)"
+                ).fetchall()
+            }
+            if "edit_previous_status" not in columns:
+                connection.execute(
+                    "ALTER TABLE session_open_channel_posts "
+                    "ADD COLUMN edit_previous_status TEXT"
+                )
 
     def _recover_interrupted(self) -> list[dict[str, Any]]:
         now = _utc_now()
@@ -299,6 +355,7 @@ class SessionOpenPostStore:
             "review_sent_at",
             "review_deadline_at",
             "edit_admin_id",
+            "edit_previous_status",
             "photo_file_id",
             "photo_upload_pending",
             "photo_upload_admin_id",
@@ -400,7 +457,7 @@ class SessionOpenPostStore:
                 """
                 SELECT * FROM session_open_channel_posts
                 WHERE photo_upload_pending = 1 AND photo_upload_admin_id = ?
-                  AND status IN ('draft', 'review_pending', 'approved')
+                  AND status IN ('draft', 'review_pending', 'approved', 'failed')
                 ORDER BY schedule_at_utc LIMIT 1
                 """,
                 (admin_id,),
@@ -465,6 +522,25 @@ class SessionOpenPostManager:
                     self._generate(post, occurrence, current)
                     post = self.store.get(int(post["id"])) or post
 
+            if post is None and remaining <= timedelta(0):
+                missed_post, created = self.store.create_slot(
+                    occurrence, int(self.destination_chat_id), at=current.isoformat()
+                )
+                if created:
+                    self.store.update(
+                        int(missed_post["id"]),
+                        expected=("generating",),
+                        status="missed",
+                        at=current.isoformat(),
+                        failure_category="session_open_missed",
+                    )
+                    self._notify(
+                        f"The {occurrence.definition.label} session post for "
+                        f"{occurrence.schedule_date} was missed while the bot was "
+                        "unavailable. It was not posted late."
+                    )
+                continue
+
             if not post:
                 continue
             status = str(post["status"])
@@ -473,6 +549,17 @@ class SessionOpenPostManager:
                 post = self.store.get(int(post["id"])) or post
                 status = str(post["status"])
             if remaining <= timedelta(0):
+                if (
+                    status in {"approved", "review_pending", "retry_wait"}
+                    and current - occurrence.utc_at > timedelta(minutes=5)
+                ):
+                    self._hold(
+                        post,
+                        "session_open_deadline_passed",
+                        "The session opening was missed by more than five minutes. "
+                        "The post was held instead of being sent late.",
+                    )
+                    continue
                 if status == "editing":
                     self._hold(
                         post,
@@ -602,10 +689,11 @@ class SessionOpenPostManager:
                 self.api.send_message(chat_id, "The session opening time has passed.")
             elif self.store.update(
                 post_id,
-                expected=("review_pending", "approved", "failed"),
+                expected=("draft", "review_pending", "approved", "failed"),
                 status="editing",
                 at=current.isoformat(),
                 edit_admin_id=admin_id,
+                edit_previous_status=str(post["status"]),
             ):
                 self.api.send_message(
                     chat_id,
@@ -627,6 +715,7 @@ class SessionOpenPostManager:
                 status="cancelled",
                 at=current.isoformat(),
                 edit_admin_id=None,
+                edit_previous_status=None,
                 photo_upload_pending=0,
             ):
                 self.api.send_message(chat_id, "Cancelled. This session post will not publish.")
@@ -655,12 +744,16 @@ class SessionOpenPostManager:
         post = self.store.pending_edit(admin_id)
         if not post:
             return False
+        previous_status = str(post.get("edit_previous_status") or "review_pending")
+        if previous_status not in {"draft", "review_pending", "approved", "failed"}:
+            previous_status = "review_pending"
         return self.store.update(
             int(post["id"]),
             expected=("editing",),
-            status="review_pending",
+            status=previous_status,
             at=_as_utc(now or datetime.now(timezone.utc)).isoformat(),
             edit_admin_id=None,
+            edit_previous_status=None,
         )
 
     def handle_edit_message(
@@ -686,11 +779,7 @@ class SessionOpenPostManager:
             )
             return True
         content = normalize_weekend_brand_header(text.strip(), str(post["category"]))
-        rejection = validate_channel_post(
-            content,
-            is_promo=False,
-            verified_information=(),
-        ) or validate_weekend_post_format(content)
+        rejection = validate_session_open_post(content, post)
         if not rejection and self._is_duplicate(
             content, int(post["id"]), exclude_current=True
         ):
@@ -709,6 +798,7 @@ class SessionOpenPostManager:
             at=current.isoformat(),
             content=content,
             edit_admin_id=None,
+            edit_previous_status=None,
         ):
             self.api.send_message(chat_id, "The session post changed; the edit was not saved.")
             return True
@@ -810,11 +900,12 @@ class SessionOpenPostManager:
             return
 
         content = normalize_weekend_brand_header(draft.content, draft.category)
-        rejection = validate_channel_post(
-            content,
-            is_promo=False,
-            verified_information=(),
-        ) or validate_weekend_post_format(content)
+        candidate_post = {
+            **post,
+            "category": draft.category,
+            "content": content,
+        }
+        rejection = validate_session_open_post(content, candidate_post)
         if not rejection and self._is_duplicate(content, int(post["id"])):
             rejection = "duplicate_content"
         if rejection:
@@ -907,9 +998,7 @@ class SessionOpenPostManager:
             self._hold(post, "destination_mismatch", "The saved destination differs from the configured Market Analysis channel.")
             return
         content = str(post.get("content") or "")
-        rejection = validate_channel_post(content, is_promo=False, verified_information=())
-        if not rejection:
-            rejection = validate_weekend_post_format(content)
+        rejection = validate_session_open_post(content, post)
         if rejection:
             self._hold(
                 post,
@@ -1060,17 +1149,39 @@ class SessionOpenPostManager:
             f"{escape(str(post['schedule_time_wat']))} WAT\n"
             f"Destination: Market Analysis (ID {int(post['destination_chat_id'])})\n\n"
         )
-        markup = {
-            "inline_keyboard": [
-                [
-                    {"text": "✅ Approve", "callback_data": f"admin:session_open:approve:{post['id']}"},
-                    {"text": "✏️ Edit", "callback_data": f"admin:session_open:edit:{post['id']}"},
-                    {"text": "❌ Cancel", "callback_data": f"admin:session_open:cancel:{post['id']}"},
-                ],
-                [{"text": "📷 Add photo", "callback_data": f"admin:session_open:photo:{post['id']}"}],
-                [{"text": "🔙 Back", "callback_data": "admin:session_open:view"}],
-            ]
-        }
+        post_id = int(post["id"])
+        status = str(post["status"])
+        actions: list[dict[str, str]] = []
+        if status == "review_pending":
+            actions.append(
+                {
+                    "text": "✅ Approve",
+                    "callback_data": f"admin:session_open:approve:{post_id}",
+                }
+            )
+        if status in {"draft", "review_pending", "approved", "failed"} and post.get(
+            "content"
+        ):
+            actions.append(
+                {"text": "✏️ Edit", "callback_data": f"admin:session_open:edit:{post_id}"}
+            )
+            actions.append(
+                {
+                    "text": "❌ Cancel",
+                    "callback_data": f"admin:session_open:cancel:{post_id}",
+                }
+            )
+        rows = [actions] if actions else []
+        if status in {"draft", "review_pending", "approved", "failed"} and post.get(
+            "content"
+        ):
+            rows.append(
+                [{"text": "📷 Add photo", "callback_data": f"admin:session_open:photo:{post_id}"}]
+            )
+        rows.append(
+            [{"text": "🔙 Back", "callback_data": "admin:session_open:view"}]
+        )
+        markup = {"inline_keyboard": rows}
         self.api.send_message(chat_id, intro + content, markup, parse_mode="HTML")
 
     def _is_duplicate(

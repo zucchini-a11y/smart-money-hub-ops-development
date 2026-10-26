@@ -11,6 +11,7 @@ from smart_money_hub_bot.session_open_posts import (
     SessionOpenPostManager,
     SessionOpenPostStore,
     session_occurrences,
+    validate_session_open_post,
 )
 from smart_money_hub_bot.storage import Repository
 
@@ -22,11 +23,14 @@ SESSION_POST = (
     "📊 SMART MONEY HUB | MARKET PREPARATION\n"
     "━━━━━━━━━━━━━━\n\n"
     "🇬🇧 LONDON SESSION OPEN\n\n"
-    "Before the session, review your higher-timeframe context and mark only "
+    "The London open is 08:00 Europe/London (09:00 WAT). Before the session, "
+    "review your higher-timeframe context and mark only "
     "levels from your own verified chart.\n\n"
     "🔍 CONDITIONS TO WATCH\n"
     "✅ Define the confirmation and invalidation your plan requires.\n"
     "✅ Check the verified economic calendar before making decisions.\n\n"
+    "🛡️ RISK REMINDER\n"
+    "Set your invalidation before considering any setup.\n\n"
     "⚠️ REMEMBER\n"
     "NO CONFIRMATION, NO ENTRY.\n\n"
     "— VAYDA | Smart Money Hub"
@@ -139,6 +143,28 @@ class SessionOpenPostTests(unittest.TestCase):
         self.assertEqual(transition["new_york"].wat_at.strftime("%H:%M"), "13:00")
         self.assertEqual(session_occurrences(date(2026, 10, 25)), [])
 
+    def test_saved_post_must_follow_session_template_and_state_correct_times(self):
+        occurrence = self._occurrence("london")
+        post = {
+            "category": "new_week_preparation",
+            "session_code": "london",
+            "session_local_time": occurrence.local_at.strftime("%H:%M"),
+            "schedule_time_wat": occurrence.wat_at.strftime("%H:%M"),
+        }
+        self.assertIsNone(validate_session_open_post(SESSION_POST, post))
+        self.assertEqual(
+            validate_session_open_post(
+                SESSION_POST.replace("09:00 WAT", "10:00 WAT"), post
+            ),
+            "session_wat_time_missing",
+        )
+        self.assertEqual(
+            validate_session_open_post(
+                SESSION_POST.replace("🛡️ RISK REMINDER", "📌 KEY POINT"), post
+            ),
+            "session_risk_reminder_missing",
+        )
+
     def test_generates_fifteen_minutes_before_reviews_five_minutes_before_and_posts_once(self):
         occurrence = self._occurrence("london")
         self.manager.dispatch_due(occurrence.utc_at - timedelta(minutes=15))
@@ -207,6 +233,21 @@ class SessionOpenPostTests(unittest.TestCase):
         self.assertEqual(saved["failure_category"], "gemini_rate_limit")
         self.assertEqual(self.api.channel_messages, [])
         self.assertTrue(any("Gemini could not prepare" in item[1] for item in self.api.admin_messages))
+
+    def test_restart_after_open_records_missed_slot_instead_of_posting_late(self):
+        occurrence = self._occurrence("asia")
+        after_open = occurrence.utc_at + timedelta(minutes=6)
+        self.manager.dispatch_due(after_open)
+        self.manager.dispatch_due(after_open + timedelta(seconds=20))
+        saved = self.manager.store.get_by_key(occurrence)
+        self.assertEqual(saved["status"], "missed")
+        self.assertEqual(saved["failure_category"], "session_open_missed")
+        self.assertEqual(self.writer.calls, [])
+        self.assertEqual(self.api.channel_messages, [])
+        notices = [
+            item for item in self.api.admin_messages if "was missed while the bot" in item[1]
+        ]
+        self.assertEqual(len(notices), 1)
 
     def test_unverified_live_market_claim_is_held(self):
         self.writer.content = SESSION_POST.replace(

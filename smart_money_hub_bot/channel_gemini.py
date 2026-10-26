@@ -205,12 +205,19 @@ class GeminiChannelContentService:
             else "Do not promote the bot in this post."
         )
         session_rule = (
-            "This is a session-open preparation post. Identify the named session "
-            "and its verified local opening time and WAT time. Give concise, "
-            "evergreen conditions to prepare for and observe. Do not assert live "
-            "price, levels, direction, news, volatility, or current market structure "
-            "unless supplied VERIFIED INFORMATION supports each claim. Do not turn "
-            "the session opening into a signal or entry instruction. "
+            "This is a session-open preparation post. Set CATEGORY to "
+            "new_week_preparation. Follow this Smart Money Hub layout: approved "
+            "brand header; separator; short uppercase headline naming the session "
+            "and SESSION OPEN; one short introduction; a 🔍 WHAT TO PREPARE or "
+            "🔍 CONDITIONS TO WATCH section with 2–4 practical checklist points; "
+            "a 🛡️ RISK REMINDER; and ⚠️ THE GOLDEN RULE followed exactly by "
+            "NO CONFIRMATION, NO ENTRY. Identify the session's local opening time "
+            "and WAT time from SESSION_CONTEXT. Keep the structure consistent but "
+            "vary the useful preparation focus using the supplied channel archive. "
+            "Give evergreen conditions to prepare for and observe. Do not assert "
+            "live price, levels, direction, news, volatility, or current market "
+            "structure unless supplied VERIFIED INFORMATION supports each claim. "
+            "Do not turn the session opening into a signal or entry instruction. "
             if session_context
             else ""
         )
