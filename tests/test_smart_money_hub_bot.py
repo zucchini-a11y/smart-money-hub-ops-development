@@ -2038,6 +2038,137 @@ class BotFlowTests(unittest.TestCase):
             1,
         )
 
+    def test_admin_can_preview_and_confirm_one_time_dm_to_one_member(self) -> None:
+        admin_id = self.user_id
+        selected_member_id = 770201
+        other_member_id = 770202
+        self.bot.admin_id = admin_id
+        self.bot.admin_dashboard.admin_id = admin_id
+        for member_id, first_name in (
+            (selected_member_id, "Selected"),
+            (other_member_id, "Other"),
+        ):
+            self.bot.store.register_user(
+                telegram_id=member_id,
+                username=f"member_{member_id}",
+                first_name=first_name,
+                chat_id=member_id,
+                is_private=True,
+            )
+
+        self._callback(
+            "admin:dm_member",
+            sender_id=admin_id,
+            chat_id=self.chat_id,
+        )
+        self.assertIn("/memberdm TELEGRAM_ID MESSAGE", self.api.messages[-1]["text"])
+        self.assertIn("Search Member", self.api.messages[-1]["text"])
+        message_text = "A private note just for you."
+        self._message(
+            f"/memberdm {selected_member_id} {message_text}",
+            user_id=admin_id,
+            chat_id=self.chat_id,
+        )
+        preview = self.api.messages[-1]
+        self.assertIn("ONE-TIME MEMBER DM PREVIEW", preview["text"])
+        self.assertIn(f"Telegram ID {selected_member_id}", preview["text"])
+        self.assertIn(message_text, preview["text"])
+        self.assertFalse(
+            any(
+                message["chat_id"] in {selected_member_id, other_member_id}
+                for message in self.api.messages
+            )
+        )
+
+        self._callback(
+            "admin:dm_member:confirm",
+            sender_id=admin_id,
+            chat_id=self.chat_id,
+        )
+        self.assertEqual(
+            [
+                message["text"]
+                for message in self.api.messages
+                if message["chat_id"] == selected_member_id
+            ],
+            [message_text],
+        )
+        self.assertFalse(
+            any(message["chat_id"] == other_member_id for message in self.api.messages)
+        )
+
+        self._callback(
+            "admin:dm_member:confirm",
+            sender_id=admin_id,
+            chat_id=self.chat_id,
+        )
+        self.assertEqual(
+            sum(
+                message["chat_id"] == selected_member_id
+                for message in self.api.messages
+            ),
+            1,
+        )
+
+    def test_single_member_dm_is_cancelled_if_member_opts_out_before_confirm(self) -> None:
+        admin_id = self.user_id
+        member_id = 770203
+        self.bot.admin_id = admin_id
+        self.bot.admin_dashboard.admin_id = admin_id
+        self.bot.store.register_user(
+            telegram_id=member_id,
+            username="member_770203",
+            first_name="Member",
+            chat_id=member_id,
+            is_private=True,
+        )
+        self._message(
+            f"/memberdm {member_id} An update for you.",
+            user_id=admin_id,
+            chat_id=self.chat_id,
+        )
+        self.assertIn("ONE-TIME MEMBER DM PREVIEW", self.api.messages[-1]["text"])
+        self.bot.store.set_reminders_stopped(member_id, True)
+
+        self._callback(
+            "admin:dm_member:confirm",
+            sender_id=admin_id,
+            chat_id=self.chat_id,
+        )
+
+        self.assertFalse(
+            any(message["chat_id"] == member_id for message in self.api.messages)
+        )
+        self.assertIn("no longer eligible", self.api.messages[-1]["text"])
+
+    def test_single_member_dm_command_is_admin_only(self) -> None:
+        admin_id = self.user_id
+        outsider_id = admin_id + 1
+        member_id = 770204
+        self.bot.admin_id = admin_id
+        self.bot.admin_dashboard.admin_id = admin_id
+        self.bot.store.register_user(
+            telegram_id=member_id,
+            username="member_770204",
+            first_name="Member",
+            chat_id=member_id,
+            is_private=True,
+        )
+
+        self._message(
+            f"/memberdm {member_id} This must not be sent.",
+            user_id=outsider_id,
+            chat_id=outsider_id,
+        )
+
+        self.assertIn("restricted", self.api.messages[-1]["text"].casefold())
+        self.assertFalse(
+            any(message["chat_id"] == member_id for message in self.api.messages)
+        )
+        self.assertFalse(
+            self.bot.admin_dashboard.has_single_member_dm_state(admin_id)
+        )
+
     def test_admin_dashboard_records_are_private_and_persist_across_reopen(self) -> None:
         admin_id = self.user_id
         member_id = 770077

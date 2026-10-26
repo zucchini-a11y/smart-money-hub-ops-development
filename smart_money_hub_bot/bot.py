@@ -1298,6 +1298,7 @@ class SmartMoneyHubBot:
         if action == "main_menu":
             self.admin_dashboard.cancel_search(telegram_id)
             self.admin_dashboard.cancel_broadcast(telegram_id)
+            self.admin_dashboard.cancel_single_member_dm(telegram_id)
             self.admin_dashboard.cancel_channel_promo(telegram_id)
             self.admin_dashboard.cancel_calendar_action(telegram_id)
             self._show_main_menu(chat_id)
@@ -1709,6 +1710,10 @@ class SmartMoneyHubBot:
             self.admin_dashboard.cancel_calendar_action(telegram_id)
             self.admin_dashboard.open(chat_id, telegram_id, is_private)
             return
+        if self.admin_dashboard.handle_single_member_dm_command(
+            chat_id, telegram_id, is_private, text
+        ):
+            return
         if self.admin_dashboard.handle_community_content_command(
             chat_id, telegram_id, is_private, text
         ):
@@ -1720,12 +1725,14 @@ class SmartMoneyHubBot:
         if command == "/cancel" and (
             self.admin_dashboard.search_is_pending(telegram_id)
             or self.admin_dashboard.has_broadcast_state(telegram_id)
+            or self.admin_dashboard.has_single_member_dm_state(telegram_id)
             or self.admin_dashboard.has_channel_promo_state(telegram_id)
             or self.admin_dashboard.has_knowledge_state(telegram_id)
             or self.admin_dashboard.has_calendar_state(telegram_id)
         ):
             self.admin_dashboard.cancel_search(telegram_id)
             self.admin_dashboard.cancel_broadcast(telegram_id)
+            self.admin_dashboard.cancel_single_member_dm(telegram_id)
             self.admin_dashboard.cancel_channel_promo(telegram_id)
             self.admin_dashboard.cancel_knowledge_action(telegram_id)
             self.admin_dashboard.cancel_calendar_action(telegram_id)

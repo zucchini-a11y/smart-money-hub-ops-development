@@ -318,6 +318,28 @@ class SessionOpenPostTests(unittest.TestCase):
         )
         self.assertEqual(self.api.channel_messages, [])
 
+    def test_gemini_retry_is_refused_once_the_review_window_starts(self):
+        occurrence = self._occurrence("london")
+        self.writer.error = GeminiChannelGenerationError("gemini_rate_limit", 429)
+        self.manager.dispatch_due(occurrence.utc_at - timedelta(minutes=15))
+        post = self.manager.store.get_by_key(occurrence)
+
+        self.manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:session_open:retry_generation:{post['id']}",
+            now=occurrence.utc_at - timedelta(minutes=4),
+        )
+
+        held = self.manager.store.get_by_key(occurrence)
+        self.assertEqual(held["status"], "failed")
+        self.assertEqual(held["failure_category"], "gemini_rate_limit")
+        self.assertEqual(len(self.writer.calls), 1)
+        self.assertTrue(
+            any("too close to the session opening" in item[1] for item in self.api.admin_messages)
+        )
+        self.assertEqual(self.api.channel_messages, [])
+
     def test_archived_channel_history_is_supplied_to_session_generation(self):
         self.repository.record_channel_history_post(
             CHANNEL_ID,
