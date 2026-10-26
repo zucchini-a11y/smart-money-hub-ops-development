@@ -11,11 +11,11 @@ Before sending Telegram Business message text or conversation history to Gemini 
 
 ## Current app state
 
-Telegram Business automatic replies are disabled at the account owner's request. Do not process, retain, or send contact Business-message text to Gemini, and do not send consent or reply messages, unless the owner explicitly asks to re-enable the feature.
+Telegram Business automatic replies remain disabled. The owner wants to send a friendly, concise opt-in notice before any future automatic-reply feature is enabled. Do not process, retain, or send contact Business-message text to Gemini without that contact's explicit consent.
 
-**Why:** The owner does not want contacts' messages processed and does not want them to receive the consent notice.
+**Why:** The owner wants contacts to know about AI assistance and opt in before their messages are processed.
 
-**How to apply:** Keep the runtime path disabled by default. If the owner requests the feature again, restore transparent opt-in before processing any contact text.
+**How to apply:** Keep the runtime path disabled by default. Use a warm, concise notice that clearly requests opt-in; include the provider and retention details required above. Do not process messages or enable automatic replies until the contact opts in.
 
 A separate private, admin-only reply-drafting tool may use writing examples and incoming-message text that the owner explicitly submits in a direct command. It sends drafts only back to the owner; it must not read Business chats or send messages to contacts. The owner can clear stored style examples.
 
