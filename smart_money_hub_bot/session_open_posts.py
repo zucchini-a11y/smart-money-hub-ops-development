@@ -364,15 +364,21 @@ class SessionOpenPostStore:
             ).fetchall()
             return [dict(row) for row in rows]
 
-    def list_recent(self, *, limit: int = 30) -> list[dict[str, Any]]:
+    def list_recent(
+        self, *, limit: int = 30, exclude_id: int | None = None
+    ) -> list[dict[str, Any]]:
+        exclusion = " AND id != ?" if exclude_id is not None else ""
+        params: tuple[Any, ...] = (
+            (exclude_id, limit) if exclude_id is not None else (limit,)
+        )
         with self._database() as connection:
             rows = connection.execute(
-                """
+                f"""
                 SELECT * FROM session_open_channel_posts
-                WHERE content != ''
+                WHERE content != ''{exclusion}
                 ORDER BY schedule_at_utc DESC LIMIT ?
                 """,
-                (limit,),
+                params,
             ).fetchall()
             return [dict(row) for row in rows]
 
@@ -596,7 +602,7 @@ class SessionOpenPostManager:
                 self.api.send_message(chat_id, "The session opening time has passed.")
             elif self.store.update(
                 post_id,
-                expected=("review_pending", "approved"),
+                expected=("review_pending", "approved", "failed"),
                 status="editing",
                 at=current.isoformat(),
                 edit_admin_id=admin_id,
@@ -611,7 +617,13 @@ class SessionOpenPostManager:
         elif action == "cancel":
             if self.store.update(
                 post_id,
-                expected=("draft", "review_pending", "approved", "editing"),
+                expected=(
+                    "draft",
+                    "review_pending",
+                    "approved",
+                    "editing",
+                    "failed",
+                ),
                 status="cancelled",
                 at=current.isoformat(),
                 edit_admin_id=None,
@@ -679,6 +691,10 @@ class SessionOpenPostManager:
             is_promo=False,
             verified_information=(),
         ) or validate_weekend_post_format(content)
+        if not rejection and self._is_duplicate(
+            content, int(post["id"]), exclude_current=True
+        ):
+            rejection = "duplicate_content"
         if rejection:
             self.api.send_message(
                 chat_id,
@@ -728,7 +744,7 @@ class SessionOpenPostManager:
             return True
         changed = self.store.update(
             int(post["id"]),
-            expected=("draft", "review_pending", "approved"),
+            expected=("draft", "review_pending", "approved", "failed"),
             status=str(post["status"]),
             at=_utc_now(),
             photo_file_id=file_id,
@@ -1057,14 +1073,21 @@ class SessionOpenPostManager:
         }
         self.api.send_message(chat_id, intro + content, markup, parse_mode="HTML")
 
-    def _is_duplicate(self, content: str, post_id: int) -> bool:
+    def _is_duplicate(
+        self, content: str, post_id: int, *, exclude_current: bool = False
+    ) -> bool:
         candidate = _canonical(content)
         if not candidate:
             return True
         prior = self.history_store.get_recent_channel_post_contents(
             limit=30, chat_id=self.destination_chat_id
         )
-        prior.extend(self.store.list_recent(limit=30))
+        prior.extend(
+            self.store.list_recent(
+                limit=30,
+                exclude_id=post_id if exclude_current else None,
+            )
+        )
         for item in prior:
             previous = _canonical(str(item.get("content") or ""))
             if previous and (
