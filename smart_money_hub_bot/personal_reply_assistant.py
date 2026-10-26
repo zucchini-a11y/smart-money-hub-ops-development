@@ -1,4 +1,4 @@
-"""Private Telegram Business reply drafting with a single configured Gemini model."""
+"""Telegram Business replies and private drafts using one configured Gemini model."""
 
 import json
 import logging
@@ -32,6 +32,14 @@ _UNSAFE_FINANCIAL_CLAIM = re.compile(
     re.IGNORECASE,
 )
 
+BUSINESS_REPLY_INFO_NOTICE = (
+    "Hi 👋 I’m an AI assistant helping with replies. Messages may be processed by "
+    "an external AI service, and up to six recent exchanges may be stored for "
+    "context. Send STOP "
+    "to turn replies off or DELETE to clear saved text. Minimal Telegram IDs "
+    "remain while this account is connected to prevent duplicates."
+)
+
 _SYSTEM_INSTRUCTION = (
     "You are the account owner's personal Telegram reply assistant. Write one "
     "concise, natural reply suited to the relationship, tone, conversation history, "
@@ -56,29 +64,8 @@ _SYSTEM_INSTRUCTION = (
     "and needs_owner_input (boolean)."
 )
 
-BUSINESS_REPLY_CONSENT_NOTICE = (
-    "Hi, I’m the account owner’s AI reply assistant. I can send replies from "
-    "this business account using new messages you send here and up to six recent "
-    "completed exchanges in this chat. If you opt in, that text is sent to Google "
-    "Gemini to prepare replies, and the latest six exchanges are stored in the "
-    "bot’s database for follow-up context. Saved exchanges are kept only "
-    "while you remain opted in and this account stays connected; STOP, DELETE, or "
-    "the account owner disconnecting the bot removes the saved text. To honor your "
-    "choice and prevent duplicate replies, minimal Telegram chat/message IDs and "
-    "your consent status remain until the bot is disconnected. Sensitive or "
-    "uncertain messages are held for the account owner. No message text is saved or "
-    "sent to Gemini before you opt in. Reply YES to agree, or NO to decline."
-)
-
-BUSINESS_REPLY_CONSENT_ACK = (
-    "Thanks. You’re opted in. Your earlier messages were not saved or sent to AI. "
-    "Send a new message whenever you’d like an AI-assisted reply. You can send "
-    "STOP to opt out or DELETE to erase saved context."
-)
-
-BUSINESS_REPLY_DECLINED_ACK = (
-    "Understood. No message text will be sent to AI or saved for reply context. "
-    "You can send YES later to review the consent notice and opt in."
+BUSINESS_REPLY_REENABLED_ACK = (
+    "AI replies are back on for this chat. Send STOP to turn them off again."
 )
 
 BUSINESS_REPLY_STOP_ACK = (
@@ -88,8 +75,7 @@ BUSINESS_REPLY_STOP_ACK = (
 )
 
 BUSINESS_REPLY_DELETE_ACK = (
-    "Saved reply history for this chat has been erased. AI-assisted replies remain "
-    "enabled; send STOP to opt out."
+    "Saved reply history for this chat has been erased."
 )
 
 

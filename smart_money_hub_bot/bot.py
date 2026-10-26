@@ -31,10 +31,9 @@ from .education_polls import EducationPollPublisher, is_on_demand_poll_request
 from .education_morning import EducationMorningPublisher
 from .message_router import CoachMessageRouter
 from .personal_reply_assistant import (
-    BUSINESS_REPLY_CONSENT_ACK,
-    BUSINESS_REPLY_CONSENT_NOTICE,
-    BUSINESS_REPLY_DECLINED_ACK,
+    BUSINESS_REPLY_INFO_NOTICE,
     BUSINESS_REPLY_DELETE_ACK,
+    BUSINESS_REPLY_REENABLED_ACK,
     BUSINESS_REPLY_STOP_ACK,
     PersonalReplyGenerationError,
     PersonalTelegramReplyAssistant,
@@ -728,77 +727,6 @@ class SmartMoneyHubBot:
         consent = self.store.get_personal_business_reply_consent(
             connection_id, chat_id
         )
-        affirmative = normalized_text in {
-            "yes",
-            "i agree",
-            "yes i agree",
-            "agree",
-            "opt in",
-            "opt-in",
-        }
-        negative = normalized_text in {"no", "no thanks", "decline", "stop", "/stop"}
-
-        if not consent or consent["consent_state"] != "consented":
-            initial_status = (
-                "consent_action" if affirmative or negative else "consent_required"
-            )
-            if not self.store.create_personal_business_reply_turn(
-                connection_id=connection_id,
-                chat_id=chat_id,
-                incoming_message_id=message_id,
-                incoming_text="",
-                status=initial_status,
-            ):
-                logger.info(
-                    "Skipped a duplicate Telegram Business message "
-                    "(update_id=%s).",
-                    update_id if update_id is not None else "unavailable",
-                )
-                return
-
-            notice_sent = bool(consent and consent["notice_sent"])
-            if affirmative and notice_sent:
-                self.store.set_personal_business_reply_consent(
-                    connection_id=connection_id,
-                    chat_id=chat_id,
-                    state="consented",
-                )
-                self._send_business_notice(
-                    chat_id, connection_id, BUSINESS_REPLY_CONSENT_ACK
-                )
-                return
-            if negative:
-                self.store.set_personal_business_reply_consent(
-                    connection_id=connection_id,
-                    chat_id=chat_id,
-                    state="declined",
-                )
-                self._send_business_notice(
-                    chat_id, connection_id, BUSINESS_REPLY_DECLINED_ACK
-                )
-                return
-
-            if not consent or (
-                consent["consent_state"] == "declined" and affirmative
-            ):
-                self.store.set_personal_business_reply_consent(
-                    connection_id=connection_id,
-                    chat_id=chat_id,
-                    state="pending",
-                )
-                consent = self.store.get_personal_business_reply_consent(
-                    connection_id, chat_id
-                )
-
-            if consent and consent["consent_state"] == "pending" and not consent["notice_sent"]:
-                if self._send_business_notice(
-                    chat_id, connection_id, BUSINESS_REPLY_CONSENT_NOTICE
-                ):
-                    self.store.mark_personal_business_reply_notice_sent(
-                        connection_id, chat_id
-                    )
-            return
-
         if normalized_text in {"stop", "/stop"}:
             if not self.store.create_personal_business_reply_turn(
                 connection_id=connection_id,
@@ -835,11 +763,42 @@ class SmartMoneyHubBot:
             )
             return
 
+        # Replies are active by default for private chats on the owner's
+        # explicitly connected Business account. A prior STOP remains an
+        # opt-out until the person explicitly resumes.
+        if consent and consent["consent_state"] == "declined":
+            if not self.store.create_personal_business_reply_turn(
+                connection_id=connection_id,
+                chat_id=chat_id,
+                incoming_message_id=message_id,
+                incoming_text="",
+                status="consent_action",
+            ):
+                logger.info(
+                    "Skipped a duplicate opted-out Telegram Business message "
+                    "(update_id=%s).",
+                    update_id if update_id is not None else "unavailable",
+                )
+                return
+            if normalized_text in {"start", "/start", "resume", "yes"}:
+                self.store.set_personal_business_reply_consent(
+                    connection_id=connection_id,
+                    chat_id=chat_id,
+                    state="consented",
+                )
+                self._send_business_notice(
+                    chat_id, connection_id, BUSINESS_REPLY_REENABLED_ACK
+                )
+            return
+
+        disclosure_sent = self.store.personal_business_reply_disclosure_sent(
+            connection_id, chat_id
+        )
         if not self.store.create_personal_business_reply_turn(
             connection_id=connection_id,
             chat_id=chat_id,
             incoming_message_id=message_id,
-            incoming_text=text,
+            incoming_text=text if disclosure_sent else "",
         ):
             logger.info(
                 "Skipped a duplicate Telegram Business message "
@@ -848,11 +807,54 @@ class SmartMoneyHubBot:
             )
             return
 
+        # This is an informational disclosure, not a per-contact YES gate.
+        # Deliver it before the first message is sent to the AI provider.
+        if not disclosure_sent:
+            if not self._send_business_notice(
+                chat_id, connection_id, BUSINESS_REPLY_INFO_NOTICE
+            ):
+                self.store.finish_personal_business_reply_turn(
+                    connection_id=connection_id,
+                    chat_id=chat_id,
+                    incoming_message_id=message_id,
+                    status="failed",
+                )
+                self._notify_personal_reply_admin(
+                    "A connected chat could not receive the AI-processing notice. "
+                    "Its message was not sent to Gemini and no reply was sent."
+                )
+                return
+            self.store.mark_personal_business_reply_disclosure_sent(
+                connection_id, chat_id
+            )
+            if not self.store.set_personal_business_reply_input(
+                connection_id=connection_id,
+                chat_id=chat_id,
+                incoming_message_id=message_id,
+                incoming_text=text,
+            ):
+                self.store.finish_personal_business_reply_turn(
+                    connection_id=connection_id,
+                    chat_id=chat_id,
+                    incoming_message_id=message_id,
+                    status="failed",
+                )
+                self._notify_personal_reply_admin(
+                    "A connected chat's message could not be queued safely after "
+                    "the AI-processing notice. No AI reply was sent."
+                )
+                return
+
         history = self.store.recent_personal_business_reply_history(
             connection_id, chat_id, limit=6
         )
+        style_examples = self.store.admin_reply_style_examples(
+            int(connection["owner_telegram_id"])
+        )
         try:
-            draft = self.personal_reply_assistant.generate(text, history=history)
+            draft = self.personal_reply_assistant.generate(
+                text, history=history, style_examples=style_examples
+            )
         except PersonalReplyGenerationError as error:
             self.store.finish_personal_business_reply_turn(
                 connection_id=connection_id,

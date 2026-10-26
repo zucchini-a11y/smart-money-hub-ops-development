@@ -3,22 +3,14 @@ name: Telegram Business consent
 description: Consent and retention safeguards for personal-account reply automation.
 ---
 
-Before sending Telegram Business message text or conversation history to Gemini or another external API, obtain explicit opt-in from that chat participant. The opt-in notice must identify AI use, the external provider, the reply purpose, what text is retained, the retention period, and how to stop or delete it. Do not save or send message text before consent. Keep only the approved history, support opt-out/deletion, and erase content when the connection is disabled.
+The account owner has authorized automatic AI replies for enabled Telegram Business connections without requiring each contact to send YES. Before a chat's first message is sent to Gemini, deliver a concise disclosure naming AI and external AI processing, the retained context (up to six exchanges), STOP/DELETE controls, and minimal IDs retained for duplicate prevention. If that disclosure cannot be delivered, do not send the message to Gemini or reply.
 
-**Why:** Telegram’s Bot Developer Terms §5.4 require user authorization before Business message contents are disclosed to third-party APIs, and require clear disclosure of service scope and retained data.
+**Why:** The owner explicitly chose automatic AI replies without a per-chat YES step. Telegram Business terms still require an accurate explanation of the bot's service and applicable data retention, and chats need an opt-out.
 
-**How to apply:** Treat the account owner’s Telegram Business connection and `can_reply` permission as separate from each contact’s data-processing consent. Track consent per private chat and require explicit opt-in before any model call.
+**How to apply:** Process only private chats on the owner’s enabled Telegram Business connection when Telegram grants `can_reply`. The first incoming message triggers the one-time disclosure before any Gemini call; then reply automatically. STOP disables that chat, START or YES re-enables it, DELETE clears stored text, and disconnecting the Business account clears connection data. Keep up to six completed exchanges, use owner-approved style examples only for surface tone, hold sensitive or consequential requests for the owner, and never fall back to the local Coach or retry an uncertain send.
 
-## Current app state
+The separate private, admin-only `/replydraft` tool remains available for owner-submitted text and saved writing examples. It returns drafts only to the owner and never sends them to the original sender.
 
-Telegram Business automatic replies remain disabled. The owner wants to send a friendly, concise opt-in notice before any future automatic-reply feature is enabled. Do not process, retain, or send contact Business-message text to Gemini without that contact's explicit consent.
+**Why:** Keep manual drafting distinct from the owner-authorized automatic Business reply flow.
 
-**Why:** The owner wants contacts to know about AI assistance and opt in before their messages are processed.
-
-**How to apply:** Keep the runtime path disabled by default. Describe it first as an “AI assistant,” not by leading with the vendor name, but briefly identify the provider and retention details in the opt-in notice. Keep the wording very short and natural, and do not process messages or enable automatic replies until the contact opts in.
-
-A separate private, admin-only reply-drafting tool may use writing examples and incoming-message text that the owner explicitly submits in a direct command. It sends drafts only back to the owner; it must not read Business chats or send messages to contacts. The owner can clear stored style examples.
-
-**Why:** The owner wants replies to reflect their writing style but selected private drafts, not automatic Business-chat replies.
-
-**How to apply:** Keep the draft feature isolated from the Business update route. Only transmit owner-submitted text and explicitly saved style examples for a draft request; never send the generated draft to the original sender.
+**How to apply:** The Business handler may use saved style samples for automatic replies, but the draft command remains private and owner-initiated.

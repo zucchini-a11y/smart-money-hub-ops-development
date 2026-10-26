@@ -239,15 +239,11 @@ class PersonalBusinessReplyFlowTests(unittest.TestCase):
             }
         )
 
-    def _opt_in(self) -> None:
+    def _disclosed_chat(self) -> None:
         self._connect()
-        self.bot.handle_update(self._business_message(1, "Original message"))
-        self.assertEqual(self.assistant.calls, [])
-        self.assertIn("Google Gemini", self.api.business_messages[-1]["text"])
-        self.assertIn("Reply YES to agree", self.api.business_messages[-1]["text"])
-        self.bot.handle_update(self._business_message(2, "YES"))
-        self.assertEqual(self.assistant.calls, [])
-        self.assertIn("earlier messages were not saved", self.api.business_messages[-1]["text"])
+        self.bot.store.mark_personal_business_reply_disclosure_sent(
+            CONNECTION_ID, CHAT_ID
+        )
 
     def _business_message(
         self,
@@ -272,15 +268,25 @@ class PersonalBusinessReplyFlowTests(unittest.TestCase):
         return update
 
     def test_enabled_admin_connection_replies_via_business_account(self) -> None:
-        self._opt_in()
+        self._connect()
+        self.bot.store.add_admin_reply_style_example(
+            ADMIN_ID, "Hey, glad you reached out. 😊"
+        )
         self.bot.handle_update(self._business_message(3, "Hi there", update_id=501))
 
-        self.assertEqual(len(self.api.business_messages), 3)
-        sent = self.api.business_messages[-1]
+        self.assertEqual(len(self.api.business_messages), 2)
+        notice, sent = self.api.business_messages
+        self.assertIn("AI assistant", notice["text"])
+        self.assertIn("external AI service", notice["text"])
+        self.assertNotIn("YES", notice["text"])
         self.assertEqual(sent["chat_id"], CHAT_ID)
         self.assertEqual(sent["business_connection_id"], CONNECTION_ID)
         self.assertEqual(sent["text"], "Thanks for reaching out.")
         self.assertEqual(self.assistant.calls[0]["message"], "Hi there")
+        self.assertEqual(
+            self.assistant.calls[0]["style_examples"],
+            ["Hey, glad you reached out. 😊"],
+        )
         turn = self.bot.store.recent_personal_business_reply_history(
             CONNECTION_ID, CHAT_ID
         )
@@ -293,13 +299,13 @@ class PersonalBusinessReplyFlowTests(unittest.TestCase):
         )
 
     def test_follow_up_gets_recent_context_and_duplicate_update_is_not_replied_to(self) -> None:
-        self._opt_in()
+        self._disclosed_chat()
         update = self._business_message(3, "I prefer Friday.", update_id=502)
         self.bot.handle_update(update)
         self.bot.handle_update(update)
         self.bot.handle_update(self._business_message(4, "What time works?", update_id=503))
 
-        self.assertEqual(len(self.api.business_messages), 4)
+        self.assertEqual(len(self.api.business_messages), 2)
         self.assertEqual(len(self.assistant.calls), 2)
         self.assertEqual(
             self.assistant.calls[1]["history"],
@@ -310,7 +316,7 @@ class PersonalBusinessReplyFlowTests(unittest.TestCase):
         )
 
     def test_only_six_completed_turns_are_retained_for_context(self) -> None:
-        self._opt_in()
+        self._disclosed_chat()
         for message_id in range(1, 9):
             self.bot.handle_update(
                 self._business_message(message_id + 2, f"Message {message_id}")
@@ -346,21 +352,21 @@ class PersonalBusinessReplyFlowTests(unittest.TestCase):
         self.assertEqual(self.assistant.calls, [])
 
     def test_owner_messages_are_not_answered(self) -> None:
-        self._opt_in()
+        self._disclosed_chat()
         self.bot.handle_update(
             self._business_message(3, "I sent this", sender_id=ADMIN_ID)
         )
-        self.assertEqual(len(self.api.business_messages), 2)
+        self.assertEqual(len(self.api.business_messages), 0)
         self.assertEqual(self.assistant.calls, [])
 
     def test_sensitive_reply_is_held_and_owner_notified(self) -> None:
-        self._opt_in()
+        self._disclosed_chat()
         self.assistant.draft = PersonalReplyDraft(
             "I want to check this first.", needs_owner_input=True
         )
         self.bot.handle_update(self._business_message(3, "Should I invest?"))
 
-        self.assertEqual(len(self.api.business_messages), 2)
+        self.assertEqual(len(self.api.business_messages), 0)
         self.assertEqual(len(self.api.messages), 1)
         self.assertIn("needs your input", self.api.messages[0]["text"])
         self.assertEqual(
@@ -391,15 +397,15 @@ class PersonalBusinessReplyFlowTests(unittest.TestCase):
         self.assertEqual(stored_message, "")
 
     def test_generation_failure_is_held_without_local_fallback(self) -> None:
-        self._opt_in()
+        self._disclosed_chat()
         self.assistant.error = PersonalReplyGenerationError("rate_limit")
         self.bot.handle_update(self._business_message(3, "A personal message"))
-        self.assertEqual(len(self.api.business_messages), 2)
+        self.assertEqual(len(self.api.business_messages), 0)
         self.assertEqual(self.api.messages[0]["chat_id"], ADMIN_ID)
         self.assertIn("rate_limit", self.api.messages[0]["text"])
 
     def test_send_failure_is_not_retried_automatically(self) -> None:
-        self._opt_in()
+        self._disclosed_chat()
         self.api.send_error = TelegramAPIError(
             "Forbidden", error_code=403, delivery_unknown=False
         )
@@ -407,11 +413,11 @@ class PersonalBusinessReplyFlowTests(unittest.TestCase):
         self.bot.handle_update(update)
         self.bot.handle_update(update)
         self.assertEqual(len(self.assistant.calls), 1)
-        self.assertEqual(len(self.api.business_messages), 2)
+        self.assertEqual(len(self.api.business_messages), 0)
         self.assertIn("not be retried automatically", self.api.messages[-1]["text"])
 
     def test_disconnecting_business_connection_clears_saved_history(self) -> None:
-        self._opt_in()
+        self._disclosed_chat()
         self.bot.handle_update(self._business_message(3, "Hello"))
         self.bot.handle_update(
             {
@@ -430,10 +436,10 @@ class PersonalBusinessReplyFlowTests(unittest.TestCase):
             [],
         )
         self.bot.handle_update(self._business_message(4, "No longer authorized"))
-        self.assertEqual(len(self.api.business_messages), 3)
+        self.assertEqual(len(self.api.business_messages), 1)
 
     def test_deletion_update_removes_that_turn_from_future_context(self) -> None:
-        self._opt_in()
+        self._disclosed_chat()
         self.bot.handle_update(self._business_message(3, "Keep this context"))
         self.bot.handle_update(
             {
@@ -452,7 +458,7 @@ class PersonalBusinessReplyFlowTests(unittest.TestCase):
         )
 
     def test_stop_erases_context_and_disables_future_ai_processing(self) -> None:
-        self._opt_in()
+        self._disclosed_chat()
         self.bot.handle_update(self._business_message(3, "A saved exchange"))
         self.bot.handle_update(self._business_message(4, "STOP"))
         self.assertEqual(
@@ -471,8 +477,19 @@ class PersonalBusinessReplyFlowTests(unittest.TestCase):
         self.assertEqual(len(self.assistant.calls), 1)
         self.assertIn("AI-assisted replies are now off", self.api.business_messages[-1]["text"])
 
-    def test_delete_erases_context_without_revoking_consent(self) -> None:
-        self._opt_in()
+    def test_start_reenables_after_stop_without_replaying_old_messages(self) -> None:
+        self._disclosed_chat()
+        self.bot.handle_update(self._business_message(3, "Before stop"))
+        self.bot.handle_update(self._business_message(4, "STOP"))
+        self.bot.handle_update(self._business_message(5, "START"))
+        self.assertEqual(len(self.assistant.calls), 1)
+        self.assertIn("AI replies are back on", self.api.business_messages[-1]["text"])
+        self.bot.handle_update(self._business_message(6, "After restart"))
+        self.assertEqual(len(self.assistant.calls), 2)
+        self.assertEqual(self.assistant.calls[-1]["message"], "After restart")
+
+    def test_delete_erases_context_and_replies_continue(self) -> None:
+        self._disclosed_chat()
         self.bot.handle_update(self._business_message(3, "Saved context"))
         self.bot.handle_update(self._business_message(4, "DELETE"))
         self.assertEqual(
@@ -481,17 +498,22 @@ class PersonalBusinessReplyFlowTests(unittest.TestCase):
             ),
             [],
         )
-        self.assertEqual(
+        self.assertIsNone(
             self.bot.store.get_personal_business_reply_consent(
                 CONNECTION_ID, CHAT_ID
-            )["consent_state"],
-            "consented",
+            )
         )
+        self.bot.handle_update(self._business_message(5, "Still here"))
+        self.assertEqual(len(self.assistant.calls), 2)
 
-    def test_consent_is_required_before_any_message_reaches_gemini(self) -> None:
+    def test_first_message_gets_automatic_ai_reply_without_yes_step(self) -> None:
         self._connect()
         self.bot.handle_update(self._business_message(1, "Sensitive initial text"))
-        self.assertEqual(self.assistant.calls, [])
+        self.assertEqual(len(self.assistant.calls), 1)
+        self.assertEqual(self.assistant.calls[0]["message"], "Sensitive initial text")
+        self.assertEqual(len(self.api.business_messages), 2)
+        self.assertIn("AI assistant", self.api.business_messages[0]["text"])
+        self.assertNotIn("Reply YES", self.api.business_messages[0]["text"])
         connection = self.bot.store._connect()
         try:
             stored_text = connection.execute(
@@ -503,39 +525,71 @@ class PersonalBusinessReplyFlowTests(unittest.TestCase):
             ).fetchone()[0]
         finally:
             connection.close()
-        self.assertEqual(stored_text, "")
-        self.bot.handle_update(self._business_message(2, "YES"))
-        self.assertEqual(self.assistant.calls, [])
-        self.bot.handle_update(self._business_message(3, "New consented message"))
-        self.assertEqual(self.assistant.calls[0]["message"], "New consented message")
+        self.assertEqual(stored_text, "Sensitive initial text")
 
-    def test_failed_consent_notice_is_retried_without_saving_message_text(self) -> None:
+    def test_initial_disclosure_is_sent_once_before_ai_processing(self) -> None:
+        self._connect()
+        observed_text_before_notice: list[str] = []
+        send_notice = self.bot._send_business_notice
+
+        def inspect_notice(chat_id: int, connection_id: str, text: str) -> bool:
+            connection = self.bot.store._connect()
+            try:
+                row = connection.execute(
+                    """
+                    SELECT incoming_text FROM personal_business_reply_turns
+                    WHERE connection_id = ? AND chat_id = ?
+                    ORDER BY incoming_message_id DESC LIMIT 1
+                    """,
+                    (CONNECTION_ID, CHAT_ID),
+                ).fetchone()
+            finally:
+                connection.close()
+            observed_text_before_notice.append(str(row["incoming_text"]))
+            return send_notice(chat_id, connection_id, text)
+
+        self.bot._send_business_notice = inspect_notice
+        self.bot.handle_update(self._business_message(1, "First message"))
+        self.bot.handle_update(self._business_message(2, "Follow-up"))
+
+        notices = [
+            item for item in self.api.business_messages
+            if "AI assistant" in item["text"]
+        ]
+        self.assertEqual(len(notices), 1)
+        self.assertEqual(len(self.assistant.calls), 2)
+        self.assertIn("external AI service", notices[0]["text"])
+        self.assertIn("up to six recent exchanges", notices[0]["text"])
+        self.assertIn("STOP", notices[0]["text"])
+        self.assertIn("DELETE", notices[0]["text"])
+        self.assertEqual(observed_text_before_notice, [""])
+
+    def test_failed_disclosure_holds_message_before_any_ai_call(self) -> None:
         self._connect()
         self.api.send_error = TelegramAPIError(
             "Forbidden", error_code=403, delivery_unknown=False
         )
         self.bot.handle_update(self._business_message(1, "Private first message"))
-        self.assertEqual(self.assistant.calls, [])
-        self.api.send_error = None
-        self.bot.handle_update(self._business_message(2, "A later message"))
 
         self.assertEqual(self.assistant.calls, [])
-        self.assertIn("Google Gemini", self.api.business_messages[-1]["text"])
+        self.assertEqual(self.api.business_messages, [])
+        self.assertIn("not sent to Gemini", self.api.messages[-1]["text"])
         connection = self.bot.store._connect()
         try:
-            stored_texts = connection.execute(
+            row = connection.execute(
                 """
-                SELECT incoming_text FROM personal_business_reply_turns
-                WHERE connection_id = ? AND chat_id = ?
+                SELECT incoming_text, response_status
+                FROM personal_business_reply_turns
+                WHERE connection_id = ? AND chat_id = ? AND incoming_message_id = 1
                 """,
                 (CONNECTION_ID, CHAT_ID),
-            ).fetchall()
+            ).fetchone()
         finally:
             connection.close()
-        self.assertTrue(all(row[0] == "" for row in stored_texts))
+        self.assertEqual(tuple(row), ("", "failed"))
 
     def test_restart_scrubs_interrupted_content_without_retrying(self) -> None:
-        self._opt_in()
+        self._disclosed_chat()
         self.bot.store.create_personal_business_reply_turn(
             connection_id=CONNECTION_ID,
             chat_id=CHAT_ID,
@@ -611,7 +665,7 @@ class PersonalBusinessReplyFlowTests(unittest.TestCase):
         finally:
             connection.close()
 
-    def test_main_keeps_business_reply_assistant_disabled_with_gemini_configured(
+    def test_main_enables_business_reply_assistant_with_gemini_configured(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -628,8 +682,9 @@ class PersonalBusinessReplyFlowTests(unittest.TestCase):
                 "smart_money_hub_bot.main.SmartMoneyHubBot"
             ) as bot_class:
                 bot_main()
-        self.assertIsNone(
-            bot_class.call_args.kwargs["personal_reply_assistant"]
+        self.assertIsInstance(
+            bot_class.call_args.kwargs["personal_reply_assistant"],
+            PersonalTelegramReplyAssistant,
         )
         self.assertIsInstance(
             bot_class.call_args.kwargs["reply_draft_assistant"],
@@ -660,7 +715,10 @@ class PersonalBusinessReplyFlowTests(unittest.TestCase):
             sent_message_id=903,
         )
         removed = self.bot.store.clear_personal_business_reply_data()
-        self.assertEqual(removed, {"turns": 1, "consents": 1, "connections": 1})
+        self.assertEqual(
+            removed,
+            {"turns": 1, "consents": 1, "disclosures": 0, "connections": 1},
+        )
         self.assertIsNone(
             self.bot.store.get_personal_business_connection(CONNECTION_ID)
         )

@@ -461,6 +461,15 @@ class Repository:
                         PRIMARY KEY (connection_id, chat_id)
                     );
 
+                    CREATE TABLE IF NOT EXISTS personal_business_reply_disclosures (
+                        connection_id TEXT NOT NULL
+                            REFERENCES personal_business_connections(connection_id)
+                            ON DELETE CASCADE,
+                        chat_id INTEGER NOT NULL,
+                        notice_sent_at TEXT NOT NULL,
+                        PRIMARY KEY (connection_id, chat_id)
+                    );
+
                     CREATE TABLE IF NOT EXISTS personal_business_reply_turns (
                         connection_id TEXT NOT NULL
                             REFERENCES personal_business_connections(connection_id)
@@ -4887,6 +4896,13 @@ class Repository:
                         """,
                         (connection_id,),
                     )
+                    connection.execute(
+                        """
+                        DELETE FROM personal_business_reply_disclosures
+                        WHERE connection_id = ?
+                        """,
+                        (connection_id,),
+                    )
         finally:
             connection.close()
 
@@ -4943,6 +4959,36 @@ class Repository:
                         status,
                         timestamp,
                         timestamp,
+                    ),
+                )
+                return cursor.rowcount == 1
+        finally:
+            connection.close()
+
+    def set_personal_business_reply_input(
+        self,
+        *,
+        connection_id: str,
+        chat_id: int,
+        incoming_message_id: int,
+        incoming_text: str,
+    ) -> bool:
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE personal_business_reply_turns
+                    SET incoming_text = ?, updated_at = ?
+                    WHERE connection_id = ? AND chat_id = ?
+                      AND incoming_message_id = ? AND response_status = 'processing'
+                    """,
+                    (
+                        incoming_text,
+                        utc_now(),
+                        connection_id,
+                        chat_id,
+                        incoming_message_id,
                     ),
                 )
                 return cursor.rowcount == 1
@@ -5054,6 +5100,41 @@ class Repository:
                 (connection_id, chat_id),
             ).fetchone()
             return dict(row) if row else None
+        finally:
+            connection.close()
+
+    def personal_business_reply_disclosure_sent(
+        self, connection_id: str, chat_id: int
+    ) -> bool:
+        connection = self._connect()
+        try:
+            return (
+                connection.execute(
+                    """
+                    SELECT 1 FROM personal_business_reply_disclosures
+                    WHERE connection_id = ? AND chat_id = ?
+                    """,
+                    (connection_id, chat_id),
+                ).fetchone()
+                is not None
+            )
+        finally:
+            connection.close()
+
+    def mark_personal_business_reply_disclosure_sent(
+        self, connection_id: str, chat_id: int, *, at: str | None = None
+    ) -> None:
+        connection = self._connect()
+        try:
+            with connection:
+                connection.execute(
+                    """
+                    INSERT OR IGNORE INTO personal_business_reply_disclosures (
+                        connection_id, chat_id, notice_sent_at
+                    ) VALUES (?, ?, ?)
+                    """,
+                    (connection_id, chat_id, at or utc_now()),
+                )
         finally:
             connection.close()
 
@@ -5178,7 +5259,7 @@ class Repository:
             connection.close()
 
     def clear_personal_business_reply_data(self) -> dict[str, int]:
-        """Remove all persisted state for the disabled Business reply assistant."""
+        """Remove all persisted state for the Business reply assistant."""
         connection = self._connect()
         try:
             with connection:
@@ -5188,12 +5269,16 @@ class Repository:
                 consents = connection.execute(
                     "DELETE FROM personal_business_reply_consents"
                 ).rowcount
+                disclosures = connection.execute(
+                    "DELETE FROM personal_business_reply_disclosures"
+                ).rowcount
                 connections = connection.execute(
                     "DELETE FROM personal_business_connections"
                 ).rowcount
                 return {
                     "turns": max(0, turns),
                     "consents": max(0, consents),
+                    "disclosures": max(0, disclosures),
                     "connections": max(0, connections),
                 }
         finally:
