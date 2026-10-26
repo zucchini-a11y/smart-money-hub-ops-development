@@ -162,6 +162,7 @@ class GeminiCoachTests(unittest.TestCase):
             {"thinkingLevel": "LOW"},
         )
         self.assertEqual(payload["generationConfig"]["maxOutputTokens"], 1024)
+        self.assertLessEqual(mocked_urlopen.call_args.kwargs["timeout"], 8)
         self.assertEqual(mocked_urlopen.call_count, 1)
 
     def test_rate_limit_fails_over_with_same_member_context(self) -> None:
@@ -311,6 +312,41 @@ class GeminiCoachTests(unittest.TestCase):
         self.assertIn(
             GEMINI_FALLBACK_MODELS[0],
             mocked_urlopen.call_args_list[1].args[0].full_url,
+        )
+
+    def test_repeated_primary_timeouts_temporarily_skip_primary_model(self) -> None:
+        service = GeminiCoachService("test-key")
+        attempted_models = []
+
+        def attempt_model(_message, **kwargs):
+            model = kwargs["model"]
+            attempted_models.append(model)
+            if model == GEMINI_MODEL:
+                raise CoachProviderError("client_timeout")
+            return CoachReply("Alternate Gemini answered.", "BOS", (), "")
+
+        with patch.object(
+            service, "_evaluate_for_model", side_effect=attempt_model
+        ), self.assertLogs(
+            "smart_money_hub_bot.gemini_coach", level="INFO"
+        ) as logs:
+            service.evaluate("What is BOS?")
+            service.evaluate("What is liquidity?")
+            service.evaluate("What is a fair value gap?")
+
+        self.assertEqual(
+            attempted_models,
+            [
+                GEMINI_MODEL,
+                GEMINI_FALLBACK_MODELS[0],
+                GEMINI_MODEL,
+                GEMINI_FALLBACK_MODELS[0],
+                GEMINI_FALLBACK_MODELS[0],
+            ],
+        )
+        self.assertIn(
+            "temporarily skipped after recent transient failures",
+            "\n".join(logs.output),
         )
 
     def test_plain_text_candidate_parts_are_returned_without_json_decoding(self) -> None:

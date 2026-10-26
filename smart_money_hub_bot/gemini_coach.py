@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import socket
+import threading
 import time
 import uuid
 from typing import Any
@@ -34,6 +35,14 @@ _MAX_OUTPUT_TOKENS = 1024
 _RETRY_BACKOFF_SECONDS = 0.25
 _MAX_RETRY_AFTER_SECONDS = 1.0
 _MIN_RETRY_WINDOW_SECONDS = 0.5
+_PRIMARY_TIMEOUT_FAILURES_BEFORE_COOLDOWN = 2
+_PRIMARY_MODEL_COOLDOWN_SECONDS = 60.0
+_TRANSIENT_PRIMARY_FAILURES = {
+    "client_timeout",
+    "http_timeout",
+    "network",
+    "service_unavailable",
+}
 
 
 def _endpoint_for_model(model: str) -> str:
@@ -57,14 +66,17 @@ class _GeminiResponseProblem(Exception):
 
 
 class GeminiCoachService:
-    """Uses a fixed free-tier model order; exhausted failures go to the router."""
+    """Uses the configured free-tier model order with bounded transient recovery."""
 
     diagnostic_response_path = "gemini_success"
 
-    def __init__(self, api_key: str, timeout_seconds: float = 12) -> None:
+    def __init__(self, api_key: str, timeout_seconds: float = 8) -> None:
         self._api_key = api_key.strip()
         self._timeout_seconds = timeout_seconds
         self._local_coach = RuleBasedCoachService()
+        self._primary_failure_streak = 0
+        self._primary_cooldown_until = 0.0
+        self._primary_state_lock = threading.Lock()
 
     def evaluate(
         self,
@@ -81,7 +93,20 @@ class GeminiCoachService:
         if not self._api_key:
             raise CoachProviderError("missing_api_key")
 
-        models = (GEMINI_MODEL, *GEMINI_FALLBACK_MODELS)
+        with self._primary_state_lock:
+            primary_in_cooldown = (
+                time.monotonic() < self._primary_cooldown_until
+            )
+        if primary_in_cooldown:
+            models = GEMINI_FALLBACK_MODELS
+            logger.info(
+                "Gemini primary model temporarily skipped after recent transient "
+                "failures (cooldown_seconds=%s). request_id=%s.",
+                int(_PRIMARY_MODEL_COOLDOWN_SECONDS),
+                request_id,
+            )
+        else:
+            models = (GEMINI_MODEL, *GEMINI_FALLBACK_MODELS)
         started_at = time.monotonic()
         deadline = started_at + self._timeout_seconds * 2
         last_error: CoachProviderError | None = None
@@ -107,6 +132,8 @@ class GeminiCoachService:
                 )
             except CoachProviderError as error:
                 last_error = error
+                if model == GEMINI_MODEL:
+                    self._record_primary_failure(error)
                 logger.warning(
                     "Gemini model attempt failed (model=%s, kind=%s, "
                     "http_status=%s, rejection_category=%s, request_id=%s).",
@@ -129,6 +156,8 @@ class GeminiCoachService:
                 model,
                 request_id,
             )
+            if model == GEMINI_MODEL:
+                self._record_primary_success()
             return reply
 
         if last_error is not None:
@@ -137,6 +166,31 @@ class GeminiCoachService:
             "client_timeout",
             elapsed_ms=_elapsed_ms(started_at),
         )
+
+    def _record_primary_failure(self, error: CoachProviderError) -> None:
+        with self._primary_state_lock:
+            if error.failure_kind not in _TRANSIENT_PRIMARY_FAILURES:
+                self._primary_failure_streak = 0
+                return
+            self._primary_failure_streak += 1
+            if (
+                self._primary_failure_streak
+                >= _PRIMARY_TIMEOUT_FAILURES_BEFORE_COOLDOWN
+            ):
+                self._primary_cooldown_until = (
+                    time.monotonic() + _PRIMARY_MODEL_COOLDOWN_SECONDS
+                )
+                self._primary_failure_streak = 0
+                logger.warning(
+                    "Gemini primary model entered a short cooldown after repeated "
+                    "transient failures (cooldown_seconds=%s).",
+                    int(_PRIMARY_MODEL_COOLDOWN_SECONDS),
+                )
+
+    def _record_primary_success(self) -> None:
+        with self._primary_state_lock:
+            self._primary_failure_streak = 0
+            self._primary_cooldown_until = 0.0
 
     def _evaluate_for_model(
         self,
