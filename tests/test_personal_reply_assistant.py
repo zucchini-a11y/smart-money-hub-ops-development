@@ -665,7 +665,7 @@ class PersonalBusinessReplyFlowTests(unittest.TestCase):
         finally:
             connection.close()
 
-    def test_main_enables_business_reply_assistant_with_gemini_configured(
+    def test_main_keeps_business_replies_disabled_and_private_drafts_enabled(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -682,10 +682,7 @@ class PersonalBusinessReplyFlowTests(unittest.TestCase):
                 "smart_money_hub_bot.main.SmartMoneyHubBot"
             ) as bot_class:
                 bot_main()
-        self.assertIsInstance(
-            bot_class.call_args.kwargs["personal_reply_assistant"],
-            PersonalTelegramReplyAssistant,
-        )
+        self.assertIsNone(bot_class.call_args.kwargs["personal_reply_assistant"])
         self.assertIsInstance(
             bot_class.call_args.kwargs["reply_draft_assistant"],
             PersonalTelegramReplyAssistant,

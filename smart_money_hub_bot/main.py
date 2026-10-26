@@ -67,13 +67,10 @@ def main() -> None:
     channel_writer = (
         GeminiChannelContentService(gemini_api_key) if gemini_api_key else None
     )
-    # Business automatic replies use the configured Gemini model only. They
-    # remain scoped to an enabled Telegram Business connection with can_reply.
-    # If Gemini is unavailable, the Business path stays disabled rather than
-    # silently using the local Coach.
-    personal_reply_assistant = (
-        PersonalTelegramReplyAssistant(gemini_api_key) if gemini_api_key else None
-    )
+    # The owner does not want recipients to receive an AI/data disclosure.
+    # Keep automatic Business replies disabled rather than processing private
+    # messages with an external AI service without that disclosure.
+    personal_reply_assistant = None
     reply_draft_assistant = (
         PersonalTelegramReplyAssistant(gemini_api_key) if gemini_api_key else None
     )
@@ -90,15 +87,10 @@ def main() -> None:
             "GEMINI_API_KEY is not configured; using the local Coach and holding "
             "weekend AI drafts."
         )
-    if personal_reply_assistant is not None:
-        logging.getLogger(__name__).info(
-            "Telegram Business AI replies are enabled for authorized connections; "
-            "each chat receives a one-time AI/data notice, and STOP turns replies off."
-        )
-    else:
-        logging.getLogger(__name__).info(
-            "Telegram Business AI replies are disabled because Gemini is not configured."
-        )
+    logging.getLogger(__name__).info(
+        "Telegram Business automatic replies are disabled; the owner-only "
+        "reply-drafting feature remains available."
+    )
     try:
         daily_brief_enabled = os.getenv(
             "SMH_DAILY_USD_GOLD_BRIEF_ENABLED", "false"
