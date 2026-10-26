@@ -5186,11 +5186,14 @@ class Repository:
             with connection:
                 cursor = connection.execute(
                     f"""
-                    DELETE FROM personal_business_reply_turns
+                    UPDATE personal_business_reply_turns
+                    SET incoming_text = '', response_text = NULL,
+                        response_status = 'consent_action',
+                        sent_message_id = NULL, updated_at = ?
                     WHERE connection_id = ? AND chat_id = ?
                       AND incoming_message_id IN ({placeholders})
                     """,
-                    (connection_id, chat_id, *safe_ids),
+                    (utc_now(), connection_id, chat_id, *safe_ids),
                 )
                 return cursor.rowcount
         finally:

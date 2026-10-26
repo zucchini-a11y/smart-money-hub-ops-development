@@ -23,6 +23,12 @@ _MAX_HISTORY_TURNS = 6
 _MAX_HISTORY_TURN_CHARACTERS = 1_500
 _MAX_REPLY_CHARACTERS = 1_200
 _OUTPUT_TOKEN_LIMIT = 384
+_UNSAFE_FINANCIAL_CLAIM = re.compile(
+    r"\b(?:buy now|sell now|enter (?:long|short) now|"
+    r"guaranteed (?:profits?|returns?)|profits? guaranteed|"
+    r"risk[- ]free|cannot lose|can['’]t lose|sure win)\b",
+    re.IGNORECASE,
+)
 
 _SYSTEM_INSTRUCTION = (
     "You are the account owner's personal Telegram reply assistant. Write one "
@@ -50,7 +56,7 @@ BUSINESS_REPLY_CONSENT_NOTICE = (
     "this business account using new messages you send here and up to six recent "
     "completed exchanges in this chat. If you opt in, that text is sent to Google "
     "Gemini to prepare replies, and the latest six exchanges are stored in the "
-    "bot’s private database for follow-up context. Saved exchanges are kept only "
+    "bot’s database for follow-up context. Saved exchanges are kept only "
     "while you remain opted in and this account stays connected; STOP, DELETE, or "
     "the account owner disconnecting the bot removes the saved text. To honor your "
     "choice and prevent duplicate replies, minimal Telegram chat/message IDs and "
@@ -213,20 +219,27 @@ class PersonalTelegramReplyAssistant:
                 or re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", reply)
             ):
                 raise ValueError("reply")
+            if _UNSAFE_FINANCIAL_CLAIM.search(reply):
+                raise ValueError("unsafe_financial_claim")
         except (
             AttributeError,
             KeyError,
             IndexError,
             TypeError,
             ValueError,
-            json.JSONDecodeError,
-        ):
+        ) as error:
+            category = (
+                "unsafe_financial_claim"
+                if isinstance(error, ValueError)
+                and str(error) == "unsafe_financial_claim"
+                else "invalid_reply_format"
+            )
             logger.warning(
-                "Personal reply generation failed "
-                "(category=invalid_reply_format, request_id=%s).",
+                "Personal reply generation failed (category=%s, request_id=%s).",
+                category,
                 request_id,
             )
-            raise PersonalReplyGenerationError("invalid_reply_format") from None
+            raise PersonalReplyGenerationError(category) from None
 
         return PersonalReplyDraft(
             reply=reply,

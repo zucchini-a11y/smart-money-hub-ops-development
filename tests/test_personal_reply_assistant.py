@@ -172,6 +172,16 @@ class PersonalReplyAssistantProviderTests(unittest.TestCase):
             result = assistant.generate("Should I accept this loan?")
         self.assertTrue(result.needs_owner_input)
 
+    def test_unsafe_trading_claim_is_rejected(self) -> None:
+        assistant = PersonalTelegramReplyAssistant("synthetic-key")
+        with patch(
+            "smart_money_hub_bot.personal_reply_assistant.urlopen",
+            return_value=_provider_response("Buy now; profit is guaranteed."),
+        ):
+            with self.assertRaises(PersonalReplyGenerationError) as caught:
+                assistant.generate("What do you think of the market?")
+        self.assertEqual(caught.exception.category, "unsafe_financial_claim")
+
 
 class PersonalBusinessReplyFlowTests(unittest.TestCase):
     def setUp(self) -> None:
