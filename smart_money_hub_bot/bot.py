@@ -1617,6 +1617,7 @@ class SmartMoneyHubBot:
             self.sessions.pop(telegram_id, None)
             self.admin_dashboard.cancel_search(telegram_id)
             self.admin_dashboard.cancel_broadcast(telegram_id)
+            self.admin_dashboard.cancel_single_member_dm(telegram_id)
             self.admin_dashboard.cancel_channel_promo(telegram_id)
             self._show_main_menu(chat_id)
             return
@@ -1624,6 +1625,7 @@ class SmartMoneyHubBot:
             self.sessions.pop(telegram_id, None)
             self.admin_dashboard.cancel_search(telegram_id)
             self.admin_dashboard.cancel_broadcast(telegram_id)
+            self.admin_dashboard.cancel_single_member_dm(telegram_id)
             if not is_private:
                 self.api.send_message(
                     chat_id,
@@ -1637,6 +1639,7 @@ class SmartMoneyHubBot:
             self.sessions.pop(telegram_id, None)
             self.admin_dashboard.cancel_search(telegram_id)
             self.admin_dashboard.cancel_broadcast(telegram_id)
+            self.admin_dashboard.cancel_single_member_dm(telegram_id)
             if not is_private:
                 self._reminder_private_chat_required(chat_id)
                 return
@@ -1646,6 +1649,7 @@ class SmartMoneyHubBot:
             self.sessions.pop(telegram_id, None)
             self.admin_dashboard.cancel_search(telegram_id)
             self.admin_dashboard.cancel_broadcast(telegram_id)
+            self.admin_dashboard.cancel_single_member_dm(telegram_id)
             if not is_private:
                 self._reminder_private_chat_required(chat_id)
                 return
@@ -1668,6 +1672,7 @@ class SmartMoneyHubBot:
             return
         if command in {"/stop", "/unsubscribe"}:
             self.admin_dashboard.cancel_broadcast(telegram_id)
+            self.admin_dashboard.cancel_single_member_dm(telegram_id)
             self.store.set_reminders_stopped(telegram_id, True)
             session = self.sessions.get(telegram_id)
             if session and session.kind == "personal_reminder":
@@ -1706,6 +1711,7 @@ class SmartMoneyHubBot:
         }:
             self.admin_dashboard.cancel_search(telegram_id)
             self.admin_dashboard.cancel_broadcast(telegram_id)
+            self.admin_dashboard.cancel_single_member_dm(telegram_id)
             self.admin_dashboard.cancel_channel_promo(telegram_id)
             self.admin_dashboard.cancel_calendar_action(telegram_id)
             self.admin_dashboard.open(chat_id, telegram_id, is_private)
@@ -1744,6 +1750,10 @@ class SmartMoneyHubBot:
             self.api.send_message(chat_id, "Okay, I cancelled that reminder setup.")
             return
 
+        if self.admin_dashboard.handle_single_member_dm_message(
+            chat_id, telegram_id, is_private, text
+        ):
+            return
         if self.admin_dashboard.search_is_pending(telegram_id):
             logger.info("Coach bypassed: pending admin search flow.")
             self.admin_dashboard.handle_search_message(

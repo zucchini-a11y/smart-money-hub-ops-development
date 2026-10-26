@@ -132,6 +132,8 @@ class AdminDashboard:
         self._search_pending: set[int] = set()
         self._broadcast_pending: set[int] = set()
         self._broadcast_drafts: dict[int, str] = {}
+        self._single_member_dm_target_pending: set[int] = set()
+        self._single_member_dm_message_pending: dict[int, dict[str, Any]] = {}
         self._single_member_dm_drafts: dict[int, dict[str, Any]] = {}
         self._channel_promo_pending: set[int] = set()
         self._knowledge_pending: dict[int, tuple[str, int]] = {}
@@ -159,10 +161,22 @@ class AdminDashboard:
         self._broadcast_drafts.pop(telegram_id, None)
 
     def has_single_member_dm_state(self, telegram_id: int) -> bool:
-        return telegram_id in self._single_member_dm_drafts
+        return (
+            telegram_id in self._single_member_dm_target_pending
+            or telegram_id in self._single_member_dm_message_pending
+            or telegram_id in self._single_member_dm_drafts
+        )
 
     def cancel_single_member_dm(self, telegram_id: int) -> None:
+        self._single_member_dm_target_pending.discard(telegram_id)
+        self._single_member_dm_message_pending.pop(telegram_id, None)
         self._single_member_dm_drafts.pop(telegram_id, None)
+
+    def single_member_dm_is_pending(self, telegram_id: int) -> bool:
+        return (
+            telegram_id in self._single_member_dm_target_pending
+            or telegram_id in self._single_member_dm_message_pending
+        )
 
     def has_channel_promo_state(self, telegram_id: int) -> bool:
         return telegram_id in self._channel_promo_pending
@@ -585,7 +599,10 @@ class AdminDashboard:
         }
         if data not in broadcast_actions:
             self.cancel_broadcast(telegram_id)
-        if data not in single_member_dm_actions:
+        if (
+            data not in single_member_dm_actions
+            and not data.startswith("admin:dm_member:target:")
+        ):
             self.cancel_single_member_dm(telegram_id)
         if data not in channel_promo_actions:
             self.cancel_channel_promo(telegram_id)
@@ -837,13 +854,20 @@ class AdminDashboard:
             )
         elif data == "admin:dm_member":
             self.cancel_single_member_dm(telegram_id)
+            self._single_member_dm_target_pending.add(telegram_id)
             self.api.send_message(
                 chat_id,
-                "To preview a one-time message for one eligible member, send:\n"
-                "/memberdm TELEGRAM_ID MESSAGE\n\n"
-                "Tap Search Member in the admin dashboard to find their numeric ID. "
-                "Nothing is sent until you review the preview and confirm.",
-                self._dashboard_keyboard(),
+                "Who should receive the one-time DM? Send their numeric Telegram ID, "
+                "username, or first name. They must have started this bot and not "
+                "used /stop.\n\nNothing is sent until you review and confirm the "
+                "message. You can also use /cancel to stop.",
+                self._admin_navigation(
+                    [[{"text": "Cancel", "callback_data": "admin:dm_member:cancel"}]]
+                ),
+            )
+        elif data.startswith("admin:dm_member:target:"):
+            self._start_single_member_dm_for_target(
+                chat_id, telegram_id, self._integer_suffix(data)
             )
         elif data == "admin:dm_member:confirm":
             self._send_single_member_dm(chat_id, telegram_id)
@@ -1329,37 +1353,132 @@ class AdminDashboard:
             return False
         if not self._authorize(chat_id, telegram_id, is_private):
             return True
-        if len(parts) != 3:
+        self.cancel_search(telegram_id)
+        self.cancel_broadcast(telegram_id)
+        self.cancel_single_member_dm(telegram_id)
+        if len(parts) == 1:
+            self._single_member_dm_target_pending.add(telegram_id)
             self.api.send_message(
                 chat_id,
-                "Usage: /memberdm TELEGRAM_ID MESSAGE\n"
-                "Use the member’s numeric Telegram ID. They must have started "
-                "the bot and must not have opted out.",
+                "Who should receive the one-time DM? Send their numeric Telegram ID, "
+                "username, or first name. They must have started this bot and not "
+                "used /stop.",
+                self._admin_navigation(
+                    [[{"text": "Cancel", "callback_data": "admin:dm_member:cancel"}]]
+                ),
             )
             return True
-        if not parts[1].isdecimal():
-            self.api.send_message(
-                chat_id, "The member ID must be a positive numeric Telegram ID."
+        if len(parts) == 2:
+            self.cancel_single_member_dm(telegram_id)
+            self._set_single_member_dm_target(
+                chat_id, telegram_id, parts[1]
             )
             return True
-        target_id = int(parts[1])
-        if target_id <= 0 or target_id == self.admin_id:
-            self.api.send_message(
-                chat_id, "Choose a different eligible member’s Telegram ID."
-            )
+        target_query = parts[1]
+        matches = self._eligible_private_dm_matches(target_query)
+        if len(matches) != 1:
+            self._send_single_dm_match_result(chat_id, matches, target_query)
             return True
-        message = parts[2].strip()
-        if (
-            not message
-            or len(message.encode("utf-16-le")) // 2
-            > MAX_BROADCAST_MESSAGE_LENGTH
-        ):
-            self.api.send_message(
-                chat_id,
-                f"Send a non-empty message of at most "
-                f"{MAX_BROADCAST_MESSAGE_LENGTH} Telegram characters.",
-            )
+        self._preview_single_member_dm(
+            chat_id, telegram_id, matches[0], parts[2]
+        )
+        return True
+
+    def handle_single_member_dm_message(
+        self,
+        chat_id: int,
+        telegram_id: int,
+        is_private: bool,
+        text: str,
+    ) -> bool:
+        if not self.single_member_dm_is_pending(telegram_id):
+            return False
+        if not self._authorize(chat_id, telegram_id, is_private):
+            self.cancel_single_member_dm(telegram_id)
             return True
+        if text.lstrip().startswith("/"):
+            return False
+        if telegram_id in self._single_member_dm_target_pending:
+            self._set_single_member_dm_target(chat_id, telegram_id, text)
+            return True
+        target = self._single_member_dm_message_pending.get(telegram_id)
+        if target is None:
+            return False
+        self._preview_single_member_dm(chat_id, telegram_id, target, text)
+        return True
+
+    def _eligible_private_dm_matches(self, query: str) -> list[dict[str, Any]]:
+        clean_query = query.strip()
+        if not clean_query:
+            return []
+        eligible = {
+            int(member["telegram_id"]): member
+            for member in self._broadcast_recipients()
+        }
+        if clean_query.isdecimal():
+            member = eligible.get(int(clean_query))
+            return [member] if member is not None else []
+        matching_ids = {
+            int(member["telegram_id"])
+            for member in self.store.search_admin_members(clean_query, limit=20)
+        }
+        return [
+            member
+            for member_id, member in eligible.items()
+            if member_id in matching_ids
+        ]
+
+    def _send_single_dm_match_result(
+        self, chat_id: int, matches: list[dict[str, Any]], query: str
+    ) -> None:
+        if matches:
+            message = (
+                f"More than one eligible member matched “{query}”. "
+                "Send their exact username or numeric Telegram ID."
+            )
+        else:
+            message = (
+                "I couldn’t find an eligible private-chat member for that name or ID. "
+                "They must have started the bot and must not have used /stop. "
+                "Try their numeric ID, username, or first name."
+            )
+        self.api.send_message(
+            chat_id,
+            message,
+            self._admin_navigation(
+                [[{"text": "Cancel", "callback_data": "admin:dm_member:cancel"}]]
+            ),
+        )
+
+    def _set_single_member_dm_target(
+        self, chat_id: int, telegram_id: int, query: str
+    ) -> None:
+        matches = self._eligible_private_dm_matches(query)
+        if len(matches) != 1:
+            self._send_single_dm_match_result(chat_id, matches, query)
+            return
+        member = matches[0]
+        self._single_member_dm_target_pending.discard(telegram_id)
+        self._single_member_dm_message_pending[telegram_id] = {
+            "telegram_id": int(member["telegram_id"]),
+            "chat_id": int(member["chat_id"]),
+            "first_name": str(member.get("first_name") or "Member"),
+        }
+        self.api.send_message(
+            chat_id,
+            f"Recipient selected: {member.get('first_name') or 'Member'} "
+            f"(Telegram ID {int(member['telegram_id'])}).\n\n"
+            "Now send the message text. It will be shown in a preview before "
+            "anything is sent.",
+            self._admin_navigation(
+                [[{"text": "Cancel", "callback_data": "admin:dm_member:cancel"}]]
+            ),
+        )
+
+    def _start_single_member_dm_for_target(
+        self, chat_id: int, telegram_id: int, target_id: int
+    ) -> None:
+        self.cancel_single_member_dm(telegram_id)
         member = next(
             (
                 item
@@ -1371,14 +1490,53 @@ class AdminDashboard:
         if member is None:
             self.api.send_message(
                 chat_id,
-                "I couldn’t find an eligible private-chat member with that ID. "
-                "They must have started the bot and must not have opted out. "
-                "Nothing was sent.",
+                "This member can’t receive a private DM right now. They must have "
+                "started the bot and not used /stop. Nothing was sent.",
+                self._dashboard_keyboard(),
             )
-            return True
-        self.cancel_broadcast(telegram_id)
+            return
+        self._single_member_dm_message_pending[telegram_id] = {
+            "telegram_id": int(member["telegram_id"]),
+            "chat_id": int(member["chat_id"]),
+            "first_name": str(member.get("first_name") or "Member"),
+        }
+        self.api.send_message(
+            chat_id,
+            f"Recipient selected: {member.get('first_name') or 'Member'} "
+            f"(Telegram ID {int(member['telegram_id'])}).\n\n"
+            "Send the message text. I’ll show you a preview before anything is sent.",
+            self._admin_navigation(
+                [[{"text": "Cancel", "callback_data": "admin:dm_member:cancel"}]]
+            ),
+        )
+
+    def _preview_single_member_dm(
+        self,
+        chat_id: int,
+        telegram_id: int,
+        member: dict[str, Any],
+        text: str,
+    ) -> None:
+        message = text.strip()
+        if (
+            not message
+            or len(message.encode("utf-16-le")) // 2
+            > MAX_BROADCAST_MESSAGE_LENGTH
+        ):
+            self._single_member_dm_message_pending[telegram_id] = member
+            self.api.send_message(
+                chat_id,
+                f"Send a non-empty message of at most "
+                f"{MAX_BROADCAST_MESSAGE_LENGTH} Telegram characters.",
+                self._admin_navigation(
+                    [[{"text": "Cancel", "callback_data": "admin:dm_member:cancel"}]]
+                ),
+            )
+            return
+        self._single_member_dm_message_pending.pop(telegram_id, None)
+        self._single_member_dm_target_pending.discard(telegram_id)
         self._single_member_dm_drafts[telegram_id] = {
-            "telegram_id": target_id,
+            "telegram_id": int(member["telegram_id"]),
             "chat_id": int(member["chat_id"]),
             "first_name": str(member.get("first_name") or "Member"),
             "text": message,
@@ -1387,7 +1545,7 @@ class AdminDashboard:
             chat_id,
             f"ONE-TIME MEMBER DM PREVIEW\n"
             f"To: {member.get('first_name') or 'Member'} "
-            f"(Telegram ID {target_id})\n\n"
+            f"(Telegram ID {int(member['telegram_id'])})\n\n"
             f"{message}\n\n"
             "This will go only to this member after you confirm.",
             self._admin_navigation(
@@ -2567,9 +2725,15 @@ class AdminDashboard:
             rows.append(
                 [
                     {
-                        "text": label[:64],
+                        "text": label[:52],
                         "callback_data": f"admin:member:{member['telegram_id']}",
-                    }
+                    },
+                    {
+                        "text": "✉️ DM",
+                        "callback_data": (
+                            f"admin:dm_member:target:{member['telegram_id']}"
+                        ),
+                    },
                 ]
             )
         if not members:
@@ -2697,6 +2861,14 @@ class AdminDashboard:
             )
         if history_controls:
             buttons.append(history_controls)
+        buttons.append(
+            [
+                {
+                    "text": "✉️ Send One-Time DM",
+                    "callback_data": f"admin:dm_member:target:{telegram_id}",
+                }
+            ]
+        )
         buttons.append(
             [
                 {

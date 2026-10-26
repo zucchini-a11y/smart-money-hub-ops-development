@@ -2056,16 +2056,26 @@ class BotFlowTests(unittest.TestCase):
                 is_private=True,
             )
 
+        self._callback("admin:members", sender_id=admin_id, chat_id=self.chat_id)
+        member_keyboard = self.api.messages[-1]["reply_markup"]["inline_keyboard"]
+        dm_button = next(
+            button
+            for row in member_keyboard
+            for button in row
+            if button["callback_data"]
+            == f"admin:dm_member:target:{selected_member_id}"
+        )
+        self.assertEqual(dm_button["text"], "✉️ DM")
         self._callback(
-            "admin:dm_member",
+            dm_button["callback_data"],
             sender_id=admin_id,
             chat_id=self.chat_id,
         )
-        self.assertIn("/memberdm TELEGRAM_ID MESSAGE", self.api.messages[-1]["text"])
-        self.assertIn("Search Member", self.api.messages[-1]["text"])
+        self.assertIn("Recipient selected: Selected", self.api.messages[-1]["text"])
+        self.assertIn("Recipient selected: Selected", self.api.messages[-1]["text"])
         message_text = "A private note just for you."
         self._message(
-            f"/memberdm {selected_member_id} {message_text}",
+            message_text,
             user_id=admin_id,
             chat_id=self.chat_id,
         )
@@ -2108,6 +2118,43 @@ class BotFlowTests(unittest.TestCase):
                 for message in self.api.messages
             ),
             1,
+        )
+
+    def test_one_member_dm_button_clears_pending_broadcast_input(self) -> None:
+        admin_id = self.user_id
+        member_id = 770205
+        self.bot.admin_id = admin_id
+        self.bot.admin_dashboard.admin_id = admin_id
+        self.bot.store.register_user(
+            telegram_id=member_id,
+            username="member_770205",
+            first_name="Member",
+            chat_id=member_id,
+            is_private=True,
+        )
+
+        self._callback(
+            "admin:dm_broadcast",
+            sender_id=admin_id,
+            chat_id=self.chat_id,
+        )
+        self._callback(
+            "admin:dm_member",
+            sender_id=admin_id,
+            chat_id=self.chat_id,
+        )
+        self._message(str(member_id), user_id=admin_id, chat_id=self.chat_id)
+
+        self.assertIn("Recipient selected: Member", self.api.messages[-1]["text"])
+        self.assertFalse(
+            any(
+                message["chat_id"] == self.chat_id
+                and "ONE-TIME DM PREVIEW" in message["text"]
+                for message in self.api.messages
+            )
+        )
+        self.assertFalse(
+            any(message["chat_id"] == member_id for message in self.api.messages)
         )
 
     def test_single_member_dm_is_cancelled_if_member_opts_out_before_confirm(self) -> None:
@@ -2267,6 +2314,14 @@ class BotFlowTests(unittest.TestCase):
         )
         self._click(f"admin:member:{member_id}")
         profile = self.api.messages[-1]["text"]
+        profile_keyboard = self.api.messages[-1]["reply_markup"]["inline_keyboard"]
+        self.assertTrue(
+            any(
+                button["callback_data"] == f"admin:dm_member:target:{member_id}"
+                for row in profile_keyboard
+                for button in row
+            )
+        )
         for expected in (
             "@tayo_trades",
             "First name: Tayo",
