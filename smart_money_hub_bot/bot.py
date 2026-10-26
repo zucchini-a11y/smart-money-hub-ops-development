@@ -798,7 +798,7 @@ class SmartMoneyHubBot:
             connection_id=connection_id,
             chat_id=chat_id,
             incoming_message_id=message_id,
-            incoming_text=text if disclosure_sent else "",
+            incoming_text=text,
         ):
             logger.info(
                 "Skipped a duplicate Telegram Business message "
@@ -806,44 +806,6 @@ class SmartMoneyHubBot:
                 update_id if update_id is not None else "unavailable",
             )
             return
-
-        # This is an informational disclosure, not a per-contact YES gate.
-        # Deliver it before the first message is sent to the AI provider.
-        if not disclosure_sent:
-            if not self._send_business_notice(
-                chat_id, connection_id, BUSINESS_REPLY_INFO_NOTICE
-            ):
-                self.store.finish_personal_business_reply_turn(
-                    connection_id=connection_id,
-                    chat_id=chat_id,
-                    incoming_message_id=message_id,
-                    status="failed",
-                )
-                self._notify_personal_reply_admin(
-                    "A connected chat could not receive the AI-processing notice. "
-                    "Its message was not sent to Gemini and no reply was sent."
-                )
-                return
-            self.store.mark_personal_business_reply_disclosure_sent(
-                connection_id, chat_id
-            )
-            if not self.store.set_personal_business_reply_input(
-                connection_id=connection_id,
-                chat_id=chat_id,
-                incoming_message_id=message_id,
-                incoming_text=text,
-            ):
-                self.store.finish_personal_business_reply_turn(
-                    connection_id=connection_id,
-                    chat_id=chat_id,
-                    incoming_message_id=message_id,
-                    status="failed",
-                )
-                self._notify_personal_reply_admin(
-                    "A connected chat's message could not be queued safely after "
-                    "the AI-processing notice. No AI reply was sent."
-                )
-                return
 
         history = self.store.recent_personal_business_reply_history(
             connection_id, chat_id, limit=6
@@ -903,10 +865,14 @@ class SmartMoneyHubBot:
             )
             return
 
+        reply_text = draft.reply
+        if not disclosure_sent:
+            reply_text = f"{reply_text}\n\n{BUSINESS_REPLY_INFO_NOTICE}"
+
         try:
             sent = self.api.send_message_with_result(
                 chat_id,
-                draft.reply,
+                reply_text,
                 business_connection_id=connection_id,
             )
         except TelegramAPIError as error:
@@ -956,12 +922,16 @@ class SmartMoneyHubBot:
         sent_message_id = sent.get("message_id") if isinstance(sent, dict) else None
         if not isinstance(sent_message_id, int):
             sent_message_id = None
+        if not disclosure_sent:
+            self.store.mark_personal_business_reply_disclosure_sent(
+                connection_id, chat_id
+            )
         self.store.finish_personal_business_reply_turn(
             connection_id=connection_id,
             chat_id=chat_id,
             incoming_message_id=message_id,
             status="sent",
-            response_text=draft.reply,
+            response_text=reply_text,
             sent_message_id=sent_message_id,
         )
         logger.info(

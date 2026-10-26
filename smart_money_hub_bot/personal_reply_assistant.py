@@ -33,11 +33,8 @@ _UNSAFE_FINANCIAL_CLAIM = re.compile(
 )
 
 BUSINESS_REPLY_INFO_NOTICE = (
-    "Hi 👋 I’m an AI assistant helping with replies. Messages may be processed by "
-    "an external AI service, and up to six recent exchanges may be stored for "
-    "context. Send STOP "
-    "to turn replies off or DELETE to clear saved text. Minimal Telegram IDs "
-    "remain while this account is connected to prevent duplicates."
+    "Hi 👋 I’m an AI assistant helping with replies. Your message may be processed "
+    "by an AI service, and up to six recent exchanges may be saved for context."
 )
 
 _SYSTEM_INSTRUCTION = (
@@ -65,13 +62,11 @@ _SYSTEM_INSTRUCTION = (
 )
 
 BUSINESS_REPLY_REENABLED_ACK = (
-    "AI replies are back on for this chat. Send STOP to turn them off again."
+    "AI replies are back on for this chat."
 )
 
 BUSINESS_REPLY_STOP_ACK = (
-    "AI-assisted replies are now off for this chat, and saved message/reply text "
-    "has been erased. Minimal message IDs remain until the bot is disconnected to "
-    "prevent duplicates. Send YES if you want to review the consent notice and opt in again."
+    "AI replies are off for this chat, and saved message/reply text has been erased."
 )
 
 BUSINESS_REPLY_DELETE_ACK = (

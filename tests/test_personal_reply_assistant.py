@@ -274,14 +274,16 @@ class PersonalBusinessReplyFlowTests(unittest.TestCase):
         )
         self.bot.handle_update(self._business_message(3, "Hi there", update_id=501))
 
-        self.assertEqual(len(self.api.business_messages), 2)
-        notice, sent = self.api.business_messages
-        self.assertIn("AI assistant", notice["text"])
-        self.assertIn("external AI service", notice["text"])
-        self.assertNotIn("YES", notice["text"])
+        self.assertEqual(len(self.api.business_messages), 1)
+        sent = self.api.business_messages[0]
         self.assertEqual(sent["chat_id"], CHAT_ID)
         self.assertEqual(sent["business_connection_id"], CONNECTION_ID)
-        self.assertEqual(sent["text"], "Thanks for reaching out.")
+        self.assertIn("Thanks for reaching out.", sent["text"])
+        self.assertIn("AI assistant", sent["text"])
+        self.assertIn("processed by an AI service", sent["text"])
+        self.assertNotIn("YES", sent["text"])
+        self.assertNotIn("STOP", sent["text"])
+        self.assertNotIn("DELETE", sent["text"])
         self.assertEqual(self.assistant.calls[0]["message"], "Hi there")
         self.assertEqual(
             self.assistant.calls[0]["style_examples"],
@@ -294,7 +296,7 @@ class PersonalBusinessReplyFlowTests(unittest.TestCase):
             turn,
             [
                 {"role": "user", "text": "Hi there"},
-                {"role": "model", "text": "Thanks for reaching out."},
+                {"role": "model", "text": sent["text"]},
             ],
         )
 
@@ -475,7 +477,7 @@ class PersonalBusinessReplyFlowTests(unittest.TestCase):
         )
         self.bot.handle_update(self._business_message(5, "Do not process this"))
         self.assertEqual(len(self.assistant.calls), 1)
-        self.assertIn("AI-assisted replies are now off", self.api.business_messages[-1]["text"])
+        self.assertIn("AI replies are off", self.api.business_messages[-1]["text"])
 
     def test_start_reenables_after_stop_without_replaying_old_messages(self) -> None:
         self._disclosed_chat()
@@ -511,9 +513,13 @@ class PersonalBusinessReplyFlowTests(unittest.TestCase):
         self.bot.handle_update(self._business_message(1, "Sensitive initial text"))
         self.assertEqual(len(self.assistant.calls), 1)
         self.assertEqual(self.assistant.calls[0]["message"], "Sensitive initial text")
-        self.assertEqual(len(self.api.business_messages), 2)
-        self.assertIn("AI assistant", self.api.business_messages[0]["text"])
-        self.assertNotIn("Reply YES", self.api.business_messages[0]["text"])
+        self.assertEqual(len(self.api.business_messages), 1)
+        first_reply = self.api.business_messages[0]["text"]
+        self.assertIn("Thanks for reaching out.", first_reply)
+        self.assertIn("AI assistant", first_reply)
+        self.assertNotIn("Reply YES", first_reply)
+        self.assertNotIn("STOP", first_reply)
+        self.assertNotIn("DELETE", first_reply)
         connection = self.bot.store._connect()
         try:
             stored_text = connection.execute(
@@ -527,53 +533,35 @@ class PersonalBusinessReplyFlowTests(unittest.TestCase):
             connection.close()
         self.assertEqual(stored_text, "Sensitive initial text")
 
-    def test_initial_disclosure_is_sent_once_before_ai_processing(self) -> None:
+    def test_initial_disclosure_is_in_first_reply_only_and_not_repeated(self) -> None:
         self._connect()
-        observed_text_before_notice: list[str] = []
-        send_notice = self.bot._send_business_notice
-
-        def inspect_notice(chat_id: int, connection_id: str, text: str) -> bool:
-            connection = self.bot.store._connect()
-            try:
-                row = connection.execute(
-                    """
-                    SELECT incoming_text FROM personal_business_reply_turns
-                    WHERE connection_id = ? AND chat_id = ?
-                    ORDER BY incoming_message_id DESC LIMIT 1
-                    """,
-                    (CONNECTION_ID, CHAT_ID),
-                ).fetchone()
-            finally:
-                connection.close()
-            observed_text_before_notice.append(str(row["incoming_text"]))
-            return send_notice(chat_id, connection_id, text)
-
-        self.bot._send_business_notice = inspect_notice
         self.bot.handle_update(self._business_message(1, "First message"))
         self.bot.handle_update(self._business_message(2, "Follow-up"))
 
-        notices = [
-            item for item in self.api.business_messages
-            if "AI assistant" in item["text"]
-        ]
-        self.assertEqual(len(notices), 1)
+        self.assertEqual(len(self.api.business_messages), 2)
+        self.assertIn("AI assistant", self.api.business_messages[0]["text"])
+        self.assertNotIn("AI assistant", self.api.business_messages[1]["text"])
         self.assertEqual(len(self.assistant.calls), 2)
-        self.assertIn("external AI service", notices[0]["text"])
-        self.assertIn("up to six recent exchanges", notices[0]["text"])
-        self.assertIn("STOP", notices[0]["text"])
-        self.assertIn("DELETE", notices[0]["text"])
-        self.assertEqual(observed_text_before_notice, [""])
+        self.assertIn(
+            "up to six recent exchanges", self.api.business_messages[0]["text"]
+        )
+        self.assertNotIn("YES", self.api.business_messages[0]["text"])
 
-    def test_failed_disclosure_holds_message_before_any_ai_call(self) -> None:
+    def test_first_reply_send_failure_is_not_retried_or_marked_disclosed(self) -> None:
         self._connect()
         self.api.send_error = TelegramAPIError(
             "Forbidden", error_code=403, delivery_unknown=False
         )
         self.bot.handle_update(self._business_message(1, "Private first message"))
 
-        self.assertEqual(self.assistant.calls, [])
+        self.assertEqual(len(self.assistant.calls), 1)
         self.assertEqual(self.api.business_messages, [])
-        self.assertIn("not sent to Gemini", self.api.messages[-1]["text"])
+        self.assertIn("not be retried automatically", self.api.messages[-1]["text"])
+        self.assertFalse(
+            self.bot.store.personal_business_reply_disclosure_sent(
+                CONNECTION_ID, CHAT_ID
+            )
+        )
         connection = self.bot.store._connect()
         try:
             row = connection.execute(
@@ -665,7 +653,7 @@ class PersonalBusinessReplyFlowTests(unittest.TestCase):
         finally:
             connection.close()
 
-    def test_main_keeps_business_replies_disabled_and_private_drafts_enabled(
+    def test_main_enables_business_replies_and_private_drafts_with_gemini(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -682,7 +670,10 @@ class PersonalBusinessReplyFlowTests(unittest.TestCase):
                 "smart_money_hub_bot.main.SmartMoneyHubBot"
             ) as bot_class:
                 bot_main()
-        self.assertIsNone(bot_class.call_args.kwargs["personal_reply_assistant"])
+        self.assertIsInstance(
+            bot_class.call_args.kwargs["personal_reply_assistant"],
+            PersonalTelegramReplyAssistant,
+        )
         self.assertIsInstance(
             bot_class.call_args.kwargs["reply_draft_assistant"],
             PersonalTelegramReplyAssistant,

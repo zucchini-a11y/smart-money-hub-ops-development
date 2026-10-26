@@ -3,14 +3,10 @@ name: Telegram Business consent
 description: Consent and retention safeguards for personal-account reply automation.
 ---
 
-The owner wants automatic replies but does not want recipients to see an AI/data disclosure. Do not process Telegram Business messages with Gemini without that disclosure; keep automatic Business replies disabled and preserve the owner-only reply-drafting feature until the owner accepts a transparent setup.
+The owner approved automatic Telegram Business replies with a brief AI disclosure included in the first actual reply; do not send a separate YES/NO opt-in prompt.
 
-**Why:** The owner explicitly rejected a recipient-facing AI notice. Private-message content must not be sent to an external AI service without clear disclosure.
+**Why:** The owner wants hands-off replies without a separate consent prompt, but agreed recipients should be told briefly that replies use AI and recent context may be stored.
 
-**How to apply:** Do not instantiate or pass the personal Business reply assistant from the production entry point. Continue allowing the private admin-only `/replydraft` tool to process text the owner submits directly. Do not remove the disclosure requirement to restore automatic replies; ask the owner to choose a transparent setup first.
+**How to apply:** When Gemini is configured and Telegram grants `can_reply`, automatically respond in private Business chats. Include the disclosure once in the first successful reply, not as a separate message. Preserve STOP/DELETE controls, bounded history, sensitive-message holds, duplicate protection, and the admin-only `/replydraft` feature.
 
 The separate private, admin-only `/replydraft` tool remains available for owner-submitted text and saved writing examples. It returns drafts only to the owner and never sends them to the original sender.
-
-**Why:** Keep manual drafting distinct from the owner-authorized automatic Business reply flow.
-
-**How to apply:** Only process text and style examples that the owner explicitly submits to the private draft command; never send the generated draft to the original sender.
