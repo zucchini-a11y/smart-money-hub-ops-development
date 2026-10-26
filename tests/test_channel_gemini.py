@@ -144,6 +144,8 @@ class GeminiChannelContentTests(unittest.TestCase):
         self.assertIn("SESSION OPEN", instruction)
         self.assertIn("RISK REMINDER", instruction)
         self.assertIn("NO CONFIRMATION, NO ENTRY.", instruction)
+        self.assertIn("making the topic, practical takeaways, and wording distinct", instruction)
+        self.assertIn("do not reuse a recent main lesson", instruction)
         self.assertIn("do not assert", instruction.lower())
         self.assertIn("Europe/London", user_context)
         self.assertIn("09:00 WAT", user_context)
