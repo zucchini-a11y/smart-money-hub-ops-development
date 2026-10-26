@@ -2471,6 +2471,29 @@ class BotFlowTests(unittest.TestCase):
         with self.assertRaisesRegex(SystemExit, "will not change it automatically"):
             self.bot.run()
 
+    def test_run_logs_telegram_business_capability_as_a_boolean(self) -> None:
+        self.api.get_updates = Mock(side_effect=[KeyboardInterrupt()])
+        with patch.object(
+            self.api,
+            "get_me",
+            return_value={
+                "username": "SmartMoneyHubTestBot",
+                "can_connect_to_business": True,
+            },
+        ):
+            with patch("smart_money_hub_bot.bot.threading.Thread"):
+                with self.assertLogs("smart_money_hub_bot.bot", level="INFO") as logs:
+                    with self.assertRaises(KeyboardInterrupt):
+                        self.bot.run()
+
+        self.assertTrue(
+            any(
+                "Telegram Business capability can_connect_to_business=True"
+                in entry
+                for entry in logs.output
+            )
+        )
+
     def test_run_persists_each_successful_telegram_poll(self) -> None:
         self.api.get_updates = Mock(side_effect=[[], KeyboardInterrupt()])
         with patch("smart_money_hub_bot.bot.threading.Thread") as thread_factory:
