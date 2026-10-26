@@ -52,7 +52,9 @@ BUSINESS_REPLY_CONSENT_NOTICE = (
     "Gemini to prepare replies, and the latest six exchanges are stored in the "
     "bot’s private database for follow-up context. Saved exchanges are kept only "
     "while you remain opted in and this account stays connected; STOP, DELETE, or "
-    "the account owner disconnecting the bot removes the saved text. Sensitive or "
+    "the account owner disconnecting the bot removes the saved text. To honor your "
+    "choice and prevent duplicate replies, minimal Telegram chat/message IDs and "
+    "your consent status remain until the bot is disconnected. Sensitive or "
     "uncertain messages are held for the account owner. No message text is saved or "
     "sent to Gemini before you opt in. Reply YES to agree, or NO to decline."
 )
@@ -69,8 +71,9 @@ BUSINESS_REPLY_DECLINED_ACK = (
 )
 
 BUSINESS_REPLY_STOP_ACK = (
-    "AI-assisted replies are now off for this chat, and saved reply history has "
-    "been erased. Send YES if you want to review the consent notice and opt in again."
+    "AI-assisted replies are now off for this chat, and saved message/reply text "
+    "has been erased. Minimal message IDs remain until the bot is disconnected to "
+    "prevent duplicates. Send YES if you want to review the consent notice and opt in again."
 )
 
 BUSINESS_REPLY_DELETE_ACK = (

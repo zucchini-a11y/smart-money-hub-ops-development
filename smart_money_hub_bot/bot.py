@@ -416,6 +416,9 @@ class SmartMoneyHubBot:
     ) -> None:
         self.api = api
         self.store = Repository(database_path)
+        self._personal_reply_recovery_count = (
+            self.store.recover_personal_business_reply_turns()
+        )
         self.admin_id = admin_id
         self.education_group_id = education_group_id
         self.admin_dashboard = AdminDashboard(
@@ -467,6 +470,18 @@ class SmartMoneyHubBot:
             "Polling started for Smart Money Hub bot @%s.",
             bot_info.get("username", "unknown"),
         )
+        if self._personal_reply_recovery_count:
+            logger.warning(
+                "Scrubbed interrupted personal reply messages without retry "
+                "(count=%s).",
+                self._personal_reply_recovery_count,
+            )
+            self._notify_personal_reply_admin(
+                f"{self._personal_reply_recovery_count} interrupted chat reply(s) "
+                "were discarded after restart. No messages were retried to avoid "
+                "duplicates; please check Telegram Business chats directly."
+            )
+            self._personal_reply_recovery_count = 0
         self._last_successful_poll_at = time_module.monotonic()
         threading.Thread(
             target=self._polling_heartbeat_loop,
@@ -836,6 +851,23 @@ class SmartMoneyHubBot:
                 f"safe reply ({error.category}); no message was sent."
             )
             return
+        except Exception:
+            self.store.finish_personal_business_reply_turn(
+                connection_id=connection_id,
+                chat_id=chat_id,
+                incoming_message_id=message_id,
+                status="failed",
+            )
+            logger.warning(
+                "Held a Telegram Business reply (category=unexpected_error, "
+                "update_id=%s).",
+                update_id if update_id is not None else "unavailable",
+            )
+            self._notify_personal_reply_admin(
+                "A connected chat needs your attention. The reply assistant "
+                "encountered an internal error; no message was sent."
+            )
+            return
 
         if draft.needs_owner_input:
             self.store.finish_personal_business_reply_turn(
@@ -880,6 +912,23 @@ class SmartMoneyHubBot:
                 "A connected chat reply could not be confirmed "
                 f"({failure_category}). It will not be retried automatically to "
                 "avoid sending a duplicate."
+            )
+            return
+        except Exception:
+            self.store.finish_personal_business_reply_turn(
+                connection_id=connection_id,
+                chat_id=chat_id,
+                incoming_message_id=message_id,
+                status="failed",
+            )
+            logger.warning(
+                "Telegram Business reply was not confirmed "
+                "(category=unexpected_send_error, update_id=%s).",
+                update_id if update_id is not None else "unavailable",
+            )
+            self._notify_personal_reply_admin(
+                "A connected chat reply could not be confirmed. It will not be "
+                "retried automatically to avoid a duplicate."
             )
             return
 

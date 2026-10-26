@@ -5146,6 +5146,25 @@ class Repository:
         finally:
             connection.close()
 
+    def recover_personal_business_reply_turns(self) -> int:
+        """Scrub interrupted in-flight messages; never retry an uncertain send."""
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE personal_business_reply_turns
+                    SET incoming_text = '', response_text = NULL,
+                        response_status = 'failed', sent_message_id = NULL,
+                        updated_at = ?
+                    WHERE response_status = 'processing'
+                    """,
+                    (utc_now(),),
+                )
+                return cursor.rowcount
+        finally:
+            connection.close()
+
     def delete_personal_business_reply_messages(
         self,
         connection_id: str,

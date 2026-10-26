@@ -469,6 +469,61 @@ class PersonalBusinessReplyFlowTests(unittest.TestCase):
         self.bot.handle_update(self._business_message(3, "New consented message"))
         self.assertEqual(self.assistant.calls[0]["message"], "New consented message")
 
+    def test_failed_consent_notice_is_retried_without_saving_message_text(self) -> None:
+        self._connect()
+        self.api.send_error = TelegramAPIError(
+            "Forbidden", error_code=403, delivery_unknown=False
+        )
+        self.bot.handle_update(self._business_message(1, "Private first message"))
+        self.assertEqual(self.assistant.calls, [])
+        self.api.send_error = None
+        self.bot.handle_update(self._business_message(2, "A later message"))
+
+        self.assertEqual(self.assistant.calls, [])
+        self.assertIn("Google Gemini", self.api.business_messages[-1]["text"])
+        connection = self.bot.store._connect()
+        try:
+            stored_texts = connection.execute(
+                """
+                SELECT incoming_text FROM personal_business_reply_turns
+                WHERE connection_id = ? AND chat_id = ?
+                """,
+                (CONNECTION_ID, CHAT_ID),
+            ).fetchall()
+        finally:
+            connection.close()
+        self.assertTrue(all(row[0] == "" for row in stored_texts))
+
+    def test_restart_scrubs_interrupted_content_without_retrying(self) -> None:
+        self._opt_in()
+        self.bot.store.create_personal_business_reply_turn(
+            connection_id=CONNECTION_ID,
+            chat_id=CHAT_ID,
+            incoming_message_id=99,
+            incoming_text="Do not retain interrupted content",
+        )
+        restarted = SmartMoneyHubBot(
+            self.api,
+            str(self.database_path),
+            admin_id=ADMIN_ID,
+            personal_reply_assistant=self.assistant,
+        )
+
+        self.assertEqual(restarted._personal_reply_recovery_count, 1)
+        connection = restarted.store._connect()
+        try:
+            row = connection.execute(
+                """
+                SELECT incoming_text, response_status
+                FROM personal_business_reply_turns
+                WHERE incoming_message_id = 99
+                """
+            ).fetchone()
+        finally:
+            connection.close()
+        self.assertEqual(tuple(row), ("", "failed"))
+        self.assertEqual(self.assistant.calls, [])
+
     def test_regular_bot_message_does_not_enter_personal_assistant(self) -> None:
         self.bot.handle_update(
             {
