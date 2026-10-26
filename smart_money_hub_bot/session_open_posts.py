@@ -658,7 +658,7 @@ class SessionOpenPostManager:
             self.show_controls(chat_id, now=current)
             return True
         match = re.fullmatch(
-            r"admin:session_open:(preview|approve|edit|cancel|photo):(\d+)",
+            r"admin:session_open:(preview|approve|edit|cancel|photo|retry_generation):(\d+)",
             data,
         )
         if not match:
@@ -735,7 +735,94 @@ class SessionOpenPostManager:
                 self.api.send_message(chat_id, "Send one photo in this private chat to attach it.")
             else:
                 self.api.send_message(chat_id, "A photo can no longer be added to this post.")
+        elif action == "retry_generation":
+            self._retry_failed_generation(chat_id, post, current)
         return True
+
+    def _retry_failed_generation(
+        self, chat_id: int, post: dict[str, Any], current: datetime
+    ) -> None:
+        post_id = int(post["id"])
+        failure_category = str(post.get("failure_category") or "")
+        if (
+            post.get("status") != "failed"
+            or not failure_category.startswith("gemini_")
+            or str(post.get("content") or "").strip()
+        ):
+            self.api.send_message(
+                chat_id,
+                "AI retry is available only for an empty session draft held after "
+                "a Gemini generation failure. Existing content was not replaced.",
+            )
+            self._show_post(chat_id, post)
+            return
+        if current >= self._scheduled_at(post) - FINAL_REVIEW_LEAD:
+            self.api.send_message(
+                chat_id,
+                "AI retry is too close to the session opening to leave time for "
+                "the private review. The post remains held and will not publish.",
+            )
+            self._show_post(chat_id, post)
+            return
+        try:
+            local_date = date.fromisoformat(str(post["schedule_date"]))
+            occurrence = next(
+                item
+                for item in session_occurrences(local_date)
+                if item.definition.code == str(post["session_code"])
+            )
+        except (ValueError, StopIteration):
+            self.api.send_message(
+                chat_id,
+                "The saved session time could not be reconstructed. The post remains "
+                "held and no retry was started.",
+            )
+            return
+        if not self.store.update(
+            post_id,
+            expected=("failed",),
+            status="generating",
+            at=current.isoformat(),
+            failure_category=None,
+            retry_after_at=None,
+        ):
+            self.api.send_message(
+                chat_id,
+                "This session draft changed before retry could start. No second "
+                "generation was started.",
+            )
+            return
+        self.api.send_message(
+            chat_id,
+            "Retrying with the configured Gemini model. This reuses the existing "
+            "session record; no channel post has been sent.",
+        )
+        generating = self.store.get(post_id)
+        if generating is None:
+            return
+        self._generate(generating, occurrence, current)
+        refreshed = self.store.get(post_id)
+        if refreshed is None:
+            return
+        if refreshed["status"] == "draft":
+            self.api.send_message(
+                chat_id,
+                "Gemini retry succeeded. The draft is saved for its original "
+                "session time and is still subject to the normal review and checks.",
+            )
+        elif refreshed["status"] == "failed":
+            category = str(refreshed.get("failure_category") or "gemini_unknown")
+            description = {
+                "gemini_not_configured": "Gemini is not configured.",
+                "gemini_rate_limit": "Gemini's request limit was reached.",
+                "gemini_unexpected_error": "Gemini returned an unexpected error.",
+            }.get(category, "Gemini could not generate a publishable draft.")
+            self.api.send_message(
+                chat_id,
+                f"Gemini retry failed: {description} ({category}). The same record "
+                "remains held; nothing was published.",
+            )
+        self._show_post(chat_id, refreshed)
 
     def has_edit_pending(self, admin_id: int) -> bool:
         return self.admin_id == admin_id and self.store.pending_edit(admin_id) is not None
@@ -1151,7 +1238,25 @@ class SessionOpenPostManager:
         )
         post_id = int(post["id"])
         status = str(post["status"])
+        failure_category = str(post.get("failure_category") or "")
+        if failure_category:
+            intro = intro.rstrip() + (
+                f"\nFailure category: {escape(failure_category)}\n\n"
+            )
         actions: list[dict[str, str]] = []
+        if (
+            status == "failed"
+            and failure_category.startswith("gemini_")
+            and not str(post.get("content") or "").strip()
+        ):
+            actions.append(
+                {
+                    "text": "♻️ Retry AI draft",
+                    "callback_data": (
+                        f"admin:session_open:retry_generation:{post_id}"
+                    ),
+                }
+            )
         if status == "review_pending":
             actions.append(
                 {

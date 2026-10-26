@@ -833,7 +833,15 @@ class ChannelPostingTests(unittest.TestCase):
             f"admin:channel_posts:edit:{post['id']}",
             local_time(26, 9, 56),
         )
-        self.assertTrue(manager.handle_edit_message(ADMIN_ID, ADMIN_ID, edited, True))
+        self.assertTrue(
+            manager.handle_edit_message(
+                ADMIN_ID,
+                ADMIN_ID,
+                edited,
+                True,
+                now=local_time(26, 9, 57),
+            )
+        )
         saved = store.get_channel_post(post["id"])
         assert saved is not None
         self.assertEqual(saved["review_status"], "edited")

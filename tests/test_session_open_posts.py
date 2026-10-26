@@ -234,6 +234,111 @@ class SessionOpenPostTests(unittest.TestCase):
         self.assertEqual(self.api.channel_messages, [])
         self.assertTrue(any("Gemini could not prepare" in item[1] for item in self.api.admin_messages))
 
+    def test_admin_can_retry_failed_gemini_draft_on_the_same_slot(self):
+        occurrence = self._occurrence("asia")
+        self.writer.error = GeminiChannelGenerationError("gemini_rate_limit", 429)
+        self.manager.dispatch_due(occurrence.utc_at - timedelta(minutes=15))
+        failed = self.manager.store.get_by_key(occurrence)
+        self.assertEqual(failed["status"], "failed")
+        original_id = failed["id"]
+
+        self.manager._show_post(ADMIN_ID, failed)
+        retry_markup = self.api.admin_messages[-1][2]
+        retry_button = retry_markup["inline_keyboard"][0][0]
+        self.assertEqual(retry_button["text"], "♻️ Retry AI draft")
+        self.assertEqual(
+            retry_button["callback_data"],
+            f"admin:session_open:retry_generation:{original_id}",
+        )
+
+        self.writer.error = None
+        self.assertFalse(
+            self.manager.handle_callback(
+                ADMIN_ID + 1,
+                ADMIN_ID + 1,
+                f"admin:session_open:retry_generation:{original_id}",
+                now=occurrence.utc_at - timedelta(minutes=10),
+            )
+        )
+        self.assertEqual(len(self.writer.calls), 1)
+
+        self.assertTrue(
+            self.manager.handle_callback(
+                ADMIN_ID,
+                ADMIN_ID,
+                f"admin:session_open:retry_generation:{original_id}",
+                now=occurrence.utc_at - timedelta(minutes=10),
+            )
+        )
+        retried = self.manager.store.get_by_key(occurrence)
+        self.assertEqual(retried["id"], original_id)
+        self.assertEqual(retried["status"], "draft")
+        self.assertTrue(retried["content"])
+        self.assertEqual(len(self.writer.calls), 2)
+        self.assertEqual(self.api.channel_messages, [])
+
+        self.manager.dispatch_due(occurrence.utc_at - timedelta(minutes=5))
+        self.assertEqual(
+            self.manager.store.get_by_key(occurrence)["status"], "review_pending"
+        )
+        self.assertEqual(self.api.channel_messages, [])
+        self.manager.dispatch_due(occurrence.utc_at)
+        self.manager.dispatch_due(occurrence.utc_at + timedelta(seconds=1))
+        self.assertEqual(len(self.api.channel_messages), 1)
+        self.assertEqual(
+            self.manager.store.get_by_key(occurrence)["status"], "published"
+        )
+
+    def test_gemini_retry_failure_reports_exact_category_and_stays_held(self):
+        occurrence = self._occurrence("london")
+        self.writer.error = GeminiChannelGenerationError("gemini_rate_limit", 429)
+        self.manager.dispatch_due(occurrence.utc_at - timedelta(minutes=15))
+        post = self.manager.store.get_by_key(occurrence)
+        self.writer.error = GeminiChannelGenerationError(
+            "gemini_unexpected_error", 500
+        )
+
+        self.manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:session_open:retry_generation:{post['id']}",
+            now=occurrence.utc_at - timedelta(minutes=10),
+        )
+
+        failed = self.manager.store.get_by_key(occurrence)
+        self.assertEqual(failed["id"], post["id"])
+        self.assertEqual(failed["status"], "failed")
+        self.assertEqual(failed["failure_category"], "gemini_unexpected_error")
+        self.assertTrue(
+            any(
+                "gemini_unexpected_error" in item[1]
+                and "unexpected error" in item[1]
+                for item in self.api.admin_messages
+            )
+        )
+        self.assertEqual(self.api.channel_messages, [])
+
+    def test_archived_channel_history_is_supplied_to_session_generation(self):
+        self.repository.record_channel_history_post(
+            CHANNEL_ID,
+            881,
+            "Recent Market Analysis post about waiting for confirmation.",
+            "2026-10-26T06:00:00+00:00",
+        )
+        occurrence = self._occurrence("new_york")
+        self.manager.dispatch_due(occurrence.utc_at - timedelta(minutes=15))
+
+        history = self.writer.calls[0]["history"]
+        self.assertTrue(
+            any(
+                item["source"] == "channel"
+                and item["content"]
+                == "Recent Market Analysis post about waiting for confirmation."
+                for item in history
+            )
+        )
+        self.assertEqual(self.api.channel_messages, [])
+
     def test_restart_after_open_records_missed_slot_instead_of_posting_late(self):
         occurrence = self._occurrence("asia")
         after_open = occurrence.utc_at + timedelta(minutes=6)

@@ -1291,7 +1291,8 @@ class AdminDashboard:
             "<b>SMART MONEY HUB CONTENT &amp; VERIFIED TRADE RECORDS</b>",
             f"Scheduled draft generation: "
             f"{'ENABLED' if self.community_content.repository.enabled() else 'PAUSED'}",
-            "Automatic publishing: DISABLED",
+            "Automatic publishing: "
+            f"{'ENABLED' if self.community_content.repository.setting('auto_publish_enabled') == '1' else 'DISABLED'}",
             "Morning Education-group post: "
             f"{'ENABLED' if self.education_morning_store.is_enabled() else 'PAUSED'} "
             "(daily, 08:00 WAT)",
