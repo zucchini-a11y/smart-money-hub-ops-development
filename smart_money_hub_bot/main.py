@@ -11,7 +11,6 @@ from .coach import RuleBasedCoachService
 from .daily_calendar_brief import DailyCalendarBriefPublisher
 from .gemini_coach import GeminiCoachService, GEMINI_MODEL
 from .group_features import DEFAULT_EDUCATION_GROUP_ID
-from .personal_reply_assistant import PersonalTelegramReplyAssistant
 from .storage import DEFAULT_DATABASE_PATH
 from .telegram_api import TelegramAPI
 
@@ -67,9 +66,10 @@ def main() -> None:
     channel_writer = (
         GeminiChannelContentService(gemini_api_key) if gemini_api_key else None
     )
-    personal_reply_assistant = (
-        PersonalTelegramReplyAssistant(gemini_api_key) if gemini_api_key else None
-    )
+    # Business-chat automation is intentionally disabled. Do not process or
+    # retain contact messages, or send consent notices, unless the owner
+    # explicitly requests this feature again.
+    personal_reply_assistant = None
     if gemini_api_key:
         logging.getLogger(__name__).info(
             "Gemini Coach enabled with the fixed free-tier model %s.", GEMINI_MODEL
@@ -83,16 +83,9 @@ def main() -> None:
             "GEMINI_API_KEY is not configured; using the local Coach and holding "
             "weekend AI drafts."
         )
-    if personal_reply_assistant is not None:
-        logging.getLogger(__name__).info(
-            "Telegram Business reply assistant is ready for an enabled, "
-            "administrator-owned connection with reply permission."
-        )
-    else:
-        logging.getLogger(__name__).info(
-            "Telegram Business automatic replies are disabled because Gemini "
-            "is not configured."
-        )
+    logging.getLogger(__name__).info(
+        "Telegram Business automatic replies are disabled by the account owner."
+    )
     try:
         daily_brief_enabled = os.getenv(
             "SMH_DAILY_USD_GOLD_BRIEF_ENABLED", "false"

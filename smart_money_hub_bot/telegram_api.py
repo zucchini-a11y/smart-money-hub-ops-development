@@ -143,10 +143,6 @@ class TelegramAPI:
                 "channel_post",
                 "edited_channel_post",
                 "poll",
-                "business_connection",
-                "business_message",
-                "edited_business_message",
-                "deleted_business_messages",
             ],
         }
         if offset is not None:

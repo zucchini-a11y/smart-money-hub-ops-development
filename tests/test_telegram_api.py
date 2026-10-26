@@ -200,9 +200,10 @@ class TelegramUpdateSubscriptionTests(unittest.TestCase):
         self.assertIn("edited_message", payload["allowed_updates"])
         self.assertIn("poll", payload["allowed_updates"])
         self.assertIn("callback_query", payload["allowed_updates"])
-        self.assertIn("business_connection", payload["allowed_updates"])
-        self.assertIn("business_message", payload["allowed_updates"])
-        self.assertIn("deleted_business_messages", payload["allowed_updates"])
+        self.assertNotIn("business_connection", payload["allowed_updates"])
+        self.assertNotIn("business_message", payload["allowed_updates"])
+        self.assertNotIn("edited_business_message", payload["allowed_updates"])
+        self.assertNotIn("deleted_business_messages", payload["allowed_updates"])
         self.assertNotIn("poll_answer", payload["allowed_updates"])
 
 

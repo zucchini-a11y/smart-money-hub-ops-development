@@ -8,3 +8,11 @@ Before sending Telegram Business message text or conversation history to Gemini 
 **Why:** Telegram’s Bot Developer Terms §5.4 require user authorization before Business message contents are disclosed to third-party APIs, and require clear disclosure of service scope and retained data.
 
 **How to apply:** Treat the account owner’s Telegram Business connection and `can_reply` permission as separate from each contact’s data-processing consent. Track consent per private chat and require explicit opt-in before any model call.
+
+## Current app state
+
+Telegram Business automatic replies are disabled at the account owner's request. Do not process, retain, or send contact Business-message text to Gemini, and do not send consent or reply messages, unless the owner explicitly asks to re-enable the feature.
+
+**Why:** The owner does not want contacts' messages processed and does not want them to receive the consent notice.
+
+**How to apply:** Keep the runtime path disabled by default. If the owner requests the feature again, restore transparent opt-in before processing any contact text.

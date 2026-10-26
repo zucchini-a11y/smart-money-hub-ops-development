@@ -13,4 +13,4 @@
 - [Sunday check-in audience](sunday-checkin-audience.md) — send by default to private-chat starters, but preserve opt-outs and global reminder stops.
 - [Bot downtime recovery](bot-downtime-recovery.md) — detect long gaps between successful Telegram polls, then acknowledge on each member’s next private interaction.
 - [Bot downtime recovery](bot-downtime-recovery.md) — detect long gaps between successful Telegram polls, then acknowledge on each member’s next private interaction.
-- [Telegram Business consent](telegram-business-consent.md) — require each chat participant’s explicit opt-in before sending their Business messages or history to Gemini.
+- [Telegram Business consent](telegram-business-consent.md) — require explicit opt-in before any future Business-message processing; automation is currently disabled.

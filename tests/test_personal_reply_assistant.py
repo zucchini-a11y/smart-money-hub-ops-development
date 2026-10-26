@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from email.message import Message
@@ -11,6 +12,7 @@ from io import BytesIO
 
 from smart_money_hub_bot.bot import SmartMoneyHubBot
 from smart_money_hub_bot.gemini_coach import GEMINI_MODEL
+from smart_money_hub_bot.main import main as bot_main
 from smart_money_hub_bot.personal_reply_assistant import (
     PersonalReplyDraft,
     PersonalReplyGenerationError,
@@ -547,3 +549,86 @@ class PersonalBusinessReplyFlowTests(unittest.TestCase):
         )
         self.assertEqual(self.assistant.calls, [])
         self.assertEqual(self.api.business_messages, [])
+
+    def test_business_updates_are_ignored_when_assistant_is_disabled(self) -> None:
+        disabled_bot = SmartMoneyHubBot(
+            self.api,
+            str(self.database_path),
+            admin_id=ADMIN_ID,
+            personal_reply_assistant=None,
+        )
+        disabled_bot.handle_update(
+            {
+                "business_connection": {
+                    "id": CONNECTION_ID,
+                    "user": {"id": ADMIN_ID},
+                    "is_enabled": True,
+                    "rights": {"can_reply": True},
+                }
+            }
+        )
+        disabled_bot.handle_update(self._business_message(901, "private text"))
+        self.assertEqual(self.api.business_messages, [])
+        self.assertIsNone(
+            disabled_bot.store.get_personal_business_connection(CONNECTION_ID)
+        )
+        connection = disabled_bot.store._connect()
+        try:
+            self.assertEqual(
+                connection.execute(
+                    "SELECT COUNT(*) FROM personal_business_reply_turns"
+                ).fetchone()[0],
+                0,
+            )
+        finally:
+            connection.close()
+
+    def test_main_keeps_business_reply_assistant_disabled_with_gemini_configured(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch.dict(
+                os.environ,
+                {
+                    "TELEGRAM_BOT_TOKEN": "synthetic-token",
+                    "GEMINI_API_KEY": "synthetic-key",
+                    "SMH_DATABASE_PATH": str(Path(temp_dir) / "main.sqlite3"),
+                    "ADMIN_TELEGRAM_ID": str(ADMIN_ID),
+                },
+                clear=True,
+            ), patch("smart_money_hub_bot.main.TelegramAPI"), patch(
+                "smart_money_hub_bot.main.SmartMoneyHubBot"
+            ) as bot_class:
+                bot_main()
+        self.assertIsNone(
+            bot_class.call_args.kwargs["personal_reply_assistant"]
+        )
+
+    def test_clear_personal_business_reply_data_removes_all_assistant_state(
+        self,
+    ) -> None:
+        self._connect()
+        self.bot.store.set_personal_business_reply_consent(
+            connection_id=CONNECTION_ID,
+            chat_id=CHAT_ID,
+            state="consented",
+        )
+        self.bot.store.create_personal_business_reply_turn(
+            connection_id=CONNECTION_ID,
+            chat_id=CHAT_ID,
+            incoming_message_id=902,
+            incoming_text="private content",
+        )
+        self.bot.store.finish_personal_business_reply_turn(
+            connection_id=CONNECTION_ID,
+            chat_id=CHAT_ID,
+            incoming_message_id=902,
+            status="sent",
+            response_text="private reply",
+            sent_message_id=903,
+        )
+        removed = self.bot.store.clear_personal_business_reply_data()
+        self.assertEqual(removed, {"turns": 1, "consents": 1, "connections": 1})
+        self.assertIsNone(
+            self.bot.store.get_personal_business_connection(CONNECTION_ID)
+        )

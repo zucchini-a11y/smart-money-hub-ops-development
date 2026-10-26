@@ -418,6 +418,8 @@ class SmartMoneyHubBot:
         self.store = Repository(database_path)
         self._personal_reply_recovery_count = (
             self.store.recover_personal_business_reply_turns()
+            if personal_reply_assistant is not None
+            else 0
         )
         self.admin_id = admin_id
         self.education_group_id = education_group_id
@@ -571,6 +573,17 @@ class SmartMoneyHubBot:
         )
 
     def handle_update(self, update: dict[str, Any]) -> None:
+        if self.personal_reply_assistant is None and any(
+            key in update
+            for key in (
+                "business_connection",
+                "business_message",
+                "edited_business_message",
+                "deleted_business_messages",
+            )
+        ):
+            return
+
         business_connection = update.get("business_connection")
         if isinstance(business_connection, dict):
             self._handle_business_connection(business_connection)

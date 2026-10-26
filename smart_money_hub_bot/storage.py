@@ -5165,6 +5165,28 @@ class Repository:
         finally:
             connection.close()
 
+    def clear_personal_business_reply_data(self) -> dict[str, int]:
+        """Remove all persisted state for the disabled Business reply assistant."""
+        connection = self._connect()
+        try:
+            with connection:
+                turns = connection.execute(
+                    "DELETE FROM personal_business_reply_turns"
+                ).rowcount
+                consents = connection.execute(
+                    "DELETE FROM personal_business_reply_consents"
+                ).rowcount
+                connections = connection.execute(
+                    "DELETE FROM personal_business_connections"
+                ).rowcount
+                return {
+                    "turns": max(0, turns),
+                    "consents": max(0, consents),
+                    "connections": max(0, connections),
+                }
+        finally:
+            connection.close()
+
     def delete_personal_business_reply_messages(
         self,
         connection_id: str,
