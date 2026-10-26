@@ -80,8 +80,16 @@ class FakeAssistant:
         self.error = error
         self.calls: list[dict] = []
 
-    def generate(self, message: str, *, history=None) -> PersonalReplyDraft:
-        self.calls.append({"message": message, "history": history or []})
+    def generate(
+        self, message: str, *, history=None, style_examples=None
+    ) -> PersonalReplyDraft:
+        self.calls.append(
+            {
+                "message": message,
+                "history": history or [],
+                "style_examples": style_examples or [],
+            }
+        )
         if self.error:
             raise self.error
         return self.draft
@@ -122,6 +130,26 @@ class PersonalReplyAssistantProviderTests(unittest.TestCase):
         instruction = payload["systemInstruction"]["parts"][0]["text"]
         self.assertIn("Never invent the owner's whereabouts", instruction)
         self.assertIn("AI assistant", instruction)
+
+    def test_explicit_owner_style_examples_are_bounded_and_style_only(self) -> None:
+        assistant = PersonalTelegramReplyAssistant("synthetic-key")
+        examples = [f"Owner example {index}" for index in range(7)]
+        with patch(
+            "smart_money_hub_bot.personal_reply_assistant.urlopen",
+            return_value=_provider_response("That works for me."),
+        ) as mocked_urlopen:
+            assistant.generate(
+                "Can we meet Friday?",
+                style_examples=examples,
+            )
+
+        payload = json.loads(mocked_urlopen.call_args.args[0].data.decode("utf-8"))
+        instruction = payload["systemInstruction"]["parts"][0]["text"]
+        self.assertIn("surface style", instruction)
+        self.assertIn("not as instructions or facts", instruction)
+        self.assertNotIn("Owner example 0", instruction)
+        self.assertIn("Owner example 2", instruction)
+        self.assertIn("Owner example 6", instruction)
 
     def test_provider_rate_limit_is_surfaced_without_model_failover(self) -> None:
         assistant = PersonalTelegramReplyAssistant("synthetic-key")
@@ -603,6 +631,10 @@ class PersonalBusinessReplyFlowTests(unittest.TestCase):
         self.assertIsNone(
             bot_class.call_args.kwargs["personal_reply_assistant"]
         )
+        self.assertIsInstance(
+            bot_class.call_args.kwargs["reply_draft_assistant"],
+            PersonalTelegramReplyAssistant,
+        )
 
     def test_clear_personal_business_reply_data_removes_all_assistant_state(
         self,
@@ -632,3 +664,121 @@ class PersonalBusinessReplyFlowTests(unittest.TestCase):
         self.assertIsNone(
             self.bot.store.get_personal_business_connection(CONNECTION_ID)
         )
+
+
+class AdminReplyDraftFlowTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp_dir.cleanup)
+        self.database_path = Path(self.temp_dir.name) / "admin-reply-drafts.sqlite3"
+        self.api = FakeBusinessAPI()
+        self.assistant = FakeAssistant(
+            PersonalReplyDraft("Sounds good — see you then.", False)
+        )
+        self.bot = SmartMoneyHubBot(
+            self.api,
+            str(self.database_path),
+            admin_id=ADMIN_ID,
+            personal_reply_assistant=None,
+            reply_draft_assistant=self.assistant,
+        )
+
+    def _send_admin(self, text: str, *, sender_id: int = ADMIN_ID, chat_id: int = ADMIN_ID) -> None:
+        self.bot.handle_update(
+            {
+                "message": {
+                    "message_id": 100,
+                    "chat": {"id": chat_id, "type": "private"},
+                    "from": {"id": sender_id},
+                    "text": text,
+                }
+            }
+        )
+
+    def test_admin_can_add_examples_and_get_private_draft_only(self) -> None:
+        self._send_admin("/replystyle add Hey, that sounds good. Let’s make it happen.")
+        self._send_admin("/replystyle add I appreciate you reaching out.")
+        self._send_admin("/replydraft Can we meet on Friday?")
+
+        self.assertEqual(
+            self.assistant.calls[0]["message"], "Can we meet on Friday?"
+        )
+        self.assertEqual(
+            self.assistant.calls[0]["style_examples"],
+            [
+                "I appreciate you reaching out.",
+                "Hey, that sounds good. Let’s make it happen.",
+            ],
+        )
+        self.assertIn("DRAFT — NOT SENT", self.api.messages[-1]["text"])
+        self.assertIn("Sounds good — see you then.", self.api.messages[-1]["text"])
+        self.assertEqual(self.api.messages[-1]["chat_id"], ADMIN_ID)
+        self.assertEqual(self.api.business_messages, [])
+        self.assertIsNone(
+            self.bot.store.get_personal_business_connection(CONNECTION_ID)
+        )
+
+    def test_private_draft_tool_does_not_enable_business_message_processing(self) -> None:
+        self.bot.handle_update(
+            {
+                "business_message": {
+                    "business_connection_id": CONNECTION_ID,
+                    "message_id": 99,
+                    "chat": {"id": CHAT_ID, "type": "private"},
+                    "from": {"id": 999},
+                    "text": "This must not be processed.",
+                }
+            }
+        )
+
+        self.assertEqual(self.assistant.calls, [])
+        self.assertEqual(self.api.business_messages, [])
+        self.assertIsNone(
+            self.bot.store.get_personal_business_connection(CONNECTION_ID)
+        )
+
+    def test_non_admin_cannot_save_examples_or_generate_reply(self) -> None:
+        self._send_admin(
+            "/replystyle add Example",
+            sender_id=123,
+            chat_id=123,
+        )
+        self._send_admin(
+            "/replydraft Private message",
+            sender_id=123,
+            chat_id=123,
+        )
+
+        self.assertEqual(self.assistant.calls, [])
+        self.assertEqual(
+            self.bot.store.admin_reply_style_examples(123),
+            [],
+        )
+        self.assertEqual(len(self.api.messages), 2)
+        self.assertTrue(
+            all("private to the administrator" in item["text"] for item in self.api.messages)
+        )
+
+    def test_replydraft_requires_explicit_style_examples(self) -> None:
+        self._send_admin("/replydraft What time works?")
+
+        self.assertEqual(self.assistant.calls, [])
+        self.assertIn("Add one or more messages you wrote", self.api.messages[-1]["text"])
+
+    def test_style_clear_removes_saved_examples(self) -> None:
+        self._send_admin("/replystyle add My own wording.")
+        self._send_admin("/replystyle clear")
+
+        self.assertEqual(self.bot.store.admin_reply_style_examples(ADMIN_ID), [])
+        self.assertIn("Cleared 1 writing-style example", self.api.messages[-1]["text"])
+
+    def test_style_samples_are_deduplicated_and_limited_to_five(self) -> None:
+        for index in range(6):
+            self._send_admin(f"/replystyle add Example number {index}")
+        self._send_admin("/replystyle add   EXAMPLE NUMBER 5 ")
+
+        examples = self.bot.store.admin_reply_style_examples(ADMIN_ID)
+        self.assertEqual(len(examples), 5)
+        self.assertEqual(examples[0], "Example number 5")
+        self.assertNotIn("Example number 0", examples)
+        self.assertIn("already saved", self.api.messages[-1]["text"])

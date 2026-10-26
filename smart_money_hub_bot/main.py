@@ -11,6 +11,7 @@ from .coach import RuleBasedCoachService
 from .daily_calendar_brief import DailyCalendarBriefPublisher
 from .gemini_coach import GeminiCoachService, GEMINI_MODEL
 from .group_features import DEFAULT_EDUCATION_GROUP_ID
+from .personal_reply_assistant import PersonalTelegramReplyAssistant
 from .storage import DEFAULT_DATABASE_PATH
 from .telegram_api import TelegramAPI
 
@@ -70,6 +71,9 @@ def main() -> None:
     # retain contact messages, or send consent notices, unless the owner
     # explicitly requests this feature again.
     personal_reply_assistant = None
+    reply_draft_assistant = (
+        PersonalTelegramReplyAssistant(gemini_api_key) if gemini_api_key else None
+    )
     if gemini_api_key:
         logging.getLogger(__name__).info(
             "Gemini Coach enabled with the fixed free-tier model %s.", GEMINI_MODEL
@@ -119,6 +123,7 @@ def main() -> None:
             education_group_id=education_group_id,
             daily_calendar_brief=daily_calendar_brief,
             personal_reply_assistant=personal_reply_assistant,
+            reply_draft_assistant=reply_draft_assistant,
         )
         logging.getLogger(__name__).info(
             "Education-group morning learning posts scheduled daily for 08:00 WAT; "

@@ -16,3 +16,9 @@ Telegram Business automatic replies are disabled at the account owner's request.
 **Why:** The owner does not want contacts' messages processed and does not want them to receive the consent notice.
 
 **How to apply:** Keep the runtime path disabled by default. If the owner requests the feature again, restore transparent opt-in before processing any contact text.
+
+A separate private, admin-only reply-drafting tool may use writing examples and incoming-message text that the owner explicitly submits in a direct command. It sends drafts only back to the owner; it must not read Business chats or send messages to contacts. The owner can clear stored style examples.
+
+**Why:** The owner wants replies to reflect their writing style but selected private drafts, not automatic Business-chat replies.
+
+**How to apply:** Keep the draft feature isolated from the Business update route. Only transmit owner-submitted text and explicitly saved style examples for a draft request; never send the generated draft to the original sender.

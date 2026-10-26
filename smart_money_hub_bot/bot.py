@@ -413,6 +413,7 @@ class SmartMoneyHubBot:
         education_group_id: int | None = DEFAULT_EDUCATION_GROUP_ID,
         daily_calendar_brief: DailyCalendarBriefPublisher | None = None,
         personal_reply_assistant: PersonalTelegramReplyAssistant | None = None,
+        reply_draft_assistant: PersonalTelegramReplyAssistant | None = None,
     ) -> None:
         self.api = api
         self.store = Repository(database_path)
@@ -448,6 +449,7 @@ class SmartMoneyHubBot:
         )
         self.daily_calendar_brief = daily_calendar_brief
         self.personal_reply_assistant = personal_reply_assistant
+        self.reply_draft_assistant = reply_draft_assistant
         self.reminder_zone = ZoneInfo(reminder_timezone)
         self.reminder_time = ClockTime.fromisoformat(reminder_time)
         if self.reminder_time.tzinfo is not None:
@@ -1432,6 +1434,24 @@ class SmartMoneyHubBot:
         if not isinstance(text, str):
             return
         command = text.strip().split(maxsplit=1)[0].split("@", maxsplit=1)[0].lower()
+        if command in {"/replystyle", "/replydraft"}:
+            sender_id = sender.get("id")
+            reply_chat_id = chat.get("id")
+            if (
+                not isinstance(sender_id, int)
+                or isinstance(sender_id, bool)
+                or not isinstance(reply_chat_id, int)
+                or isinstance(reply_chat_id, bool)
+            ):
+                return
+            self._handle_admin_reply_drafting(
+                reply_chat_id,
+                sender_id,
+                chat.get("type") == "private",
+                text,
+                command,
+            )
+            return
         if command == "/groupid":
             sender_id = sender.get("id")
             chat_id = chat.get("id")
@@ -1576,6 +1596,12 @@ class SmartMoneyHubBot:
                     "Use /groupinsights to review educational-group coverage and "
                     "unanswered questions.\n"
                     "For a new poll, type “post an SMC poll now” in this private chat."
+                )
+                help_text += (
+                    "\n\nPrivate reply drafts: add examples you wrote with "
+                    "/replystyle add <your message>; use /replydraft <message> "
+                    "to prepare a draft for yourself; /replystyle clear removes "
+                    "your examples. Drafts are never sent to the other person."
                 )
             self.api.send_message(
                 chat_id,
@@ -1906,6 +1932,126 @@ class SmartMoneyHubBot:
                     "/start or /coach to begin.",
                     self._main_menu_keyboard(),
                 )
+
+    def _handle_admin_reply_drafting(
+        self,
+        chat_id: int,
+        telegram_id: int,
+        is_private: bool,
+        text: str,
+        command: str,
+    ) -> None:
+        if not is_private:
+            return
+        if self.admin_id is None or telegram_id != self.admin_id or chat_id != telegram_id:
+            self.api.send_message(chat_id, "This reply-drafting tool is private to the administrator.")
+            return
+
+        if command == "/replystyle":
+            parts = text.strip().split(maxsplit=2)
+            action = parts[1].casefold() if len(parts) > 1 else ""
+            if action == "clear":
+                removed = self.store.clear_admin_reply_style_examples(telegram_id)
+                self.api.send_message(
+                    chat_id,
+                    f"Cleared {removed} writing-style example(s).",
+                )
+                return
+            if action == "add":
+                if len(parts) < 3 or not parts[2].strip():
+                    self.api.send_message(
+                        chat_id,
+                        "Add one message you wrote: /replystyle add <your message>",
+                    )
+                    return
+                try:
+                    added, count = self.store.add_admin_reply_style_example(
+                        telegram_id, parts[2]
+                    )
+                except ValueError:
+                    self.api.send_message(
+                        chat_id,
+                        "That example is too long. Send a message under 1,200 characters.",
+                    )
+                    return
+                result = "Saved" if added else "That example is already saved."
+                self.api.send_message(
+                    chat_id,
+                    f"{result} Writing-style examples: {count}/5. "
+                    "Only examples you explicitly add are used.",
+                )
+                return
+            count = len(self.store.admin_reply_style_examples(telegram_id))
+            self.api.send_message(
+                chat_id,
+                f"Saved writing-style examples: {count}/5.\n\n"
+                "Add a message you wrote with /replystyle add <your message>.\n"
+                "Remove them with /replystyle clear.\n\n"
+                "Examples are stored in this bot’s database until cleared and are "
+                "sent to Gemini when you request a draft.\n\n"
+                "Draft a reply to text you provide with "
+                "/replydraft <message to respond to>. Drafts are sent only to you; "
+                "the bot does not read or reply in Business chats.",
+            )
+            return
+
+        if self.reply_draft_assistant is None:
+            self.api.send_message(
+                chat_id,
+                "Reply drafting is unavailable because Gemini is not configured. "
+                "No reply was sent.",
+            )
+            return
+        parts = text.strip().split(maxsplit=1)
+        incoming_message = parts[1].strip() if len(parts) > 1 else ""
+        if not incoming_message:
+            self.api.send_message(
+                chat_id,
+                "Send the message you want to answer after the command:\n"
+                "/replydraft <message to respond to>",
+            )
+            return
+        style_examples = self.store.admin_reply_style_examples(telegram_id)
+        if not style_examples:
+            self.api.send_message(
+                chat_id,
+                "Add one or more messages you wrote first with "
+                "/replystyle add <your message>. The message you provide and your "
+                "saved examples are sent to Gemini to prepare the draft.",
+            )
+            return
+
+        self._send_typing_action(chat_id)
+        try:
+            draft = self.reply_draft_assistant.generate(
+                incoming_message,
+                style_examples=style_examples,
+            )
+        except PersonalReplyGenerationError as error:
+            self.api.send_message(
+                chat_id,
+                f"Gemini couldn’t prepare a draft ({error.category}). "
+                "Nothing was sent to the other person.",
+            )
+            return
+        except Exception:
+            logger.exception("Private reply drafting failed.")
+            self.api.send_message(
+                chat_id,
+                "I couldn’t prepare a reply draft. Nothing was sent to the other person.",
+            )
+            return
+
+        owner_review = (
+            "\n\n⚠️ This message may need your judgment before you send it."
+            if draft.needs_owner_input
+            else ""
+        )
+        self.api.send_message(
+            chat_id,
+            f"📝 REPLY DRAFT — NOT SENT\n\n{draft.reply}{owner_review}\n\n"
+            "Review it and send it yourself if it’s right.",
+        )
 
     def _handle_callback(self, callback: dict[str, Any]) -> None:
         callback_id = callback.get("id")

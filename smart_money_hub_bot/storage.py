@@ -488,6 +488,18 @@ class Repository:
                         connection_id, chat_id, response_status, created_at DESC
                     );
 
+                    CREATE TABLE IF NOT EXISTS admin_reply_style_examples (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        telegram_id INTEGER NOT NULL,
+                        sample_text TEXT NOT NULL,
+                        sample_hash TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        UNIQUE (telegram_id, sample_hash)
+                    );
+
+                    CREATE INDEX IF NOT EXISTS admin_reply_style_examples_recent
+                    ON admin_reply_style_examples (telegram_id, id DESC);
+
                     CREATE INDEX IF NOT EXISTS dm_coach_mistakes_mistake
                     ON dm_coach_mistakes (mistake);
 
@@ -5184,6 +5196,91 @@ class Repository:
                     "consents": max(0, consents),
                     "connections": max(0, connections),
                 }
+        finally:
+            connection.close()
+
+    def add_admin_reply_style_example(
+        self,
+        telegram_id: int,
+        sample_text: str,
+        *,
+        max_examples: int = 5,
+        max_characters: int = 1200,
+    ) -> tuple[bool, int]:
+        text = sample_text.strip()
+        if not text:
+            raise ValueError("Style example cannot be empty.")
+        if len(text) > max_characters:
+            raise ValueError("Style example is too long.")
+        if max_examples < 1:
+            raise ValueError("At least one style example must be retained.")
+        sample_hash = hashlib.sha256(
+            " ".join(text.casefold().split()).encode("utf-8")
+        ).hexdigest()
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    INSERT OR IGNORE INTO admin_reply_style_examples (
+                        telegram_id, sample_text, sample_hash, created_at
+                    ) VALUES (?, ?, ?, ?)
+                    """,
+                    (telegram_id, text, sample_hash, utc_now()),
+                )
+                added = cursor.rowcount == 1
+                connection.execute(
+                    """
+                    DELETE FROM admin_reply_style_examples
+                    WHERE telegram_id = ? AND id NOT IN (
+                        SELECT id FROM admin_reply_style_examples
+                        WHERE telegram_id = ?
+                        ORDER BY id DESC
+                        LIMIT ?
+                    )
+                    """,
+                    (telegram_id, telegram_id, max_examples),
+                )
+                count = int(
+                    connection.execute(
+                        """
+                        SELECT COUNT(*) FROM admin_reply_style_examples
+                        WHERE telegram_id = ?
+                        """,
+                        (telegram_id,),
+                    ).fetchone()[0]
+                )
+                return added, count
+        finally:
+            connection.close()
+
+    def admin_reply_style_examples(
+        self, telegram_id: int, *, limit: int = 5
+    ) -> list[str]:
+        safe_limit = max(1, min(int(limit), 5))
+        connection = self._connect()
+        try:
+            rows = connection.execute(
+                """
+                SELECT sample_text FROM admin_reply_style_examples
+                WHERE telegram_id = ?
+                ORDER BY id DESC LIMIT ?
+                """,
+                (telegram_id, safe_limit),
+            ).fetchall()
+            return [str(row["sample_text"]) for row in rows]
+        finally:
+            connection.close()
+
+    def clear_admin_reply_style_examples(self, telegram_id: int) -> int:
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    "DELETE FROM admin_reply_style_examples WHERE telegram_id = ?",
+                    (telegram_id,),
+                )
+                return cursor.rowcount
         finally:
             connection.close()
 
