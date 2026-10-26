@@ -744,7 +744,9 @@ class SmartMoneyHubBot:
                 )
                 return
 
-            if not consent or consent["consent_state"] == "declined":
+            if not consent or (
+                consent["consent_state"] == "declined" and affirmative
+            ):
                 self.store.set_personal_business_reply_consent(
                     connection_id=connection_id,
                     chat_id=chat_id,
