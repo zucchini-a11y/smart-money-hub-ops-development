@@ -96,6 +96,17 @@ def main() -> None:
             "Telegram Business automatic replies are disabled because Gemini is "
             "not configured; the owner-only reply-drafting feature remains available."
         )
+    if admin_id is not None and main_channel_id is not None and channel_writer is not None:
+        logging.getLogger(__name__).info(
+            "Tokyo, London, and New York session-open Market Analysis posts are enabled "
+            "for weekdays; Gemini drafts 15 minutes before each open, a private "
+            "review is sent 5 minutes before, and eligible drafts publish at the open."
+        )
+    else:
+        logging.getLogger(__name__).info(
+            "Session-open Market Analysis posts are inactive because an administrator, "
+            "destination channel, or Gemini writer is not configured."
+        )
     try:
         daily_brief_enabled = os.getenv(
             "SMH_DAILY_USD_GOLD_BRIEF_ENABLED", "false"

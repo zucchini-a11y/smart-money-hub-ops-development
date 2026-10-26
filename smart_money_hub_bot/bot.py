@@ -1397,6 +1397,13 @@ class SmartMoneyHubBot:
                 is_private=True,
             ):
                 return
+            if self.admin_dashboard.session_open_posts.handle_admin_photo(
+                int(chat["id"]),
+                int(sender["id"]),
+                message["photo"],
+                is_private=True,
+            ):
+                return
         if (
             not isinstance(text, str)
             and isinstance(chat, dict)
@@ -1469,6 +1476,22 @@ class SmartMoneyHubBot:
             return
         telegram_id, chat_id, is_private = self._register(sender, chat)
         self._send_bot_recovery_notice(chat_id, telegram_id, is_private)
+        if (
+            is_private
+            and self.admin_dashboard.session_open_posts.has_edit_pending(telegram_id)
+        ):
+            if command == "/cancel":
+                self.admin_dashboard.session_open_posts.cancel_edit(telegram_id)
+                self.api.send_message(chat_id, "Session post edit cancelled.")
+                self.admin_dashboard.session_open_posts.show_controls(chat_id)
+                return
+            if command.startswith("/"):
+                self.admin_dashboard.session_open_posts.cancel_edit(telegram_id)
+            else:
+                self.admin_dashboard.session_open_posts.handle_edit_message(
+                    chat_id, telegram_id, is_private, text
+                )
+                return
         if (
             is_private
             and self.admin_dashboard.has_channel_post_edit_pending(telegram_id)
@@ -3868,6 +3891,10 @@ class SmartMoneyHubBot:
             except Exception:
                 logger.exception("Could not dispatch the daily USD/Gold calendar brief.")
         self.admin_dashboard.channel_posts.dispatch_due(current)
+        try:
+            self.admin_dashboard.session_open_posts.dispatch_due(current)
+        except Exception:
+            logger.exception("Could not dispatch scheduled session-open posts.")
 
     def _notify_content_admin(self, message: str) -> None:
         """Send private status only; never send generated content to a group here."""

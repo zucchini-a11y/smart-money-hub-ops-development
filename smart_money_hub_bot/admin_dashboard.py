@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 from .channel_posting import ChannelPostManager
 from .channel_gemini import GeminiChannelContentService
+from .session_open_posts import SessionOpenPostManager
 from .daily_calendar_brief import DailyCalendarBriefStore
 from .community_content import (
     CONTENT_CATEGORIES,
@@ -118,6 +119,15 @@ class AdminDashboard:
             channel_writer=channel_writer,
             daily_brief_store=DailyCalendarBriefStore(store.database_path),
             daily_brief_enabled=daily_brief_enabled,
+        )
+        self.session_open_posts = SessionOpenPostManager(
+            api,
+            store.database_path,
+            admin_id=admin_id,
+            destination_chat_id=main_channel_id,
+            writer=channel_writer,
+            history_store=store,
+            channel_post_manager=self.channel_posts,
         )
         self._search_pending: set[int] = set()
         self._broadcast_pending: set[int] = set()
@@ -571,9 +581,19 @@ class AdminDashboard:
         )
         if not channel_post_actions:
             self.cancel_channel_post_edit(telegram_id)
+        session_open_actions = (
+            data == "admin:session_open:view"
+            or data.startswith("admin:session_open:")
+        )
+        if not session_open_actions:
+            self.session_open_posts.cancel_edit(telegram_id)
         if data != "admin:search":
             self.cancel_search(telegram_id)
 
+        if session_open_actions:
+            self.channel_posts.cancel_edit(telegram_id)
+            self.session_open_posts.handle_callback(chat_id, telegram_id, data)
+            return
         if channel_post_actions:
             self.channel_posts.handle_callback(chat_id, telegram_id, data)
             return

@@ -247,6 +247,8 @@ class ChannelPostManager:
             ),
             "Weekday/Saturday schedule: 10:00 WAT; Sunday: 18:00 WAT.",
             "Admin preview: 18:00 WAT the evening before; one hour before if missing.",
+            "Additional session-open posts: Tokyo, London, and New York on weekdays; "
+            "see Session Open Posts for upcoming times and review links.",
             "Destination: the configured Market Analysis channel only.",
             "Pause/resume affects all scheduled channel posts, including weekdays.",
             "Gemini drafts scheduled Market Analysis posts using archived channel posts and saved admin feedback.",
@@ -390,6 +392,12 @@ class ChannelPostManager:
                             if paused
                             else "admin:channel_posts:pause"
                         ),
+                    }
+                ],
+                [
+                    {
+                        "text": "🕒 Session Open Posts",
+                        "callback_data": "admin:session_open:view",
                     }
                 ],
                 [
@@ -1557,47 +1565,8 @@ class ChannelPostManager:
             self._fail_before_send(post, "photo_caption_too_long", admin_id)
             return
         try:
-            bot_info = self.api.get_me()
-            username = self._verified_bot_username(bot_info)
-            bot_id = int(bot_info.get("id", 0))
-            if bot_id <= 0:
-                raise _PreflightFailure("bot_identity_unavailable")
-            if post["is_promo"] and username.casefold() != str(
-                post.get("bot_username") or ""
-            ).casefold():
-                raise _PreflightFailure("bot_username_changed")
-            chat = self.api.get_chat(int(self.destination_chat_id))
-            title = re.sub(r"[\r\n]+", " ", str(chat.get("title") or "")).strip()
-            title_folded = title.casefold()
-            unsafe_title = (
-                "pro signals" in title_folded
-                or bool(re.search(r"\b(?:test|testing|sandbox)\b", title_folded))
-            )
-            if (
-                int(chat.get("id", 0)) != int(self.destination_chat_id)
-                or chat.get("type") != "channel"
-                or unsafe_title
-            ):
-                detail = (
-                    f"Telegram returned “{title[:120]}” "
-                    f"(type {str(chat.get('type') or 'unknown')}, "
-                    f"ID {chat.get('id', 'unknown')}); the configured destination "
-                    f"ID is {self.destination_chat_id}."
-                )
-                raise _PreflightFailure("destination_not_verified", detail)
-            member = self.api.get_chat_member(int(self.destination_chat_id), bot_id)
-            status = member.get("status")
-            can_post = status == "creator" or (
-                status == "administrator" and member.get("can_post_messages") is True
-            )
-            if not can_post:
-                raise _PreflightFailure(
-                    "posting_permission_missing",
-                    f"Telegram returned “{title[:120]}” (ID "
-                    f"{chat.get('id', 'unknown')}); the bot lacks confirmed "
-                    "channel posting permission.",
-                )
-        except _PreflightFailure as error:
+            username = self.verify_destination(post)
+        except DestinationVerificationError as error:
             self._fail_before_send(
                 post,
                 error.category,
@@ -1956,6 +1925,52 @@ class ChannelPostManager:
             raise ValueError("Telegram did not return a valid bot username.")
         return username
 
+    def verify_destination(self, post: dict[str, Any]) -> str:
+        """Verify the configured channel and bot posting permission before a send."""
+        if self.destination_chat_id is None:
+            raise DestinationVerificationError("destination_not_configured")
+        bot_info = self.api.get_me()
+        username = self._verified_bot_username(bot_info)
+        bot_id = int(bot_info.get("id", 0))
+        if bot_id <= 0:
+            raise DestinationVerificationError("bot_identity_unavailable")
+        if post.get("is_promo") and username.casefold() != str(
+            post.get("bot_username") or ""
+        ).casefold():
+            raise DestinationVerificationError("bot_username_changed")
+        chat = self.api.get_chat(int(self.destination_chat_id))
+        title = re.sub(r"[\r\n]+", " ", str(chat.get("title") or "")).strip()
+        title_folded = title.casefold()
+        unsafe_title = (
+            "pro signals" in title_folded
+            or bool(re.search(r"\b(?:test|testing|sandbox)\b", title_folded))
+        )
+        if (
+            int(chat.get("id", 0)) != int(self.destination_chat_id)
+            or chat.get("type") != "channel"
+            or unsafe_title
+        ):
+            detail = (
+                f"Telegram returned “{title[:120]}” "
+                f"(type {str(chat.get('type') or 'unknown')}, "
+                f"ID {chat.get('id', 'unknown')}); the configured destination "
+                f"ID is {self.destination_chat_id}."
+            )
+            raise DestinationVerificationError("destination_not_verified", detail)
+        member = self.api.get_chat_member(int(self.destination_chat_id), bot_id)
+        status = member.get("status")
+        can_post = status == "creator" or (
+            status == "administrator" and member.get("can_post_messages") is True
+        )
+        if not can_post:
+            raise DestinationVerificationError(
+                "posting_permission_missing",
+                f"Telegram returned “{title[:120]}” (ID "
+                f"{chat.get('id', 'unknown')}); the bot lacks confirmed "
+                "channel posting permission.",
+            )
+        return username
+
     def _post_from_callback(self, value: str) -> dict[str, Any] | None:
         try:
             return self.store.get_channel_post(int(value))
@@ -1989,8 +2004,10 @@ class ChannelPostManager:
         return value.astimezone(timezone.utc)
 
 
-class _PreflightFailure(Exception):
+class DestinationVerificationError(Exception):
     def __init__(self, category: str, safe_detail: str | None = None) -> None:
         super().__init__(category)
         self.category = category
         self.safe_detail = safe_detail
+
+

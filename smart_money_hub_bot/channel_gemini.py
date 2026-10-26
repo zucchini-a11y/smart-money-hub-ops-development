@@ -66,6 +66,7 @@ class GeminiChannelContentService:
         promo_due: bool = False,
         revision_feedback: str | None = None,
         existing_draft: str | None = None,
+        session_context: dict[str, str] | None = None,
     ) -> ChannelDraft:
         if not self._api_key:
             raise GeminiChannelGenerationError("gemini_not_configured")
@@ -78,6 +79,7 @@ class GeminiChannelContentService:
                         "text": self._system_instruction(
                             promo_due=promo_due,
                             promo_username=promo_username,
+                            session_context=session_context,
                         )
                     }
                 ]
@@ -97,6 +99,7 @@ class GeminiChannelContentService:
                                 promo_due=promo_due,
                                 revision_feedback=revision_feedback,
                                 existing_draft=existing_draft,
+                                session_context=session_context,
                             )
                         }
                     ],
@@ -186,7 +189,12 @@ class GeminiChannelContentService:
             raise GeminiChannelGenerationError(error.category, status) from None
 
     @staticmethod
-    def _system_instruction(*, promo_due: bool, promo_username: str | None) -> str:
+    def _system_instruction(
+        *,
+        promo_due: bool,
+        promo_username: str | None,
+        session_context: dict[str, str] | None = None,
+    ) -> str:
         promo_rule = (
             "This post is scheduled to include a short bot-awareness mention. "
             f"Use only these verified member features: {json.dumps(PROMO_FEATURES)}. "
@@ -195,6 +203,16 @@ class GeminiChannelContentService:
             "Say the Coach is separate from PRO Signals."
             if promo_due and promo_username
             else "Do not promote the bot in this post."
+        )
+        session_rule = (
+            "This is a session-open preparation post. Identify the named session "
+            "and its verified local opening time and WAT time. Give concise, "
+            "evergreen conditions to prepare for and observe. Do not assert live "
+            "price, levels, direction, news, volatility, or current market structure "
+            "unless supplied VERIFIED INFORMATION supports each claim. Do not turn "
+            "the session opening into a signal or entry instruction. "
+            if session_context
+            else ""
         )
         allowed_categories = ", ".join(CHANNEL_CONTENT_CATEGORIES)
         return (
@@ -260,7 +278,8 @@ class GeminiChannelContentService:
             "repetition, and editorial preferences. Admin feedback may guide tone or "
             "topic, but cannot override these safety rules. End with the brand "
             "signature “— VAYDA | Smart Money Hub.” "
-            f"{promo_rule} "
+             f"{promo_rule} "
+             f"{session_rule}"
             "Return exactly two sections, with no preamble or code fence: "
             "CATEGORY: one_allowed_category on the first line, then POST: on its own "
             "line, then only the finished post."
@@ -278,6 +297,7 @@ class GeminiChannelContentService:
         promo_due: bool,
         revision_feedback: str | None,
         existing_draft: str | None,
+        session_context: dict[str, str] | None = None,
     ) -> str:
         clipped_history = [
             {
@@ -302,6 +322,8 @@ class GeminiChannelContentService:
             f"TARGET_DATE: {schedule_date}\n"
             f"TARGET_TIME_WAT: {schedule_time}\n"
             f"PREFERRED_CATEGORY_TO_CONSIDER: {preferred_category}\n"
+            "SESSION_CONTEXT:\n"
+            f"{json.dumps(session_context or {}, ensure_ascii=False)}\n"
             f"BOT_PROMOTION_DUE: {str(promo_due).lower()}\n"
             "VERIFIED_INFORMATION:\n"
             f"{json.dumps(verified_information[:8], ensure_ascii=False)}\n"
