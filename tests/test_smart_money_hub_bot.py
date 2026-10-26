@@ -464,6 +464,22 @@ class BotFlowTests(unittest.TestCase):
         self.assertEqual(history[0]["content"], "The corrected channel education post.")
         self.assertEqual(history[0]["source"], "channel")
 
+    def test_content_overview_reflects_saved_auto_publish_setting(self) -> None:
+        repository = self.bot.admin_dashboard.community_content.repository
+        repository.set_setting("auto_publish_enabled", "1")
+        self.bot.admin_dashboard._show_content_overview(self.user_id)
+        self.assertIn(
+            "Automatic publishing: ENABLED",
+            self.api.messages[-1]["text"],
+        )
+
+        repository.set_setting("auto_publish_enabled", "0")
+        self.bot.admin_dashboard._show_content_overview(self.user_id)
+        self.assertIn(
+            "Automatic publishing: DISABLED",
+            self.api.messages[-1]["text"],
+        )
+
     def test_group_id_command_sends_details_only_to_configured_admin(self) -> None:
         admin_id = 987654321
         group_id = -1001234567890

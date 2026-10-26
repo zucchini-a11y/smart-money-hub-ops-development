@@ -682,11 +682,18 @@ class ChannelPostManager:
         return True
 
     def handle_edit_message(
-        self, chat_id: int, admin_id: int, text: str, is_private: bool
+        self,
+        chat_id: int,
+        admin_id: int,
+        text: str,
+        is_private: bool,
+        *,
+        now: datetime | None = None,
     ) -> bool:
         if not is_private or self.admin_id is None or admin_id != self.admin_id:
             self.cancel_edit(admin_id)
             return False
+        current = self._as_utc(now or datetime.now(timezone.utc))
         post = self.store.pending_channel_post_edit(admin_id)
         if not post:
             return False
@@ -719,7 +726,7 @@ class ChannelPostManager:
                 admin_id=admin_id,
             )
             if revised.get("status") == "draft":
-                self._send_preview(revised, datetime.now(timezone.utc))
+                self._send_preview(revised, current)
                 self.api.send_message(chat_id, "Revised draft is ready for review.")
             return True
         username = post["bot_username"]
@@ -756,13 +763,14 @@ class ChannelPostManager:
             text.strip(),
             admin_id=admin_id,
             is_promo=is_promo,
+            at=current.isoformat(),
         )
         if not saved:
             self.api.send_message(chat_id, "This draft is no longer waiting for an edit.")
             return True
         refreshed = self.store.get_channel_post(int(post["id"]))
         if refreshed:
-            self._send_preview(refreshed, datetime.now(timezone.utc))
+            self._send_preview(refreshed, current)
         return True
 
     def show_post(self, chat_id: int, post: dict[str, Any]) -> None:

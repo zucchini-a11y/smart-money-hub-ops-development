@@ -235,7 +235,7 @@ class SessionOpenPostTests(unittest.TestCase):
         self.assertTrue(any("Gemini could not prepare" in item[1] for item in self.api.admin_messages))
 
     def test_admin_can_retry_failed_gemini_draft_on_the_same_slot(self):
-        occurrence = self._occurrence("asia")
+        occurrence = self._occurrence("london")
         self.writer.error = GeminiChannelGenerationError("gemini_rate_limit", 429)
         self.manager.dispatch_due(occurrence.utc_at - timedelta(minutes=15))
         failed = self.manager.store.get_by_key(occurrence)
@@ -325,7 +325,7 @@ class SessionOpenPostTests(unittest.TestCase):
             "Recent Market Analysis post about waiting for confirmation.",
             "2026-10-26T06:00:00+00:00",
         )
-        occurrence = self._occurrence("new_york")
+        occurrence = self._occurrence("london")
         self.manager.dispatch_due(occurrence.utc_at - timedelta(minutes=15))
 
         history = self.writer.calls[0]["history"]
