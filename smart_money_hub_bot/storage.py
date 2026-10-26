@@ -471,8 +471,8 @@ class Repository:
                         response_text TEXT,
                         response_status TEXT NOT NULL CHECK (
                             response_status IN (
-                                'processing', 'sent', 'needs_owner_input', 'failed'
-                                , 'consent_required', 'consent_action'
+                                'processing', 'sent', 'needs_owner_input', 'failed',
+                                'consent_required', 'consent_action'
                             )
                         ),
                         sent_message_id INTEGER,
@@ -5087,10 +5087,16 @@ class Repository:
                 if state == "declined":
                     connection.execute(
                         """
-                        DELETE FROM personal_business_reply_turns
+                        UPDATE personal_business_reply_turns
+                        SET incoming_text = '', response_text = NULL,
+                            response_status = 'consent_action',
+                            sent_message_id = NULL, updated_at = ?
                         WHERE connection_id = ? AND chat_id = ?
+                          AND response_status NOT IN (
+                              'consent_required', 'consent_action'
+                          )
                         """,
-                        (connection_id, chat_id),
+                        (timestamp, connection_id, chat_id),
                     )
         finally:
             connection.close()
@@ -5125,10 +5131,16 @@ class Repository:
             with connection:
                 cursor = connection.execute(
                     """
-                    DELETE FROM personal_business_reply_turns
+                    UPDATE personal_business_reply_turns
+                    SET incoming_text = '', response_text = NULL,
+                        response_status = 'consent_action',
+                        sent_message_id = NULL, updated_at = ?
                     WHERE connection_id = ? AND chat_id = ?
+                      AND response_status NOT IN (
+                          'consent_required', 'consent_action'
+                      )
                     """,
-                    (connection_id, chat_id),
+                    (utc_now(), connection_id, chat_id),
                 )
                 return cursor.rowcount
         finally:
