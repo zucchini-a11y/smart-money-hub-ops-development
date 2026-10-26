@@ -15,7 +15,7 @@ Telegram Business automatic replies remain disabled. The owner wants to send a f
 
 **Why:** The owner wants contacts to know about AI assistance and opt in before their messages are processed.
 
-**How to apply:** Keep the runtime path disabled by default. Use a warm, concise notice that clearly requests opt-in; include the provider and retention details required above. Do not process messages or enable automatic replies until the contact opts in.
+**How to apply:** Keep the runtime path disabled by default. Use a very short, natural notice that clearly requests opt-in without awkward or legalistic phrasing, while still covering the provider and retention details required above. Do not process messages or enable automatic replies until the contact opts in.
 
 A separate private, admin-only reply-drafting tool may use writing examples and incoming-message text that the owner explicitly submits in a direct command. It sends drafts only back to the owner; it must not read Business chats or send messages to contacts. The owner can clear stored style examples.
 
