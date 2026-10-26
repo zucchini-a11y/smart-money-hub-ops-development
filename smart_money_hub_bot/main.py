@@ -11,6 +11,7 @@ from .coach import RuleBasedCoachService
 from .daily_calendar_brief import DailyCalendarBriefPublisher
 from .gemini_coach import GeminiCoachService, GEMINI_MODEL
 from .group_features import DEFAULT_EDUCATION_GROUP_ID
+from .personal_reply_assistant import PersonalTelegramReplyAssistant
 from .storage import DEFAULT_DATABASE_PATH
 from .telegram_api import TelegramAPI
 
@@ -66,6 +67,9 @@ def main() -> None:
     channel_writer = (
         GeminiChannelContentService(gemini_api_key) if gemini_api_key else None
     )
+    personal_reply_assistant = (
+        PersonalTelegramReplyAssistant(gemini_api_key) if gemini_api_key else None
+    )
     if gemini_api_key:
         logging.getLogger(__name__).info(
             "Gemini Coach enabled with the fixed free-tier model %s.", GEMINI_MODEL
@@ -78,6 +82,16 @@ def main() -> None:
         logging.getLogger(__name__).info(
             "GEMINI_API_KEY is not configured; using the local Coach and holding "
             "weekend AI drafts."
+        )
+    if personal_reply_assistant is not None:
+        logging.getLogger(__name__).info(
+            "Telegram Business reply assistant is ready for an enabled, "
+            "administrator-owned connection with reply permission."
+        )
+    else:
+        logging.getLogger(__name__).info(
+            "Telegram Business automatic replies are disabled because Gemini "
+            "is not configured."
         )
     try:
         daily_brief_enabled = os.getenv(
@@ -111,6 +125,7 @@ def main() -> None:
             channel_writer=channel_writer,
             education_group_id=education_group_id,
             daily_calendar_brief=daily_calendar_brief,
+            personal_reply_assistant=personal_reply_assistant,
         )
         logging.getLogger(__name__).info(
             "Education-group morning learning posts scheduled daily for 08:00 WAT; "

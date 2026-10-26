@@ -438,6 +438,56 @@ class Repository:
                         mistake TEXT NOT NULL
                     );
 
+                    CREATE TABLE IF NOT EXISTS personal_business_connections (
+                        connection_id TEXT PRIMARY KEY,
+                        owner_telegram_id INTEGER NOT NULL,
+                        enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+                        can_reply INTEGER NOT NULL CHECK (can_reply IN (0, 1)),
+                        updated_at TEXT NOT NULL
+                    );
+
+                    CREATE TABLE IF NOT EXISTS personal_business_reply_consents (
+                        connection_id TEXT NOT NULL
+                            REFERENCES personal_business_connections(connection_id)
+                            ON DELETE CASCADE,
+                        chat_id INTEGER NOT NULL,
+                        consent_state TEXT NOT NULL CHECK (
+                            consent_state IN ('pending', 'consented', 'declined')
+                        ),
+                        notice_sent INTEGER NOT NULL DEFAULT 0
+                            CHECK (notice_sent IN (0, 1)),
+                        consented_at TEXT,
+                        updated_at TEXT NOT NULL,
+                        PRIMARY KEY (connection_id, chat_id)
+                    );
+
+                    CREATE TABLE IF NOT EXISTS personal_business_reply_turns (
+                        connection_id TEXT NOT NULL
+                            REFERENCES personal_business_connections(connection_id)
+                            ON DELETE CASCADE,
+                        chat_id INTEGER NOT NULL,
+                        incoming_message_id INTEGER NOT NULL,
+                        incoming_text TEXT NOT NULL,
+                        response_text TEXT,
+                        response_status TEXT NOT NULL CHECK (
+                            response_status IN (
+                                'processing', 'sent', 'needs_owner_input', 'failed'
+                                , 'consent_required', 'consent_action'
+                            )
+                        ),
+                        sent_message_id INTEGER,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL,
+                        PRIMARY KEY (
+                            connection_id, chat_id, incoming_message_id
+                        )
+                    );
+
+                    CREATE INDEX IF NOT EXISTS personal_business_reply_history
+                    ON personal_business_reply_turns (
+                        connection_id, chat_id, response_status, created_at DESC
+                    );
+
                     CREATE INDEX IF NOT EXISTS dm_coach_mistakes_mistake
                     ON dm_coach_mistakes (mistake);
 
@@ -4775,3 +4825,342 @@ class Repository:
                 utc_now(),
             ),
         )
+
+    def save_personal_business_connection(
+        self,
+        *,
+        connection_id: str,
+        owner_telegram_id: int,
+        enabled: bool,
+        can_reply: bool,
+        at: str | None = None,
+    ) -> None:
+        if not connection_id or len(connection_id) > 512:
+            raise ValueError("A valid Telegram Business connection ID is required.")
+        timestamp = at or utc_now()
+        connection = self._connect()
+        try:
+            with connection:
+                connection.execute(
+                    """
+                    INSERT INTO personal_business_connections
+                        (connection_id, owner_telegram_id, enabled, can_reply, updated_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(connection_id) DO UPDATE SET
+                        owner_telegram_id = excluded.owner_telegram_id,
+                        enabled = excluded.enabled,
+                        can_reply = excluded.can_reply,
+                        updated_at = excluded.updated_at
+                    """,
+                    (
+                        connection_id,
+                        owner_telegram_id,
+                        int(enabled),
+                        int(can_reply),
+                        timestamp,
+                    ),
+                )
+                if not enabled:
+                    connection.execute(
+                        """
+                        DELETE FROM personal_business_reply_turns
+                        WHERE connection_id = ?
+                        """,
+                        (connection_id,),
+                    )
+                    connection.execute(
+                        """
+                        DELETE FROM personal_business_reply_consents
+                        WHERE connection_id = ?
+                        """,
+                        (connection_id,),
+                    )
+        finally:
+            connection.close()
+
+    def get_personal_business_connection(
+        self, connection_id: str
+    ) -> dict[str, Any] | None:
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                """
+                SELECT connection_id, owner_telegram_id, enabled, can_reply, updated_at
+                FROM personal_business_connections
+                WHERE connection_id = ?
+                """,
+                (connection_id,),
+            ).fetchone()
+            return dict(row) if row else None
+        finally:
+            connection.close()
+
+    def create_personal_business_reply_turn(
+        self,
+        *,
+        connection_id: str,
+        chat_id: int,
+        incoming_message_id: int,
+        incoming_text: str,
+        status: str = "processing",
+        at: str | None = None,
+    ) -> bool:
+        if status not in {
+            "processing",
+            "consent_required",
+            "consent_action",
+        }:
+            raise ValueError("Unsupported initial personal reply status.")
+        timestamp = at or utc_now()
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    INSERT OR IGNORE INTO personal_business_reply_turns (
+                        connection_id, chat_id, incoming_message_id,
+                        incoming_text, response_status, created_at, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        connection_id,
+                        chat_id,
+                        incoming_message_id,
+                        incoming_text if status == "processing" else "",
+                        status,
+                        timestamp,
+                        timestamp,
+                    ),
+                )
+                return cursor.rowcount == 1
+        finally:
+            connection.close()
+
+    def recent_personal_business_reply_history(
+        self, connection_id: str, chat_id: int, limit: int = 6
+    ) -> list[dict[str, str]]:
+        safe_limit = max(1, min(int(limit), 6))
+        connection = self._connect()
+        try:
+            rows = connection.execute(
+                """
+                SELECT incoming_text, response_text
+                FROM personal_business_reply_turns
+                WHERE connection_id = ? AND chat_id = ?
+                  AND response_status = 'sent' AND response_text IS NOT NULL
+                ORDER BY created_at DESC, incoming_message_id DESC
+                LIMIT ?
+                """,
+                (connection_id, chat_id, safe_limit),
+            ).fetchall()
+            history: list[dict[str, str]] = []
+            for row in reversed(rows):
+                history.append({"role": "user", "text": str(row["incoming_text"])})
+                history.append({"role": "model", "text": str(row["response_text"])})
+            return history
+        finally:
+            connection.close()
+
+    def finish_personal_business_reply_turn(
+        self,
+        *,
+        connection_id: str,
+        chat_id: int,
+        incoming_message_id: int,
+        status: str,
+        response_text: str | None = None,
+        sent_message_id: int | None = None,
+        at: str | None = None,
+    ) -> bool:
+        if status not in {
+            "sent",
+            "needs_owner_input",
+            "failed",
+            "consent_required",
+            "consent_action",
+        }:
+            raise ValueError("Unsupported personal reply status.")
+        timestamp = at or utc_now()
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE personal_business_reply_turns
+                    SET response_status = ?,
+                        incoming_text = CASE WHEN ? = 'sent' THEN incoming_text ELSE '' END,
+                        response_text = ?,
+                        sent_message_id = ?, updated_at = ?
+                    WHERE connection_id = ? AND chat_id = ?
+                      AND incoming_message_id = ? AND response_status = 'processing'
+                    """,
+                    (
+                        status,
+                        status,
+                        response_text if status == "sent" else None,
+                        sent_message_id if status == "sent" else None,
+                        timestamp,
+                        connection_id,
+                        chat_id,
+                        incoming_message_id,
+                    ),
+                )
+                if status == "sent":
+                    connection.execute(
+                        """
+                        DELETE FROM personal_business_reply_turns
+                        WHERE connection_id = ? AND chat_id = ?
+                          AND response_status = 'sent'
+                          AND incoming_message_id NOT IN (
+                              SELECT incoming_message_id
+                              FROM personal_business_reply_turns
+                              WHERE connection_id = ? AND chat_id = ?
+                                AND response_status = 'sent'
+                              ORDER BY created_at DESC, incoming_message_id DESC
+                              LIMIT 6
+                          )
+                        """,
+                        (connection_id, chat_id, connection_id, chat_id),
+                    )
+                return cursor.rowcount == 1
+        finally:
+            connection.close()
+
+    def get_personal_business_reply_consent(
+        self, connection_id: str, chat_id: int
+    ) -> dict[str, Any] | None:
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                """
+                SELECT connection_id, chat_id, consent_state, notice_sent,
+                       consented_at, updated_at
+                FROM personal_business_reply_consents
+                WHERE connection_id = ? AND chat_id = ?
+                """,
+                (connection_id, chat_id),
+            ).fetchone()
+            return dict(row) if row else None
+        finally:
+            connection.close()
+
+    def set_personal_business_reply_consent(
+        self,
+        *,
+        connection_id: str,
+        chat_id: int,
+        state: str,
+        at: str | None = None,
+    ) -> None:
+        if state not in {"pending", "consented", "declined"}:
+            raise ValueError("Unsupported personal reply consent state.")
+        timestamp = at or utc_now()
+        consented_at = timestamp if state == "consented" else None
+        connection = self._connect()
+        try:
+            with connection:
+                connection.execute(
+                    """
+                    INSERT INTO personal_business_reply_consents (
+                        connection_id, chat_id, consent_state, notice_sent,
+                        consented_at, updated_at
+                    )
+                    VALUES (?, ?, ?, 0, ?, ?)
+                    ON CONFLICT(connection_id, chat_id) DO UPDATE SET
+                        consent_state = excluded.consent_state,
+                        notice_sent = CASE
+                            WHEN excluded.consent_state = 'consented' THEN 1
+                            ELSE personal_business_reply_consents.notice_sent
+                        END,
+                        consented_at = excluded.consented_at,
+                        updated_at = excluded.updated_at
+                    """,
+                    (
+                        connection_id,
+                        chat_id,
+                        state,
+                        consented_at,
+                        timestamp,
+                    ),
+                )
+                if state == "declined":
+                    connection.execute(
+                        """
+                        DELETE FROM personal_business_reply_turns
+                        WHERE connection_id = ? AND chat_id = ?
+                        """,
+                        (connection_id, chat_id),
+                    )
+        finally:
+            connection.close()
+
+    def mark_personal_business_reply_notice_sent(
+        self,
+        connection_id: str,
+        chat_id: int,
+        *,
+        at: str | None = None,
+    ) -> None:
+        connection = self._connect()
+        try:
+            with connection:
+                connection.execute(
+                    """
+                    UPDATE personal_business_reply_consents
+                    SET notice_sent = 1, updated_at = ?
+                    WHERE connection_id = ? AND chat_id = ?
+                      AND consent_state = 'pending'
+                    """,
+                    (at or utc_now(), connection_id, chat_id),
+                )
+        finally:
+            connection.close()
+
+    def delete_personal_business_reply_history(
+        self, connection_id: str, chat_id: int
+    ) -> int:
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    DELETE FROM personal_business_reply_turns
+                    WHERE connection_id = ? AND chat_id = ?
+                    """,
+                    (connection_id, chat_id),
+                )
+                return cursor.rowcount
+        finally:
+            connection.close()
+
+    def delete_personal_business_reply_messages(
+        self,
+        connection_id: str,
+        chat_id: int,
+        message_ids: list[int],
+    ) -> int:
+        safe_ids = list(
+            dict.fromkeys(
+                message_id
+                for message_id in message_ids
+                if isinstance(message_id, int) and not isinstance(message_id, bool)
+            )
+        )
+        if not safe_ids:
+            return 0
+        placeholders = ",".join("?" for _ in safe_ids)
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    f"""
+                    DELETE FROM personal_business_reply_turns
+                    WHERE connection_id = ? AND chat_id = ?
+                      AND incoming_message_id IN ({placeholders})
+                    """,
+                    (connection_id, chat_id, *safe_ids),
+                )
+                return cursor.rowcount
+        finally:
+            connection.close()

@@ -30,6 +30,10 @@ from .daily_calendar_brief import DailyCalendarBriefPublisher
 from .education_polls import EducationPollPublisher, is_on_demand_poll_request
 from .education_morning import EducationMorningPublisher
 from .message_router import CoachMessageRouter
+from .personal_reply_assistant import (
+    PersonalReplyGenerationError,
+    PersonalTelegramReplyAssistant,
+)
 from .personal_reminders import (
     ReminderRequest,
     parse_personal_reminder_request,
@@ -403,6 +407,7 @@ class SmartMoneyHubBot:
         channel_writer: GeminiChannelContentService | None = None,
         education_group_id: int | None = DEFAULT_EDUCATION_GROUP_ID,
         daily_calendar_brief: DailyCalendarBriefPublisher | None = None,
+        personal_reply_assistant: PersonalTelegramReplyAssistant | None = None,
     ) -> None:
         self.api = api
         self.store = Repository(database_path)
@@ -432,6 +437,7 @@ class SmartMoneyHubBot:
             group_history_store=self.store,
         )
         self.daily_calendar_brief = daily_calendar_brief
+        self.personal_reply_assistant = personal_reply_assistant
         self.reminder_zone = ZoneInfo(reminder_timezone)
         self.reminder_time = ClockTime.fromisoformat(reminder_time)
         if self.reminder_time.tzinfo is not None:
@@ -541,6 +547,30 @@ class SmartMoneyHubBot:
         )
 
     def handle_update(self, update: dict[str, Any]) -> None:
+        business_connection = update.get("business_connection")
+        if isinstance(business_connection, dict):
+            self._handle_business_connection(business_connection)
+            return
+
+        business_message = update.get("business_message")
+        if isinstance(business_message, dict):
+            update_id = update.get("update_id")
+            self._handle_business_message(
+                business_message,
+                update_id=update_id if isinstance(update_id, int) else None,
+            )
+            return
+
+        edited_business_message = update.get("edited_business_message")
+        if isinstance(edited_business_message, dict):
+            self._handle_edited_business_message(edited_business_message)
+            return
+
+        deleted_business_messages = update.get("deleted_business_messages")
+        if isinstance(deleted_business_messages, dict):
+            self._handle_deleted_business_messages(deleted_business_messages)
+            return
+
         channel_post = update.get("channel_post") or update.get("edited_channel_post")
         if isinstance(channel_post, dict):
             self._archive_channel_post(channel_post)
@@ -570,6 +600,236 @@ class SmartMoneyHubBot:
         callback = update.get("callback_query")
         if isinstance(callback, dict):
             self._handle_callback(callback)
+
+    def _handle_business_connection(self, business_connection: dict[str, Any]) -> None:
+        connection_id = business_connection.get("id")
+        account = business_connection.get("user")
+        owner_id = account.get("id") if isinstance(account, dict) else None
+        if (
+            not isinstance(connection_id, str)
+            or not connection_id
+            or len(connection_id) > 512
+            or self.admin_id is None
+            or not isinstance(owner_id, int)
+            or isinstance(owner_id, bool)
+            or owner_id != self.admin_id
+        ):
+            logger.warning("Ignored a Telegram Business connection not owned by the configured administrator.")
+            return
+
+        rights = business_connection.get("rights")
+        can_reply = isinstance(rights, dict) and rights.get("can_reply") is True
+        enabled = business_connection.get("is_enabled") is True
+        self.store.save_personal_business_connection(
+            connection_id=connection_id,
+            owner_telegram_id=owner_id,
+            enabled=enabled,
+            can_reply=can_reply,
+        )
+        if not enabled:
+            logger.info("Telegram Business connection disabled; saved reply history was cleared.")
+            return
+        logger.info(
+            "Telegram Business connection updated (enabled=true, can_reply=%s, "
+            "assistant_ready=%s).",
+            can_reply,
+            self.personal_reply_assistant is not None,
+        )
+        if not can_reply:
+            self._notify_personal_reply_admin(
+                "Chat automation is connected, but Telegram has not granted the "
+                "reply permission. No messages will be sent."
+            )
+        elif self.personal_reply_assistant is None:
+            self._notify_personal_reply_admin(
+                "Chat automation is connected, but Gemini is not configured. "
+                "No automatic replies will be sent."
+            )
+
+    def _handle_business_message(
+        self, message: dict[str, Any], *, update_id: int | None = None
+    ) -> None:
+        connection_id = message.get("business_connection_id")
+        chat = message.get("chat")
+        sender = message.get("from")
+        message_id = message.get("message_id")
+        if (
+            not isinstance(connection_id, str)
+            or not isinstance(chat, dict)
+            or chat.get("type") != "private"
+            or not isinstance(chat.get("id"), int)
+            or isinstance(chat.get("id"), bool)
+            or not isinstance(sender, dict)
+            or not isinstance(sender.get("id"), int)
+            or isinstance(sender.get("id"), bool)
+            or not isinstance(message_id, int)
+            or isinstance(message_id, bool)
+            or sender.get("is_bot") is True
+        ):
+            return
+
+        connection = self.store.get_personal_business_connection(connection_id)
+        if (
+            not connection
+            or connection["enabled"] != 1
+            or connection["can_reply"] != 1
+            or connection["owner_telegram_id"] == sender.get("id")
+            or self.personal_reply_assistant is None
+        ):
+            return
+
+        text = message.get("text")
+        if not isinstance(text, str):
+            text = message.get("caption")
+        if not isinstance(text, str) or not text.strip():
+            return
+
+        chat_id = int(chat["id"])
+        if not self.store.create_personal_business_reply_turn(
+            connection_id=connection_id,
+            chat_id=chat_id,
+            incoming_message_id=message_id,
+            incoming_text=text,
+        ):
+            logger.info(
+                "Skipped a duplicate Telegram Business message "
+                "(update_id=%s).",
+                update_id if update_id is not None else "unavailable",
+            )
+            return
+
+        history = self.store.recent_personal_business_reply_history(
+            connection_id, chat_id, limit=6
+        )
+        try:
+            draft = self.personal_reply_assistant.generate(text, history=history)
+        except PersonalReplyGenerationError as error:
+            self.store.finish_personal_business_reply_turn(
+                connection_id=connection_id,
+                chat_id=chat_id,
+                incoming_message_id=message_id,
+                status="failed",
+            )
+            logger.warning(
+                "Held a Telegram Business reply (category=%s, update_id=%s).",
+                error.category,
+                update_id if update_id is not None else "unavailable",
+            )
+            self._notify_personal_reply_admin(
+                "A connected chat needs your attention. Gemini could not prepare a "
+                f"safe reply ({error.category}); no message was sent."
+            )
+            return
+
+        if draft.needs_owner_input:
+            self.store.finish_personal_business_reply_turn(
+                connection_id=connection_id,
+                chat_id=chat_id,
+                incoming_message_id=message_id,
+                status="needs_owner_input",
+            )
+            self._notify_personal_reply_admin(
+                "A connected chat needs your input. The assistant held its reply "
+                "because the message needs your judgment."
+            )
+            return
+
+        try:
+            sent = self.api.send_message_with_result(
+                chat_id,
+                draft.reply,
+                business_connection_id=connection_id,
+            )
+        except TelegramAPIError as error:
+            self.store.finish_personal_business_reply_turn(
+                connection_id=connection_id,
+                chat_id=chat_id,
+                incoming_message_id=message_id,
+                status="failed",
+            )
+            failure_category = (
+                "delivery_unknown"
+                if error.delivery_unknown
+                else "permission_error"
+                if error.error_code == 403
+                else "telegram_rejected"
+            )
+            logger.warning(
+                "Telegram Business reply was not confirmed "
+                "(category=%s, update_id=%s).",
+                failure_category,
+                update_id if update_id is not None else "unavailable",
+            )
+            self._notify_personal_reply_admin(
+                "A connected chat reply could not be confirmed "
+                f"({failure_category}). It will not be retried automatically to "
+                "avoid sending a duplicate."
+            )
+            return
+
+        sent_message_id = sent.get("message_id") if isinstance(sent, dict) else None
+        if not isinstance(sent_message_id, int):
+            sent_message_id = None
+        self.store.finish_personal_business_reply_turn(
+            connection_id=connection_id,
+            chat_id=chat_id,
+            incoming_message_id=message_id,
+            status="sent",
+            response_text=draft.reply,
+            sent_message_id=sent_message_id,
+        )
+        logger.info(
+            "Telegram Business reply sent (update_id=%s).",
+            update_id if update_id is not None else "unavailable",
+        )
+
+    def _handle_edited_business_message(self, message: dict[str, Any]) -> None:
+        connection_id = message.get("business_connection_id")
+        chat = message.get("chat")
+        message_id = message.get("message_id")
+        if (
+            not isinstance(connection_id, str)
+            or not isinstance(chat, dict)
+            or not isinstance(chat.get("id"), int)
+            or not isinstance(message_id, int)
+        ):
+            return
+        connection = self.store.get_personal_business_connection(connection_id)
+        if not connection or connection["owner_telegram_id"] != self.admin_id:
+            return
+        # Do not send a second reply to an edited message. Drop the old version
+        # from future context so the assistant cannot rely on stale text.
+        self.store.delete_personal_business_reply_messages(
+            connection_id, int(chat["id"]), [message_id]
+        )
+
+    def _handle_deleted_business_messages(
+        self, deleted: dict[str, Any]
+    ) -> None:
+        connection_id = deleted.get("business_connection_id")
+        chat = deleted.get("chat")
+        message_ids = deleted.get("message_ids")
+        if (
+            not isinstance(connection_id, str)
+            or not isinstance(chat, dict)
+            or not isinstance(chat.get("id"), int)
+            or not isinstance(message_ids, list)
+        ):
+            return
+        connection = self.store.get_personal_business_connection(connection_id)
+        if not connection or connection["owner_telegram_id"] != self.admin_id:
+            return
+        self.store.delete_personal_business_reply_messages(
+            connection_id, int(chat["id"]), message_ids
+        )
+
+    def _notify_personal_reply_admin(self, text: str) -> None:
+        if self.admin_id is None:
+            return
+        try:
+            self.api.send_message(self.admin_id, text)
+        except TelegramAPIError:
+            logger.warning("Could not notify the administrator about chat automation.")
 
     def _archive_channel_post(self, channel_post: dict[str, Any]) -> None:
         configured_channel_id = self.admin_dashboard.main_channel_id

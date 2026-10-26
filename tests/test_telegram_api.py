@@ -42,6 +42,27 @@ class TelegramUpdateSubscriptionTests(unittest.TestCase):
             },
         )
 
+    def test_business_reply_uses_the_authorized_business_connection(self) -> None:
+        api = TelegramAPI("synthetic-test-token")
+        with patch.object(
+            api, "_request", return_value={"message_id": 18}
+        ) as request:
+            result = api.send_message_with_result(
+                456,
+                "Thanks for reaching out.",
+                business_connection_id="synthetic-business-connection",
+            )
+
+        self.assertEqual(result, {"message_id": 18})
+        request.assert_called_once_with(
+            "sendMessage",
+            {
+                "chat_id": 456,
+                "text": "Thanks for reaching out.",
+                "business_connection_id": "synthetic-business-connection",
+            },
+        )
+
     def test_send_photo_with_result_uses_file_id_and_html_caption(self) -> None:
         api = TelegramAPI("synthetic-test-token")
         keyboard = {"inline_keyboard": [[{"text": "Open", "url": "https://t.me/example"}]]}
@@ -179,6 +200,9 @@ class TelegramUpdateSubscriptionTests(unittest.TestCase):
         self.assertIn("edited_message", payload["allowed_updates"])
         self.assertIn("poll", payload["allowed_updates"])
         self.assertIn("callback_query", payload["allowed_updates"])
+        self.assertIn("business_connection", payload["allowed_updates"])
+        self.assertIn("business_message", payload["allowed_updates"])
+        self.assertIn("deleted_business_messages", payload["allowed_updates"])
         self.assertNotIn("poll_answer", payload["allowed_updates"])
 
 

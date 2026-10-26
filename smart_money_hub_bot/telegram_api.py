@@ -143,6 +143,10 @@ class TelegramAPI:
                 "channel_post",
                 "edited_channel_post",
                 "poll",
+                "business_connection",
+                "business_message",
+                "edited_business_message",
+                "deleted_business_messages",
             ],
         }
         if offset is not None:
@@ -158,6 +162,7 @@ class TelegramAPI:
         *,
         parse_mode: str | None = None,
         message_thread_id: int | None = None,
+        business_connection_id: str | None = None,
     ) -> None:
         payload: dict[str, Any] = {"chat_id": chat_id, "text": text}
         if reply_markup is not None:
@@ -166,6 +171,8 @@ class TelegramAPI:
             payload["parse_mode"] = parse_mode
         if message_thread_id is not None:
             payload["message_thread_id"] = message_thread_id
+        if business_connection_id is not None:
+            payload["business_connection_id"] = business_connection_id
         self._request("sendMessage", payload)
 
     def send_message_with_result(
@@ -175,12 +182,15 @@ class TelegramAPI:
         reply_markup: dict[str, Any] | None = None,
         *,
         parse_mode: str | None = None,
+        business_connection_id: str | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {"chat_id": chat_id, "text": text}
         if reply_markup is not None:
             payload["reply_markup"] = reply_markup
         if parse_mode is not None:
             payload["parse_mode"] = parse_mode
+        if business_connection_id is not None:
+            payload["business_connection_id"] = business_connection_id
         result = self._request("sendMessage", payload)
         return result if isinstance(result, dict) else {}
 
