@@ -470,6 +470,10 @@ class SmartMoneyHubBot:
             "Polling started for Smart Money Hub bot @%s.",
             bot_info.get("username", "unknown"),
         )
+        logger.info(
+            "Telegram Business capability can_connect_to_business=%s.",
+            bot_info.get("can_connect_to_business") is True,
+        )
         if self._personal_reply_recovery_count:
             logger.warning(
                 "Scrubbed interrupted personal reply messages without retry "
