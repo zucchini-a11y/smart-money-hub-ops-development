@@ -330,7 +330,10 @@ class PersonalBusinessReplyFlowTests(unittest.TestCase):
         connection = self.bot.store._connect()
         try:
             status = connection.execute(
-                "SELECT response_status FROM personal_business_reply_turns"
+                """
+                SELECT response_status FROM personal_business_reply_turns
+                WHERE incoming_message_id = 3
+                """
             ).fetchone()[0]
         finally:
             connection.close()
@@ -338,7 +341,10 @@ class PersonalBusinessReplyFlowTests(unittest.TestCase):
         connection = self.bot.store._connect()
         try:
             stored_message = connection.execute(
-                "SELECT incoming_text FROM personal_business_reply_turns"
+                """
+                SELECT incoming_text FROM personal_business_reply_turns
+                WHERE incoming_message_id = 3
+                """
             ).fetchone()[0]
         finally:
             connection.close()
