@@ -300,7 +300,7 @@ END:VCALENDAR
         self.assertIn("2026-10-29T12:30:00+00:00", report)
         self.assertIn("WAT: Thu, 29 Oct 2026 13:30 WAT", report)
         self.assertIn("Forecast: UNAVAILABLE — not supplied", report)
-        self.assertIn("Verification: verified_schedule", report)
+        self.assertIn("Source verification: official schedule entry retrieved", report)
         self.assertIn('href="https://www.bea.gov/news/schedule"', report)
         self.assertIn("BLS: unavailable", report)
         self.assertIn("HTTP 403", report)
@@ -333,9 +333,81 @@ END:VCALENDAR
 
         self.assertIn("UNAVAILABLE — NOT VERIFIED; no WAT conversion", report)
         self.assertNotIn("WAT: Fri", report)
-        self.assertIn("Freshness: STALE", report)
+        self.assertIn("last checked more than 24 hours ago", report)
+        self.assertIn("Timezone: not verified", report)
+        self.assertIn("no reminder time can be used", report)
         self.assertIn("Advance Monthly Sales &amp; Services", report)
         self.assertIn("Forecast: UNAVAILABLE — not supplied", report)
+        ElementTree.fromstring(f"<root>{report}</root>")
+
+    def test_admin_approval_and_retrieval_recency_are_not_misrepresented_as_verification(self):
+        row = {
+            "title": "Advance Monthly Sales for Retail and Food Services",
+            "source_name": "U.S. Census Bureau",
+            "affected_instrument": "USD / XAUUSD",
+            "source_url": "https://www.census.gov/retail",
+            "release_date_text": "April 16, 2027",
+            "release_time_text": "8:30 AM",
+            "event_at_utc": None,
+            "timezone_status": "unverified_no_timezone_in_source",
+            "verification_status": "date_time_listed_timezone_unverified",
+            "retrieved_at_utc": NOW.isoformat(),
+            "review_status": "approved",
+            "review_state": "approved",
+            "title_verified": True,
+            "date_verified": True,
+            "time_verified": False,
+            "previous_value": None,
+            "forecast_value": None,
+            "actual_value": None,
+            "provider_impact": None,
+            "date_evidence_url": "https://www.census.gov/retail",
+        }
+
+        report, page_count = format_calendar_admin_review(
+            [row],
+            [
+                {
+                    "source_name": "Census",
+                    "status": "verified_schedule",
+                    "checked_at_utc": NOW.isoformat(),
+                },
+                {
+                    "source_name": "BLS",
+                    "status": "unavailable",
+                    "failure_category": "permission_error",
+                    "http_status": 403,
+                    "checked_at_utc": NOW.isoformat(),
+                },
+            ],
+            now=NOW,
+        )
+
+        self.assertEqual(page_count, 1)
+        self.assertIn("Showing records 1–1 of 1 · Page 1/1", report)
+        self.assertIn(
+            "Admin review decision: APPROVED (review only; not permission to publish)",
+            report,
+        )
+        self.assertIn(
+            "Source verification: date/time listed by source; source timezone is unverified",
+            report,
+        )
+        self.assertIn("Date check: reviewer marked checked", report)
+        self.assertIn("Release-time check: not verified", report)
+        self.assertIn("checked within the last 24 hours", report)
+        self.assertIn(
+            "does not mean every event field or timezone is verified",
+            report,
+        )
+        self.assertIn(
+            "Evidence: the same official page is linked above; it may be a general source page",
+            report,
+        )
+        self.assertIn("BLS: unavailable", report)
+        self.assertIn("HTTP 403", report)
+        self.assertNotIn("FRESH", report)
+        self.assertNotIn("Freshness:", report)
         ElementTree.fromstring(f"<root>{report}</root>")
 
     def test_read_only_repository_survives_reopen_and_does_not_create_missing_database(self):
