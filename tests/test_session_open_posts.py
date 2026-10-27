@@ -57,6 +57,7 @@ LATE_SESSION_POST = (
 class FakeWriter:
     def __init__(self, content: str = SESSION_POST, error: Exception | None = None):
         self.content = content
+        self.late_content = LATE_SESSION_POST
         self.error = error
         self.calls: list[dict] = []
 
@@ -64,7 +65,12 @@ class FakeWriter:
         self.calls.append(kwargs)
         if self.error:
             raise self.error
-        return ChannelDraft("new_week_preparation", self.content)
+        content = (
+            self.late_content
+            if kwargs.get("session_context", {}).get("late_recovery")
+            else self.content
+        )
+        return ChannelDraft("new_week_preparation", content)
 
 
 class FakeAPI:
@@ -137,11 +143,30 @@ class SessionOpenPostTests(unittest.TestCase):
         self.temp.cleanup()
 
     def _occurrence(self, session_code: str, day: date = date(2026, 10, 26)):
-        return next(
+        occurrence = next(
             item
             for item in session_occurrences(day)
             if item.definition.code == session_code
         )
+        # Earlier slots are marked handled so a later-session test is isolated
+        # from the intended same-day missed-session recovery behavior.
+        for previous in session_occurrences(day):
+            if previous.utc_at >= occurrence.utc_at:
+                continue
+            if self.manager.store.get_by_key(previous) is not None:
+                continue
+            prior, created = self.manager.store.create_slot(
+                previous, CHANNEL_ID, at="2026-10-26T00:00:00+00:00"
+            )
+            if created:
+                self.manager.store.update(
+                    int(prior["id"]),
+                    expected=("generating",),
+                    status="failed",
+                    at="2026-10-26T00:00:01+00:00",
+                    failure_category="test_fixture_session_already_handled",
+                )
+        return occurrence
 
     def test_local_session_opens_convert_to_wat_across_dst(self):
         winter = {x.definition.code: x for x in session_occurrences(date(2026, 1, 5))}

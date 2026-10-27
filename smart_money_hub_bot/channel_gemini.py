@@ -214,7 +214,7 @@ class GeminiChannelContentService:
         )
         session_rule = (
             "This is a session post. Set CATEGORY to new_week_preparation. Follow "
-            "the Smart Money Hub safety frame: approved brand header; separator; "
+            "this Smart Money Hub layout and safety frame: approved brand header; separator; "
             f"{session_headline}; a concise practical body; one of 🔍 WHAT TO PREPARE, "
             "🔍 CONDITIONS TO WATCH, or 🔍 SESSION CHECKLIST; a 🛡️ RISK REMINDER; "
             "and ⚠️ THE GOLDEN RULE followed exactly by NO CONFIRMATION, NO ENTRY. "
