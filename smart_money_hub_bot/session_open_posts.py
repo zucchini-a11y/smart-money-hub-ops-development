@@ -108,10 +108,8 @@ def validate_session_open_post(content: str, post: dict[str, Any]) -> str | None
         return "session_name_missing"
     local_time = str(post.get("session_local_time") or "").strip()
     wat_time = str(post.get("schedule_time_wat") or "").strip()
-    if not local_time or local_time not in content or not wat_time:
+    if not local_time or not wat_time:
         return "session_schedule_time_missing"
-    if f"{wat_time} WAT".upper() not in upper:
-        return "session_wat_time_missing"
     if not any(
         heading in upper
         for heading in (

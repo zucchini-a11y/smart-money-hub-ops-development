@@ -143,7 +143,7 @@ class SessionOpenPostTests(unittest.TestCase):
         self.assertEqual(transition["new_york"].wat_at.strftime("%H:%M"), "13:00")
         self.assertEqual(session_occurrences(date(2026, 10, 25)), [])
 
-    def test_saved_post_must_follow_session_template_and_state_correct_times(self):
+    def test_session_post_keeps_schedule_times_in_metadata_not_public_copy(self):
         occurrence = self._occurrence("london")
         post = {
             "category": "new_week_preparation",
@@ -152,11 +152,20 @@ class SessionOpenPostTests(unittest.TestCase):
             "schedule_time_wat": occurrence.wat_at.strftime("%H:%M"),
         }
         self.assertIsNone(validate_session_open_post(SESSION_POST, post))
+        without_visible_times = SESSION_POST.replace(
+            "The London open is 08:00 Europe/London (09:00 WAT). ",
+            "The London session is underway. ",
+        )
+        self.assertEqual(
+            validate_session_open_post(without_visible_times, post),
+            None,
+        )
         self.assertEqual(
             validate_session_open_post(
-                SESSION_POST.replace("09:00 WAT", "10:00 WAT"), post
+                without_visible_times,
+                {**post, "session_local_time": ""},
             ),
-            "session_wat_time_missing",
+            "session_schedule_time_missing",
         )
         self.assertEqual(
             validate_session_open_post(
