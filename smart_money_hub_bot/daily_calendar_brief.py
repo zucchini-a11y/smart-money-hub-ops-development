@@ -96,17 +96,34 @@ def build_daily_usd_gold_brief(
         "🌍 <b>VAYDA SMART MONEY HUB | DAILY USD &amp; GOLD BRIEF</b>",
         f"📅 {brief_date.strftime('%A, %d %B %Y')} · 12:00 AM WAT",
         "",
-        "🇺🇸 <b>VERIFIED U.S. RELEASES</b>",
+        "🇺🇸 <b>USD &amp; MACRO UPDATE</b>",
+        "No verified release results or official-policy updates are available "
+        "in the source records used for this brief.",
+        "",
+        "🥇 <b>GOLD IMPACT</b>",
+        "Potential bullish factors: None confirmed in these verified records.",
+        "Potential bearish factors: None confirmed in these verified records.",
+        "What remains uncertain: no verified release results or current market "
+        "data are available to assess direction.",
+        "",
+        "📅 <b>TODAY’S HIGH-IMPACT EVENTS</b>",
     ]
     if not verified_events:
-        lines.extend(["No verified BEA releases are listed for this WAT date.", ""])
+        lines.extend(
+            [
+                "No verified BEA release is scheduled for this date. BLS and DOL "
+                "coverage is not verified, and Census times are omitted until its "
+                "timezone is confirmed; this is not a complete event list.",
+                "",
+            ]
+        )
     for event_at, record in verified_events:
         title = html.escape(str(record.get("title") or "Official BEA release"))
         url = html.escape(str(record["source_url"]), quote=True)
         lines.extend(
             [
                 f"⏰ <b>{event_at.astimezone(WAT).strftime('%H:%M WAT')} — {title}</b>",
-                "Provider impact: Unavailable",
+                "Impact classification: Unavailable from this source",
                 "Previous: Unavailable · Forecast: Unavailable",
                 "Actual: Unavailable from this schedule source",
                 f'Source: <a href="{url}">U.S. Bureau of Economic Analysis</a>',
@@ -134,32 +151,50 @@ def build_daily_usd_gold_brief(
         lines.append("")
 
     census = statuses.get("Census", {})
-    if census.get("status") == "verified_schedule":
-        census_note = (
-            "Census dates are recorded, but its timezone is not verified; "
-            "no WAT time or reminder is inferred."
-        )
-    else:
-        census_note = "Census coverage is unavailable or not verified."
     unavailable = []
     for name in ("BLS", "DOL"):
         status = statuses.get(name, {})
         if status.get("status") != "verified_schedule":
-            code = status.get("http_status")
-            suffix = f" (HTTP {int(code)})" if isinstance(code, int) else ""
-            unavailable.append(f"{name} unavailable{suffix}")
-    coverage = "; ".join(unavailable) if unavailable else "BLS and DOL source status verified"
+            unavailable.append(name)
+    coverage_parts = ["Verified schedule coverage in this brief: BEA."]
+    if unavailable:
+        coverage_parts.append(
+            f"{' and '.join(unavailable)} schedule coverage is not verified."
+        )
+    if census.get("status") == "verified_schedule":
+        coverage_parts.append(
+            "Census dates are omitted from timed listings because its timezone "
+            "is not verified."
+        )
     lines.extend(
         [
-            "🥇 <b>GOLD WATCH</b>",
-            "News is context, not an entry signal. Consider the dollar, yields, "
-            "expectations, and technical confirmation; direction is not guaranteed.",
-            "",
-            "📌 <b>SOURCE COVERAGE</b>",
-            f"{census_note} {html.escape(coverage)}. Missing figures and impact levels are not inferred.",
+            "🎯 <b>WHAT TRADERS SHOULD WATCH</b>",
+            "Check verified release data and observe the market response when "
+            "available. A scheduled event is not an entry signal.",
             "",
             "⚠️ <b>NO CONFIRMATION, NO ENTRY.</b>",
-            "Sources: official U.S. release schedules. No live prices or trade signals.",
+            "📌 <b>SOURCES &amp; CHECK TIME</b>",
+        ]
+    )
+    bea_status = statuses.get("BEA", {})
+    checked_at = _parse_utc(bea_status.get("checked_at_utc"))
+    if checked_at is not None:
+        checked_text = checked_at.astimezone(WAT).strftime(
+            "%a, %d %b %Y at %H:%M WAT"
+        )
+    else:
+        checked_text = "not available"
+    if verified_events:
+        source_line = "Official BEA release schedule; source links are shown with events."
+    else:
+        source_line = (
+            'Official <a href="https://www.bea.gov/news/schedule">'
+            "BEA release calendar</a>."
+        )
+    lines.extend(
+        [
+            f"{source_line} Checked: {checked_text}.",
+            "Coverage note: " + " ".join(coverage_parts),
         ]
     )
     report = "\n".join(lines)

@@ -139,12 +139,19 @@ class DailyCalendarBriefTests(unittest.TestCase):
         message = self.api.channel_messages[0]
         self.assertEqual(message["chat_id"], MARKET_ANALYSIS_CHANNEL_ID)
         self.assertEqual(message["parse_mode"], "HTML")
+        self.assertIn("DAILY USD &amp; GOLD BRIEF", message["text"])
+        self.assertIn("USD &amp; MACRO UPDATE", message["text"])
+        self.assertIn("GOLD IMPACT", message["text"])
+        self.assertIn("TODAY’S HIGH-IMPACT EVENTS", message["text"])
+        self.assertIn("SOURCES &amp; CHECK TIME", message["text"])
         self.assertIn("13:30 WAT", message["text"])
         self.assertIn("Gross Domestic Product", message["text"])
         self.assertIn("Forecast: Unavailable", message["text"])
-        self.assertIn("HTTP 403", message["text"])
+        self.assertNotIn("HTTP 403", message["text"])
+        self.assertIn("BLS and DOL schedule coverage is not verified", message["text"])
         self.assertNotIn("8:30 AM", message["text"])
-        self.assertIn("timezone is not verified", message["text"])
+        self.assertIn("Census dates are omitted from timed listings", message["text"])
+        self.assertIn("Checked: Thu, 29 Oct 2026 at 00:05 WAT", message["text"])
         self.assertLessEqual(
             len(message["text"].encode("utf-16-le")) // 2, 4096
         )
@@ -303,6 +310,29 @@ class DailyCalendarBriefTests(unittest.TestCase):
         self.assertIn("Previous: Unavailable", preview)
         self.assertIn("Forecast: Unavailable", preview)
         self.assertIn("Actual: Unavailable", preview)
+        self.assertIn("NO CONFIRMATION, NO ENTRY.", preview)
+
+    def test_empty_calendar_brief_is_clear_and_does_not_pose_as_market_news(self) -> None:
+        preview = build_daily_usd_gold_brief(
+            BRIEF_DATE,
+            [],
+            [
+                {"source_name": "BEA", "status": "verified_schedule"},
+                {"source_name": "Census", "status": "verified_schedule"},
+                {"source_name": "BLS", "status": "UNAVAILABLE — SOURCE NOT VERIFIED", "http_status": 403},
+                {"source_name": "DOL", "status": "UNAVAILABLE — SOURCE NOT VERIFIED", "http_status": 403},
+            ],
+            now=NOW,
+        )
+
+        self.assertIn("DAILY USD &amp; GOLD BRIEF", preview)
+        self.assertIn("USD &amp; MACRO UPDATE", preview)
+        self.assertIn("GOLD IMPACT", preview)
+        self.assertIn("TODAY’S HIGH-IMPACT EVENTS", preview)
+        self.assertIn("No verified BEA release is scheduled for this date.", preview)
+        self.assertIn("no verified release results or current market data", preview)
+        self.assertIn("Census times are omitted until its timezone is confirmed", preview)
+        self.assertNotIn("HTTP 403", preview)
         self.assertIn("NO CONFIRMATION, NO ENTRY.", preview)
 
 

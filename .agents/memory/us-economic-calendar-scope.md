@@ -3,11 +3,11 @@ name: U.S. economic calendar scope
 description: The selected source boundary for Smart Money Hub's USD and gold event calendar.
 ---
 
-For the first USD/XAU calendar phase, use official U.S. sources, omit ISM and general/geopolitical headlines, and keep BLS/DOL unavailable until their sources are verified. Never infer missing values or timezones. The longer-term market-awareness scope may expand to Fed policy, Treasury data, and other instruments only when reliable sources and reuse rights are confirmed. GDELT is discovery only; leads require credible verification.
+For the USD/XAU daily brief, retain the approved VAYDA Smart Money Hub template: USD & Macro Update, Gold Impact, Today's High-Impact Events, What Traders Should Watch, sources/check time, and NO CONFIRMATION, NO ENTRY. Use official U.S. records only, omit ISM and general/geopolitical headlines, and keep BLS/DOL unavailable until their sources are verified. Never infer missing values or timezones. If no significant verified development is available, say so without inventing news.
 
-Keep the USD & Gold destination unset until the user supplies and approves it. Sunday at 7:00 PM WAT is the proposed weekly brief time, not authorization to enable automation or delivery.
+The daily brief is approved for 12:00 AM WAT delivery to the configured Market Analysis channel. Do not change that route or schedule without approval. The longer-term market-awareness scope may expand to Fed policy, Treasury data, and other instruments only when reliable sources and reuse rights are confirmed. GDELT is discovery only; leads require credible verification.
 
-**Why:** the user approved an official-source-first calendar, then expanded the product goal to broader market awareness while requiring source, licensing, and cost checks before use.
+**Why:** the user approved the daily brief and its established template, while requiring the content to remain source-backed and honest about unavailable news or calendar fields.
 
 **How to apply:** only describe facts supported by a verified source and timestamp. Hold affected items when a source is blocked, stale, timezone-ambiguous, or lacks redistribution permission; never route them to Market Analysis by default or imply automated trading.
 
