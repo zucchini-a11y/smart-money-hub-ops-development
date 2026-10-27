@@ -299,7 +299,7 @@ END:VCALENDAR
         self.assertIn("USD / XAUUSD", report)
         self.assertIn("2026-10-29T12:30:00+00:00", report)
         self.assertIn("WAT: Thu, 29 Oct 2026 13:30 WAT", report)
-        self.assertIn("Forecast: UNAVAILABLE — not supplied", report)
+        self.assertIn("Forecast: UNAVAILABLE — source did not supply a value", report)
         self.assertIn("Source verification: official schedule entry retrieved", report)
         self.assertIn('href="https://www.bea.gov/news/schedule"', report)
         self.assertIn("BLS: unavailable", report)
@@ -331,13 +331,13 @@ END:VCALENDAR
             now=NOW,
         )
 
-        self.assertIn("UNAVAILABLE — NOT VERIFIED; no WAT conversion", report)
+        self.assertIn("Timezone: not verified", report)
         self.assertNotIn("WAT: Fri", report)
         self.assertIn("last checked more than 24 hours ago", report)
         self.assertIn("Timezone: not verified", report)
         self.assertIn("no reminder time can be used", report)
         self.assertIn("Advance Monthly Sales &amp; Services", report)
-        self.assertIn("Forecast: UNAVAILABLE — not supplied", report)
+        self.assertIn("Forecast: UNAVAILABLE — source did not supply a value", report)
         ElementTree.fromstring(f"<root>{report}</root>")
 
     def test_admin_approval_and_retrieval_recency_are_not_misrepresented_as_verification(self):
@@ -480,8 +480,8 @@ END:VCALENDAR
         self.assertLessEqual(len(report.encode("utf-16-le")) // 2, 4096)
         self.assertIn("Source link: unavailable or not allowlisted", report)
         self.assertNotIn(oversized_url, report)
-        self.assertIn("Forecast: UNAVAILABLE — not supplied", report)
-        self.assertIn("Actual: UNAVAILABLE — not supplied", report)
+        self.assertIn("Forecast: UNAVAILABLE — source did not supply a value", report)
+        self.assertIn("Actual: UNAVAILABLE — source did not supply a value", report)
         ElementTree.fromstring(f"<root>{report}</root>")
 
     def test_calendar_review_pagination_includes_each_record_exactly_once(self):
