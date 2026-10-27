@@ -1604,7 +1604,7 @@ class BotFlowTests(unittest.TestCase):
 
         self._click("admin:market_awareness")
         rendered = self.api.messages[-1]
-        self.assertIn("USD &amp; GOLD — SOURCE REVIEW", rendered["text"])
+        self.assertIn("USD &amp; GOLD — ADMIN SOURCE REVIEW", rendered["text"])
         self.assertIn("Gross Domestic Product", rendered["text"])
         self.assertIn("WAT: Thu, 29 Oct 2026 13:30 WAT", rendered["text"])
         self.assertEqual(rendered["chat_id"], self.chat_id)
