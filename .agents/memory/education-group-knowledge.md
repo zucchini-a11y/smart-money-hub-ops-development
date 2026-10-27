@@ -16,3 +16,9 @@ Automatic Education polls run weekly on Saturday at 9:00 PM WAT. Channel posts s
 **Why:** the user asked for group-aware coaching while explicitly preserving the group’s current permissions and topics; Telegram only supplies updates the bot receives.
 
 **How to apply:** before promising natural group Q&A or complete historical coverage, confirm members can post and explain that only archived/approved material is searchable. Do not change BotFather privacy settings or group permissions as a workaround.
+
+The daily Education-group morning post is scheduled for 08:00 WAT. If the bot recovers within 30 minutes of that time, it may send the scheduled post once after the normal destination and permission checks. After the 30-minute window, record the post as skipped and do not send it late.
+
+**Why:** the user requested a 30-minute recovery window while still avoiding stale late posts.
+
+**How to apply:** keep the scheduled time unchanged, use the 30-minute boundary consistently, prevent duplicates, and do not reset an already-skipped run to trigger a late send.

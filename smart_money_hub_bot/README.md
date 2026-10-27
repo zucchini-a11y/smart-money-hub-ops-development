@@ -127,7 +127,9 @@ python3 -m unittest discover -s tests -v
 ## Education-group morning notes
 
 The bot schedules one short Education-group learning note per Africa/Lagos date
-at **08:00 WAT** when the administrator has enabled scheduled content. New
+at **08:00 WAT** when the administrator has enabled scheduled content. The
+publisher allows up to 30 minutes of late delivery after downtime; after that
+window, the day's post is recorded as skipped rather than sent late. New
 installations remain paused until `/contentresume`; `/contentpause` pauses it.
 It uses a vetted evergreen lesson bank and a persistent
 SQLite delivery ledger; exact message variations are not reused. Recent

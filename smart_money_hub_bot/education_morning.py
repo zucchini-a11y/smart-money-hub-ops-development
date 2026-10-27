@@ -21,7 +21,7 @@ from .telegram_api import TelegramAPIError
 logger = logging.getLogger(__name__)
 MORNING_ZONE = ZoneInfo("Africa/Lagos")
 MORNING_TIME = time(8, 0)
-MORNING_LATE_GRACE = timedelta(minutes=5)
+MORNING_LATE_GRACE = timedelta(minutes=30)
 TELEGRAM_TEXT_LIMIT_UTF16 = 4096
 
 
@@ -493,7 +493,7 @@ class EducationMorningPublisher:
                 )
                 self._notify_admin(
                     "Today’s Education-group morning post was skipped because the "
-                    "bot was unavailable more than five minutes after 8:00 AM WAT. "
+                    "bot was unavailable more than 30 minutes after 8:00 AM WAT. "
                     "It was not sent late."
                 )
                 return
@@ -552,7 +552,7 @@ class EducationMorningPublisher:
                 now=current,
             )
             self._notify_admin(
-                "Today’s Education-group morning post missed its five-minute "
+                "Today’s Education-group morning post missed its 30-minute "
                 "delivery window and was not sent late."
             )
             return

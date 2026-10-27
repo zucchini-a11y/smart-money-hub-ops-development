@@ -156,13 +156,31 @@ class EducationMorningTests(unittest.TestCase):
         self.assertNotIn("9:00 PM WAT tonight", self.api.group_sends[1][1])
 
     def test_missed_window_is_recorded_and_not_sent_late(self):
-        late = datetime(2026, 10, 26, 8, 6, tzinfo=WAT)
+        late = datetime(2026, 10, 26, 8, 31, tzinfo=WAT)
         self.publisher.dispatch_due(late)
         self.assertEqual(self.api.group_sends, [])
         run = EducationMorningStore(self.database).get("2026-10-26")
         self.assertEqual(run["status"], "skipped")
         self.assertEqual(run["failure_category"], "missed_morning_window")
         self.assertEqual(self.api.admin_sends[0][0], self.admin_id)
+
+    def test_post_is_sent_once_inside_30_minute_late_window(self):
+        late = datetime(2026, 10, 26, 8, 20, tzinfo=WAT)
+        self.publisher.dispatch_due(late)
+        self.publisher.dispatch_due(late + timedelta(minutes=1))
+        self.assertEqual(len(self.api.group_sends), 1)
+        run = EducationMorningStore(self.database).get("2026-10-26")
+        self.assertEqual(run["status"], "sent")
+        self.assertIsInstance(run["telegram_message_id"], int)
+
+    def test_exact_30_minute_boundary_is_eligible(self):
+        boundary = datetime(2026, 10, 26, 8, 30, tzinfo=WAT)
+        self.publisher.dispatch_due(boundary)
+        self.assertEqual(len(self.api.group_sends), 1)
+        self.assertEqual(
+            EducationMorningStore(self.database).get("2026-10-26")["status"],
+            "sent",
+        )
 
     def test_unverified_destination_or_permissions_hold_without_group_send(self):
         due = datetime(2026, 10, 26, 8, 0, tzinfo=WAT)
