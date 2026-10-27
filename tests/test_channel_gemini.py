@@ -98,7 +98,10 @@ class GeminiChannelContentTests(unittest.TestCase):
         self.assertIn("Do not copy the examples or claim profits", instruction)
         self.assertIn("recent published channel history", instruction)
         self.assertIn("materially different teaching point and visible structure", instruction)
-        self.assertIn("do not reuse the same headline or section sequence", instruction)
+        self.assertIn(
+            "Do not reuse the same headline or section sequence in consecutive posts",
+            instruction,
+        )
         self.assertEqual(draft.category, "education")
         self.assertTrue(draft.content.startswith("💧 SMART MONEY HUB | LIQUIDITY"))
 
@@ -146,10 +149,10 @@ class GeminiChannelContentTests(unittest.TestCase):
         self.assertIn("SESSION OPEN", instruction)
         self.assertIn("RISK REMINDER", instruction)
         self.assertIn("NO CONFIRMATION, NO ENTRY.", instruction)
-        self.assertIn("making the topic, practical takeaways, and wording distinct", instruction)
-        self.assertIn("do not reuse a recent main lesson", instruction)
+        self.assertIn("Change the teaching angle and visible layout", instruction)
+        self.assertIn("Do not reuse recent main lessons", instruction)
         self.assertIn("do not assert", instruction.lower())
-        self.assertIn("Do not include numerical opening times", instruction)
+        self.assertIn("Never include numerical times", instruction)
         self.assertIn("change the teaching angle and visible layout", instruction)
         self.assertIn("Europe/London", user_context)
         self.assertIn("09:00 WAT", user_context)
