@@ -38,6 +38,7 @@ class SessionDefinition:
     label: str
     timezone_name: str
     open_time: wall_time
+    close_time: wall_time
 
 
 @dataclass(frozen=True)
@@ -59,10 +60,14 @@ class SessionOccurrence:
 
 SESSION_DEFINITIONS = (
     # Conventional FX session-open markers, not exchange-guaranteed hours.
-    SessionDefinition("asia", "Asia (Tokyo)", "Asia/Tokyo", wall_time(9, 0)),
-    SessionDefinition("london", "London", "Europe/London", wall_time(8, 0)),
     SessionDefinition(
-        "new_york", "New York", "America/New_York", wall_time(8, 0)
+        "asia", "Asia (Tokyo)", "Asia/Tokyo", wall_time(9, 0), wall_time(18, 0)
+    ),
+    SessionDefinition(
+        "london", "London", "Europe/London", wall_time(8, 0), wall_time(17, 0)
+    ),
+    SessionDefinition(
+        "new_york", "New York", "America/New_York", wall_time(8, 0), wall_time(17, 0)
     ),
 )
 
@@ -85,7 +90,7 @@ _CANONICAL = re.compile(r"[^a-z0-9]+")
 
 
 def validate_session_open_post(content: str, post: dict[str, Any]) -> str | None:
-    """Apply the normal channel gates plus the fixed session-post layout."""
+    """Apply channel gates and session requirements, including late-recovery rules."""
     rejection = validate_channel_post(
         content,
         is_promo=False,
@@ -96,8 +101,18 @@ def validate_session_open_post(content: str, post: dict[str, Any]) -> str | None
     if str(post.get("category") or "") != "new_week_preparation":
         return "session_category_mismatch"
     upper = content.upper()
-    if "SESSION OPEN" not in upper:
+    late_recovery = bool(post.get("late_recovery"))
+    if "SESSION OPEN" not in upper and not (
+        late_recovery and "SESSION CHECK-IN" in upper
+    ):
         return "session_headline_missing"
+    if late_recovery and re.search(
+        r"\b\d{1,2}:\d{2}\b|\b(?:WAT|JST|UTC|GMT)\b|"
+        r"Asia/Tokyo|Europe/London|America/New_York",
+        content,
+        flags=re.IGNORECASE,
+    ):
+        return "session_recovery_time_in_copy"
     session_code = str(post.get("session_code") or "")
     required_names = {
         "asia": ("ASIA", "TOKYO"),
@@ -123,6 +138,23 @@ def validate_session_open_post(content: str, post: dict[str, Any]) -> str | None
         return "session_risk_reminder_missing"
     if "NO CONFIRMATION, NO ENTRY." not in upper:
         return "session_golden_rule_missing"
+    return None
+
+
+def _session_close_utc(occurrence: SessionOccurrence) -> datetime:
+    """Return the conventional local session end, converted with DST awareness."""
+    zone = ZoneInfo(occurrence.definition.timezone_name)
+    local_close = datetime.combine(
+        occurrence.local_date, occurrence.definition.close_time, tzinfo=zone
+    )
+    return local_close.astimezone(timezone.utc)
+
+
+def _session_layout_heading(content: str) -> str | None:
+    upper = content.upper()
+    for heading in ("WHAT TO PREPARE", "CONDITIONS TO WATCH", "SESSION CHECKLIST"):
+        if heading in upper:
+            return heading
     return None
 
 
@@ -182,6 +214,7 @@ class SessionOpenPostStore:
                     session_label TEXT NOT NULL,
                     session_timezone TEXT NOT NULL,
                     session_local_time TEXT NOT NULL,
+                    session_close_time TEXT NOT NULL DEFAULT '',
                     schedule_time_wat TEXT NOT NULL,
                     schedule_at_utc TEXT NOT NULL,
                     destination_chat_id INTEGER NOT NULL,
@@ -195,6 +228,8 @@ class SessionOpenPostStore:
                             'delivery_unknown', 'missed'
                         )
                     ),
+                    late_recovery INTEGER NOT NULL DEFAULT 0
+                        CHECK (late_recovery IN (0, 1)),
                     failure_category TEXT,
                     review_sent_at TEXT,
                     review_deadline_at TEXT,
@@ -232,6 +267,16 @@ class SessionOpenPostStore:
                     "ALTER TABLE session_open_channel_posts "
                     "ADD COLUMN edit_previous_status TEXT"
                 )
+            if "session_close_time" not in columns:
+                connection.execute(
+                    "ALTER TABLE session_open_channel_posts "
+                    "ADD COLUMN session_close_time TEXT NOT NULL DEFAULT ''"
+                )
+            if "late_recovery" not in columns:
+                connection.execute(
+                    "ALTER TABLE session_open_channel_posts "
+                    "ADD COLUMN late_recovery INTEGER NOT NULL DEFAULT 0"
+                )
 
     def _recover_interrupted(self) -> list[dict[str, Any]]:
         now = _utc_now()
@@ -239,22 +284,27 @@ class SessionOpenPostStore:
         with self._database() as connection:
             rows = connection.execute(
                 """
-                SELECT id, schedule_date, session_label, status
+                SELECT id, schedule_date, session_label, status, late_recovery
                 FROM session_open_channel_posts
                 WHERE status IN ('generating', 'review_sending', 'publishing')
                 """
             ).fetchall()
             for row in rows:
-                status = (
-                    "delivery_unknown"
-                    if row["status"] == "publishing"
-                    else "failed"
-                )
-                category = {
-                    "generating": "generation_interrupted",
-                    "review_sending": "review_delivery_unknown",
-                    "publishing": "telegram_delivery_unknown",
-                }[row["status"]]
+                if row["status"] == "publishing":
+                    status = "delivery_unknown"
+                    category = "telegram_delivery_unknown"
+                elif row["status"] == "generating" and row["late_recovery"]:
+                    # Gemini generation is side-effect-free; it is safe to retry
+                    # this recovery after restart while the session remains active.
+                    status = "missed"
+                    category = "session_open_late_generation_interrupted"
+                else:
+                    status = "failed"
+                    category = (
+                        "generation_interrupted"
+                        if row["status"] == "generating"
+                        else "review_delivery_unknown"
+                    )
                 connection.execute(
                     """
                     UPDATE session_open_channel_posts
@@ -286,10 +336,10 @@ class SessionOpenPostStore:
                 """
                 INSERT OR IGNORE INTO session_open_channel_posts (
                     schedule_date, session_code, session_label,
-                    session_timezone, session_local_time, schedule_time_wat,
-                    schedule_at_utc, destination_chat_id, status, created_at,
-                    updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'generating', ?, ?)
+                    session_timezone, session_local_time, session_close_time,
+                    schedule_time_wat, schedule_at_utc, destination_chat_id,
+                    status, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'generating', ?, ?)
                 """,
                 (
                     occurrence.schedule_date,
@@ -297,6 +347,7 @@ class SessionOpenPostStore:
                     occurrence.definition.label,
                     occurrence.definition.timezone_name,
                     occurrence.local_at.strftime("%H:%M"),
+                    occurrence.definition.close_time.strftime("%H:%M"),
                     occurrence.wat_at.strftime("%H:%M"),
                     occurrence.utc_at.isoformat(),
                     destination_chat_id,
@@ -350,6 +401,7 @@ class SessionOpenPostStore:
             "content",
             "category",
             "failure_category",
+            "late_recovery",
             "review_sent_at",
             "review_deadline_at",
             "edit_admin_id",
@@ -535,13 +587,27 @@ class SessionOpenPostManager:
                     self._notify(
                         f"The {occurrence.definition.label} session post for "
                         f"{occurrence.schedule_date} was missed while the bot was "
-                        "unavailable. It was not posted late."
+                        "unavailable. A fresh, time-free check-in will be generated "
+                        "and published only if the session is still active and all "
+                        "content and destination checks pass."
                     )
-                continue
+                post = self.store.get(int(missed_post["id"])) or missed_post
 
             if not post:
                 continue
             status = str(post["status"])
+            if status == "missed":
+                self._recover_missed(post, occurrence, current)
+                continue
+            late_recovery = bool(post.get("late_recovery"))
+            if late_recovery and current >= _session_close_utc(occurrence):
+                self._hold(
+                    post,
+                    "session_open_recovery_window_expired",
+                    "The session has ended, so the late replacement was held instead "
+                    "of publishing stale session content.",
+                )
+                continue
             if status == "draft" and timedelta(0) < remaining <= FINAL_REVIEW_LEAD:
                 self._send_review(post, occurrence, current)
                 post = self.store.get(int(post["id"])) or post
@@ -550,6 +616,7 @@ class SessionOpenPostManager:
                 if (
                     status in {"approved", "review_pending", "retry_wait"}
                     and current - occurrence.utc_at > timedelta(minutes=5)
+                    and not late_recovery
                 ):
                     self._hold(
                         post,
@@ -576,6 +643,68 @@ class SessionOpenPostManager:
                     self._publish(post, current)
                 elif status == "retry_wait" and self._retry_due(post, current):
                     self._publish(post, current)
+
+    def _recover_missed(
+        self,
+        post: dict[str, Any],
+        occurrence: SessionOccurrence,
+        current: datetime,
+    ) -> None:
+        """Generate and publish one fresh replacement while the session is active."""
+        failure_category = str(post.get("failure_category") or "")
+        retryable_miss = failure_category == "session_open_missed" or (
+            bool(post.get("late_recovery"))
+            and failure_category == "session_open_late_generation_interrupted"
+        )
+        if not retryable_miss or current < occurrence.utc_at:
+            return
+        if current >= _session_close_utc(occurrence):
+            if failure_category != "session_open_recovery_window_expired":
+                self.store.update(
+                    int(post["id"]),
+                    expected=("missed",),
+                    status="missed",
+                    at=current.isoformat(),
+                    failure_category="session_open_recovery_window_expired",
+                )
+                self._notify(
+                    f"The {occurrence.definition.label} session has ended. Its missed "
+                    "post remains unpublished; no stale replacement was sent."
+                )
+            return
+        if self.history_store.get_channel_posting_settings().get("paused"):
+            self._hold(
+                post,
+                "channel_publishing_paused",
+                "The session was missed while Market Analysis publishing is paused. "
+                "The fresh replacement remains held; nothing was sent.",
+            )
+            return
+        claimed = self.store.update(
+            int(post["id"]),
+            expected=("missed",),
+            status="generating",
+            at=current.isoformat(),
+            failure_category="session_open_late_recovery",
+            late_recovery=1,
+        )
+        if not claimed:
+            return
+        claimed_post = self.store.get(int(post["id"])) or post
+        self._generate(claimed_post, occurrence, current, late_recovery=True)
+        generated = self.store.get(int(post["id"]))
+        if not generated or generated.get("status") != "draft":
+            return
+        if self.store.update(
+            int(post["id"]),
+            expected=("draft",),
+            status="approved",
+            at=current.isoformat(),
+            failure_category="session_open_late_recovery",
+            late_recovery=1,
+        ):
+            approved = self.store.get(int(post["id"])) or generated
+            self._publish(approved, current)
 
     def show_controls(self, chat_id: int, *, now: datetime | None = None) -> None:
         current = _as_utc(now or datetime.now(timezone.utc))
@@ -931,7 +1060,12 @@ class SessionOpenPostManager:
         return True
 
     def _generate(
-        self, post: dict[str, Any], occurrence: SessionOccurrence, current: datetime
+        self,
+        post: dict[str, Any],
+        occurrence: SessionOccurrence,
+        current: datetime,
+        *,
+        late_recovery: bool = False,
     ) -> None:
         if self.writer is None:
             self._hold(post, "gemini_not_configured", "Gemini is unavailable; no session post was sent.")
@@ -949,8 +1083,11 @@ class SessionOpenPostManager:
             "session": occurrence.definition.label,
             "session_timezone": occurrence.definition.timezone_name,
             "session_local_open": occurrence.local_at.strftime("%H:%M"),
+            "session_local_close": occurrence.definition.close_time.strftime("%H:%M"),
             "session_date": occurrence.local_date.isoformat(),
             "open_time_wat": occurrence.wat_at.strftime("%H:%M WAT"),
+            "late_recovery": late_recovery,
+            "session_underway": late_recovery,
         }
         try:
             draft = self.writer.generate(
@@ -993,6 +1130,10 @@ class SessionOpenPostManager:
         rejection = validate_session_open_post(content, candidate_post)
         if not rejection and self._is_duplicate(content, int(post["id"])):
             rejection = "duplicate_content"
+        if not rejection and self._repeats_recent_session_layout(
+            content, int(post["id"])
+        ):
+            rejection = "repeated_session_layout"
         if rejection:
             self._hold(
                 post,
@@ -1182,8 +1323,13 @@ class SessionOpenPostManager:
                 message_id,
             )
             self._notify(
-                f"{post['session_label']} session-open post published at "
-                f"{post['schedule_time_wat']} WAT."
+                (
+                    f"A fresh {post['session_label']} session check-in was published "
+                    "after the scheduled open. The public post contains no schedule time."
+                    if post.get("late_recovery")
+                    else f"{post['session_label']} session-open post published at "
+                    f"{post['schedule_time_wat']} WAT."
+                )
             )
         except TelegramAPIError as error:
             if (error.error_code == 429 or error.http_status == 429) and attempts <= MAX_RATE_LIMIT_RETRIES:
@@ -1291,6 +1437,7 @@ class SessionOpenPostManager:
         self, content: str, post_id: int, *, exclude_current: bool = False
     ) -> bool:
         candidate = _canonical(content)
+        candidate_headline = _canonical(_post_headline(content))
         if not candidate:
             return True
         prior = self.history_store.get_recent_channel_post_contents(
@@ -1304,12 +1451,40 @@ class SessionOpenPostManager:
         )
         for item in prior:
             previous = _canonical(str(item.get("content") or ""))
+            previous_headline = _canonical(
+                _post_headline(str(item.get("content") or ""))
+            )
             if previous and (
                 previous == candidate
                 or SequenceMatcher(None, previous, candidate).ratio() >= 0.97
+                or (
+                    candidate_headline
+                    and previous_headline
+                    and SequenceMatcher(
+                        None, candidate_headline, previous_headline
+                    ).ratio()
+                    >= 0.90
+                )
             ):
                 return True
         return False
+
+    def _repeats_recent_session_layout(self, content: str, post_id: int) -> bool:
+        heading = _session_layout_heading(content)
+        if not heading:
+            return False
+        recent_published = next(
+            (
+                item
+                for item in self.store.list_recent(limit=30, exclude_id=post_id)
+                if item.get("status") == "published" and item.get("content")
+            ),
+            None,
+        )
+        return bool(
+            recent_published
+            and _session_layout_heading(str(recent_published["content"])) == heading
+        )
 
     def _scheduled_at(self, post: dict[str, Any]) -> datetime:
         value = datetime.fromisoformat(str(post["schedule_at_utc"]))
@@ -1380,6 +1555,14 @@ class SessionOpenPostManager:
 def _canonical(text: str) -> str:
     text = re.sub(r"no confirmation,\s*no entry\.?", "", text.casefold())
     return _CANONICAL.sub("", text)
+
+
+def _post_headline(content: str) -> str:
+    lines = [line.strip() for line in content.splitlines()]
+    for index, line in enumerate(lines):
+        if "━" in line:
+            return next((item for item in lines[index + 1 :] if item), "")
+    return next((item for item in lines if item), "")
 
 
 def _utc_now() -> str:
