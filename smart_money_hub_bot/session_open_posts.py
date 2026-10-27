@@ -726,6 +726,10 @@ class SessionOpenPostManager:
             "Gemini prepares an evergreen post 15 minutes before; a private review "
             "arrives 5 minutes before. Approve, edit, cancel, or add a photo. If "
             "there is no response, eligible posts publish at the open.",
+            "If an open was missed while the bot was unavailable, Gemini prepares "
+            "a fresh check-in without public schedule times and it may auto-publish "
+            "only while that session is still active and all checks pass. Once the "
+            "session has ended, the missed post stays unpublished.",
             "No live prices or unverified news are invented. Publishing pause, "
             "destination checks, and content validators still apply.",
             "",
