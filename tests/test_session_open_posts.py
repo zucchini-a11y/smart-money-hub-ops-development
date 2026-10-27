@@ -420,6 +420,44 @@ class SessionOpenPostTests(unittest.TestCase):
         self.assertEqual(self.writer.calls, [])
         self.assertEqual(self.api.channel_messages, [])
 
+    def test_interrupted_late_generation_recovers_after_restart(self):
+        self.writer.content = LATE_SESSION_POST
+        occurrence = self._occurrence("asia")
+        post, created = self.manager.store.create_slot(
+            occurrence, CHANNEL_ID, at=(occurrence.utc_at + timedelta(minutes=6)).isoformat()
+        )
+        self.assertTrue(created)
+        self.manager.store.update(
+            int(post["id"]),
+            expected=("generating",),
+            status="generating",
+            at=(occurrence.utc_at + timedelta(minutes=6)).isoformat(),
+            late_recovery=1,
+            failure_category="session_open_late_recovery",
+        )
+
+        restarted = SessionOpenPostManager(
+            self.api,
+            self.database,
+            admin_id=ADMIN_ID,
+            destination_chat_id=CHANNEL_ID,
+            writer=self.writer,
+            history_store=self.repository,
+            channel_post_manager=self.channel_posts,
+        )
+        recovered = restarted.store.get_by_key(occurrence)
+        self.assertEqual(recovered["status"], "missed")
+        self.assertEqual(
+            recovered["failure_category"],
+            "session_open_late_generation_interrupted",
+        )
+        restarted.dispatch_due(occurrence.utc_at + timedelta(minutes=7))
+        published = restarted.store.get_by_key(occurrence)
+        self.assertEqual(published["status"], "published")
+        self.assertEqual(published["publish_attempts"], 1)
+        self.assertEqual(len(self.writer.calls), 1)
+        self.assertEqual(len(self.api.channel_messages), 1)
+
     def test_late_recovery_rejects_public_schedule_times(self):
         occurrence = self._occurrence("asia")
         candidate = {

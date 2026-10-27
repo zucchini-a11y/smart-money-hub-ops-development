@@ -328,6 +328,29 @@ class ChannelPostingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "content_too_long"):
             render_weekend_post_html(oversized)
 
+    def test_repeated_headline_is_rejected_even_when_body_is_new(self) -> None:
+        previous = (
+            "📚 SMART MONEY HUB\n━━━━━━━━━━━━━━\n"
+            "A FRESH WAY TO REVIEW THE PLAN\n\n"
+            "Write down what your setup requires before the chart is active.\n\n"
+            "📌 KEY TAKEAWAY\nA clear plan supports consistent decisions."
+        )
+        changed_body = previous.replace(
+            "Write down what your setup requires before the chart is active.",
+            "Compare the planned invalidation with the conditions you can verify.",
+        ).replace(
+            "A clear plan supports consistent decisions.",
+            "A short review can help identify the next useful question.",
+        )
+        self.store.record_channel_history_post(
+            CHANNEL_ID,
+            9876,
+            previous,
+            "2026-10-26T09:00:00+01:00",
+        )
+
+        self.assertTrue(self.manager._is_duplicate(changed_body))
+
     def test_requested_category_samples_render_as_safe_telegram_html(self) -> None:
         expected_headings = (
             "🎯 TODAY’S TRADING LESSON",
