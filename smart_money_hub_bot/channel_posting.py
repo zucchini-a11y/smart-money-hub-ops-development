@@ -1884,6 +1884,7 @@ class ChannelPostManager:
         self, content: str, *, exclude_post_id: int | None = None
     ) -> bool:
         normalized = self._canonical_content(content)
+        headline = self._canonical_content(self._post_headline(content))
         for previous in self.store.get_recent_channel_post_contents(
             limit=30,
             chat_id=self.destination_chat_id,
@@ -1894,15 +1895,30 @@ class ChannelPostManager:
                 and int(previous["id"]) == exclude_post_id
             ):
                 continue
-            if self._canonical_content(previous["content"]) == normalized:
+            previous_content = str(previous["content"])
+            previous_normalized = self._canonical_content(previous_content)
+            previous_headline = self._canonical_content(
+                self._post_headline(previous_content)
+            )
+            if previous_normalized == normalized:
                 return True
-            if SequenceMatcher(
-                None,
-                self._canonical_content(previous["content"]),
-                normalized,
-            ).ratio() >= 0.97:
+            if SequenceMatcher(None, previous_normalized, normalized).ratio() >= 0.97:
+                return True
+            if (
+                headline
+                and previous_headline
+                and SequenceMatcher(None, previous_headline, headline).ratio() >= 0.90
+            ):
                 return True
         return False
+
+    @staticmethod
+    def _post_headline(content: str) -> str:
+        lines = [line.strip() for line in content.splitlines()]
+        for index, line in enumerate(lines):
+            if "━" in line:
+                return next((item for item in lines[index + 1 :] if item), "")
+        return next((item for item in lines if item), "")
 
     @staticmethod
     def _canonical_content(content: str) -> str:
