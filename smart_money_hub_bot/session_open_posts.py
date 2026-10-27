@@ -214,7 +214,6 @@ class SessionOpenPostStore:
                     session_label TEXT NOT NULL,
                     session_timezone TEXT NOT NULL,
                     session_local_time TEXT NOT NULL,
-                    session_close_time TEXT NOT NULL DEFAULT '',
                     schedule_time_wat TEXT NOT NULL,
                     schedule_at_utc TEXT NOT NULL,
                     destination_chat_id INTEGER NOT NULL,
@@ -266,11 +265,6 @@ class SessionOpenPostStore:
                 connection.execute(
                     "ALTER TABLE session_open_channel_posts "
                     "ADD COLUMN edit_previous_status TEXT"
-                )
-            if "session_close_time" not in columns:
-                connection.execute(
-                    "ALTER TABLE session_open_channel_posts "
-                    "ADD COLUMN session_close_time TEXT NOT NULL DEFAULT ''"
                 )
             if "late_recovery" not in columns:
                 connection.execute(
@@ -336,10 +330,10 @@ class SessionOpenPostStore:
                 """
                 INSERT OR IGNORE INTO session_open_channel_posts (
                     schedule_date, session_code, session_label,
-                    session_timezone, session_local_time, session_close_time,
-                    schedule_time_wat, schedule_at_utc, destination_chat_id,
-                    status, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'generating', ?, ?)
+                    session_timezone, session_local_time, schedule_time_wat,
+                    schedule_at_utc, destination_chat_id, status, created_at,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'generating', ?, ?)
                 """,
                 (
                     occurrence.schedule_date,
@@ -347,7 +341,6 @@ class SessionOpenPostStore:
                     occurrence.definition.label,
                     occurrence.definition.timezone_name,
                     occurrence.local_at.strftime("%H:%M"),
-                    occurrence.definition.close_time.strftime("%H:%M"),
                     occurrence.wat_at.strftime("%H:%M"),
                     occurrence.utc_at.isoformat(),
                     destination_chat_id,
