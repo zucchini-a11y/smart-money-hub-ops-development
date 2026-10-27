@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Smart Money Hub Operations Center"
+description = "An admin operations dashboard for the existing Smart Money Hub Telegram bot, showing honest service health, workflow status, sanitized activity, and content publishing state without exposing message text, credentials, or secrets."
+version = "1.0.0"
+id = "artifacts/smart-money-hub-ops"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 19849
+
+[services.development]
+run = "pnpm --filter @workspace/smart-money-hub-ops run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/smart-money-hub-ops", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/smart-money-hub-ops/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19849"
+BASE_PATH = "/"
