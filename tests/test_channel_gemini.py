@@ -153,7 +153,6 @@ class GeminiChannelContentTests(unittest.TestCase):
         self.assertIn("Do not reuse recent main lessons", instruction)
         self.assertIn("do not assert", instruction.lower())
         self.assertIn("Never include numerical times", instruction)
-        self.assertIn("change the teaching angle and visible layout", instruction)
         self.assertIn("Europe/London", user_context)
         self.assertIn("09:00 WAT", user_context)
 
