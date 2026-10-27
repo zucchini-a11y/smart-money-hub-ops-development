@@ -1181,13 +1181,34 @@ class SmartMoneyHubBot:
         return telegram_id, chat_id, is_private
 
     def _send_bot_recovery_notice(
-        self, chat_id: int, telegram_id: int, is_private: bool
+        self,
+        chat_id: int,
+        telegram_id: int,
+        is_private: bool,
+        *,
+        message_timestamp: Any,
     ) -> None:
         if not is_private:
+            return
+        if (
+            not isinstance(message_timestamp, int)
+            or isinstance(message_timestamp, bool)
+        ):
             return
         try:
             recovery = self.store.pending_bot_recovery_notice(telegram_id)
             if not recovery:
+                return
+            recovered_at = datetime.fromisoformat(str(recovery["last_recovery_at"]))
+            if recovered_at.tzinfo is None:
+                recovered_at = recovered_at.replace(tzinfo=timezone.utc)
+            message_at = datetime.fromtimestamp(message_timestamp, tz=timezone.utc)
+            outage_seconds = max(0, int(recovery["last_recovery_gap_seconds"] or 0))
+            outage_started_at = recovered_at - timedelta(seconds=outage_seconds)
+            # A recovery notice is only relevant to a message Telegram held while
+            # polling was down. Do not apologize to someone who writes after the
+            # bot is already back online.
+            if not outage_started_at <= message_at <= recovered_at:
                 return
             variant = int(recovery["previous_notice_count"]) % len(BOT_RECOVERY_NOTICES)
             notice = BOT_RECOVERY_NOTICES[variant]
@@ -1476,7 +1497,12 @@ class SmartMoneyHubBot:
                 )
             return
         telegram_id, chat_id, is_private = self._register(sender, chat)
-        self._send_bot_recovery_notice(chat_id, telegram_id, is_private)
+        self._send_bot_recovery_notice(
+            chat_id,
+            telegram_id,
+            is_private,
+            message_timestamp=message.get("date"),
+        )
         if (
             is_private
             and self.admin_dashboard.session_open_posts.has_edit_pending(telegram_id)
@@ -2080,7 +2106,6 @@ class SmartMoneyHubBot:
             return
 
         telegram_id, chat_id, is_private = self._register(sender, chat)
-        self._send_bot_recovery_notice(chat_id, telegram_id, is_private)
         if data.startswith("quiz:answer:") or data.startswith("answer:"):
             match = re.fullmatch(r"(?:quiz:)?answer:(\d+):(\d+)", data)
             if match:

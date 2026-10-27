@@ -1326,41 +1326,55 @@ class BotFlowTests(unittest.TestCase):
         self.assertNotIn("You’re welcome", self.api.messages[-1]["text"])
 
     def test_recovery_notice_follows_a_long_outage_once_per_private_member(self) -> None:
-        self._record_poll_recovery(timedelta(hours=1))
+        recovered_at = self._record_poll_recovery(timedelta(hours=1))
 
-        self._message("Hi")
+        self._message("Hi", message_timestamp=int((recovered_at - timedelta(seconds=1)).timestamp()))
         self.assertEqual(
             self.api.messages[-2]["text"],
             BOT_RECOVERY_NOTICES[0],
         )
 
-        self._message("Thanks")
+        self._message(
+            "Thanks",
+            message_timestamp=int((recovered_at + timedelta(seconds=1)).timestamp()),
+        )
         self.assertFalse(
             any("Sorry for the delay" in item["text"] for item in self.api.messages[2:])
         )
 
-        self._message("Hi", user_id=self.user_id + 1)
+        self._message(
+            "Hi",
+            user_id=self.user_id + 1,
+            message_timestamp=int((recovered_at - timedelta(seconds=1)).timestamp()),
+        )
         self.assertEqual(self.api.messages[-2]["text"], BOT_RECOVERY_NOTICES[0])
 
     def test_recovery_notice_is_followed_by_an_answer_to_the_original_message(self) -> None:
-        self._record_poll_recovery(timedelta(hours=1))
+        recovered_at = self._record_poll_recovery(timedelta(hours=1))
 
-        self._message("What is liquidity?")
+        self._message(
+            "What is liquidity?",
+            message_timestamp=int((recovered_at - timedelta(seconds=1)).timestamp()),
+        )
 
         self.assertEqual(self.api.messages[0]["text"], BOT_RECOVERY_NOTICES[0])
         self.assertIn("liquidity", self.api.messages[1]["text"].lower())
         self.assertNotIn("Sorry for the delay", self.api.messages[1]["text"])
 
     def test_recovery_notice_rotates_between_outages_for_each_member(self) -> None:
-        self._record_poll_recovery(timedelta(hours=1))
-        self._message("Hi")
+        recovered_at = self._record_poll_recovery(timedelta(hours=1))
+        self._message(
+            "Hi",
+            message_timestamp=int((recovered_at - timedelta(seconds=1)).timestamp()),
+        )
         first_notice = self.api.messages[-2]["text"]
 
         self.bot.store.record_successful_bot_poll(
             at="2026-10-24T00:00:00+00:00",
             started_at="2026-10-23T23:59:00+00:00",
         )
-        self._message("Hi")
+        second_recovery = datetime(2026, 10, 24, 0, 0, tzinfo=timezone.utc)
+        self._message("Hi", message_timestamp=int((second_recovery - timedelta(seconds=1)).timestamp()))
         second_notice = self.api.messages[-2]["text"]
 
         self.assertEqual(first_notice, BOT_RECOVERY_NOTICES[0])
@@ -1368,9 +1382,34 @@ class BotFlowTests(unittest.TestCase):
         self.assertNotEqual(first_notice, second_notice)
 
     def test_recovery_notice_does_not_trigger_for_a_short_poll_gap(self) -> None:
-        self._record_poll_recovery(timedelta(minutes=29))
+        recovered_at = self._record_poll_recovery(timedelta(minutes=29))
 
-        self._message("Hi")
+        self._message(
+            "Hi",
+            message_timestamp=int((recovered_at - timedelta(seconds=1)).timestamp()),
+        )
+
+        self.assertEqual(len(self.api.messages), 1)
+        self.assertNotIn("Sorry for the delay", self.api.messages[0]["text"])
+
+    def test_recovery_notice_does_not_trigger_for_a_new_message_after_recovery(self) -> None:
+        recovered_at = self._record_poll_recovery(timedelta(hours=1))
+
+        self._message(
+            "Hi",
+            message_timestamp=int((recovered_at + timedelta(seconds=1)).timestamp()),
+        )
+
+        self.assertEqual(len(self.api.messages), 1)
+        self.assertNotIn("Sorry for the delay", self.api.messages[0]["text"])
+
+    def test_recovery_notice_does_not_trigger_for_a_message_from_before_the_outage(self) -> None:
+        recovered_at = self._record_poll_recovery(timedelta(hours=1))
+
+        self._message(
+            "Hi",
+            message_timestamp=int((recovered_at - timedelta(hours=2)).timestamp()),
+        )
 
         self.assertEqual(len(self.api.messages), 1)
         self.assertNotIn("Sorry for the delay", self.api.messages[0]["text"])
@@ -1388,9 +1427,12 @@ class BotFlowTests(unittest.TestCase):
 
     def test_recovery_notice_does_not_interrupt_an_active_assessment(self) -> None:
         self._click("menu:assessment")
-        self._record_poll_recovery(timedelta(minutes=30))
+        recovered_at = self._record_poll_recovery(timedelta(minutes=30))
 
-        self._message("I’m back")
+        self._message(
+            "I’m back",
+            message_timestamp=int((recovered_at - timedelta(seconds=1)).timestamp()),
+        )
 
         self.assertIn("Sorry for the delay", self.api.messages[-2]["text"])
         self.assertIn(
@@ -2736,30 +2778,31 @@ class BotFlowTests(unittest.TestCase):
         user_id: int | None = None,
         chat_id: int | None = None,
         chat_type: str = "private",
+        message_timestamp: int | None = None,
     ) -> None:
         member = user_id if user_id is not None else self.user_id
         private_chat = chat_id if chat_id is not None else (
             self.chat_id if member == self.user_id else member
         )
-        self.bot.handle_update(
-            {
-                "message": {
-                    "text": text,
-                    "chat": {"id": private_chat, "type": chat_type},
-                    "from": {
-                        "id": member,
-                        "username": self.username if member == self.user_id else None,
-                        "first_name": self.first_name,
-                    },
-                }
-            }
-        )
+        message = {
+            "text": text,
+            "chat": {"id": private_chat, "type": chat_type},
+            "from": {
+                "id": member,
+                "username": self.username if member == self.user_id else None,
+                "first_name": self.first_name,
+            },
+        }
+        if message_timestamp is not None:
+            message["date"] = message_timestamp
+        self.bot.handle_update({"message": message})
 
-    def _record_poll_recovery(self, gap: timedelta) -> None:
+    def _record_poll_recovery(self, gap: timedelta) -> datetime:
         recovered_at = datetime(2026, 10, 23, 19, 0, tzinfo=timezone.utc)
         started_at = recovered_at - gap
         self.bot.store.record_successful_bot_poll(at=started_at.isoformat())
         self.bot.store.record_successful_bot_poll(at=recovered_at.isoformat())
+        return recovered_at
 
     def _text(self, text: str) -> None:
         self._message(text)

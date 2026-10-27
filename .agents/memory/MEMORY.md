@@ -11,7 +11,6 @@
 - [Telegram typing indicator](telegram-typing-indicator.md) — the Coach's refreshed `sendChatAction` indicator was confirmed visible in Telegram.
 - [Personal reminder scope](personal-reminder-scope.md) — only the configured CEO can create one-time personal reminders; recurring stays out unless requested.
 - [Sunday check-in audience](sunday-checkin-audience.md) — send by default to private-chat starters, but preserve opt-outs and global reminder stops.
-- [Bot downtime recovery](bot-downtime-recovery.md) — detect long gaps between successful Telegram polls, then acknowledge on each member’s next private interaction.
-- [Bot downtime recovery](bot-downtime-recovery.md) — detect long gaps between successful Telegram polls, then acknowledge on each member’s next private interaction.
+- [Bot downtime recovery](bot-downtime-recovery.md) — acknowledge only messages timestamped within a long bot outage; do not apologize for new messages after recovery.
 - [Telegram Business reply disclosure](telegram-business-consent.md) — automatic replies use a brief disclosure in the first reply, with no separate YES/NO prompt.
 - [Session-open channel posts](session-open-channel-posts.md) — the owner approved additional weekday Tokyo, London, and New York prep posts using DST-aware WAT times.
