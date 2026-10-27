@@ -782,10 +782,13 @@ def format_calendar_admin_review(
     page = min(max(page, 0), page_count - 1)
     start = page * page_size
     selected = records[start : start + page_size]
+    shown_start = start + 1 if records else 0
+    shown_end = min(start + page_size, len(records))
     lines = [
-        "<b>USD &amp; GOLD — SOURCE REVIEW</b>",
-        "Read-only source records. No scheduler or publisher is connected.",
-        f"Page {page + 1} of {page_count}",
+        "<b>USD &amp; GOLD — ADMIN SOURCE REVIEW</b>",
+        "Read-only records. This view is not connected to scheduling or publishing.",
+        "Admin approval is separate from source verification.",
+        f"Showing records {shown_start}–{shown_end} of {len(records)} · Page {page + 1}/{page_count}",
         "",
     ]
     if not records:
@@ -797,21 +800,41 @@ def format_calendar_admin_review(
             item.get("affected_instrument") or "USD / XAUUSD", limit=60
         )
         source = _review_escape(item.get("source_name") or "Unknown", limit=80)
-        origin = "MANUAL" if item.get("entry_origin") == "manual" else "OFFICIAL SOURCE"
-        review_state = _review_escape(item.get("review_state") or item.get("review_status") or "held", limit=40)
+        origin = (
+            "Admin-entered"
+            if item.get("entry_origin") == "manual"
+            else "Retrieved from source"
+        )
+        admin_decision = _review_escape(
+            item.get("review_status") or "held", limit=40
+        ).upper()
+        record_state = _review_escape(
+            item.get("review_state") or item.get("review_status") or "held",
+            limit=40,
+        )
         lines.append(f"<b>{title}</b>")
         lines.append(f"Instrument: {instrument}")
         lines.append(f"Source: {source}")
-        lines.append(f"Entry: {origin} · Review: {review_state}")
+        lines.append(f"Record origin: {origin}")
         lines.append(
-            "Title independently checked: "
-            + ("YES" if item.get("title_verified") else "NO")
+            f"Admin review decision: {admin_decision} "
+            "(review only; not permission to publish)"
+        )
+        if record_state != str(item.get("review_status") or "held"):
+            lines.append(f"Current record status: {record_state}")
+        lines.append(
+            "Title check: "
+            + (
+                "reviewer marked checked"
+                if item.get("title_verified")
+                else "not verified"
+            )
         )
         source_url = str(item.get("source_url") or "")
         if len(source_url) <= 350 and _safe_source_url(source_url):
             lines.append(
                 f'Source link: <a href="{html.escape(source_url, quote=True)}">'
-                "official source</a>"
+                "open source page</a>"
             )
         else:
             lines.append("Source link: unavailable or not allowlisted")
@@ -833,44 +856,56 @@ def format_calendar_admin_review(
                 lines.append("WAT: Unavailable — stored timestamp is invalid")
         else:
             lines.append(
-                f"Original date/time: {_review_escape(item.get('release_date_text') or 'Unavailable', limit=60)} "
+                f"Source-listed date/time: {_review_escape(item.get('release_date_text') or 'Unavailable', limit=60)} "
                 f"{_review_escape(original_time, limit=80)}"
             )
-            lines.append("Timezone: UNAVAILABLE — NOT VERIFIED; no WAT conversion")
+            lines.append(
+                "Timezone: not verified. The time cannot be converted to WAT "
+                "or used for a reminder."
+            )
 
         retrieved = _parse_review_datetime(item.get("retrieved_at_utc"))
         if retrieved is None:
-            lines.append("Retrieved: Unavailable")
-            lines.append("Freshness: UNKNOWN")
+            lines.append("Last retrieved: unavailable · Retrieval recency: unknown")
         else:
             age = checked_at.astimezone(timezone.utc) - retrieved
-            freshness = (
-                "FRESH"
-                if timedelta(0) <= age <= CALENDAR_STALE_AFTER
-                else "STALE"
-            )
+            if age < timedelta(0):
+                recency = "timestamp is in the future; needs checking"
+            elif age <= CALENDAR_STALE_AFTER:
+                recency = "checked within the last 24 hours"
+            else:
+                recency = "last checked more than 24 hours ago"
             lines.append(
-                "Retrieved: "
-                f"{retrieved.strftime('%Y-%m-%d %H:%M:%S UTC')}"
+                "Last retrieved: "
+                f"{retrieved.strftime('%Y-%m-%d %H:%M:%S UTC')} · {recency}"
             )
-            lines.append(
-                f"Freshness: {freshness} (24-hour review threshold)"
+        verification = str(item.get("verification_status") or "unavailable")
+        if verification == "verified_schedule":
+            verification_text = "official schedule entry retrieved"
+        elif verification == "date_time_listed_timezone_unverified":
+            verification_text = (
+                "date/time listed by source; source timezone is unverified"
             )
-        verification = _review_escape(
-            item.get("verification_status") or "UNAVAILABLE", limit=80
-        )
-        lines.append(f"Verification: {verification}")
+        else:
+            verification_text = verification.replace("_", " ")
+        lines.append(f"Source verification: {_review_escape(verification_text, limit=100)}")
         lines.append(
-            "Date independently checked: "
-            + ("YES" if item.get("date_verified") else "NO")
+            "Date check: "
+            + (
+                "reviewer marked checked"
+                if item.get("date_verified")
+                else "not verified"
+            )
         )
         if timezone_status == "verified_explicit_utc_offset":
             lines.append(
-                "Release time independently checked: "
-                + ("YES" if item.get("time_verified") else "NO")
+                "Release-time check: "
+                + ("verified" if item.get("time_verified") else "not verified")
             )
         else:
-            lines.append("Release time independently checked: NO — timezone not verified")
+            lines.append(
+                "Release-time check: not verified; no reminder time can be used"
+            )
         for label, key in (
             ("Previous", "previous_value"),
             ("Forecast", "forecast_value"),
@@ -884,11 +919,21 @@ def format_calendar_admin_review(
                 "actual_value": "actual_verified",
                 "provider_impact": "impact_verified",
             }[key]
+            if value in (None, ""):
+                displayed_value = "UNAVAILABLE — source did not supply a value"
+            elif item.get(verified_key):
+                displayed_value = (
+                    f"{_review_escape(value, limit=80)} (source verified)"
+                )
+            else:
+                displayed_value = (
+                    f"{_review_escape(value, limit=80)} "
+                    "(present, but not independently verified)"
+                )
             lines.append(
-                f"{label}: "
-                f"{_review_escape(value, limit=80) if value not in (None, '') else 'UNAVAILABLE — not supplied'}"
-                f" ({'verified' if item.get(verified_key) else 'not independently verified'})"
+                f"{label}: {displayed_value}"
             )
+        evidence_links: list[str] = []
         for label, key in (
             ("Title evidence", "title_evidence_url"),
             ("Date evidence", "date_evidence_url"),
@@ -899,14 +944,28 @@ def format_calendar_admin_review(
             ("Impact evidence", "impact_evidence_url"),
         ):
             evidence_url = str(item.get(key) or "")
-            if evidence_url and _safe_source_url(evidence_url):
+            if (
+                evidence_url
+                and evidence_url not in evidence_links
+                and _safe_source_url(evidence_url)
+            ):
+                evidence_links.append(evidence_url)
+        if evidence_links:
+            if source_url in evidence_links:
                 lines.append(
-                    f'{label}: <a href="{html.escape(evidence_url, quote=True)}">official evidence</a>'
+                    "Evidence: the same official page is linked above; it may be "
+                    "a general source page, not proof of every field."
                 )
+            else:
+                links = [
+                    f'<a href="{html.escape(url, quote=True)}">evidence {index}</a>'
+                    for index, url in enumerate(evidence_links[:3], start=1)
+                ]
+                lines.append("Evidence links: " + " · ".join(links))
         lines.append("")
 
     statuses = {str(row.get("source_name")): row for row in source_status}
-    lines.append("<b>SOURCE HEALTH</b>")
+    lines.append("<b>SOURCE ACCESS CHECKS</b>")
     for source in ("BEA", "Census", "Federal Reserve", "BLS", "DOL"):
         status = statuses.get(source)
         if status is None:
@@ -915,34 +974,35 @@ def format_calendar_admin_review(
                 if source in {"BLS", "DOL"}
                 else "No source check recorded"
             )
-            lines.append(f"{source}: {label}")
+            lines.append(f"{source}: {label}.")
             continue
         checked = _parse_review_datetime(status.get("checked_at_utc"))
-        health = _review_escape(status.get("status") or "UNKNOWN", limit=60)
+        raw_health = str(status.get("status") or "unknown")
+        health = _review_escape(raw_health.replace("_", " "), limit=60)
         if checked is not None:
             age = checked_at.astimezone(timezone.utc) - checked
-            freshness = (
-                "FRESH"
-                if timedelta(0) <= age <= CALENDAR_STALE_AFTER
-                else "STALE"
-            )
-            health += (
-                f" — {freshness}; checked "
-                f"{checked.strftime('%Y-%m-%d %H:%M:%S UTC')}"
-            )
+            if age < timedelta(0):
+                check_recency = "check timestamp is in the future"
+            elif age <= CALENDAR_STALE_AFTER:
+                check_recency = "checked within the last 24 hours"
+            else:
+                check_recency = "last checked more than 24 hours ago"
+            health += f" · last checked {checked.strftime('%Y-%m-%d %H:%M:%S UTC')} · {check_recency}"
         else:
-            health += " — check time unavailable"
+            health += " · check time unavailable"
         failure = status.get("failure_category")
         if failure:
-            health += f"; category={_review_escape(failure, limit=50)}"
+            health += f" · failure: {_review_escape(str(failure).replace('_', ' '), limit=50)}"
         if status.get("http_status") is not None:
-            health += f"; HTTP {int(status['http_status'])}"
-        lines.append(f"{html.escape(source, quote=False)}: {health}")
+            health += f" · HTTP {int(status['http_status'])}"
+        lines.append(f"{html.escape(source, quote=False)}: {health}.")
     lines.extend(
         [
             "",
-            "<b>SEPARATE SOURCE TYPES</b>",
-            "Federal Reserve policy records are kept separate from this event calendar.",
+            "<b>HOW TO READ THIS</b>",
+            "“Checked within 24 hours” refers only to retrieval time; it does not "
+            "mean every event field or timezone is verified.",
+            "Federal Reserve policy records are separate from this event calendar.",
             "Treasury observations are daily yields, not live gold or FX prices.",
         ]
     )

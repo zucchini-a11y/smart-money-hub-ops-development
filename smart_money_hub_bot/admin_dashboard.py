@@ -723,7 +723,13 @@ class AdminDashboard:
                 self.api.send_message(chat_id, str(error))
             else:
                 self._show_market_awareness_review(
-                    chat_id, page=0, notice=f"Review status saved: {status}."
+                    chat_id,
+                    page=0,
+                    notice=(
+                        f"Admin review decision saved: {status}. Source verification "
+                        "is separate; this does not verify unknown fields or publish "
+                        "the record."
+                    ),
                 )
         elif data.startswith("admin:market_awareness:edit:"):
             reference = data[len("admin:market_awareness:edit:"):]
