@@ -438,6 +438,20 @@ class SessionOpenPostTests(unittest.TestCase):
     def test_missed_session_after_close_is_not_recovered_or_published(self):
         occurrence = self._occurrence("asia")
         after_close = occurrence.utc_at + timedelta(hours=10)
+        for later in session_occurrences(occurrence.local_date):
+            if later.utc_at <= occurrence.utc_at:
+                continue
+            later_post, created = self.manager.store.create_slot(
+                later, CHANNEL_ID, at=after_close.isoformat()
+            )
+            if created:
+                self.manager.store.update(
+                    int(later_post["id"]),
+                    expected=("generating",),
+                    status="failed",
+                    at=after_close.isoformat(),
+                    failure_category="test_fixture_session_already_handled",
+                )
         self.manager.dispatch_due(after_close)
         saved = self.manager.store.get_by_key(occurrence)
         self.assertEqual(saved["status"], "missed")
