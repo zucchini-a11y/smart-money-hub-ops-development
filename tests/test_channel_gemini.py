@@ -97,6 +97,8 @@ class GeminiChannelContentTests(unittest.TestCase):
         self.assertIn("confident, ambitious, conversational community voice", instruction)
         self.assertIn("Do not copy the examples or claim profits", instruction)
         self.assertIn("recent published channel history", instruction)
+        self.assertIn("materially different teaching point and visible structure", instruction)
+        self.assertIn("do not reuse the same headline or section sequence", instruction)
         self.assertEqual(draft.category, "education")
         self.assertTrue(draft.content.startswith("💧 SMART MONEY HUB | LIQUIDITY"))
 
@@ -148,8 +150,25 @@ class GeminiChannelContentTests(unittest.TestCase):
         self.assertIn("do not reuse a recent main lesson", instruction)
         self.assertIn("do not assert", instruction.lower())
         self.assertIn("Do not include numerical opening times", instruction)
+        self.assertIn("change the teaching angle and visible layout", instruction)
         self.assertIn("Europe/London", user_context)
         self.assertIn("09:00 WAT", user_context)
+
+    def test_late_session_prompt_requests_a_fresh_time_free_check_in(self) -> None:
+        instruction = self.service._system_instruction(
+            promo_due=False,
+            promo_username=None,
+            session_context={
+                "session": "Asia (Tokyo)",
+                "session_timezone": "Asia/Tokyo",
+                "late_recovery": True,
+                "session_underway": True,
+            },
+        )
+        self.assertIn("SESSION CHECK-IN", instruction)
+        self.assertIn("session is already underway", instruction)
+        self.assertIn("Never include numerical times, timezone labels, or timestamps", instruction)
+        self.assertIn("fresh evergreen", instruction)
 
     def test_rejects_max_tokens_and_empty_candidate_text(self) -> None:
         for payload, expected in (

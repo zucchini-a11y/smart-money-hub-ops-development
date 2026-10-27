@@ -36,6 +36,23 @@ SESSION_POST = (
     "— VAYDA | Smart Money Hub"
 )
 
+LATE_SESSION_POST = (
+    "📊 SMART MONEY HUB | SESSION CHECK-IN\n"
+    "━━━━━━━━━━━━━━\n\n"
+    "🇯🇵 TOKYO SESSION CHECK-IN | STAY SELECTIVE\n\n"
+    "The Tokyo session is already underway. A session being active does not confirm "
+    "a trade direction or validate an entry.\n\n"
+    "🔍 SESSION CHECKLIST\n"
+    "✅ Revisit the levels already marked in your plan.\n"
+    "✅ Wait for the setup confirmation and invalidation you defined.\n"
+    "✅ Step aside if the conditions are unclear.\n\n"
+    "🛡️ RISK REMINDER\n"
+    "Keep decisions within your plan; do not chase a move because it has started.\n\n"
+    "⚠️ THE GOLDEN RULE\n"
+    "NO CONFIRMATION, NO ENTRY.\n\n"
+    "— VAYDA | Smart Money Hub"
+)
+
 
 class FakeWriter:
     def __init__(self, content: str = SESSION_POST, error: Exception | None = None):
@@ -370,20 +387,85 @@ class SessionOpenPostTests(unittest.TestCase):
         )
         self.assertEqual(self.api.channel_messages, [])
 
-    def test_restart_after_open_records_missed_slot_instead_of_posting_late(self):
+    def test_restart_after_open_generates_fresh_time_free_recovery_and_posts_once(self):
+        self.writer.content = LATE_SESSION_POST
         occurrence = self._occurrence("asia")
         after_open = occurrence.utc_at + timedelta(minutes=6)
         self.manager.dispatch_due(after_open)
         self.manager.dispatch_due(after_open + timedelta(seconds=20))
         saved = self.manager.store.get_by_key(occurrence)
-        self.assertEqual(saved["status"], "missed")
-        self.assertEqual(saved["failure_category"], "session_open_missed")
-        self.assertEqual(self.writer.calls, [])
-        self.assertEqual(self.api.channel_messages, [])
+        self.assertEqual(saved["status"], "published")
+        self.assertEqual(saved["late_recovery"], 1)
+        self.assertEqual(saved["publish_attempts"], 1)
+        self.assertEqual(len(self.writer.calls), 1)
+        self.assertTrue(self.writer.calls[0]["session_context"]["late_recovery"])
+        self.assertEqual(len(self.api.channel_messages), 1)
+        sent_text = self.api.channel_messages[0][1]
+        for forbidden in ("09:00", "01:00", "WAT", "JST", "Asia/Tokyo"):
+            self.assertNotIn(forbidden, sent_text)
         notices = [
-            item for item in self.api.admin_messages if "was missed while the bot" in item[1]
+            item
+            for item in self.api.admin_messages
+            if "fresh, time-free check-in" in item[1]
         ]
         self.assertEqual(len(notices), 1)
+
+    def test_missed_session_after_close_is_not_recovered_or_published(self):
+        occurrence = self._occurrence("asia")
+        after_close = occurrence.utc_at + timedelta(hours=10)
+        self.manager.dispatch_due(after_close)
+        saved = self.manager.store.get_by_key(occurrence)
+        self.assertEqual(saved["status"], "missed")
+        self.assertEqual(saved["failure_category"], "session_open_recovery_window_expired")
+        self.assertEqual(self.writer.calls, [])
+        self.assertEqual(self.api.channel_messages, [])
+
+    def test_late_recovery_rejects_public_schedule_times(self):
+        occurrence = self._occurrence("asia")
+        candidate = {
+            "category": "new_week_preparation",
+            "session_code": "asia",
+            "session_local_time": occurrence.local_at.strftime("%H:%M"),
+            "schedule_time_wat": occurrence.wat_at.strftime("%H:%M"),
+            "late_recovery": True,
+        }
+        self.assertEqual(
+            validate_session_open_post(
+                LATE_SESSION_POST + "\nThe scheduled opening is 09:00 JST.",
+                candidate,
+            ),
+            "session_recovery_time_in_copy",
+        )
+
+    def test_session_layout_must_differ_from_last_published_session(self):
+        previous = self._occurrence("london", date(2026, 10, 23))
+        old, created = self.manager.store.create_slot(
+            previous, CHANNEL_ID, at="2026-10-23T06:45:00+00:00"
+        )
+        self.assertTrue(created)
+        self.manager.store.update(
+            int(old["id"]),
+            expected=("generating",),
+            status="published",
+            at="2026-10-23T07:00:00+00:00",
+            content=SESSION_POST,
+            telegram_message_id=101,
+            published_at="2026-10-23T07:00:00+00:00",
+        )
+        current, created = self.manager.store.create_slot(
+            self._occurrence("london", date(2026, 10, 26)),
+            CHANNEL_ID,
+            at="2026-10-26T06:45:00+00:00",
+        )
+        self.assertTrue(created)
+        repeated = LATE_SESSION_POST.replace(
+            "TOKYO SESSION CHECK-IN", "LONDON SESSION CHECK-IN"
+        ).replace("TOKYO", "LONDON").replace("SESSION CHECKLIST", "CONDITIONS TO WATCH")
+        self.assertTrue(
+            self.manager._repeats_recent_session_layout(
+                repeated, int(current["id"])
+            )
+        )
 
     def test_unverified_live_market_claim_is_held(self):
         self.writer.content = SESSION_POST.replace(
