@@ -1138,14 +1138,22 @@ class SessionOpenPostManager:
                 session_context=context,
             )
         except GeminiChannelGenerationError as error:
-            status_note = (
-                f" (HTTP {error.http_status})" if error.http_status is not None else ""
-            )
+            if error.http_status == 429:
+                reason = "Gemini's provider rate limit was reached (HTTP 429)"
+            elif error.http_status is not None and 500 <= error.http_status <= 599:
+                reason = (
+                    "Gemini's provider returned a temporary server error "
+                    f"(HTTP {error.http_status})"
+                )
+            elif error.http_status is not None:
+                reason = f"Gemini's provider returned HTTP {error.http_status}"
+            else:
+                reason = error.category.replace("_", " ")
             self._hold(
                 post,
                 error.category,
                 f"Gemini could not prepare the {occurrence.definition.label} "
-                f"session post ({error.category.replace('_', ' ')}{status_note}). "
+                f"session post: {reason}. "
                 "It was held and not published.",
             )
             return

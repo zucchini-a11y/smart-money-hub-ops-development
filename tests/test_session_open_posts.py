@@ -346,6 +346,12 @@ class SessionOpenPostTests(unittest.TestCase):
         self.manager.dispatch_due(occurrence.utc_at - timedelta(minutes=15))
         failed = self.manager.store.get_by_key(occurrence)
         original_id = failed["id"]
+        self.assertTrue(
+            any(
+                "temporary server error (HTTP 503)" in item[1]
+                for item in self.api.admin_messages
+            )
+        )
 
         self.writer.error = None
         self.assertTrue(
@@ -369,6 +375,13 @@ class SessionOpenPostTests(unittest.TestCase):
         self.assertNotIn("09:00", self.api.channel_messages[0][1])
         self.assertNotIn("WAT", self.api.channel_messages[0][1])
         self.assertIsNone(validate_session_open_post(recovered["content"], recovered))
+        self.manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:session_open:retry_generation:{original_id}",
+            now=occurrence.utc_at + timedelta(minutes=11),
+        )
+        self.assertEqual(len(self.api.channel_messages), 1)
 
     def test_admin_cannot_recover_session_post_after_session_close(self):
         occurrence = self._occurrence("asia")
