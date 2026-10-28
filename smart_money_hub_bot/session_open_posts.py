@@ -482,6 +482,24 @@ class SessionOpenPostStore:
             ).fetchall()
             return [dict(row) for row in rows]
 
+    def list_retryable_gemini_failures(
+        self, *, since_date: date, limit: int = 3
+    ) -> list[dict[str, Any]]:
+        with self._database() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM session_open_channel_posts
+                WHERE status = 'failed'
+                  AND substr(failure_category, 1, 7) = 'gemini_'
+                  AND content = ''
+                  AND schedule_date >= ?
+                ORDER BY schedule_at_utc DESC, id DESC
+                LIMIT ?
+                """,
+                (since_date.isoformat(), limit),
+            ).fetchall()
+            return [dict(row) for row in rows]
+
     def pending_edit(self, admin_id: int) -> dict[str, Any] | None:
         with self._database() as connection:
             row = connection.execute(
@@ -763,15 +781,10 @@ class SessionOpenPostManager:
                     f"{occurrence.wat_at.strftime('%H:%M')} WAT — Not prepared yet"
                 )
             lines.append(f"• {label}")
-        recent_gemini_failures = [
-            post
-            for post in self.store.list_recent(limit=30)
-            if post.get("status") == "failed"
-            and str(post.get("failure_category") or "").startswith("gemini_")
-            and not str(post.get("content") or "").strip()
-            and str(post.get("schedule_date") or "")
-            >= (today - timedelta(days=7)).isoformat()
-        ][:3]
+        recent_gemini_failures = self.store.list_retryable_gemini_failures(
+            since_date=today - timedelta(days=7),
+            limit=3,
+        )
         if recent_gemini_failures:
             lines.extend(
                 [
