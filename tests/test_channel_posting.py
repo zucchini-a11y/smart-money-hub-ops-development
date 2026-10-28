@@ -891,7 +891,7 @@ class ChannelPostingTests(unittest.TestCase):
         self.assertEqual(saved["publish_attempts"], 1)
         self.assertEqual(len(api.channel_messages), 1)
 
-    def test_missing_review_window_holds_post_instead_of_publishing_late(self) -> None:
+    def test_missing_review_window_holds_until_admin_explicitly_publishes_once(self) -> None:
         manager, store, api = self.manager, self.store, self.api
         manager.dispatch_due(local_time(23, 18))
         manager.dispatch_due(local_time(24, 10))
@@ -899,8 +899,46 @@ class ChannelPostingTests(unittest.TestCase):
         assert post is not None
         self.assertEqual(post["review_status"], "missed")
         self.assertEqual(post["status"], "draft")
+        self.assertEqual(post["publish_attempts"], 0)
         manager.dispatch_due(local_time(24, 10, 1))
         self.assertEqual(api.channel_messages, [])
+
+        # An explicit admin action can recover a missed review on the same
+        # scheduled WAT date; all ordinary publish checks still run.
+        manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:channel_posts:publish:{post['id']}",
+            local_time(24, 10, 2),
+        )
+        published = store.get_channel_post(post["id"])
+        assert published is not None
+        self.assertEqual(published["status"], "published")
+        self.assertEqual(published["review_status"], "missed")
+        self.assertEqual(published["publish_attempts"], 1)
+        self.assertEqual(len(api.channel_messages), 1)
+        self.assertEqual(api.channel_messages[0]["chat_id"], CHANNEL_ID)
+        connection = store._connect()
+        try:
+            actions = connection.execute(
+                "SELECT action, admin_id FROM channel_post_actions WHERE post_id=?",
+                (post["id"],),
+            ).fetchall()
+        finally:
+            connection.close()
+        self.assertTrue(
+            any(action["action"] == "published" and action["admin_id"] == ADMIN_ID
+                for action in actions)
+        )
+
+        # A repeated button press cannot create a second channel message.
+        manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:channel_posts:publish:{post['id']}",
+            local_time(24, 10, 3),
+        )
+        self.assertEqual(len(api.channel_messages), 1)
 
     def test_failed_review_delivery_holds_post_and_notifies_admin(self) -> None:
         manager, store, api = self.manager, self.store, self.api

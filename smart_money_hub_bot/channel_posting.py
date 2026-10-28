@@ -1476,16 +1476,28 @@ class ChannelPostManager:
         if self.admin_id is None or self.destination_chat_id is None:
             return
         review_status = str(post.get("review_status") or "not_requested")
+        explicit_publish_after_missed_review = (
+            not automatic
+            and admin_id is not None
+            and post.get("status") == "draft"
+            and review_status == "missed"
+            and post.get("failure_category") == "scheduled_review_missed"
+            and int(post.get("publish_attempts") or 0) == 0
+        )
         if (
-            review_status not in {"approved", "edited", "timed_out"}
-            or not post.get("review_sent_at")
+            not explicit_publish_after_missed_review
+            and (
+                review_status not in {"approved", "edited", "timed_out"}
+                or not post.get("review_sent_at")
+            )
         ):
             if not automatic:
                 self.api.send_message(
                     self.admin_id,
-                    "The scheduler sends the final review automatically 5 minutes "
-                    "before publication. Approve that review or wait for its "
-                    "5-minute timeout; the post will not publish early.",
+                    "This post is not approved for publication. The scheduler sends "
+                    "the final review 5 minutes before the scheduled time; missed "
+                    "reviews stay held unless an administrator explicitly chooses "
+                    "Publish Now on the scheduled WAT date.",
                 )
             return
         scheduled_date = date.fromisoformat(str(post["schedule_date"]))
