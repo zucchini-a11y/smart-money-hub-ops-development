@@ -763,6 +763,41 @@ class SessionOpenPostManager:
                     f"{occurrence.wat_at.strftime('%H:%M')} WAT — Not prepared yet"
                 )
             lines.append(f"• {label}")
+        recent_gemini_failures = [
+            post
+            for post in self.store.list_recent(limit=30)
+            if post.get("status") == "failed"
+            and str(post.get("failure_category") or "").startswith("gemini_")
+            and not str(post.get("content") or "").strip()
+            and str(post.get("schedule_date") or "")
+            >= (today - timedelta(days=7)).isoformat()
+        ][:3]
+        if recent_gemini_failures:
+            lines.extend(
+                [
+                    "",
+                    "Held Gemini drafts (retry is available only before or during "
+                    "the session):",
+                ]
+            )
+            for post in recent_gemini_failures:
+                lines.append(
+                    f"• {post['schedule_date']} · {post['session_label']} — held "
+                    f"({str(post.get('failure_category') or 'Gemini error').replace('_', ' ')})"
+                )
+                rows.append(
+                    [
+                        {
+                            "text": (
+                                f"♻️ Retry {post['session_label']} · "
+                                f"{post['schedule_date']}"
+                            )[:64],
+                            "callback_data": (
+                                f"admin:session_open:retry_generation:{post['id']}"
+                            ),
+                        }
+                    ]
+                )
         rows.append(
             [{"text": "🔙 Back to Channel Content", "callback_data": "admin:channel_posts"}]
         )
@@ -1570,7 +1605,24 @@ class SessionOpenPostManager:
             post.get("schedule_date"),
             category,
         )
-        self._notify(message)
+        retry_markup = None
+        if category.startswith("gemini_") and not str(
+            post.get("content") or ""
+        ).strip():
+            retry_markup = {
+                "inline_keyboard": [
+                    [
+                        {
+                            "text": "♻️ Retry AI draft",
+                            "callback_data": (
+                                "admin:session_open:retry_generation:"
+                                f"{int(post['id'])}"
+                            ),
+                        }
+                    ]
+                ]
+            }
+        self._notify(message, reply_markup=retry_markup)
 
     def _notify_recovery(self) -> None:
         for item in self.store.recovery_events:
@@ -1588,11 +1640,20 @@ class SessionOpenPostManager:
                 )
             self._notify(message)
 
-    def _notify(self, text: str) -> None:
+    def _notify(
+        self,
+        text: str,
+        *,
+        reply_markup: dict[str, Any] | None = None,
+    ) -> None:
         if self.admin_id is None:
             return
         try:
-            self.api.send_message(self.admin_id, text)
+            self.api.send_message(
+                self.admin_id,
+                text,
+                reply_markup=reply_markup,
+            )
         except TelegramAPIError:
             logger.warning("Could not privately notify the administrator about a session post.")
 

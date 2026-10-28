@@ -284,6 +284,11 @@ class SessionOpenPostTests(unittest.TestCase):
         self.assertEqual(saved["failure_category"], "gemini_rate_limit")
         self.assertEqual(self.api.channel_messages, [])
         self.assertTrue(any("Gemini could not prepare" in item[1] for item in self.api.admin_messages))
+        retry_markup = self.api.admin_messages[-1][2]
+        self.assertEqual(
+            retry_markup["inline_keyboard"][0][0]["callback_data"],
+            f"admin:session_open:retry_generation:{saved['id']}",
+        )
 
     def test_admin_can_retry_failed_gemini_draft_on_the_same_slot(self):
         occurrence = self._occurrence("london")
@@ -350,6 +355,18 @@ class SessionOpenPostTests(unittest.TestCase):
             any(
                 "temporary server error (HTTP 503)" in item[1]
                 for item in self.api.admin_messages
+            )
+        )
+        self.manager.show_controls(
+            ADMIN_ID, now=occurrence.utc_at + timedelta(minutes=10)
+        )
+        controls_markup = self.api.admin_messages[-1][2]
+        self.assertTrue(
+            any(
+                button.get("callback_data")
+                == f"admin:session_open:retry_generation:{original_id}"
+                for row in controls_markup["inline_keyboard"]
+                for button in row
             )
         )
 
