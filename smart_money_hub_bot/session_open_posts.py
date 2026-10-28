@@ -880,14 +880,6 @@ class SessionOpenPostManager:
             )
             self._show_post(chat_id, post)
             return
-        if current >= self._scheduled_at(post) - FINAL_REVIEW_LEAD:
-            self.api.send_message(
-                chat_id,
-                "AI retry is too close to the session opening to leave time for "
-                "the private review. The post remains held and will not publish.",
-            )
-            self._show_post(chat_id, post)
-            return
         try:
             local_date = date.fromisoformat(str(post["schedule_date"]))
             occurrence = next(
@@ -902,6 +894,24 @@ class SessionOpenPostManager:
                 "held and no retry was started.",
             )
             return
+        late_recovery = current >= self._scheduled_at(post)
+        if late_recovery:
+            if current >= _session_close_utc(occurrence):
+                self.api.send_message(
+                    chat_id,
+                    "The session has ended. Its held post remains unpublished; "
+                    "no stale replacement was generated.",
+                )
+                self._show_post(chat_id, post)
+                return
+        elif current >= self._scheduled_at(post) - FINAL_REVIEW_LEAD:
+            self.api.send_message(
+                chat_id,
+                "AI retry is too close to the session opening to leave time for "
+                "the private review. The post remains held and will not publish.",
+            )
+            self._show_post(chat_id, post)
+            return
         if not self.store.update(
             post_id,
             expected=("failed",),
@@ -909,6 +919,7 @@ class SessionOpenPostManager:
             at=current.isoformat(),
             failure_category=None,
             retry_after_at=None,
+            late_recovery=int(late_recovery),
         ):
             self.api.send_message(
                 chat_id,
@@ -924,16 +935,37 @@ class SessionOpenPostManager:
         generating = self.store.get(post_id)
         if generating is None:
             return
-        self._generate(generating, occurrence, current)
+        self._generate(
+            generating, occurrence, current, late_recovery=late_recovery
+        )
         refreshed = self.store.get(post_id)
         if refreshed is None:
             return
         if refreshed["status"] == "draft":
-            self.api.send_message(
-                chat_id,
-                "Gemini retry succeeded. The draft is saved for its original "
-                "session time and is still subject to the normal review and checks.",
-            )
+            if late_recovery:
+                if self.store.update(
+                    post_id,
+                    expected=("draft",),
+                    status="approved",
+                    at=current.isoformat(),
+                    failure_category="session_open_late_recovery",
+                    late_recovery=1,
+                ):
+                    approved = self.store.get(post_id)
+                    if approved:
+                        self._publish(approved, current)
+                else:
+                    self.api.send_message(
+                        chat_id,
+                        "The replacement draft changed before recovery could "
+                        "publish. It remains unpublished.",
+                    )
+            else:
+                self.api.send_message(
+                    chat_id,
+                    "Gemini retry succeeded. The draft is saved for its original "
+                    "session time and is still subject to the normal review and checks.",
+                )
         elif refreshed["status"] == "failed":
             category = str(refreshed.get("failure_category") or "gemini_unknown")
             description = {
@@ -941,6 +973,9 @@ class SessionOpenPostManager:
                 "gemini_rate_limit": "Gemini's request limit was reached.",
                 "gemini_unexpected_error": "Gemini returned an unexpected error.",
             }.get(category, "Gemini could not generate a publishable draft.")
+            if category.startswith("gemini_http_error_"):
+                status = category.removeprefix("gemini_http_error_")
+                description = f"Gemini's provider returned HTTP {status}."
             self.api.send_message(
                 chat_id,
                 f"Gemini retry failed: {description} ({category}). The same record "
@@ -1102,11 +1137,15 @@ class SessionOpenPostManager:
                 session_context=context,
             )
         except GeminiChannelGenerationError as error:
+            status_note = (
+                f" (HTTP {error.http_status})" if error.http_status is not None else ""
+            )
             self._hold(
                 post,
                 error.category,
                 f"Gemini could not prepare the {occurrence.definition.label} "
-                "session post. It was held and not published.",
+                f"session post ({error.category.replace('_', ' ')}{status_note}). "
+                "It was held and not published.",
             )
             return
         except Exception:

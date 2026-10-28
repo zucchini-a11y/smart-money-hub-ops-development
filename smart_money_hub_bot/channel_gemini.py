@@ -26,6 +26,9 @@ _MAX_HISTORY_POSTS = 12
 _MAX_POST_CHARS = 500
 _MAX_FEEDBACK_ITEMS = 5
 _MAX_FEEDBACK_CHARS = 300
+_MAX_TRANSIENT_HTTP_RETRIES = 1
+_TRANSIENT_HTTP_STATUSES = frozenset({500, 502, 503, 504})
+_MAX_RETRY_AFTER_SECONDS = 2.0
 _CATEGORY_LINE = re.compile(r"^CATEGORY:\s*([a-z_]+)\s*$", re.IGNORECASE)
 
 
@@ -120,45 +123,67 @@ class GeminiChannelContentService:
             method="POST",
         )
         started = time.monotonic()
-        try:
-            with urlopen(request, timeout=self._timeout_seconds) as response:
-                status = int(getattr(response, "status", 200))
-                data = json.loads(response.read().decode("utf-8"))
-        except HTTPError as error:
-            category = self._http_failure_category(int(error.code))
-            logger.warning(
-                "Market Analysis Gemini draft failed category=%s http_status=%s "
-                "elapsed_ms=%s request_id=%s.",
-                category,
-                error.code,
-                _elapsed_ms(started),
-                request_id,
-            )
-            raise GeminiChannelGenerationError(category, int(error.code)) from None
-        except (TimeoutError, socket.timeout):
-            self._log_failure("gemini_timeout", started, request_id)
-            raise GeminiChannelGenerationError("gemini_timeout") from None
-        except URLError as error:
-            category = (
-                "gemini_timeout"
-                if isinstance(error.reason, (TimeoutError, socket.timeout))
-                or "timed out" in str(error.reason).casefold()
-                else "gemini_network_error"
-            )
-            self._log_failure(category, started, request_id)
-            raise GeminiChannelGenerationError(category) from None
-        except OSError as error:
-            category = (
-                "gemini_timeout"
-                if isinstance(error, (TimeoutError, socket.timeout))
-                or "timed out" in str(error).casefold()
-                else "gemini_network_error"
-            )
-            self._log_failure(category, started, request_id)
-            raise GeminiChannelGenerationError(category) from None
-        except (UnicodeDecodeError, json.JSONDecodeError, TypeError):
-            self._log_failure("gemini_invalid_response", started, request_id)
-            raise GeminiChannelGenerationError("gemini_invalid_response") from None
+        retries = 0
+        while True:
+            try:
+                with urlopen(request, timeout=self._timeout_seconds) as response:
+                    status = int(getattr(response, "status", 200))
+                    data = json.loads(response.read().decode("utf-8"))
+                break
+            except HTTPError as error:
+                http_status = int(error.code)
+                if (
+                    http_status in _TRANSIENT_HTTP_STATUSES
+                    and retries < _MAX_TRANSIENT_HTTP_RETRIES
+                ):
+                    retries += 1
+                    delay = self._retry_after_seconds(error)
+                    logger.warning(
+                        "Transient Gemini provider error; retrying same model "
+                        "attempt=%s http_status=%s delay_seconds=%.1f "
+                        "request_id=%s.",
+                        retries,
+                        http_status,
+                        delay,
+                        request_id,
+                    )
+                    error.close()
+                    time.sleep(delay)
+                    continue
+                category = self._http_failure_category(http_status)
+                logger.warning(
+                    "Market Analysis Gemini draft failed category=%s http_status=%s "
+                    "elapsed_ms=%s request_id=%s.",
+                    category,
+                    http_status,
+                    _elapsed_ms(started),
+                    request_id,
+                )
+                raise GeminiChannelGenerationError(category, http_status) from None
+            except (TimeoutError, socket.timeout):
+                self._log_failure("gemini_timeout", started, request_id)
+                raise GeminiChannelGenerationError("gemini_timeout") from None
+            except URLError as error:
+                category = (
+                    "gemini_timeout"
+                    if isinstance(error.reason, (TimeoutError, socket.timeout))
+                    or "timed out" in str(error.reason).casefold()
+                    else "gemini_network_error"
+                )
+                self._log_failure(category, started, request_id)
+                raise GeminiChannelGenerationError(category) from None
+            except OSError as error:
+                category = (
+                    "gemini_timeout"
+                    if isinstance(error, (TimeoutError, socket.timeout))
+                    or "timed out" in str(error).casefold()
+                    else "gemini_network_error"
+                )
+                self._log_failure(category, started, request_id)
+                raise GeminiChannelGenerationError(category) from None
+            except (UnicodeDecodeError, json.JSONDecodeError, TypeError):
+                self._log_failure("gemini_invalid_response", started, request_id)
+                raise GeminiChannelGenerationError("gemini_invalid_response") from None
 
         finish_reason, raw_text = self._extract_text(data)
         logger.info(
@@ -435,7 +460,16 @@ class GeminiChannelContentService:
             return "gemini_model_or_endpoint_unavailable"
         if status in {408, 504}:
             return "gemini_timeout"
-        return "gemini_http_error"
+        return f"gemini_http_error_{status}"
+
+    @staticmethod
+    def _retry_after_seconds(error: HTTPError) -> float:
+        value = error.headers.get("Retry-After") if error.headers else None
+        try:
+            delay = float(value) if value is not None else 1.0
+        except (TypeError, ValueError):
+            delay = 1.0
+        return min(max(delay, 0.1), _MAX_RETRY_AFTER_SECONDS)
 
     @staticmethod
     def _log_failure(category: str, started: float, request_id: str) -> None:
