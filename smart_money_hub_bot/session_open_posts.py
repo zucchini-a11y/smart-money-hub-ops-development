@@ -954,6 +954,7 @@ class SessionOpenPostManager:
                     approved = self.store.get(post_id)
                     if approved:
                         self._publish(approved, current)
+                        refreshed = self.store.get(post_id) or refreshed
                 else:
                     self.api.send_message(
                         chat_id,

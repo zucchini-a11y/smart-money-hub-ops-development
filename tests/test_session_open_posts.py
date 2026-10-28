@@ -368,7 +368,7 @@ class SessionOpenPostTests(unittest.TestCase):
         self.assertIn("TOKYO SESSION CHECK-IN", self.api.channel_messages[0][1])
         self.assertNotIn("09:00", self.api.channel_messages[0][1])
         self.assertNotIn("WAT", self.api.channel_messages[0][1])
-        self.assertIsNotNone(validate_session_open_post(recovered["content"], recovered))
+        self.assertIsNone(validate_session_open_post(recovered["content"], recovered))
 
     def test_admin_cannot_recover_session_post_after_session_close(self):
         occurrence = self._occurrence("asia")
