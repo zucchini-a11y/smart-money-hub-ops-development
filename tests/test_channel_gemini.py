@@ -214,6 +214,103 @@ class GeminiChannelContentTests(unittest.TestCase):
         self.assertEqual(caught.exception.http_status, 429)
         self.assertEqual(mocked.call_count, 1)
 
+    def test_transient_server_error_retries_once_with_the_same_model(self) -> None:
+        request_url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{GEMINI_MODEL}:generateContent"
+        )
+        response_text = (
+            "CATEGORY: education\nPOST:\n"
+            "A concise lesson about waiting for confirmation."
+        )
+        with (
+            patch(
+                "smart_money_hub_bot.channel_gemini.urlopen",
+                side_effect=[
+                    HTTPError(
+                        request_url,
+                        503,
+                        "temporarily unavailable",
+                        {"Retry-After": "0"},
+                        None,
+                    ),
+                    _Response(_candidate(response_text)),
+                ],
+            ) as mocked,
+            patch("smart_money_hub_bot.channel_gemini.time.sleep") as sleep,
+        ):
+            result = self.service.generate(
+                schedule_date="2026-10-28",
+                schedule_time="09:00",
+                preferred_category="education",
+                history=[],
+                admin_feedback=[],
+            )
+
+        self.assertEqual(result.content, "A concise lesson about waiting for confirmation.")
+        self.assertEqual(mocked.call_count, 2)
+        requests = [call.args[0] for call in mocked.call_args_list]
+        self.assertEqual([request.full_url for request in requests], [request_url] * 2)
+        self.assertTrue(all(GEMINI_MODEL in request.full_url for request in requests))
+        sleep.assert_called_once_with(0.1)
+
+    def test_repeated_server_error_preserves_http_status_and_stops_after_one_retry(
+        self,
+    ) -> None:
+        request_url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{GEMINI_MODEL}:generateContent"
+        )
+        error = lambda: HTTPError(
+            request_url,
+            502,
+            "bad gateway",
+            {"Retry-After": "30"},
+            None,
+        )
+        with (
+            patch(
+                "smart_money_hub_bot.channel_gemini.urlopen",
+                side_effect=[error(), error()],
+            ) as mocked,
+            patch("smart_money_hub_bot.channel_gemini.time.sleep") as sleep,
+        ):
+            with self.assertRaises(GeminiChannelGenerationError) as caught:
+                self.service.generate(
+                    schedule_date="2026-10-28",
+                    schedule_time="09:00",
+                    preferred_category="education",
+                    history=[],
+                    admin_feedback=[],
+                )
+
+        self.assertEqual(caught.exception.category, "gemini_http_error_502")
+        self.assertEqual(caught.exception.http_status, 502)
+        self.assertEqual(mocked.call_count, 2)
+        sleep.assert_called_once_with(2.0)
+
+    def test_non_transient_http_error_keeps_status_without_retry(self) -> None:
+        request_url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{GEMINI_MODEL}:generateContent"
+        )
+        with patch(
+            "smart_money_hub_bot.channel_gemini.urlopen",
+            side_effect=HTTPError(request_url, 400, "bad request", {}, None),
+        ) as mocked:
+            with self.assertRaises(GeminiChannelGenerationError) as caught:
+                self.service.generate(
+                    schedule_date="2026-10-28",
+                    schedule_time="09:00",
+                    preferred_category="education",
+                    history=[],
+                    admin_feedback=[],
+                )
+
+        self.assertEqual(caught.exception.category, "gemini_http_error_400")
+        self.assertEqual(caught.exception.http_status, 400)
+        self.assertEqual(mocked.call_count, 1)
+
     def test_missing_key_fails_closed_without_request(self) -> None:
         service = GeminiChannelContentService("")
         with patch("smart_money_hub_bot.channel_gemini.urlopen") as mocked:

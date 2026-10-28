@@ -340,6 +340,59 @@ class SessionOpenPostTests(unittest.TestCase):
             self.manager.store.get_by_key(occurrence)["status"], "published"
         )
 
+    def test_admin_can_recover_failed_tokyo_post_during_active_session(self):
+        occurrence = self._occurrence("asia")
+        self.writer.error = GeminiChannelGenerationError("gemini_http_error_503", 503)
+        self.manager.dispatch_due(occurrence.utc_at - timedelta(minutes=15))
+        failed = self.manager.store.get_by_key(occurrence)
+        original_id = failed["id"]
+
+        self.writer.error = None
+        self.assertTrue(
+            self.manager.handle_callback(
+                ADMIN_ID,
+                ADMIN_ID,
+                f"admin:session_open:retry_generation:{original_id}",
+                now=occurrence.utc_at + timedelta(minutes=10),
+            )
+        )
+
+        recovered = self.manager.store.get_by_key(occurrence)
+        self.assertEqual(recovered["id"], original_id)
+        self.assertEqual(recovered["status"], "published")
+        self.assertEqual(recovered["late_recovery"], 1)
+        self.assertEqual(len(self.writer.calls), 2)
+        self.assertTrue(self.writer.calls[-1]["session_context"]["late_recovery"])
+        self.assertEqual(len(self.api.channel_messages), 1)
+        self.assertEqual(self.api.channel_messages[0][0], CHANNEL_ID)
+        self.assertIn("TOKYO SESSION CHECK-IN", self.api.channel_messages[0][1])
+        self.assertNotIn("09:00", self.api.channel_messages[0][1])
+        self.assertNotIn("WAT", self.api.channel_messages[0][1])
+        self.assertIsNotNone(validate_session_open_post(recovered["content"], recovered))
+
+    def test_admin_cannot_recover_session_post_after_session_close(self):
+        occurrence = self._occurrence("asia")
+        self.writer.error = GeminiChannelGenerationError("gemini_http_error_503", 503)
+        self.manager.dispatch_due(occurrence.utc_at - timedelta(minutes=15))
+        failed = self.manager.store.get_by_key(occurrence)
+
+        self.writer.error = None
+        self.manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:session_open:retry_generation:{failed['id']}",
+            now=occurrence.utc_at + timedelta(hours=10),
+        )
+
+        still_held = self.manager.store.get_by_key(occurrence)
+        self.assertEqual(still_held["status"], "failed")
+        self.assertEqual(still_held["id"], failed["id"])
+        self.assertEqual(len(self.writer.calls), 1)
+        self.assertEqual(self.api.channel_messages, [])
+        self.assertTrue(
+            any("session has ended" in item[1] for item in self.api.admin_messages)
+        )
+
     def test_gemini_retry_failure_reports_exact_category_and_stays_held(self):
         occurrence = self._occurrence("london")
         self.writer.error = GeminiChannelGenerationError("gemini_rate_limit", 429)
