@@ -108,9 +108,11 @@ class GeminiChannelContentTests(unittest.TestCase):
     def test_promotion_uses_configured_model_and_supplies_recent_copy(self) -> None:
         captured = {}
         response_text = (
-            "CATEGORY: engagement\nPOST:\n"
-            "📚 A FRESH WAY TO STUDY THE CHART\n\n"
-            "A useful caption for the Education Group."
+            "📊 GOLD CONTEXT, WITHOUT THE GUESSWORK\n\n"
+            "The separate Market Analysis channel explores Gold/XAUUSD and explains "
+            "how structure, liquidity and confirmation fit together. Learn to study "
+            "the reasoning behind a chart without treating one concept as an entry signal.\n\n"
+            "Tap the Open Market Analysis button below to explore the channel."
         )
 
         def fake_urlopen(request, timeout):
@@ -132,21 +134,25 @@ class GeminiChannelContentTests(unittest.TestCase):
         payload = json.loads(request.data.decode("utf-8"))
         self.assertEqual(
             result,
-            "📚 A FRESH WAY TO STUDY THE CHART\n\n"
-            "A useful caption for the Education Group.",
+            response_text,
         )
         self.assertTrue(request.full_url.endswith(f"/models/{GEMINI_MODEL}:generateContent"))
         self.assertEqual(captured["timeout"], 12)
         self.assertEqual(mocked.call_count, 1)
+        self.assertEqual(payload["generationConfig"]["temperature"], 0.72)
         instruction = payload["systemInstruction"]["parts"][0]["text"]
         prompt = payload["contents"][0]["parts"][0]["text"]
-        self.assertIn("materially different", instruction)
-        self.assertIn("application appends all verified destination", instruction)
-        self.assertIn("Do not mention the group, topic, channel", instruction)
-        self.assertIn("CATEGORY: engagement", instruction)
+        self.assertIn("complete, original Telegram caption", instruction)
+        self.assertIn("separate Smart Money Hub Market Analysis channel", instruction)
+        self.assertIn("Gold/XAUUSD", instruction)
+        self.assertIn("Open Market Analysis button below", instruction)
+        self.assertIn("Never claim trade breakdowns are posted", instruction)
+        self.assertIn("optional closing reminder", instruction)
+        self.assertIn("do not force it", instruction)
+        self.assertNotIn("hook", instruction)
         self.assertIn("A previous promotion caption", prompt)
         self.assertIn("cancelled", prompt)
-        self.assertNotIn("CLASS_WEEKDAY", prompt)
+        self.assertIn("separate Market Analysis channel", prompt)
 
     def test_promotion_rate_limit_fails_without_model_fallback(self) -> None:
         request_url = (
@@ -164,19 +170,21 @@ class GeminiChannelContentTests(unittest.TestCase):
         self.assertEqual(caught.exception.http_status, 429)
         self.assertEqual(mocked.call_count, 1)
 
-    def test_promotion_accepts_plain_hook_for_strict_downstream_validation(self) -> None:
-        plain_hook = (
-            "📚 MAKE ONE CHART QUESTION COUNT\n\n"
-            "Decide what you want to learn before you begin your review."
+    def test_promotion_accepts_plain_complete_caption_for_downstream_validation(self) -> None:
+        caption = (
+            "📚 A CLEARER WAY TO STUDY GOLD\n\n"
+            "The separate Market Analysis channel covers Gold/XAUUSD context and "
+            "educational ideas such as structure, liquidity and confirmation.\n\n"
+            "Explore the separate Market Analysis channel using the button below."
         )
 
         with patch(
             "smart_money_hub_bot.channel_gemini.urlopen",
-            return_value=_Response(_candidate(plain_hook)),
+            return_value=_Response(_candidate(caption)),
         ):
             result = self.service.generate_promotion(recent_captions=[])
 
-        self.assertEqual(result, plain_hook)
+        self.assertEqual(result, caption)
 
     def test_session_open_prompt_includes_brand_template_and_wat_context(self) -> None:
         captured = {}

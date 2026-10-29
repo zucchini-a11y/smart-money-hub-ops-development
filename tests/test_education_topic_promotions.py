@@ -451,12 +451,12 @@ class EducationTopicPromotionTests(unittest.TestCase):
         self.assertNotIn("zoom.us", saved["body"].casefold())
 
     def test_promotions_do_not_require_brand_mantra_or_append_static_copy(self) -> None:
-        with self.create_review()[0] as row:
-            self.assertNotIn("NO CONFIRMATION, NO ENTRY.", row["body"])
-            self.assertNotIn("Education Group", row["body"])
-            self.assertNotIn("Coach", row["body"])
-            self.assertIn("SMART MONEY HUB | MARKET ANALYSIS", self.api.messages[-1]["text"])
-            self.assertNotIn("EDUCATION GROUP</b>", self.api.messages[-1]["text"])
+        row, _callback = self.create_review()
+        self.assertNotIn("NO CONFIRMATION, NO ENTRY.", row["body"])
+        self.assertNotIn("Education Group", row["body"])
+        self.assertNotIn("Coach", row["body"])
+        self.assertIn("SMART MONEY HUB | MARKET ANALYSIS", self.api.messages[-1]["text"])
+        self.assertNotIn("EDUCATION GROUP</b>", self.api.messages[-1]["text"])
 
     def test_promotion_holds_wrong_destination_claims_and_bad_zoom_direction(self) -> None:
         invalid_breakdown = (
@@ -483,7 +483,7 @@ class EducationTopicPromotionTests(unittest.TestCase):
             ).casefold(),
         )
         self.assertIn(
-            "Market Analysis call to action",
+            "after the Market Analysis call",
             self.manager._validate_body(invalid_zoom),
         )
 
@@ -576,7 +576,10 @@ class EducationTopicPromotionTests(unittest.TestCase):
             self.manager.handle_admin_text(
                 ADMIN_ID,
                 ADMIN_ID,
-                "A & <fresh> Market Analysis note.",
+                "📊 A & <FRESH> GOLD MARKET INSIGHT\n\n"
+                "The separate Market Analysis channel explores Gold/XAUUSD context "
+                "and explains how market structure and confirmation fit together.\n\n"
+                "Tap the Open Market Analysis button below to explore the channel.",
                 is_private=True,
                 now=NOW + timedelta(minutes=1, seconds=1),
             )
@@ -584,7 +587,7 @@ class EducationTopicPromotionTests(unittest.TestCase):
         updated = self.manager.store.get(row["id"])
         self.assertEqual(updated["review_version"], row["review_version"] + 1)
         updated_preview = self.api.messages[-1]
-        self.assertIn("A &amp; &lt;fresh&gt;", updated_preview["text"])
+        self.assertIn("A &amp; &lt;FRESH&gt;", updated_preview["text"])
         self.manager.handle_callback(
             ADMIN_ID, ADMIN_ID, True, old_approve, now=NOW + timedelta(minutes=2)
         )
