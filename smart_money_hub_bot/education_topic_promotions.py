@@ -618,6 +618,7 @@ class EducationTopicPromotionStore:
         safe_action = action if action in {
             "gemini_generation_failed",
             "gemini_generation_rejected",
+            "gemini_caption_scope_corrected",
         } else "gemini_generation_failed"
         with self._connection() as connection:
             self._action(

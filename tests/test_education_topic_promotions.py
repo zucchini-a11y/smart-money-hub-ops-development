@@ -425,7 +425,7 @@ class EducationTopicPromotionTests(unittest.TestCase):
         self.assertIn("too short", event[0])
         self.assertIn("characters; minimum 180", event[0])
 
-    def test_promotion_retry_omits_forbidden_feature_from_prompt_and_history(self) -> None:
+    def test_promotion_corrects_out_of_scope_feature_and_keeps_prompt_clean(self) -> None:
         historical, error = self.manager.store.create_draft(
             body=(
                 _PROMO_CAPTIONS[0]
@@ -469,17 +469,23 @@ class EducationTopicPromotionTests(unittest.TestCase):
             now=NOW + timedelta(seconds=1),
         )
 
-        self.assertEqual(len(self.writer.calls), 2)
+        self.assertEqual(len(self.writer.calls), 1)
         self.assertFalse(
             any(
                 "breakdown" in str(item.get("body") or "").casefold()
                 for item in self.writer.calls[0]["recent_captions"]
             )
         )
-        self.assertNotIn("breakdown", self.writer.calls[1]["retry_feedback"].casefold())
+        self.assertNotIn(
+            "breakdown", str(self.writer.calls[0]["retry_feedback"] or "").casefold()
+        )
         saved = self.manager.store.get(int(historical["id"]) + 1)
         self.assertIsNotNone(saved)
-        self.assertEqual(saved["body"], _PROMO_CAPTIONS[1])
+        expected = rejected_caption.replace(
+            " It also includes trade breakdowns for members to study.", ""
+        )
+        self.assertEqual(saved["body"], expected)
+        self.assertNotIn("breakdown", saved["body"].casefold())
 
     def test_out_of_scope_sentence_is_removed_then_full_checks_run(self) -> None:
         self.writer.responses = [
