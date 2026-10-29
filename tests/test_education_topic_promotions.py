@@ -481,6 +481,49 @@ class EducationTopicPromotionTests(unittest.TestCase):
         self.assertIsNotNone(saved)
         self.assertEqual(saved["body"], _PROMO_CAPTIONS[1])
 
+    def test_out_of_scope_sentence_is_removed_then_full_checks_run(self) -> None:
+        self.writer.responses = [
+            _PROMO_CAPTIONS[0]
+            + "\n\nTrade breakdowns are available in this group."
+        ]
+
+        self.manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            True,
+            "admin:education_topic_promo:create",
+            now=NOW,
+        )
+
+        saved = self.manager.store.get(1)
+        self.assertIsNotNone(saved)
+        self.assertEqual(saved["status"], "review")
+        self.assertEqual(saved["body"], _PROMO_CAPTIONS[0])
+        self.assertIsNone(
+            self.manager._validate_generated_body(
+                saved["body"],
+                recent_captions=[],
+                promotion_type="manual",
+                weekday=None,
+            )
+        )
+        self.assertFalse(
+            any(
+                message["chat_id"] == EXPECTED_EDUCATION_GROUP_ID
+                for message in self.api.messages
+            )
+        )
+        with sqlite3.connect(self.database_path) as connection:
+            event = connection.execute(
+                """
+                SELECT details FROM education_topic_promo_actions
+                WHERE action = 'gemini_caption_scope_corrected'
+                ORDER BY id DESC LIMIT 1
+                """
+            ).fetchone()
+        self.assertIsNotNone(event)
+        self.assertIn("full_validation_rerun", event[0])
+
     def test_two_invalid_gemini_captions_are_held_without_a_fallback(self) -> None:
         self.writer.responses = ["plain text", "still plain text"]
         self.manager.handle_callback(
@@ -571,15 +614,14 @@ class EducationTopicPromotionTests(unittest.TestCase):
             "the class begins.\n\n"
             "Tap the Open Market Analysis button below to explore the channel."
         )
-        self.assertIn(
-            "trade breakdowns",
-            self.manager._validate_generated_body(
+        issue = self.manager._validate_generated_body(
                 invalid_breakdown,
                 recent_captions=[],
                 promotion_type="manual",
                 weekday=None,
-            ).casefold(),
-        )
+            )
+        self.assertIn("verified Gold/USD educational coverage", issue)
+        self.assertNotIn("trade breakdown", issue.casefold())
         institutional_claim = (
             "📊 GOLD ANALYSIS AND MARKET STRUCTURE\n\n"
             "The separate Market Analysis channel explains how institutional "
