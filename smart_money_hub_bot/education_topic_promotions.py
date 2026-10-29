@@ -1514,7 +1514,23 @@ class EducationTopicPromotionManager:
         if not lines:
             return "Gemini returned an empty caption."
         headline = lines[0]
-        if not headline.startswith(("📚", "📊", "🧠", "🎯", "💬", "🎓", "✨", "🌱", "🤝", "👋", "📣")):
+        if not headline.startswith(
+            (
+                "📚",
+                "📊",
+                "🧠",
+                "🎯",
+                "💬",
+                "🎓",
+                "✨",
+                "🌱",
+                "🤝",
+                "👋",
+                "📣",
+                "📈",
+                "💡",
+            )
+        ):
             return "The caption needs a relevant emoji at the start of its headline."
         title_text = re.sub(r"^[^\w]+", "", headline, flags=re.UNICODE)
         title_letters = [char for char in title_text if char.isalpha()]
