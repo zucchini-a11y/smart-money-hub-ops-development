@@ -295,7 +295,9 @@ class GeminiChannelContentService:
             "fits naturally; it is not mandatory in every promotion. Do not use "
             "excessive emojis, generic AI filler, fake urgency, unsupported claims "
             "about institutional intent, or guaranteed market direction. Return a "
-            "complete plain-text caption of about 250–650 characters, with no "
+            "complete plain-text caption between 280 and 500 characters inclusive. "
+            "Treat this range as a hard requirement, not an estimate; count spaces "
+            "and punctuation. Use short paragraphs, with no "
             "CATEGORY/POST labels, Markdown, HTML, raw links, or explanation."
         )
 
