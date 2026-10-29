@@ -3968,7 +3968,9 @@ class SmartMoneyHubBot:
         try:
             self.admin_dashboard.education_topic_promotions.dispatch_due(current)
         except Exception:
-            logger.exception("Could not expire Education topic promotion reviews.")
+            logger.exception(
+                "Could not dispatch scheduled Education-topic promotions or expire reviews."
+            )
 
     def _notify_content_admin(self, message: str) -> None:
         """Send private status only; never send generated content to a group here."""

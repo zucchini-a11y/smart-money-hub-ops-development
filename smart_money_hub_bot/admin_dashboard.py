@@ -138,6 +138,7 @@ class AdminDashboard:
             education_group_id=education_group_id,
             market_channel_id=main_channel_id,
             topic_message_link=education_market_analysis_topic_link,
+            writer=channel_writer,
         )
         self._search_pending: set[int] = set()
         self._broadcast_pending: set[int] = set()

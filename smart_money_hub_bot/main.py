@@ -149,6 +149,10 @@ def main() -> None:
             "Education-group morning learning posts scheduled daily for 08:00 WAT; "
             "weekly Education polls remain scheduled for Saturday 21:00 WAT."
         )
+        logging.getLogger(__name__).info(
+            "Education-group Market Analysis promotions are scheduled for Monday and "
+            "Thursday at 19:00 WAT; each post requires approval from the 18:55 private preview."
+        )
     except (ValueError, ZoneInfoNotFoundError):
         raise SystemExit(
             "Check SMH_REMINDER_TIMEZONE and SMH_SUNDAY_REMINDER_TIME; "

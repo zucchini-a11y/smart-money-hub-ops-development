@@ -7,6 +7,7 @@ import html
 import logging
 import re
 import sqlite3
+from difflib import SequenceMatcher
 from contextlib import contextmanager
 from datetime import datetime, time as time_of_day, timedelta, timezone
 from pathlib import Path
@@ -14,6 +15,8 @@ from typing import Any, Iterator
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
+from .channel_content import PROMO_FEATURES, validate_channel_post
+from .channel_gemini import GeminiChannelGenerationError
 from .education_polls import (
     EducationPollError,
     EXPECTED_EDUCATION_GROUP_ID,
@@ -35,74 +38,6 @@ MAX_PROMO_BODY_CHARS = 700
 EXPECTED_BOT_USERNAME = "SmartMoneyHubSignalsBot"
 EXPECTED_MARKET_ANALYSIS_THREAD_ID = 3
 WAT = ZoneInfo("Africa/Lagos")
-
-_PROMO_BODIES = (
-    "Looking for a separate place to follow Smart Money Hub market analysis? "
-    "Visit the Market Analysis channel for its trading-focused posts, and use "
-    "the bot to explore Smart Money Hub’s learning tools.",
-    "Keep your learning and market updates easy to find. The Market Analysis "
-    "channel and Smart Money Hub bot are available below for separate purposes: "
-    "market-focused posts in the channel, learning tools in the bot.",
-    "Want to follow the Market Analysis channel or explore the Smart Money Hub "
-    "bot? Use the buttons below to open the right place. Keep your plan first "
-    "and treat analysis as context, not an entry signal.",
-)
-
-_SCHEDULED_PROMO_BODIES = {
-    "monday": (
-        "📣 MONDAY | FREE CLASS TONIGHT\n\n"
-        "Our free Zoom class starts at 8:00 PM WAT. The link will be posted in "
-        "the channel when the class begins. Bring a question and join us for "
-        "tonight’s learning session.",
-        "🌱 A NEW WEEK, A NEW CHANCE TO LEARN\n\n"
-        "Our free Zoom class starts at 8:00 PM WAT. The link will be posted in "
-        "the channel when the class begins. Come ready to learn and take part.",
-        "📚 MAKE ROOM FOR LEARNING TONIGHT\n\n"
-        "Join our free Zoom class at 8:00 PM WAT. The link will be shared in "
-        "the channel when the class begins. Bring your questions.",
-        "👋 SEE YOU IN CLASS TONIGHT?\n\n"
-        "Our free Zoom class starts at 8:00 PM WAT. Its link will be posted in "
-        "the channel when the class begins. Join the discussion and learn with us.",
-        "🎓 MONDAY IS A GOOD DAY TO KEEP LEARNING\n\n"
-        "Our free Zoom class begins at 8:00 PM WAT. The link will be posted in "
-        "the channel when the class begins. Bring a question for the session.",
-        "📣 TONIGHT’S FREE CLASS IS AT 8:00 PM WAT\n\n"
-        "The Zoom link will be posted in the channel when class begins. Join us "
-        "for an evening of shared learning and discussion.",
-        "🧠 START THE WEEK WITH A LEARNING SESSION\n\n"
-        "Our free Zoom class starts at 8:00 PM WAT. The link will be shared in "
-        "the channel when it begins. We hope you can join us.",
-        "✨ CLASS NIGHT IS HERE\n\n"
-        "Our free Zoom class begins at 8:00 PM WAT. The link will be posted in "
-        "the channel when the class starts. Bring your questions and take part.",
-    ),
-    "thursday": (
-        "📊 THURSDAY | FREE CLASS REMINDER\n\n"
-        "Our free Zoom class starts at 8:00 PM WAT. The link will be posted in "
-        "the channel when the class begins. Join in and bring a question.",
-        "👋 LET’S KEEP THE LEARNING GOING\n\n"
-        "The free Zoom class begins at 8:00 PM WAT. The link will appear in the "
-        "channel when class starts. We’d love to see you there.",
-        "📚 JOIN THE CONVERSATION TONIGHT\n\n"
-        "Our free Zoom class starts at 8:00 PM WAT. The link will be shared in "
-        "the channel when the session begins. Bring your questions.",
-        "🧠 A QUICK REMINDER FOR THIS EVENING\n\n"
-        "Our free Zoom class begins at 8:00 PM WAT. Its link will be posted in "
-        "the channel when class starts. Come ready to take part.",
-        "🎓 THURSDAY’S LEARNING SESSION IS TONIGHT\n\n"
-        "The free Zoom class starts at 8:00 PM WAT. The link will be posted in "
-        "the channel when it begins. Join us for the discussion.",
-        "✨ MAKE TIME FOR TONIGHT’S CLASS\n\n"
-        "Our free Zoom class begins at 8:00 PM WAT. The Zoom link will be shared "
-        "in the channel when the class starts. We hope you can join.",
-        "📣 CLASS STARTS AT 8:00 PM WAT\n\n"
-        "Join our free Zoom session tonight. The link will be posted in the "
-        "channel when the class begins. Bring one question to work through.",
-        "💬 COME LEARN WITH THE COMMUNITY TONIGHT\n\n"
-        "Our free Zoom class starts at 8:00 PM WAT. The link will be posted in "
-        "the channel when the session begins. Your questions are welcome.",
-    ),
-}
 
 _DISALLOWED_PROMO_CLAIMS = re.compile(
     r"\b(?:guarantee(?:d)?\s+(?:profit|profits|returns)|"
@@ -207,8 +142,6 @@ class EducationTopicPromotionStore:
                 );
                 CREATE INDEX IF NOT EXISTS education_topic_promo_review
                 ON education_topic_promotions (status, review_deadline_at);
-                CREATE UNIQUE INDEX IF NOT EXISTS education_topic_promo_schedule_key
-                ON education_topic_promotions (schedule_key) WHERE schedule_key IS NOT NULL;
 
                 CREATE TABLE IF NOT EXISTS education_topic_promo_actions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -311,7 +244,7 @@ class EducationTopicPromotionStore:
     @staticmethod
     def _action(
         connection: sqlite3.Connection,
-        promotion_id: int,
+        promotion_id: int | None,
         action: str,
         admin_id: int | None,
         details: str,
@@ -451,6 +384,7 @@ class EducationTopicPromotionStore:
         now: datetime,
         scheduled_for: datetime | None = None,
         schedule_key: str | None = None,
+        generation_model: str | None = None,
     ) -> tuple[dict[str, Any] | None, str | None]:
         current = _utc(now)
         timestamp = current.isoformat()
@@ -557,7 +491,8 @@ class EducationTopicPromotionStore:
                 promotion_id,
                 "draft_created",
                 admin_id,
-                f"target_chat_id={group_chat_id};thread_id={thread_id}",
+                f"target_chat_id={group_chat_id};thread_id={thread_id};"
+                f"generator={generation_model or 'unknown'}",
                 timestamp,
             )
             if schedule_key and scheduled:
@@ -577,17 +512,6 @@ class EducationTopicPromotionStore:
                         timestamp,
                     ),
                 )
-            variant_column = (
-                "scheduled_variant_index" if scheduled else "next_variant_index"
-            )
-            connection.execute(
-                f"""
-                UPDATE education_topic_promo_settings
-                SET {variant_column} = {variant_column} + 1, updated_at = ?
-                WHERE id = 1
-                """,
-                (timestamp,),
-            )
             row = connection.execute(
                 "SELECT * FROM education_topic_promotions WHERE id = ?",
                 (promotion_id,),
@@ -619,6 +543,59 @@ class EducationTopicPromotionStore:
                 (max(1, min(limit, 10)),),
             ).fetchall()
             return [dict(row) for row in rows]
+
+    def recent_captions(self, limit: int = 8) -> list[dict[str, str]]:
+        """Return bounded promotion copy only; never include chat or admin identifiers."""
+        with self._connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT body, status, created_at
+                FROM education_topic_promotions
+                ORDER BY id DESC LIMIT ?
+                """,
+                (max(1, min(limit, 8)),),
+            ).fetchall()
+        return [
+            {
+                "body": str(row["body"])[:MAX_PROMO_BODY_CHARS],
+                "status": str(row["status"])[:24],
+                "created_at": str(row["created_at"])[:32],
+            }
+            for row in rows
+        ]
+
+    def has_active_promotion(self) -> bool:
+        with self._connection() as connection:
+            return connection.execute(
+                """
+                SELECT 1 FROM education_topic_promotions
+                WHERE status IN ('review', 'editing', 'publishing', 'delivery_unknown')
+                LIMIT 1
+                """
+            ).fetchone() is not None
+
+    def record_generation_event(
+        self,
+        *,
+        action: str,
+        admin_id: int | None,
+        model: str,
+        details: str,
+        at: str,
+    ) -> None:
+        safe_action = action if action in {
+            "gemini_generation_failed",
+            "gemini_generation_rejected",
+        } else "gemini_generation_failed"
+        with self._connection() as connection:
+            self._action(
+                connection,
+                None,
+                safe_action,
+                admin_id,
+                f"model={model[:64]};{details}",
+                at,
+            )
 
     def mark_preview_sent(
         self, promotion_id: int, *, admin_id: int, version: int, at: str
@@ -1226,7 +1203,8 @@ class EducationTopicPromotionStore:
         with self._connection() as connection:
             rows = connection.execute(
                 """
-                SELECT id, group_chat_id, thread_id, schedule_key
+                SELECT id, group_chat_id, thread_id, schedule_key,
+                       approved_at, scheduled_for
                 FROM education_topic_promotions
                 WHERE status IN ('review', 'editing') AND review_deadline_at <= ?
                 """,
@@ -1236,7 +1214,12 @@ class EducationTopicPromotionStore:
                 connection.execute(
                     """
                     UPDATE education_topic_promotions
-                    SET status = 'expired', photo_upload_pending = 0,
+                    SET status = 'expired',
+                        failure_category = CASE
+                            WHEN approved_at IS NOT NULL THEN 'approved_schedule_missed'
+                            ELSE 'approval_window_expired'
+                        END,
+                        photo_upload_pending = 0,
                         photo_upload_admin_id = NULL, edit_admin_id = NULL,
                         updated_at = ?
                     WHERE id = ? AND status IN ('review', 'editing')
@@ -1255,11 +1238,15 @@ class EducationTopicPromotionStore:
                     connection.execute(
                         """
                         UPDATE education_topic_promo_schedule_runs
-                        SET status = 'expired', details = 'approval window expired',
+                        SET status = 'expired',
+                            details = CASE
+                                WHEN ? IS NOT NULL THEN 'approved post missed its scheduled window'
+                                ELSE 'approval window expired'
+                            END,
                             updated_at = ?
                         WHERE schedule_key = ?
                         """,
-                        (at, row["schedule_key"]),
+                        (row["approved_at"], at, row["schedule_key"]),
                     )
             return [dict(row) for row in rows]
 
@@ -1362,8 +1349,10 @@ class EducationTopicPromotionManager:
         education_group_id: int | None,
         market_channel_id: int | None,
         topic_message_link: str | None,
+        writer: Any | None = None,
     ) -> None:
         self.api = api
+        self.writer = writer
         self.admin_id = admin_id
         self.education_group_id = education_group_id
         self.market_channel_id = market_channel_id
@@ -1495,20 +1484,6 @@ class EducationTopicPromotionManager:
         )
 
     @staticmethod
-    def _body_for(index: int) -> str:
-        return _PROMO_BODIES[index % len(_PROMO_BODIES)]
-
-    @staticmethod
-    def _scheduled_body_for(index: int, weekday: str) -> str:
-        variants = _SCHEDULED_PROMO_BODIES[weekday]
-        lead = variants[(index // 2) % len(variants)]
-        return (
-            f"{lead}\n\n"
-            "📌 Trade breakdowns are shared in the Educational Group’s Market "
-            "Analysis topic. The separate Market Analysis channel is linked below."
-        )
-
-    @staticmethod
     def _validate_body(body: str) -> str | None:
         text = " ".join(body.split())
         if not text or len(text) > MAX_PROMO_BODY_CHARS:
@@ -1519,10 +1494,278 @@ class EducationTopicPromotionManager:
             return "The caption contains a trading result, guaranteed claim, or direct signal."
         return None
 
+    @classmethod
+    def _validate_generated_body(
+        cls,
+        body: str,
+        *,
+        recent_captions: list[dict[str, str]],
+        promotion_type: str,
+        weekday: str | None,
+    ) -> str | None:
+        issue = cls._validate_body(body)
+        if issue:
+            return issue
+        lines = [line.strip() for line in body.strip().splitlines() if line.strip()]
+        if not lines:
+            return "Gemini returned an empty caption."
+        if re.search(r"(?:\*\*|__|`|<[^>]+>)", body):
+            return "Use plain text; the bot applies Telegram-safe formatting."
+        headline = lines[0]
+        if not headline.startswith(("📚", "📊", "🧠", "🎯", "💬", "🎓", "✨", "🌱", "🤝", "👋", "📣")):
+            return "The caption needs a relevant emoji at the start of its headline."
+        title_text = re.sub(r"^[^\w]+", "", headline, flags=re.UNICODE)
+        title_letters = [char for char in title_text if char.isalpha()]
+        if not title_letters or sum(char.isupper() for char in title_letters) / len(title_letters) < 0.55:
+            return "The headline must be short and uppercase."
+
+        lowered = body.casefold()
+        group_mentioned = "education group" in lowered or "educational group" in lowered
+        if not (
+            "trade breakdown" in lowered
+            and group_mentioned
+            and "market analysis topic" in lowered
+        ):
+            return (
+                "State clearly that trade breakdowns are shared in the Education "
+                "Group's Market Analysis topic."
+            )
+        for sentence in re.split(r"(?<=[.!?])\s+|\n+", body):
+            if "trade breakdown" in sentence.casefold() and not (
+                ("education group" in sentence.casefold() or "educational group" in sentence.casefold())
+                and "topic" in sentence.casefold()
+            ):
+                return (
+                    "Keep the trade-breakdown location attached to the Education "
+                    "Group's Market Analysis topic."
+                )
+        if "separate market analysis channel" not in lowered or not (
+            "button" in lowered or "below" in lowered
+        ):
+            return (
+                "Make clear that the separate Market Analysis channel is opened "
+                "with its own button."
+            )
+        if not ("coach" in lowered and "button" in lowered and ("open" in lowered or "tap" in lowered)):
+            return "Explain that the Coach button opens the Smart Money Hub bot."
+        if "/start" not in lowered:
+            return "Tell members to send /start if Telegram prompts them."
+
+        for sentence in re.split(r"(?<=[.!?])\s+|\n+", body.strip()):
+            normalized = " ".join(sentence.casefold().split()).rstrip(".")
+            feature_sentence = any(
+                token in normalized
+                for token in ("private coach", "smc assessment", "short challenge", "private journal", "learning progress")
+            )
+            if feature_sentence and not (
+                any(normalized == " ".join(feature.casefold().split()).rstrip(".") for feature in PROMO_FEATURES)
+                or (
+                    "coach" in normalized
+                    and "button" in normalized
+                    and ("open" in normalized or "tap" in normalized)
+                    and "/start" in normalized
+                )
+            ):
+                return (
+                    "Gemini mentioned a feature without using an approved, verified "
+                    "feature description."
+                )
+
+        if promotion_type == "scheduled_class":
+            expected_day = (weekday or "").casefold()
+            if expected_day not in {"monday", "thursday"}:
+                return "The scheduled class day is unavailable; no class claim can be used."
+            if (
+                expected_day not in lowered
+                or "8:00 pm wat" not in lowered
+                or "link" not in lowered
+                or "posted" not in lowered
+            ):
+                return (
+                    "The class reminder must state the configured weekday, 8:00 PM "
+                    "WAT, and that the link is posted when class begins."
+                )
+
+        safety_issue = validate_channel_post(
+            f"{body}\n\nNO CONFIRMATION, NO ENTRY.",
+            is_promo=False,
+        )
+        if safety_issue:
+            return f"The caption failed the existing content-safety check ({safety_issue})."
+
+        headline_key = " ".join(re.sub(r"[^\w\s]", " ", headline.casefold()).split())
+        for item in recent_captions:
+            prior = str(item.get("body") or "").strip()
+            prior_lines = [line.strip() for line in prior.splitlines() if line.strip()]
+            if not prior_lines:
+                continue
+            prior_headline = " ".join(
+                re.sub(r"[^\w\s]", " ", prior_lines[0].casefold()).split()
+            )
+            if headline_key and headline_key == prior_headline:
+                return "The headline repeats a recent promotion; choose a new angle."
+            current_core = cls._novelty_core(body)
+            prior_core = cls._novelty_core(prior)
+            if (
+                len(current_core) >= 45
+                and len(prior_core) >= 45
+                and SequenceMatcher(None, current_core, prior_core).ratio() >= 0.82
+            ):
+                return "The caption is too similar to a recent promotion; write a new angle."
+        return None
+
+    @staticmethod
+    def _novelty_core(text: str) -> str:
+        lines = []
+        for line in text.splitlines():
+            lowered = line.casefold()
+            if any(
+                marker in lowered
+                for marker in (
+                    "trade breakdown",
+                    "market analysis topic",
+                    "separate market analysis channel",
+                    "coach button",
+                    "ask the private coach",
+                    "no confirmation, no entry",
+                )
+            ):
+                continue
+            lines.append(line)
+        return " ".join(re.sub(r"[^\w\s]", " ", " ".join(lines).casefold()).split())
+
+    def _generate_body(
+        self,
+        *,
+        now: datetime,
+        promotion_type: str,
+        weekday: str | None = None,
+    ) -> tuple[str | None, str | None]:
+        if self.writer is None or not callable(
+            getattr(self.writer, "generate_promotion", None)
+        ):
+            self.store.record_generation_event(
+                action="gemini_generation_failed",
+                admin_id=self.admin_id,
+                model="gemini-3.5-flash-lite",
+                details=f"type={promotion_type};category=gemini_not_configured",
+                at=_utc(now).isoformat(),
+            )
+            return None, "Gemini is not configured for promotions. No draft was created."
+
+        history = self.store.recent_captions()
+        model = str(getattr(self.writer, "model", "gemini-3.5-flash-lite"))
+        retry_feedback: str | None = None
+        retryable_generation_errors = {
+            "gemini_invalid_response",
+            "gemini_missing_candidate",
+            "gemini_invalid_candidate",
+            "gemini_missing_text",
+            "gemini_missing_category",
+            "gemini_missing_post",
+        }
+        for attempt in range(1, 3):
+            try:
+                body = self.writer.generate_promotion(
+                    recent_captions=history,
+                    promotion_type=promotion_type,
+                    weekday=weekday,
+                    retry_feedback=retry_feedback,
+                )
+            except GeminiChannelGenerationError as error:
+                logger.warning(
+                    "Education-topic Gemini promotion generation failed model=%s "
+                    "category=%s attempt=%s http_status=%s.",
+                    model,
+                    error.category,
+                    attempt,
+                    error.http_status,
+                )
+                if attempt == 1 and error.category in retryable_generation_errors:
+                    retry_feedback = (
+                        "The previous response was empty or malformed. Return the "
+                        "required CATEGORY and POST sections with a complete caption."
+                    )
+                    continue
+                self.store.record_generation_event(
+                    action="gemini_generation_failed",
+                    admin_id=self.admin_id,
+                    model=model,
+                    details=(
+                        f"type={promotion_type};category={error.category};"
+                        f"http_status={error.http_status or 'none'};attempt={attempt}"
+                    ),
+                    at=_utc(now).isoformat(),
+                )
+                return None, self._generation_error_message(error)
+            except Exception as error:
+                logger.error(
+                    "Education-topic Gemini promotion writer failed model=%s "
+                    "exception_type=%s attempt=%s.",
+                    model,
+                    type(error).__name__,
+                    attempt,
+                )
+                self.store.record_generation_event(
+                    action="gemini_generation_failed",
+                    admin_id=self.admin_id,
+                    model=model,
+                    details=f"type={promotion_type};category=unexpected_writer_error",
+                    at=_utc(now).isoformat(),
+                )
+                return None, "Gemini could not prepare the promotion. No draft was created."
+
+            issue = self._validate_generated_body(
+                str(body or ""),
+                recent_captions=history,
+                promotion_type=promotion_type,
+                weekday=weekday,
+            )
+            if issue is None:
+                return str(body).strip(), None
+            self.store.record_generation_event(
+                action="gemini_generation_rejected",
+                admin_id=self.admin_id,
+                model=model,
+                details=f"type={promotion_type};attempt={attempt};reason={issue}",
+                at=_utc(now).isoformat(),
+            )
+            if attempt == 1:
+                retry_feedback = (
+                    f"The previous response failed this check: {issue} "
+                    "Write a different, corrected caption and preserve the required "
+                    "destination distinctions."
+                )
+        return None, (
+            "Gemini's caption failed content checks after two attempts. "
+            "No draft was saved. Last issue: "
+            f"{retry_feedback or 'content validation failed'}"
+        )
+
+    @staticmethod
+    def _generation_error_message(error: GeminiChannelGenerationError) -> str:
+        if error.category == "gemini_not_configured":
+            return "Gemini is not configured. No draft was created."
+        if error.category == "gemini_rate_limit":
+            return "Gemini is rate-limited right now. No draft was created; try again later."
+        if error.category == "gemini_timeout":
+            return "Gemini timed out. No draft was created."
+        if error.category == "gemini_network_error":
+            return "Gemini could not be reached. No draft was created."
+        if error.http_status:
+            return (
+                f"Gemini returned HTTP {error.http_status}. "
+                "No draft was created; check the model service and try again."
+            )
+        return (
+            f"Gemini returned an unusable response ({error.category}). "
+            "No draft was created."
+        )
+
     @staticmethod
     def _render(body: str) -> str:
         return (
-            "📊 <b>SMART MONEY HUB | MARKET ANALYSIS</b>\n\n"
+            "📣 <b>SMART MONEY HUB | EDUCATION GROUP</b>\n\n"
             f"{html.escape(body, quote=False)}\n\n"
             "🛡️ <b>NO CONFIRMATION, NO ENTRY.</b>\n\n"
             "For educational purposes only. Trading involves risk."
@@ -1797,8 +2040,13 @@ class EducationTopicPromotionManager:
                     chat_id,
                     f"Send the replacement caption in one message (up to {MAX_PROMO_BODY_CHARS} "
                     "characters). The verified channel and bot buttons and safety footer "
-                    "will stay attached. The revised preview gets a new five-minute review. "
-                    "Send /cancel to cancel this draft.",
+                    + (
+                        "will stay attached. Approve the revised preview before the scheduled "
+                        "publication time; the deadline will not be extended. "
+                        if promotion.get("scheduled_for")
+                        else "will stay attached. The revised preview gets a new five-minute review. "
+                    )
+                    + "Send /cancel to cancel this draft.",
                 )
             else:
                 self.api.send_message(chat_id, "This review is closed; no edit was saved.")
@@ -1812,7 +2060,12 @@ class EducationTopicPromotionManager:
                 self.api.send_message(
                     chat_id,
                     "Send one chart image now. The updated photo-and-caption preview "
-                    "will start a fresh five-minute review window.",
+                    + (
+                        "must be approved before the scheduled publication time; the deadline "
+                        "will not be extended."
+                        if promotion.get("scheduled_for")
+                        else "will start a fresh five-minute review window."
+                    ),
                 )
             else:
                 self.api.send_message(chat_id, "This review is closed; no photo was requested.")
@@ -1843,11 +2096,19 @@ class EducationTopicPromotionManager:
         except ValueError as error:
             self.api.send_message(chat_id, str(error))
             return
-        settings = self.store.settings()
-        body = self._body_for(int(settings["next_variant_index"]))
-        issue = self._validate_body(body)
-        if issue:
-            self.api.send_message(chat_id, f"Draft held: {issue}")
+        if self.store.has_active_promotion():
+            self.api.send_message(
+                chat_id,
+                "An earlier promotion is still pending review or needs delivery "
+                "verification. Resolve it before generating another draft.",
+            )
+            return
+        body, generation_error = self._generate_body(
+            now=now,
+            promotion_type="manual",
+        )
+        if generation_error or body is None:
+            self.api.send_message(chat_id, f"Promotion held: {generation_error}")
             return
         promotion, error = self.store.create_draft(
             body=body,
@@ -1860,6 +2121,9 @@ class EducationTopicPromotionManager:
             bot_username=username,
             admin_id=admin_id,
             now=now,
+            generation_model=str(
+                getattr(self.writer, "model", "gemini-3.5-flash-lite")
+            ),
         )
         if error or promotion is None:
             self.api.send_message(chat_id, error or "The draft could not be saved.")
@@ -1902,6 +2166,12 @@ class EducationTopicPromotionManager:
     ) -> None:
         if self.store.schedule_run(schedule_key):
             return
+        if self.store.has_active_promotion():
+            logger.info(
+                "Scheduled promotion waiting for active review schedule_key=%s",
+                schedule_key,
+            )
+            return
         if self.admin_id is None:
             details = "admin private-chat destination is not configured"
             if self.store.record_schedule_event(
@@ -1932,22 +2202,22 @@ class EducationTopicPromotionManager:
                     f"Scheduled promotion held; destination verification failed: {error}"
                 )
             return
-        settings = self.store.settings()
-        body = self._scheduled_body_for(
-            int(settings.get("scheduled_variant_index", 0)), weekday
+        body, generation_error = self._generate_body(
+            now=now,
+            promotion_type="scheduled_class",
+            weekday=weekday.title(),
         )
-        issue = self._validate_body(body)
-        if issue:
+        if generation_error or body is None:
             if self.store.record_schedule_event(
                 schedule_key=schedule_key,
                 scheduled_for=scheduled_for,
                 status="failed",
-                details=f"content validation failed: {issue}",
+                details=f"Gemini generation failed: {generation_error}",
                 at=_utc(now).isoformat(),
                 admin_id=self.admin_id,
             ):
                 self._notify_schedule_issue(
-                    f"Scheduled promotion held by content validation: {issue}"
+                    f"Scheduled promotion held: {generation_error}"
                 )
             return
         promotion, error = self.store.create_draft(
@@ -1963,6 +2233,9 @@ class EducationTopicPromotionManager:
             now=now,
             scheduled_for=scheduled_for,
             schedule_key=schedule_key,
+            generation_model=str(
+                getattr(self.writer, "model", "gemini-3.5-flash-lite")
+            ),
         )
         if error or promotion is None:
             # A manual draft can temporarily occupy the one-at-a-time slot.
@@ -2402,19 +2675,26 @@ class EducationTopicPromotionManager:
             logger.exception("Could not dispatch scheduled Monday/Thursday promotions.")
         expired = self.store.expire_due(at=current.isoformat())
         for promotion in expired:
+            was_approved = promotion.get("approved_at") is not None
             logger.info(
                 "Education topic promo expired without publication id=%s target_chat_id=%s "
-                "thread_id=%s",
+                "thread_id=%s approved=%s",
                 promotion["id"],
                 promotion["group_chat_id"],
                 promotion["thread_id"],
+                was_approved,
             )
             if self.admin_id is not None:
                 try:
                     self.api.send_message(
                         self.admin_id,
-                        f"Promotion draft #{promotion['id']} expired without approval. "
-                        "Nothing was posted.",
+                        (
+                            f"Promotion draft #{promotion['id']} was approved but missed "
+                            "its scheduled publication window. It was not posted late."
+                            if was_approved
+                            else f"Promotion draft #{promotion['id']} expired without approval. "
+                            "Nothing was posted."
+                        ),
                     )
                 except TelegramAPIError:
                     logger.warning(

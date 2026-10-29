@@ -105,6 +105,65 @@ class GeminiChannelContentTests(unittest.TestCase):
         self.assertEqual(draft.category, "education")
         self.assertTrue(draft.content.startswith("💧 SMART MONEY HUB | LIQUIDITY"))
 
+    def test_promotion_uses_configured_model_and_supplies_recent_copy(self) -> None:
+        captured = {}
+        response_text = (
+            "CATEGORY: engagement\nPOST:\n"
+            "📚 A FRESH WAY TO STUDY THE CHART\n\n"
+            "A useful caption for the Education Group."
+        )
+
+        def fake_urlopen(request, timeout):
+            captured["request"] = request
+            captured["timeout"] = timeout
+            return _Response(_candidate(response_text))
+
+        with patch(
+            "smart_money_hub_bot.channel_gemini.urlopen", side_effect=fake_urlopen
+        ) as mocked:
+            result = self.service.generate_promotion(
+                recent_captions=[
+                    {"status": "cancelled", "body": "A previous promotion caption"}
+                ],
+                promotion_type="manual",
+            )
+
+        request = captured["request"]
+        payload = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(
+            result,
+            "📚 A FRESH WAY TO STUDY THE CHART\n\n"
+            "A useful caption for the Education Group.",
+        )
+        self.assertTrue(request.full_url.endswith(f"/models/{GEMINI_MODEL}:generateContent"))
+        self.assertEqual(captured["timeout"], 12)
+        self.assertEqual(mocked.call_count, 1)
+        instruction = payload["systemInstruction"]["parts"][0]["text"]
+        prompt = payload["contents"][0]["parts"][0]["text"]
+        self.assertIn("distinct angle", instruction)
+        self.assertIn("trade breakdowns are shared in the Education Group", instruction)
+        self.assertIn("not in the separate channel", instruction)
+        self.assertIn("CATEGORY: engagement", instruction)
+        self.assertIn("A previous promotion caption", prompt)
+        self.assertIn("cancelled", prompt)
+        self.assertIn("Do not include a class or Zoom reminder", prompt)
+
+    def test_promotion_rate_limit_fails_without_model_fallback(self) -> None:
+        request_url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{GEMINI_MODEL}:generateContent"
+        )
+        with patch(
+            "smart_money_hub_bot.channel_gemini.urlopen",
+            side_effect=HTTPError(request_url, 429, "quota", {}, None),
+        ) as mocked:
+            with self.assertRaises(GeminiChannelGenerationError) as caught:
+                self.service.generate_promotion(recent_captions=[])
+
+        self.assertEqual(caught.exception.category, "gemini_rate_limit")
+        self.assertEqual(caught.exception.http_status, 429)
+        self.assertEqual(mocked.call_count, 1)
+
     def test_session_open_prompt_includes_brand_template_and_wat_context(self) -> None:
         captured = {}
         response_text = (
