@@ -53,18 +53,64 @@ LATE_SESSION_POST = (
     "— VAYDA | Smart Money Hub"
 )
 
+DUPLICATE_LATE_NY_POST = (
+    "📊 SMART MONEY HUB\n"
+    "━━━━━━━━━━━━━━\n"
+    "NEW YORK SESSION | SESSION CHECK-IN\n\n"
+    "The New York session is already underway. Navigating active hours requires "
+    "keeping your analysis framework steady and ignoring short-term market noise. 📈\n\n"
+    "🔍 CONDITIONS TO WATCH\n"
+    "• Re-verify your structural bias and check how price interacts with "
+    "previously identified reference points. 📋\n"
+    "• Keep your attention fixed on execution quality rather than the speed of "
+    "price movement. 🎯\n"
+    "• Maintain strict adherence to your planned workflow as activity unfolds. 🛡️\n\n"
+    "🛡️ RISK REMINDER\n"
+    "Protecting your capital and maintaining a calm mindset always comes before "
+    "looking for market opportunities. ⚖️\n\n"
+    "⚠️ THE GOLDEN RULE\n"
+    "NO CONFIRMATION, NO ENTRY.\n\n"
+    "— VAYDA | Smart Money Hub."
+)
+
+FRESH_LATE_NY_POST = (
+    "📊 SMART MONEY HUB\n"
+    "━━━━━━━━━━━━━━\n"
+    "NEW YORK SESSION CHECK-IN | DECISION FILTER\n\n"
+    "While the session is active, separate what your chart shows from what you "
+    "expect it to show. A clear decision process can help keep assumptions from "
+    "becoming entries.\n\n"
+    "🔍 SESSION CHECKLIST\n"
+    "• Write the condition that would support your plan.\n"
+    "• Note what would invalidate it before price reaches the area.\n"
+    "• If neither is clear, wait rather than force a decision.\n\n"
+    "🛡️ RISK REMINDER\n"
+    "Keep risk decisions inside your written plan.\n\n"
+    "⚠️ THE GOLDEN RULE\n"
+    "NO CONFIRMATION, NO ENTRY.\n\n"
+    "— VAYDA | Smart Money Hub."
+)
+
 
 class FakeWriter:
-    def __init__(self, content: str = SESSION_POST, error: Exception | None = None):
+    def __init__(
+        self,
+        content: str = SESSION_POST,
+        error: Exception | None = None,
+        responses: list[str] | None = None,
+    ):
         self.content = content
         self.late_content = LATE_SESSION_POST
         self.error = error
+        self.responses = list(responses or [])
         self.calls: list[dict] = []
 
     def generate(self, **kwargs):
         self.calls.append(kwargs)
         if self.error:
             raise self.error
+        if self.responses:
+            return ChannelDraft("new_week_preparation", self.responses.pop(0))
         content = (
             self.late_content
             if kwargs.get("session_context", {}).get("late_recovery")
@@ -780,6 +826,134 @@ class SessionOpenPostTests(unittest.TestCase):
         saved = self.manager.store.get_by_key(current)
         self.assertEqual(saved["status"], "failed")
         self.assertEqual(saved["failure_category"], "content_rejected_duplicate_content")
+        self.assertEqual(self.api.channel_messages, [])
+
+    def test_duplicate_session_generation_gets_one_fresh_gemini_retry(self):
+        previous = self._occurrence("new_york", date(2026, 10, 28))
+        old, created = self.manager.store.create_slot(
+            previous, CHANNEL_ID, at="2026-10-28T12:45:00+00:00"
+        )
+        self.assertTrue(created)
+        repeated = (
+            "📊 SMART MONEY HUB\n━━━━━━━━━━━━━━\n"
+            "NEW YORK SESSION | SESSION CHECK-IN\n\n"
+            "The New York session is already underway. Navigating active hours "
+            "requires keeping your analysis framework steady and ignoring "
+            "short-term market noise. 📈\n\n"
+            "🔍 CONDITIONS TO WATCH\n"
+            "• Re-verify your structural bias and check how price interacts with "
+            "previously identified reference points. 📋\n"
+            "• Keep your attention fixed on execution quality rather than the speed "
+            "of price movement. 🎯\n"
+            "• Maintain strict adherence to your planned workflow as activity "
+            "unfolds. 🛡️\n\n"
+            "🛡️ RISK REMINDER\n"
+            "Protecting your capital and maintaining a calm mindset always comes "
+            "before looking for market opportunities. ⚖️\n\n"
+            "⚠️ THE GOLDEN RULE\nNO CONFIRMATION, NO ENTRY.\n\n"
+            "— VAYDA | Smart Money Hub."
+        )
+        self.manager.store.update(
+            int(old["id"]),
+            expected=("generating",),
+            status="published",
+            at="2026-10-28T12:00:00+00:00",
+            content=DUPLICATE_LATE_NY_POST,
+            telegram_message_id=101,
+            published_at="2026-10-28T12:00:00+00:00",
+        )
+        occurrence = self._occurrence("new_york")
+        current = occurrence.utc_at + timedelta(minutes=15)
+        current_post, created = self.manager.store.create_slot(
+            occurrence, CHANNEL_ID, at=current.isoformat()
+        )
+        self.assertTrue(created)
+        self.manager.store.update(
+            int(current_post["id"]),
+            expected=("generating",),
+            status="generating",
+            at=current.isoformat(),
+            late_recovery=1,
+        )
+        current_post = self.manager.store.get(int(current_post["id"]))
+        self.writer.responses = [DUPLICATE_LATE_NY_POST, FRESH_LATE_NY_POST]
+
+        self.manager._generate(current_post, occurrence, current, late_recovery=True)
+
+        saved = self.manager.store.get_by_key(occurrence)
+        self.assertEqual(saved["status"], "draft")
+        self.assertEqual(saved["content"], FRESH_LATE_NY_POST)
+        self.assertEqual(len(self.writer.calls), 2)
+        retry_context = self.writer.calls[1]["session_context"]
+        self.assertTrue(retry_context["duplicate_retry"])
+        self.assertEqual(
+            retry_context["rejected_duplicate_draft"],
+            DUPLICATE_LATE_NY_POST[:1600],
+        )
+        self.assertEqual(self.api.channel_messages, [])
+
+    def test_duplicate_session_retry_that_still_repeats_stays_held(self):
+        previous = self._occurrence("new_york", date(2026, 10, 28))
+        old, created = self.manager.store.create_slot(
+            previous, CHANNEL_ID, at="2026-10-28T12:45:00+00:00"
+        )
+        self.assertTrue(created)
+        repeated = (
+            "📊 SMART MONEY HUB\n━━━━━━━━━━━━━━\n"
+            "NEW YORK SESSION | SESSION CHECK-IN\n\n"
+            "The New York session is already underway. Navigating active hours "
+            "requires keeping your analysis framework steady and ignoring "
+            "short-term market noise. 📈\n\n"
+            "🔍 CONDITIONS TO WATCH\n"
+            "• Re-verify your structural bias and check how price interacts with "
+            "previously identified reference points. 📋\n"
+            "• Keep your attention fixed on execution quality rather than the speed "
+            "of price movement. 🎯\n"
+            "• Maintain strict adherence to your planned workflow as activity "
+            "unfolds. 🛡️\n\n"
+            "🛡️ RISK REMINDER\n"
+            "Protecting your capital and maintaining a calm mindset always comes "
+            "before looking for market opportunities. ⚖️\n\n"
+            "⚠️ THE GOLDEN RULE\nNO CONFIRMATION, NO ENTRY.\n\n"
+            "— VAYDA | Smart Money Hub."
+        )
+        self.manager.store.update(
+            int(old["id"]),
+            expected=("generating",),
+            status="published",
+            at="2026-10-28T12:00:00+00:00",
+            content=DUPLICATE_LATE_NY_POST,
+            telegram_message_id=101,
+            published_at="2026-10-28T12:00:00+00:00",
+        )
+        occurrence = self._occurrence("new_york")
+        current = occurrence.utc_at + timedelta(minutes=15)
+        current_post, created = self.manager.store.create_slot(
+            occurrence, CHANNEL_ID, at=current.isoformat()
+        )
+        self.assertTrue(created)
+        self.manager.store.update(
+            int(current_post["id"]),
+            expected=("generating",),
+            status="generating",
+            at=current.isoformat(),
+            late_recovery=1,
+        )
+        current_post = self.manager.store.get(int(current_post["id"]))
+        self.writer.responses = [
+            DUPLICATE_LATE_NY_POST,
+            DUPLICATE_LATE_NY_POST,
+        ]
+
+        self.manager._generate(current_post, occurrence, current, late_recovery=True)
+
+        saved = self.manager.store.get_by_key(occurrence)
+        self.assertEqual(saved["status"], "failed")
+        self.assertEqual(
+            saved["failure_category"], "content_rejected_duplicate_content"
+        )
+        self.assertEqual(saved["content"], DUPLICATE_LATE_NY_POST)
+        self.assertEqual(len(self.writer.calls), 2)
         self.assertEqual(self.api.channel_messages, [])
 
 

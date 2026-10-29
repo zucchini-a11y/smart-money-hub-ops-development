@@ -1177,63 +1177,97 @@ class SessionOpenPostManager:
             "late_recovery": late_recovery,
             "session_underway": late_recovery,
         }
-        try:
-            draft = self.writer.generate(
-                schedule_date=occurrence.local_date.isoformat(),
-                schedule_time=occurrence.wat_at.strftime("%H:%M"),
-                preferred_category="new_week_preparation",
-                history=self.history_store.get_recent_channel_post_contents(
-                    limit=12, chat_id=self.destination_chat_id
-                ),
-                admin_feedback=self.history_store.get_recent_channel_post_feedback(
-                    limit=5
-                ),
-                verified_information=[],
-                promo_due=False,
-                session_context=context,
-            )
-        except GeminiChannelGenerationError as error:
-            if error.http_status == 429:
-                reason = "Gemini's provider rate limit was reached (HTTP 429)"
-            elif error.http_status is not None and 500 <= error.http_status <= 599:
-                reason = (
-                    "Gemini's provider returned a temporary server error "
-                    f"(HTTP {error.http_status})"
+        history = self.history_store.get_recent_channel_post_contents(
+            limit=12, chat_id=self.destination_chat_id
+        )
+        rejected_duplicate_draft: str | None = None
+        rejection: str | None = None
+        content = ""
+        admin_feedback = self.history_store.get_recent_channel_post_feedback(limit=5)
+        for attempt in range(2):
+            try:
+                draft = self.writer.generate(
+                    schedule_date=occurrence.local_date.isoformat(),
+                    schedule_time=occurrence.wat_at.strftime("%H:%M"),
+                    preferred_category="new_week_preparation",
+                    history=history,
+                    admin_feedback=admin_feedback,
+                    verified_information=[],
+                    promo_due=False,
+                    session_context=context,
                 )
-            elif error.http_status is not None:
-                reason = f"Gemini's provider returned HTTP {error.http_status}"
-            else:
-                reason = error.category.replace("_", " ")
-            self._hold(
-                post,
-                error.category,
-                f"Gemini could not prepare the {occurrence.definition.label} "
-                f"session post: {reason}. "
-                "It was held and not published.",
-            )
-            return
-        except Exception:
-            logger.exception("Session-open content generation failed unexpectedly.")
-            self._hold(
-                post,
-                "gemini_unexpected_error",
-                "Gemini returned an unexpected error; the session post was held.",
-            )
-            return
+            except GeminiChannelGenerationError as error:
+                if rejected_duplicate_draft is not None:
+                    self._hold(
+                        post,
+                        f"content_rejected_duplicate_retry_{error.category}",
+                        "Gemini produced a duplicate session post. Its one originality "
+                        f"retry failed ({error.category}); the duplicate draft was "
+                        "preserved for review and nothing was published.",
+                        content=rejected_duplicate_draft,
+                    )
+                    return
+                if error.http_status == 429:
+                    reason = "Gemini's provider rate limit was reached (HTTP 429)"
+                elif error.http_status is not None and 500 <= error.http_status <= 599:
+                    reason = (
+                        "Gemini's provider returned a temporary server error "
+                        f"(HTTP {error.http_status})"
+                    )
+                elif error.http_status is not None:
+                    reason = f"Gemini's provider returned HTTP {error.http_status}"
+                else:
+                    reason = error.category.replace("_", " ")
+                self._hold(
+                    post,
+                    error.category,
+                    f"Gemini could not prepare the {occurrence.definition.label} "
+                    f"session post: {reason}. "
+                    "It was held and not published.",
+                )
+                return
+            except Exception:
+                logger.exception(
+                    "Session-open content generation failed unexpectedly."
+                )
+                if rejected_duplicate_draft is not None:
+                    self._hold(
+                        post,
+                        "content_rejected_duplicate_retry_gemini_unexpected_error",
+                        "Gemini produced a duplicate session post. Its one originality "
+                        "retry failed unexpectedly; the duplicate draft was preserved "
+                        "for review and nothing was published.",
+                        content=rejected_duplicate_draft,
+                    )
+                else:
+                    self._hold(
+                        post,
+                        "gemini_unexpected_error",
+                        "Gemini returned an unexpected error; the session post was held.",
+                    )
+                return
+            content = normalize_weekend_brand_header(draft.content, draft.category)
+            candidate_post = {
+                **post,
+                "category": draft.category,
+                "content": content,
+            }
+            rejection = validate_session_open_post(content, candidate_post)
+            if not rejection and self._is_duplicate(content, int(post["id"])):
+                rejection = "duplicate_content"
+            if not rejection and self._repeats_recent_session_layout(
+                content, int(post["id"])
+            ):
+                rejection = "repeated_session_layout"
+            if rejection != "duplicate_content" or attempt == 1:
+                break
+            rejected_duplicate_draft = content
+            context = {
+                **context,
+                "duplicate_retry": True,
+                "rejected_duplicate_draft": content[:1600],
+            }
 
-        content = normalize_weekend_brand_header(draft.content, draft.category)
-        candidate_post = {
-            **post,
-            "category": draft.category,
-            "content": content,
-        }
-        rejection = validate_session_open_post(content, candidate_post)
-        if not rejection and self._is_duplicate(content, int(post["id"])):
-            rejection = "duplicate_content"
-        if not rejection and self._repeats_recent_session_layout(
-            content, int(post["id"])
-        ):
-            rejection = "repeated_session_layout"
         if rejection:
             self._hold(
                 post,

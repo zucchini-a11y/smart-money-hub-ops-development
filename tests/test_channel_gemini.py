@@ -257,6 +257,21 @@ class GeminiChannelContentTests(unittest.TestCase):
         self.assertIn("Never include numerical times, timezone labels, or timestamps", instruction)
         self.assertIn("fresh evergreen", instruction)
 
+    def test_duplicate_retry_prompt_marks_prior_candidate_as_do_not_repeat(self) -> None:
+        instruction = self.service._system_instruction(
+            promo_due=False,
+            promo_username=None,
+            session_context={
+                "session": "New York",
+                "duplicate_retry": True,
+                "rejected_duplicate_draft": "A prior draft.",
+            },
+        )
+        self.assertIn("one bounded originality retry", instruction)
+        self.assertIn("rejected_duplicate_draft", instruction)
+        self.assertIn("do not quote, reuse, or paraphrase", instruction)
+        self.assertIn("All ordinary content, factual, formatting, and safety checks", instruction)
+
     def test_rejects_max_tokens_and_empty_candidate_text(self) -> None:
         for payload, expected in (
             (_candidate("CATEGORY: education\nPOST:\nshort", "MAX_TOKENS"), "gemini_max_tokens"),
