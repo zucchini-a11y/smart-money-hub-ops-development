@@ -1608,13 +1608,6 @@ class EducationTopicPromotionManager:
                 return "The caption is too similar to a recent promotion; write a new angle."
         return None
 
-    @classmethod
-    def _compose_generated_body(
-        cls, hook: str, *, promotion_type: str, weekday: str | None
-    ) -> str:
-        del cls, promotion_type, weekday
-        return hook.strip()
-
     @staticmethod
     def _novelty_core(text: str) -> str:
         lines = []
@@ -1721,19 +1714,7 @@ class EducationTopicPromotionManager:
                 weekday=weekday,
             )
             if issue is None:
-                try:
-                    composed = self._compose_generated_body(
-                        str(body),
-                        promotion_type=promotion_type,
-                        weekday=weekday,
-                    )
-                except ValueError as error:
-                    issue = str(error)
-                else:
-                    issue = self._validate_body(composed)
-                    if issue is None:
-                    if issue is None:
-                        return composed, None
+                return str(body).strip(), None
             last_issue = issue
             self.store.record_generation_event(
                 action="gemini_generation_rejected",

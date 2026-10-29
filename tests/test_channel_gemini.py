@@ -148,7 +148,7 @@ class GeminiChannelContentTests(unittest.TestCase):
         self.assertIn("Open Market Analysis button below", instruction)
         self.assertIn("Never claim trade breakdowns are posted", instruction)
         self.assertIn("optional closing reminder", instruction)
-        self.assertIn("do not force it", instruction)
+        self.assertIn("it is not mandatory in every promotion", instruction)
         self.assertNotIn("hook", instruction)
         self.assertIn("A previous promotion caption", prompt)
         self.assertIn("cancelled", prompt)
