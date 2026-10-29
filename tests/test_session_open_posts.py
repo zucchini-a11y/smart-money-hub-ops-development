@@ -542,6 +542,55 @@ class SessionOpenPostTests(unittest.TestCase):
         self.assertEqual(self.writer.calls, [])
         self.assertEqual(self.api.channel_messages, [])
 
+    def test_expired_late_recovery_notice_is_sent_only_once(self):
+        occurrence = self._occurrence("asia")
+        after_close = occurrence.utc_at + timedelta(hours=10)
+        for later in session_occurrences(occurrence.local_date):
+            if later.utc_at <= occurrence.utc_at:
+                continue
+            later_post, created = self.manager.store.create_slot(
+                later, CHANNEL_ID, at=after_close.isoformat()
+            )
+            if created:
+                self.manager.store.update(
+                    int(later_post["id"]),
+                    expected=("generating",),
+                    status="failed",
+                    at=after_close.isoformat(),
+                    failure_category="test_fixture_session_already_handled",
+                )
+        post, created = self.manager.store.create_slot(
+            occurrence,
+            CHANNEL_ID,
+            at=(occurrence.utc_at + timedelta(minutes=6)).isoformat(),
+        )
+        self.assertTrue(created)
+        self.manager.store.update(
+            int(post["id"]),
+            expected=("generating",),
+            status="draft",
+            at=after_close.isoformat(),
+            content=SESSION_POST,
+            late_recovery=1,
+            failure_category="session_open_late_recovery",
+        )
+
+        self.manager.dispatch_due(after_close)
+        self.manager.dispatch_due(after_close + timedelta(seconds=30))
+
+        saved = self.manager.store.get_by_key(occurrence)
+        self.assertEqual(saved["status"], "failed")
+        self.assertEqual(
+            saved["failure_category"], "session_open_recovery_window_expired"
+        )
+        notices = [
+            item
+            for item in self.api.admin_messages
+            if "session has ended, so the late replacement was held" in item[1]
+        ]
+        self.assertEqual(len(notices), 1)
+        self.assertEqual(self.api.channel_messages, [])
+
     def test_interrupted_late_generation_recovers_after_restart(self):
         self.writer.content = LATE_SESSION_POST
         occurrence = self._occurrence("asia")
