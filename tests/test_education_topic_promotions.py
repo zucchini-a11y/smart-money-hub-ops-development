@@ -247,6 +247,54 @@ class EducationTopicPromotionTests(unittest.TestCase):
         callback = preview["reply_markup"]["inline_keyboard"][2][0]["callback_data"]
         return row, callback
 
+    def test_owner_requested_cooldown_override_is_explicit_and_audited(self) -> None:
+        with sqlite3.connect(self.database_path) as connection:
+            connection.execute(
+                """
+                UPDATE education_topic_promo_settings
+                SET last_published_at = ?
+                WHERE id = 1
+                """,
+                (NOW.isoformat(),),
+            )
+
+        kwargs = {
+            "body": "📚 SMART MONEY HUB\n\nExplore verified SMC learning resources.",
+            "group_chat_id": EXPECTED_EDUCATION_GROUP_ID,
+            "group_title": "🧠 Smart Money Hub | Trading Education",
+            "thread_id": 5,
+            "topic_source_link": TOPIC_LINK,
+            "channel_link": "https://t.me/SmartMoneyHub",
+            "channel_title": "Smart Money Hub",
+            "bot_username": "SmartMoneyHubSignalsBot",
+            "admin_id": ADMIN_ID,
+            "now": NOW + timedelta(hours=1),
+        }
+        blocked, error = self.manager.store.create_draft(**kwargs)
+        self.assertIsNone(blocked)
+        self.assertIn("Posting frequency limit reached", error or "")
+
+        promotion, error = self.manager.store.create_draft(
+            **kwargs,
+            cooldown_override_reason=(
+                "Owner requested a corrected-topic example after the previous "
+                "promotion was sent to the wrong topic."
+            ),
+        )
+        self.assertIsNone(error)
+        self.assertIsNotNone(promotion)
+        with sqlite3.connect(self.database_path) as connection:
+            action = connection.execute(
+                """
+                SELECT action, details
+                FROM education_topic_promo_actions
+                WHERE promotion_id = ? AND action = 'owner_requested_cooldown_override'
+                """,
+                (promotion["id"],),
+            ).fetchone()
+        self.assertIsNotNone(action)
+        self.assertIn("corrected-topic example", action[1])
+
     def test_admin_only_private_preview_has_exact_group_and_topic(self) -> None:
         self.manager.handle_callback(
             chat_id=99,
