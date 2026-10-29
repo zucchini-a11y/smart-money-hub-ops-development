@@ -66,31 +66,8 @@ class FakePromotionWriter:
                 raise response
             return response
 
-        if promotion_type == "scheduled_class":
-            day = weekday or "Monday"
-            return (
-                f"🎓 {day.upper()} CLASS: BRING ONE GOOD QUESTION\n\n"
-                f"Our configured {day} Zoom class starts at 8:00 PM WAT. "
-                "The link will be posted in the channel when the class begins.\n\n"
-                "Trade breakdowns are shared in the Education Group's Market "
-                "Analysis topic. The separate Market Analysis channel has its "
-                "own button below.\n\n"
-                "Ask the private Coach for educational explanations of Smart "
-                "Money Concepts. Tap the Coach button below to open the bot; "
-                "send /start if prompted."
-            )
-
         opener, lead = _PROMO_OPENERS[(len(self.calls) - 1) % len(_PROMO_OPENERS)]
-        return (
-            f"{opener}\n\n{lead} Explore the group discussion and compare "
-            "your observations with a clear learning process.\n\n"
-            "Trade breakdowns are shared in the Education Group's Market "
-            "Analysis topic. The separate Market Analysis channel has its "
-            "own button below.\n\n"
-            "Ask the private Coach for educational explanations of Smart "
-            "Money Concepts. Tap the Coach button below to open the bot; "
-            "send /start if prompted."
-        )
+        return f"{opener}\n\n{lead}"
 
 
 class FakeTelegramAPI:
