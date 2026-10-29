@@ -211,7 +211,11 @@ class GeminiChannelContentService:
                 "gemini_finish_reason_rejected", status
             )
         try:
-            return self._parse_draft(raw_text)
+            return (
+                self._parse_promotion_hook(raw_text)
+                if promotion_context is not None
+                else self._parse_draft(raw_text)
+            )
         except GeminiChannelGenerationError as error:
             logger.warning(
                 "Market Analysis Gemini draft rejected category=%s http_status=%s "
@@ -523,6 +527,25 @@ class GeminiChannelContentService:
         if not content:
             raise GeminiChannelGenerationError("gemini_empty_post")
         return ChannelDraft(category=category, content=content)
+
+    @classmethod
+    def _parse_promotion_hook(cls, raw_text: str) -> ChannelDraft:
+        """Accept a strict wrapper or plain Gemini hook; content validators still run."""
+        try:
+            parsed = cls._parse_draft(raw_text)
+        except GeminiChannelGenerationError as error:
+            if error.category in {"gemini_missing_category", "gemini_missing_post_marker"}:
+                text = raw_text.strip()
+                if text.casefold().startswith("post:"):
+                    text = text.splitlines()[1:]
+                    text = "\n".join(text).strip()
+                if not text:
+                    raise GeminiChannelGenerationError("gemini_empty_post") from None
+                return ChannelDraft(category="engagement", content=text)
+            raise
+        if parsed.category != "engagement":
+            raise GeminiChannelGenerationError("gemini_invalid_category")
+        return parsed
 
     @staticmethod
     def _http_failure_category(status: int) -> str:

@@ -164,6 +164,20 @@ class GeminiChannelContentTests(unittest.TestCase):
         self.assertEqual(caught.exception.http_status, 429)
         self.assertEqual(mocked.call_count, 1)
 
+    def test_promotion_accepts_plain_hook_for_strict_downstream_validation(self) -> None:
+        plain_hook = (
+            "📚 MAKE ONE CHART QUESTION COUNT\n\n"
+            "Decide what you want to learn before you begin your review."
+        )
+
+        with patch(
+            "smart_money_hub_bot.channel_gemini.urlopen",
+            return_value=_Response(_candidate(plain_hook)),
+        ):
+            result = self.service.generate_promotion(recent_captions=[])
+
+        self.assertEqual(result, plain_hook)
+
     def test_session_open_prompt_includes_brand_template_and_wat_context(self) -> None:
         captured = {}
         response_text = (
