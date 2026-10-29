@@ -1571,8 +1571,8 @@ class EducationTopicPromotionManager:
             )
         if _WRONG_BREAKDOWN_DESTINATION.search(text):
             return (
-                "Do not mention trade breakdowns in this promotion; they are shared "
-                "in the Education Group topic, not the separate channel."
+                "Remove references to features outside this channel; describe only "
+                "its verified Gold/USD educational coverage."
             )
         if re.search(r"\b(?:coach|assistant|bot|pro signals?)\b", folded):
             return (
@@ -1686,6 +1686,26 @@ class EducationTopicPromotionManager:
             lines.append(line)
         return " ".join(re.sub(r"[^\w\s]", " ", " ".join(lines).casefold()).split())
 
+    @staticmethod
+    def _remove_out_of_scope_sentences(body: str) -> tuple[str, bool]:
+        """Remove sentences advertising content that belongs to another destination."""
+        changed = False
+        paragraphs: list[str] = []
+        for paragraph in re.split(r"\n\s*\n", body.strip()):
+            fragments = re.split(r"(?<=[.!?])\s+", paragraph.strip())
+            kept: list[str] = []
+            for fragment in fragments:
+                cleaned = fragment.strip()
+                if not cleaned:
+                    continue
+                if _WRONG_BREAKDOWN_DESTINATION.search(cleaned):
+                    changed = True
+                    continue
+                kept.append(cleaned)
+            if kept:
+                paragraphs.append(" ".join(kept))
+        return "\n\n".join(paragraphs), changed
+
     def _generate_body(
         self,
         *,
@@ -1773,14 +1793,28 @@ class EducationTopicPromotionManager:
                 )
                 return None, "Gemini could not prepare the promotion. No draft was created."
 
+            candidate, scope_corrected = self._remove_out_of_scope_sentences(
+                str(body or "")
+            )
+            if scope_corrected:
+                self.store.record_generation_event(
+                    action="gemini_caption_scope_corrected",
+                    admin_id=self.admin_id,
+                    model=model,
+                    details=(
+                        f"type={promotion_type};attempt={attempt};"
+                        "removed_out_of_scope_sentence;full_validation_rerun"
+                    ),
+                    at=_utc(now).isoformat(),
+                )
             issue = self._validate_generated_body(
-                str(body or ""),
+                candidate,
                 recent_captions=history,
                 promotion_type=promotion_type,
                 weekday=weekday,
             )
             if issue is None:
-                return str(body).strip(), None
+                return candidate.strip(), None
             last_issue = issue
             self.store.record_generation_event(
                 action="gemini_generation_rejected",
