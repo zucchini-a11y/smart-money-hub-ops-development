@@ -1143,7 +1143,10 @@ class EducationTopicPromotionStore:
                     (at, at),
                 )
                 row = connection.execute(
-                    "SELECT group_chat_id, thread_id FROM education_topic_promotions WHERE id = ?",
+                    """
+                    SELECT group_chat_id, thread_id, schedule_key
+                    FROM education_topic_promotions WHERE id = ?
+                    """,
                     (promotion_id,),
                 ).fetchone()
                 self._action(
@@ -2064,6 +2067,7 @@ class EducationTopicPromotionManager:
             promotion=promotion,
             channel_link=channel_link,
             bot_link=bot_link,
+            now=now,
         )
 
     def _approve(
@@ -2141,6 +2145,7 @@ class EducationTopicPromotionManager:
             promotion=promotion,
             channel_link=channel_link,
             bot_link=bot_link,
+            now=now,
         )
 
     def _publish_claimed(
@@ -2151,8 +2156,10 @@ class EducationTopicPromotionManager:
         promotion: dict[str, Any],
         channel_link: str,
         bot_link: str,
+        now: datetime | None = None,
     ) -> None:
         promotion_id = int(promotion["id"])
+        sent_at = _utc(now or datetime.now(timezone.utc)).isoformat()
         text = self._render(str(promotion["body"]))
         keyboard = self._member_keyboard(channel_link, bot_link)
         try:
@@ -2182,7 +2189,7 @@ class EducationTopicPromotionManager:
                 admin_id=admin_id,
                 category="telegram_delivery_unknown" if unknown else "telegram_rejected",
                 delivery_unknown=unknown,
-                at=_utc(datetime.now(timezone.utc)).isoformat(),
+                at=sent_at,
             )
             message = (
                 "Telegram’s response did not confirm whether the post was delivered. "
@@ -2199,7 +2206,7 @@ class EducationTopicPromotionManager:
                 admin_id=admin_id,
                 category="telegram_message_id_missing",
                 delivery_unknown=True,
-                at=_utc(datetime.now(timezone.utc)).isoformat(),
+                at=sent_at,
             )
             self.api.send_message(
                 chat_id,
@@ -2207,9 +2214,8 @@ class EducationTopicPromotionManager:
                 "is uncertain; check the topic before taking any further action.",
             )
             return
-        at = _utc(datetime.now(timezone.utc)).isoformat()
         self.store.finish_publish(
-            promotion_id, message_id, admin_id=admin_id, at=at
+            promotion_id, message_id, admin_id=admin_id, at=sent_at
         )
         logger.info(
             "Education topic promotion published promotion_id=%s target_chat_id=%s "
