@@ -612,12 +612,19 @@ class SessionOpenPostManager:
                 continue
             late_recovery = bool(post.get("late_recovery"))
             if late_recovery and current >= _session_close_utc(occurrence):
-                self._hold(
-                    post,
-                    "session_open_recovery_window_expired",
-                    "The session has ended, so the late replacement was held instead "
-                    "of publishing stale session content.",
+                already_held = (
+                    status == "failed"
+                    and post.get("failure_category")
+                    == "session_open_recovery_window_expired"
                 )
+                terminal = status in {"published", "delivery_unknown", "cancelled"}
+                if not already_held and not terminal:
+                    self._hold(
+                        post,
+                        "session_open_recovery_window_expired",
+                        "The session has ended, so the late replacement was held instead "
+                        "of publishing stale session content.",
+                    )
                 continue
             if status == "draft" and timedelta(0) < remaining <= FINAL_REVIEW_LEAD:
                 self._send_review(post, occurrence, current)
