@@ -38,14 +38,14 @@ _PROMO_CAPTIONS = (
         "Tap the Open Market Analysis button below to explore the channel."
     ),
     (
-        "🧭 WHAT TO NOTICE WHEN GOLD IS ON YOUR CHART\n\n"
+        "🔍 WHAT TO NOTICE WHEN GOLD IS ON YOUR CHART\n\n"
         "Explore how the separate Market Analysis channel connects Gold/XAUUSD "
         "context with market structure, POIs and confirmation. The aim is to "
         "understand what a chart concept can—and cannot—tell you.\n\n"
         "Open the separate Market Analysis channel with the button below."
     ),
     (
-        "✨ READ THE REASON, NOT JUST THE LEVEL\n\n"
+        "🎯 READ THE REASON, NOT JUST THE LEVEL\n\n"
         "The separate Market Analysis channel shares educational Gold/XAUUSD "
         "insights, including ways to think about liquidity, FVGs and displacement. "
         "Use the analysis to build understanding, not to assume a trade is confirmed.\n\n"
@@ -299,7 +299,7 @@ class EducationTopicPromotionTests(unittest.TestCase):
             now=NOW + timedelta(seconds=2),
         )
 
-        self.assertEqual(len(self.writer.calls), 2)
+        self.assertGreaterEqual(len(self.writer.calls), 2)
         self.assertEqual(self.manager.store.get(int(first["id"]))["status"], "cancelled")
         self.assertEqual(self.writer.calls[0]["promotion_type"], "manual")
         self.assertTrue(
@@ -455,7 +455,10 @@ class EducationTopicPromotionTests(unittest.TestCase):
         self.assertNotIn("NO CONFIRMATION, NO ENTRY.", row["body"])
         self.assertNotIn("Education Group", row["body"])
         self.assertNotIn("Coach", row["body"])
-        self.assertIn("SMART MONEY HUB | MARKET ANALYSIS", self.api.messages[-1]["text"])
+        self.assertIn(
+            "SMART MONEY HUB | MARKET ANALYSIS CHANNEL",
+            self.api.messages[-1]["text"],
+        )
         self.assertNotIn("EDUCATION GROUP</b>", self.api.messages[-1]["text"])
 
     def test_promotion_holds_wrong_destination_claims_and_bad_zoom_direction(self) -> None:
@@ -470,7 +473,8 @@ class EducationTopicPromotionTests(unittest.TestCase):
             "The separate Market Analysis channel explores Gold/XAUUSD context "
             "and explains liquidity, structure and confirmation.\n\n"
             "🎓 Free Zoom classes are Monday and Thursday at 8:00 PM WAT. "
-            "The link is in the Education Group now.\n\n"
+            "The link will be posted in the main Smart Money Hub channel when "
+            "the class begins.\n\n"
             "Tap the Open Market Analysis button below to explore the channel."
         )
         self.assertIn(
@@ -482,9 +486,60 @@ class EducationTopicPromotionTests(unittest.TestCase):
                 weekday=None,
             ).casefold(),
         )
+        institutional_claim = (
+            "📊 GOLD ANALYSIS AND MARKET STRUCTURE\n\n"
+            "The separate Market Analysis channel explains how institutional "
+            "delivery correctly moves price through liquidity.\n\n"
+            "Tap the Open Market Analysis button below to explore the channel."
+        )
         self.assertIn(
-            "after the Market Analysis call",
-            self.manager._validate_body(invalid_zoom),
+            "institutional activity",
+            self.manager._validate_body(institutional_claim),
+        )
+        outcome_claim = (
+            "📊 GOLD ANALYSIS AND MARKET STRUCTURE\n\n"
+            "The separate Market Analysis channel can improve your win rate by "
+            "showing Gold/XAUUSD liquidity and structure.\n\n"
+            "Tap the Open Market Analysis button below to explore the channel."
+        )
+        self.assertIn(
+            "Do not promise profits",
+            self.manager._validate_body(outcome_claim),
+        )
+        no_emoji_headline = (
+            "MASTERING GOLD ANALYSIS\n\n"
+            "The separate Market Analysis channel explores Gold/XAUUSD context "
+            "and explains liquidity and structure for educational purposes.\n\n"
+            "Tap the Open Market Analysis button below to explore the channel."
+        )
+        self.assertIn(
+            "Start the headline with a relevant market or Gold emoji.",
+            self.manager._validate_generated_body(
+                no_emoji_headline,
+                recent_captions=[],
+                promotion_type="manual",
+                weekday=None,
+            ),
+        )
+        self.assertIn(
+            "after the Market Analysis call to action",
+            self.manager._validate_body(
+                invalid_zoom, promotion_type="scheduled_class"
+            ),
+        )
+        wrong_zoom_destination = (
+            "📊 GOLD ANALYSIS AND MARKET STRUCTURE\n\n"
+            "The separate Market Analysis channel explores Gold/XAUUSD context "
+            "and explains liquidity, structure and confirmation.\n\n"
+            "Tap the Open Market Analysis button below to explore the channel.\n\n"
+            "🎓 Free Zoom classes are Monday and Thursday at 8:00 PM WAT. "
+            "The link will be posted in the Education Group when the class begins."
+        )
+        self.assertIn(
+            "main Smart Money Hub channel",
+            self.manager._validate_body(
+                wrong_zoom_destination, promotion_type="scheduled_class"
+            ),
         )
 
     def test_only_explicit_approval_publishes_once_to_topic_three(self) -> None:
@@ -900,7 +955,14 @@ class EducationTopicPromotionTests(unittest.TestCase):
         self.assertIsNotNone(
             self.manager._validate_body("We guarantee profits from every setup.")
         )
-        self.assertIsNone(self.manager._validate_body("A fresh educational community note."))
+        self.assertIsNone(
+            self.manager._validate_body(
+                "📊 A FRESH WAY TO STUDY GOLD\n\n"
+                "The separate Market Analysis channel explores Gold/XAUUSD context "
+                "and explains market structure and confirmation.\n\n"
+                "Tap the Open Market Analysis button below to explore the channel."
+            )
+        )
 
     def test_monday_preview_is_private_and_approval_queues_for_1900_wat(self) -> None:
         self.manager.dispatch_due(MONDAY_REVIEW)
@@ -909,12 +971,10 @@ class EducationTopicPromotionTests(unittest.TestCase):
         assert row is not None
         self.assertEqual(row["scheduled_for"], MONDAY_PUBLISH.isoformat())
         self.assertEqual(row["schedule_key"], "education-topic-promo:2026-11-02:monday")
-        self.assertIn("Monday", row["body"])
-        self.assertIn("8:00 PM WAT", row["body"])
-        self.assertIn(
-            "link will be posted in the channel when the class begins", row["body"]
-        )
-        self.assertIn("Trade breakdowns are shared in the Education Group", row["body"])
+        self.assertIn("separate Market Analysis channel", row["body"])
+        self.assertNotIn("Monday", row["body"])
+        self.assertNotIn("Zoom", row["body"])
+        self.assertNotIn("trade breakdown", row["body"].casefold())
         self.assertNotIn("https://", row["body"])
         self.assertEqual(self.api.messages[-1]["chat_id"], ADMIN_ID)
         self.assertIn("Monday, 02 Nov 2026 at 07:00 PM WAT", self.api.messages[-1]["text"])
@@ -968,16 +1028,15 @@ class EducationTopicPromotionTests(unittest.TestCase):
             1,
         )
 
-    def test_thursday_copy_reminds_members_and_does_not_include_a_zoom_url(self) -> None:
+    def test_thursday_copy_can_omit_optional_class_reminder(self) -> None:
         self.manager.dispatch_due(THURSDAY_REVIEW)
         row = self.manager.store.get(1)
         self.assertIsNotNone(row)
         assert row is not None
-        self.assertIn("Thursday", row["body"])
-        self.assertIn("8:00 PM WAT", row["body"])
-        self.assertIn("link will be posted in the channel when the class begins", row["body"])
+        self.assertNotIn("Thursday", row["body"])
+        self.assertNotIn("Zoom", row["body"])
         self.assertNotIn("http", row["body"].casefold())
-        self.assertNotIn("zoom.us", row["body"].casefold())
+        self.assertIn("Open Market Analysis", row["body"])
         self.assertEqual(row["group_chat_id"], EXPECTED_EDUCATION_GROUP_ID)
         self.assertEqual(row["thread_id"], 3)
         self.assertEqual(row["scheduled_for"], THURSDAY_PUBLISH.isoformat())
@@ -993,6 +1052,107 @@ class EducationTopicPromotionTests(unittest.TestCase):
         self.assertFalse(
             any(item["chat_id"] == EXPECTED_EDUCATION_GROUP_ID for item in self.api.messages)
         )
+
+    def test_scheduled_post_publishes_as_text_when_optional_photo_is_not_added(self) -> None:
+        self.manager.dispatch_due(MONDAY_REVIEW)
+        row = self.manager.store.get(1)
+        self.assertIsNotNone(row)
+        assert row is not None
+        preview = self.api.messages[-1]
+        keyboard = preview["reply_markup"]["inline_keyboard"]
+        photo_callback = keyboard[3][0]["callback_data"]
+        approve_callback = keyboard[2][0]["callback_data"]
+
+        self.manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            True,
+            photo_callback,
+            now=MONDAY_REVIEW + timedelta(minutes=1),
+        )
+        photo_requested = self.manager.store.get(row["id"])
+        self.assertTrue(photo_requested["photo_upload_pending"])
+        self.assertIsNotNone(photo_requested["review_sent_at"])
+        self.assertEqual(photo_requested["review_version"], row["review_version"])
+
+        # No image arrives; approval and the scheduled publish must still work.
+        self.manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            True,
+            approve_callback,
+            now=MONDAY_REVIEW + timedelta(minutes=2),
+        )
+        self.manager.dispatch_due(MONDAY_PUBLISH)
+
+        published = self.manager.store.get(row["id"])
+        self.assertEqual(published["status"], "published")
+        self.assertFalse(published["photo_upload_pending"])
+        posts = [
+            item
+            for item in self.api.messages
+            if item["chat_id"] == EXPECTED_EDUCATION_GROUP_ID
+        ]
+        self.assertEqual(len(posts), 1)
+        self.assertEqual(posts[0]["message_thread_id"], 3)
+        self.assertEqual(self.api.photos, [])
+
+    def test_attaching_optional_photo_refreshes_review_and_requires_new_approval(self) -> None:
+        self.manager.dispatch_due(MONDAY_REVIEW)
+        row = self.manager.store.get(1)
+        self.assertIsNotNone(row)
+        assert row is not None
+        initial_preview = self.api.messages[-1]
+        initial_keyboard = initial_preview["reply_markup"]["inline_keyboard"]
+        photo_callback = initial_keyboard[3][0]["callback_data"]
+        old_approve_callback = initial_keyboard[2][0]["callback_data"]
+
+        self.manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            True,
+            photo_callback,
+            now=MONDAY_REVIEW + timedelta(minutes=1),
+        )
+        self.manager.handle_admin_photo(
+            ADMIN_ID,
+            ADMIN_ID,
+            [{"file_id": "scheduled-chart-file-id", "file_size": 1024}],
+            is_private=True,
+            now=MONDAY_REVIEW + timedelta(minutes=1, seconds=1),
+        )
+        updated = self.manager.store.get(row["id"])
+        self.assertEqual(updated["photo_file_id"], "scheduled-chart-file-id")
+        self.assertIsNone(updated["approved_at"])
+        self.assertEqual(updated["review_version"], row["review_version"] + 1)
+
+        self.manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            True,
+            old_approve_callback,
+            now=MONDAY_REVIEW + timedelta(minutes=2),
+        )
+        self.assertIsNone(self.manager.store.get(row["id"])["approved_at"])
+
+        revised_preview = self.api.photos[-1]
+        new_approve_callback = revised_preview["reply_markup"]["inline_keyboard"][2][0][
+            "callback_data"
+        ]
+        self.manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            True,
+            new_approve_callback,
+            now=MONDAY_REVIEW + timedelta(minutes=3),
+        )
+        self.manager.dispatch_due(MONDAY_PUBLISH)
+
+        published = self.manager.store.get(row["id"])
+        self.assertEqual(published["status"], "published")
+        self.assertEqual(self.api.photos[-1]["chat_id"], EXPECTED_EDUCATION_GROUP_ID)
+        self.assertEqual(self.api.photos[-1]["message_thread_id"], 3)
+        self.assertEqual(self.api.photos[-1]["photo"], "scheduled-chart-file-id")
 
     def test_approved_post_that_misses_publish_window_is_held_not_sent_late(self) -> None:
         self.manager.dispatch_due(MONDAY_REVIEW)

@@ -47,14 +47,31 @@ _DISALLOWED_PROMO_CLAIMS = re.compile(
     r"we\s+(?:made|earned|won)\s+\$?\d)",
     re.IGNORECASE,
 )
+_UNSUPPORTED_PROMO_OUTCOMES = re.compile(
+    r"\b(?:increase|improve|boost|guarantee)\s+(?:your\s+)?"
+    r"(?:win\s*rate|profits?|returns?|earnings?|success)\b|"
+    r"\b(?:win\s+more|earn\s+more|make\s+money|profitable\s+trades?)\b",
+    re.IGNORECASE,
+)
 _URL = re.compile(r"https?://\S+", re.IGNORECASE)
+_MARKET_VALUE_TOPIC = re.compile(
+    r"\b(?:levels?|liquidity|market\s+structure|POIs?|FVGs?|fair\s+value\s+gaps?|"
+    r"order\s+blocks?|displacement|confirmation)\b",
+    re.IGNORECASE,
+)
 _MARKET_ANALYSIS_CTA = re.compile(
     r"\b(?:tap|open|explore|visit|check\s+out|head\s+to|join)\b"
     r".{0,100}\b(?:market\s+analysis|the\s+button|button\s+below)\b",
     re.IGNORECASE | re.DOTALL,
 )
 _ZOOM_OR_CLASS = re.compile(r"\b(?:zoom|classes?|class\s+link|class\s+access)\b", re.I)
-_WRONG_BREAKDOWN_DESTINATION = re.compile(r"\bbreakdowns?\b", re.I)
+_WRONG_BREAKDOWN_DESTINATION = re.compile(
+    r"\b(?:breakdowns?|breaks\s+down)\b", re.I
+)
+_UNSUPPORTED_INSTITUTIONAL_PROMO_CLAIMS = re.compile(
+    r"\b(?:institutional|institutions?|market\s+makers?|liquidity\s+providers?)\b",
+    re.IGNORECASE,
+)
 _DISALLOWED_PROMO_MARKUP = re.compile(r"(?:\*\*|__|`|<[^>]+>)")
 _ZOOM_LINK_ALREADY_AVAILABLE = re.compile(
     r"\b(?:already|now)\s+(?:available|posted|live)\b", re.IGNORECASE
@@ -771,10 +788,10 @@ class EducationTopicPromotionStore:
                 """
                 UPDATE education_topic_promotions
                 SET photo_upload_pending = 1, photo_upload_admin_id = ?,
-                    review_sent_at = NULL, review_version = review_version + 1,
                     updated_at = ?
                 WHERE id = ? AND status = 'review' AND review_sent_at IS NOT NULL
                     AND review_deadline_at > ? AND review_version = ?
+                    AND approved_at IS NULL AND publish_attempts = 0
                 """,
                 (admin_id, at, promotion_id, at, version),
             )
@@ -860,10 +877,11 @@ class EducationTopicPromotionStore:
                 SET photo_file_id = ?, photo_upload_pending = 0,
                     photo_upload_admin_id = NULL, review_started_at = ?,
                     review_deadline_at = ?, review_sent_at = NULL,
-                    review_version = review_version + 1, updated_at = ?
+                    review_version = review_version + 1, approved_at = NULL,
+                    updated_at = ?
                 WHERE id = ? AND photo_upload_pending = 1
                     AND photo_upload_admin_id = ? AND status = 'review'
-                    AND review_deadline_at > ?
+                    AND review_deadline_at > ? AND publish_attempts = 0
                 """,
                 (
                     file_id,
@@ -877,6 +895,21 @@ class EducationTopicPromotionStore:
             )
             if cursor.rowcount:
                 self._action(connection, promotion_id, "photo_attached", admin_id, "", timestamp)
+                schedule = connection.execute(
+                    "SELECT schedule_key FROM education_topic_promotions WHERE id = ?",
+                    (promotion_id,),
+                ).fetchone()
+                if schedule and schedule["schedule_key"]:
+                    connection.execute(
+                        """
+                        UPDATE education_topic_promo_schedule_runs
+                        SET status = 'review_pending',
+                            details = 'photo added; updated preview awaits approval',
+                            updated_at = ?
+                        WHERE schedule_key = ?
+                        """,
+                        (timestamp, schedule["schedule_key"]),
+                    )
             return bool(cursor.rowcount)
 
     def cancel(
@@ -926,6 +959,7 @@ class EducationTopicPromotionStore:
                 """
                 UPDATE education_topic_promotions
                 SET status = 'publishing', publish_attempts = publish_attempts + 1,
+                    photo_upload_pending = 0, photo_upload_admin_id = NULL,
                     updated_at = ?
                 WHERE id = ? AND status = 'review' AND review_sent_at IS NOT NULL
                     AND review_deadline_at > ? AND publish_attempts = 0
@@ -1035,6 +1069,7 @@ class EducationTopicPromotionStore:
                 """
                 UPDATE education_topic_promotions
                 SET status = 'publishing', publish_attempts = publish_attempts + 1,
+                    photo_upload_pending = 0, photo_upload_admin_id = NULL,
                     updated_at = ?
                 WHERE id = ? AND status = 'review' AND scheduled_for IS NOT NULL
                     AND scheduled_for <= ? AND scheduled_for >= ?
@@ -1499,7 +1534,9 @@ class EducationTopicPromotionManager:
         )
 
     @staticmethod
-    def _validate_body(body: str) -> str | None:
+    def _validate_body(
+        body: str, *, promotion_type: str = "manual"
+    ) -> str | None:
         text = " ".join(body.split())
         if not text or len(text) > MAX_PROMO_BODY_CHARS:
             return f"Caption must be 1–{MAX_PROMO_BODY_CHARS} characters."
@@ -1507,6 +1544,13 @@ class EducationTopicPromotionManager:
             return "Keep links in the verified buttons; remove URLs from the caption."
         if _DISALLOWED_PROMO_CLAIMS.search(text):
             return "The caption contains a trading result, guaranteed claim, or direct signal."
+        if _UNSUPPORTED_PROMO_OUTCOMES.search(text):
+            return "Do not promise profits, win rates, earnings, or trading results."
+        if _UNSUPPORTED_INSTITUTIONAL_PROMO_CLAIMS.search(text):
+            return (
+                "Remove unverified claims about institutional activity, market "
+                "makers, or liquidity providers."
+            )
         folded = text.casefold()
         if "market analysis" not in folded or not re.search(
             r"\b(?:gold|xau\s*/?\s*usd)\b", folded
@@ -1514,6 +1558,11 @@ class EducationTopicPromotionManager:
             return (
                 "The promotion must focus on the separate Market Analysis channel "
                 "and its Gold/USD educational coverage."
+            )
+        if not _MARKET_VALUE_TOPIC.search(text):
+            return (
+                "Explain at least one relevant educational market concept, such as "
+                "structure, liquidity, levels, POIs, FVGs, or confirmation."
             )
         if not _MARKET_ANALYSIS_CTA.search(text):
             return (
@@ -1537,6 +1586,8 @@ class EducationTopicPromotionManager:
             if paragraph and _ZOOM_OR_CLASS.search(paragraph)
         ]
         if class_paragraphs:
+            if promotion_type != "scheduled_class":
+                return "Only a scheduled class promotion may include the optional Zoom reminder."
             if len(class_paragraphs) > 1:
                 return "Keep any Zoom reminder to one short, secondary paragraph."
             class_line = class_paragraphs[0]
@@ -1589,7 +1640,11 @@ class EducationTopicPromotionManager:
         headline = lines[0]
         if len(headline) > 100 or not any(char.isalpha() for char in headline):
             return "Gemini's caption needs a short, relevant headline."
-        body_issue = cls._validate_body(text)
+        if not headline.startswith(
+            ("📊", "🥇", "🪙", "💧", "🎯", "🧠", "📈", "🔍", "📚", "🌍", "🧭")
+        ):
+            return "Start the headline with a relevant market or Gold emoji."
+        body_issue = cls._validate_body(text, promotion_type=promotion_type)
         if body_issue:
             return body_issue
 
@@ -1758,7 +1813,7 @@ class EducationTopicPromotionManager:
     @staticmethod
     def _render(body: str) -> str:
         return (
-            "📊 <b>SMART MONEY HUB | MARKET ANALYSIS</b>\n\n"
+            "📊 <b>SMART MONEY HUB | MARKET ANALYSIS CHANNEL</b>\n\n"
             f"{html.escape(body, quote=False)}\n\n"
             "For educational purposes only. Trading involves risk."
         )
@@ -2051,16 +2106,22 @@ class EducationTopicPromotionManager:
             ):
                 self.api.send_message(
                     chat_id,
-                    "Send one chart image now. The updated photo-and-caption preview "
+                    "Adding a picture is optional. Send one chart image before the "
+                    "scheduled time if you want it included; if you do not, the approved "
+                    "caption will still publish on schedule without a photo. "
                     + (
-                        "must be approved before the scheduled publication time; the deadline "
-                        "will not be extended."
+                        "An uploaded image creates a new preview that must be approved "
+                        "before the scheduled time; the deadline will not be extended."
                         if promotion.get("scheduled_for")
-                        else "will start a fresh five-minute review window."
+                        else "An uploaded image creates a new preview and a fresh five-minute review."
                     ),
                 )
             else:
-                self.api.send_message(chat_id, "This review is closed; no photo was requested.")
+                self.api.send_message(
+                    chat_id,
+                    "This post is already approved or its review window is closed. "
+                    "No photo was requested.",
+                )
         elif action == "cancel":
             changed = self.store.cancel(
                 promotion_id,
@@ -2274,7 +2335,12 @@ class EducationTopicPromotionManager:
                 at=_utc(now).isoformat(),
             )
             return
-        issue = self._validate_body(str(promotion["body"]))
+        issue = self._validate_body(
+            str(promotion["body"]),
+            promotion_type=(
+                "scheduled_class" if promotion.get("schedule_key") else "manual"
+            ),
+        )
         if issue:
             self.store.fail_scheduled_review(
                 promotion_id,
@@ -2344,7 +2410,12 @@ class EducationTopicPromotionManager:
         now: datetime,
     ) -> None:
         promotion_id = int(promotion["id"])
-        issue = self._validate_body(str(promotion["body"]))
+        issue = self._validate_body(
+            str(promotion["body"]),
+            promotion_type=(
+                "scheduled_class" if promotion.get("schedule_key") else "manual"
+            ),
+        )
         if issue:
             self.api.send_message(chat_id, f"Not published: {issue}")
             return
@@ -2531,7 +2602,12 @@ class EducationTopicPromotionManager:
             )
             return True
         body = " ".join(text.strip().split())
-        issue = self._validate_body(body)
+        issue = self._validate_body(
+            body,
+            promotion_type=(
+                "scheduled_class" if promotion.get("schedule_key") else "manual"
+            ),
+        )
         if issue:
             self.api.send_message(chat_id, f"Caption not saved: {issue} Try again or /cancel.")
             return True
