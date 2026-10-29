@@ -1710,6 +1710,12 @@ class ChannelPostingTests(unittest.TestCase):
             )
         )
 
+    def test_timeout_notice_does_not_claim_an_unsaved_draft_exists(self) -> None:
+        message = describe_channel_post_rejection("", "gemini_timeout")
+        self.assertIn("No publishable draft was saved", message)
+        self.assertIn("one retry", message)
+        self.assertNotIn("review the saved draft", message.casefold())
+
     def test_unverified_current_market_claim_is_rejected(self) -> None:
         post = "Gold is bullish today.\n\nNO CONFIRMATION, NO ENTRY."
 

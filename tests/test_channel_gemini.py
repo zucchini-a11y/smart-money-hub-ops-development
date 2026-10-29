@@ -76,7 +76,7 @@ class GeminiChannelContentTests(unittest.TestCase):
 
         request = captured["request"]
         self.assertTrue(request.full_url.endswith(f"/models/{GEMINI_MODEL}:generateContent"))
-        self.assertEqual(captured["timeout"], 12)
+        self.assertEqual(captured["timeout"], 20)
         payload = json.loads(request.data.decode("utf-8"))
         self.assertEqual(payload["generationConfig"]["maxOutputTokens"], 700)
         self.assertNotIn("responseMimeType", payload["generationConfig"])
@@ -137,7 +137,7 @@ class GeminiChannelContentTests(unittest.TestCase):
             response_text,
         )
         self.assertTrue(request.full_url.endswith(f"/models/{GEMINI_MODEL}:generateContent"))
-        self.assertEqual(captured["timeout"], 12)
+        self.assertEqual(captured["timeout"], 20)
         self.assertEqual(mocked.call_count, 1)
         self.assertEqual(payload["generationConfig"]["temperature"], 0.72)
         instruction = payload["systemInstruction"]["parts"][0]["text"]
@@ -353,6 +353,54 @@ class GeminiChannelContentTests(unittest.TestCase):
         self.assertEqual([request.full_url for request in requests], [request_url] * 2)
         self.assertTrue(all(GEMINI_MODEL in request.full_url for request in requests))
         sleep.assert_called_once_with(0.1)
+
+    def test_timeout_retries_once_with_the_same_model_and_longer_timeout(self) -> None:
+        response_text = (
+            "CATEGORY: education\nPOST:\n"
+            "A concise lesson about waiting for confirmation."
+        )
+        with (
+            patch(
+                "smart_money_hub_bot.channel_gemini.urlopen",
+                side_effect=[TimeoutError(), _Response(_candidate(response_text))],
+            ) as mocked,
+            patch("smart_money_hub_bot.channel_gemini.time.sleep") as sleep,
+        ):
+            result = self.service.generate(
+                schedule_date="2026-10-30",
+                schedule_time="10:00",
+                preferred_category="weekly_market_recap",
+                history=[],
+                admin_feedback=[],
+            )
+
+        self.assertEqual(result.content, "A concise lesson about waiting for confirmation.")
+        self.assertEqual(mocked.call_count, 2)
+        requests = [call.args[0] for call in mocked.call_args_list]
+        self.assertTrue(all(GEMINI_MODEL in request.full_url for request in requests))
+        self.assertEqual([call.kwargs["timeout"] for call in mocked.call_args_list], [20, 20])
+        sleep.assert_called_once_with(0.5)
+
+    def test_repeated_timeout_fails_closed_after_one_retry(self) -> None:
+        with (
+            patch(
+                "smart_money_hub_bot.channel_gemini.urlopen",
+                side_effect=[TimeoutError(), TimeoutError()],
+            ) as mocked,
+            patch("smart_money_hub_bot.channel_gemini.time.sleep") as sleep,
+        ):
+            with self.assertRaises(GeminiChannelGenerationError) as caught:
+                self.service.generate(
+                    schedule_date="2026-10-30",
+                    schedule_time="10:00",
+                    preferred_category="weekly_market_recap",
+                    history=[],
+                    admin_feedback=[],
+                )
+
+        self.assertEqual(caught.exception.category, "gemini_timeout")
+        self.assertEqual(mocked.call_count, 2)
+        sleep.assert_called_once_with(0.5)
 
     def test_repeated_server_error_preserves_http_status_and_stops_after_one_retry(
         self,

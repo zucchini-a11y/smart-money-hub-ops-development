@@ -522,6 +522,18 @@ def describe_channel_post_rejection(
             "Gemini reached a usage or rate limit, so no Market Analysis post was sent. "
             "Retry the draft later or edit it yourself."
         )
+    if category == "gemini_timeout":
+        return (
+            "Gemini did not respond before the request timed out, even after one "
+            "retry. No publishable draft was saved and nothing was sent. Retry "
+            "generation later; the scheduled post remains held."
+        )
+    if category == "gemini_revision_timeout":
+        return (
+            "Gemini did not finish revising the post before the request timed out, "
+            "even after one retry. The existing saved draft was left unchanged and "
+            "nothing was sent."
+        )
     if category == "telegram_permission_error":
         return (
             "Telegram did not allow the bot to post in the configured Market "
@@ -574,8 +586,8 @@ def describe_channel_post_rejection(
         )
     if category.startswith("gemini_"):
         return (
-            "Gemini could not provide a publishable Market Analysis draft. Nothing was sent "
-            "to the channel. You can review the saved draft and retry later."
+            "Gemini could not provide a publishable Market Analysis draft. Nothing "
+            "was sent to the channel. Retry draft generation later."
         )
     return (
         "This post did not pass a publishing check. Review the draft, correct the "

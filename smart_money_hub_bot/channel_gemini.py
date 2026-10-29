@@ -27,6 +27,8 @@ _MAX_POST_CHARS = 500
 _MAX_FEEDBACK_ITEMS = 5
 _MAX_FEEDBACK_CHARS = 300
 _MAX_TRANSIENT_HTTP_RETRIES = 1
+_MAX_TIMEOUT_RETRIES = 1
+_TIMEOUT_RETRY_DELAY_SECONDS = 0.5
 _TRANSIENT_HTTP_STATUSES = frozenset({500, 502, 503, 504})
 _MAX_RETRY_AFTER_SECONDS = 2.0
 _CATEGORY_LINE = re.compile(r"^CATEGORY:\s*([a-z_]+)\s*$", re.IGNORECASE)
@@ -52,7 +54,7 @@ class GeminiChannelContentService:
 
     model = GEMINI_MODEL
 
-    def __init__(self, api_key: str, timeout_seconds: float = 12) -> None:
+    def __init__(self, api_key: str, timeout_seconds: float = 20) -> None:
         self._api_key = api_key.strip()
         self._timeout_seconds = timeout_seconds
 
@@ -133,6 +135,23 @@ class GeminiChannelContentService:
         )
         started = time.monotonic()
         retries = 0
+        timeout_retries = 0
+
+        def retry_timeout() -> bool:
+            nonlocal timeout_retries
+            if timeout_retries >= _MAX_TIMEOUT_RETRIES:
+                return False
+            timeout_retries += 1
+            logger.warning(
+                "Gemini channel request timed out; retrying once with the same model "
+                "attempt=%s timeout_seconds=%.1f request_id=%s.",
+                timeout_retries,
+                self._timeout_seconds,
+                request_id,
+            )
+            time.sleep(_TIMEOUT_RETRY_DELAY_SECONDS)
+            return True
+
         while True:
             try:
                 with urlopen(request, timeout=self._timeout_seconds) as response:
@@ -170,6 +189,8 @@ class GeminiChannelContentService:
                 )
                 raise GeminiChannelGenerationError(category, http_status) from None
             except (TimeoutError, socket.timeout):
+                if retry_timeout():
+                    continue
                 self._log_failure("gemini_timeout", started, request_id)
                 raise GeminiChannelGenerationError("gemini_timeout") from None
             except URLError as error:
@@ -179,6 +200,8 @@ class GeminiChannelContentService:
                     or "timed out" in str(error.reason).casefold()
                     else "gemini_network_error"
                 )
+                if category == "gemini_timeout" and retry_timeout():
+                    continue
                 self._log_failure(category, started, request_id)
                 raise GeminiChannelGenerationError(category) from None
             except OSError as error:
@@ -188,6 +211,8 @@ class GeminiChannelContentService:
                     or "timed out" in str(error).casefold()
                     else "gemini_network_error"
                 )
+                if category == "gemini_timeout" and retry_timeout():
+                    continue
                 self._log_failure(category, started, request_id)
                 raise GeminiChannelGenerationError(category) from None
             except (UnicodeDecodeError, json.JSONDecodeError, TypeError):
