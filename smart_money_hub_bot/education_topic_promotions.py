@@ -1737,8 +1737,8 @@ class EducationTopicPromotionManager:
             if attempt == 1:
                 retry_feedback = (
                     f"The previous response failed this check: {issue} "
-                    "Write a different, corrected caption and preserve the required "
-                    "destination distinctions."
+                    "Write only a different, corrected 1–220 character hook. "
+                    "Follow the hook-only system instructions."
                 )
         return None, (
             "Gemini's caption failed content checks after two attempts. "
