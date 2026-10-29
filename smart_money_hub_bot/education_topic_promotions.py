@@ -1503,14 +1503,16 @@ class EducationTopicPromotionManager:
         promotion_type: str,
         weekday: str | None,
     ) -> str | None:
-        issue = cls._validate_body(body)
-        if issue:
-            return issue
+        text = body.strip()
+        if not text or len(text) > 220:
+            return "Gemini's original hook must be 1–220 characters."
+        if _URL.search(text) or re.search(r"(?:\*\*|__|`|<[^>]+>)", text):
+            return "Gemini's hook must be plain text without links or markup."
+        if _DISALLOWED_PROMO_CLAIMS.search(text):
+            return "Gemini's hook contains a trading result, guaranteed claim, or direct signal."
         lines = [line.strip() for line in body.strip().splitlines() if line.strip()]
         if not lines:
             return "Gemini returned an empty caption."
-        if re.search(r"(?:\*\*|__|`|<[^>]+>)", body):
-            return "Use plain text; the bot applies Telegram-safe formatting."
         headline = lines[0]
         if not headline.startswith(("📚", "📊", "🧠", "🎯", "💬", "🎓", "✨", "🌱", "🤝", "👋", "📣")):
             return "The caption needs a relevant emoji at the start of its headline."
@@ -1518,76 +1520,29 @@ class EducationTopicPromotionManager:
         title_letters = [char for char in title_text if char.isalpha()]
         if not title_letters or sum(char.isupper() for char in title_letters) / len(title_letters) < 0.55:
             return "The headline must be short and uppercase."
-
-        lowered = body.casefold()
-        group_mentioned = "education group" in lowered or "educational group" in lowered
-        if not (
-            "trade breakdown" in lowered
-            and group_mentioned
-            and "market analysis topic" in lowered
-        ):
+        restricted_terms = (
+            "coach",
+            "assessment",
+            "challenge",
+            "journal",
+            "progress",
+            "signal",
+            "market analysis",
+            "trade breakdown",
+            "zoom",
+            "8:00 pm",
+            "profit",
+            "result",
+            "testimonial",
+            "guarantee",
+        )
+        if any(term in text.casefold() for term in restricted_terms):
             return (
-                "State clearly that trade breakdowns are shared in the Education "
-                "Group's Market Analysis topic."
+                "Keep Gemini's unique section to an evergreen learning hook; "
+                "the bot adds the verified destination and feature details."
             )
-        for sentence in re.split(r"(?<=[.!?])\s+|\n+", body):
-            if "trade breakdown" in sentence.casefold() and not (
-                ("education group" in sentence.casefold() or "educational group" in sentence.casefold())
-                and "topic" in sentence.casefold()
-            ):
-                return (
-                    "Keep the trade-breakdown location attached to the Education "
-                    "Group's Market Analysis topic."
-                )
-        if "separate market analysis channel" not in lowered or not (
-            "button" in lowered or "below" in lowered
-        ):
-            return (
-                "Make clear that the separate Market Analysis channel is opened "
-                "with its own button."
-            )
-        if not ("coach" in lowered and "button" in lowered and ("open" in lowered or "tap" in lowered)):
-            return "Explain that the Coach button opens the Smart Money Hub bot."
-        if "/start" not in lowered:
-            return "Tell members to send /start if Telegram prompts them."
-
-        for sentence in re.split(r"(?<=[.!?])\s+|\n+", body.strip()):
-            normalized = " ".join(sentence.casefold().split()).rstrip(".")
-            feature_sentence = any(
-                token in normalized
-                for token in ("private coach", "smc assessment", "short challenge", "private journal", "learning progress")
-            )
-            if feature_sentence and not (
-                any(normalized == " ".join(feature.casefold().split()).rstrip(".") for feature in PROMO_FEATURES)
-                or (
-                    "coach" in normalized
-                    and "button" in normalized
-                    and ("open" in normalized or "tap" in normalized)
-                    and "/start" in normalized
-                )
-            ):
-                return (
-                    "Gemini mentioned a feature without using an approved, verified "
-                    "feature description."
-                )
-
-        if promotion_type == "scheduled_class":
-            expected_day = (weekday or "").casefold()
-            if expected_day not in {"monday", "thursday"}:
-                return "The scheduled class day is unavailable; no class claim can be used."
-            if (
-                expected_day not in lowered
-                or "8:00 pm wat" not in lowered
-                or "link" not in lowered
-                or "posted" not in lowered
-            ):
-                return (
-                    "The class reminder must state the configured weekday, 8:00 PM "
-                    "WAT, and that the link is posted when class begins."
-                )
-
         safety_issue = validate_channel_post(
-            f"{body}\n\nNO CONFIRMATION, NO ENTRY.",
+            f"{text}\n\nNO CONFIRMATION, NO ENTRY.",
             is_promo=False,
         )
         if safety_issue:
@@ -1613,6 +1568,32 @@ class EducationTopicPromotionManager:
             ):
                 return "The caption is too similar to a recent promotion; write a new angle."
         return None
+
+    @classmethod
+    def _compose_generated_body(
+        cls, hook: str, *, promotion_type: str, weekday: str | None
+    ) -> str:
+        paragraphs = [hook.strip()]
+        if promotion_type == "scheduled_class":
+            day = (weekday or "").strip()
+            if day.casefold() not in {"monday", "thursday"}:
+                raise ValueError("The scheduled class day is unavailable.")
+            paragraphs.append(
+                f"📅 The configured {day} Zoom class starts at 8:00 PM WAT. "
+                "The link will be posted in the channel when the class begins."
+            )
+        paragraphs.extend(
+            [
+                "📌 Trade breakdowns are shared in the Education Group's "
+                "Market Analysis topic.",
+                "📊 The separate Market Analysis channel has its own button below.",
+                "🤖 "
+                + PROMO_FEATURES[0]
+                + " Tap the Coach button below to open the Smart Money Hub bot; "
+                "send /start if prompted.",
+            ]
+        )
+        return "\n\n".join(paragraphs)
 
     @staticmethod
     def _novelty_core(text: str) -> str:
@@ -1656,6 +1637,7 @@ class EducationTopicPromotionManager:
         history = self.store.recent_captions()
         model = str(getattr(self.writer, "model", "gemini-3.5-flash-lite"))
         retry_feedback: str | None = None
+        last_issue: str | None = None
         retryable_generation_errors = {
             "gemini_invalid_response",
             "gemini_missing_candidate",
@@ -1722,7 +1704,29 @@ class EducationTopicPromotionManager:
                 weekday=weekday,
             )
             if issue is None:
-                return str(body).strip(), None
+                try:
+                    composed = self._compose_generated_body(
+                        str(body),
+                        promotion_type=promotion_type,
+                        weekday=weekday,
+                    )
+                except ValueError as error:
+                    issue = str(error)
+                else:
+                    issue = self._validate_body(composed)
+                    if issue is None:
+                        safety_issue = validate_channel_post(
+                            f"{composed}\n\nNO CONFIRMATION, NO ENTRY.",
+                            is_promo=False,
+                        )
+                        if safety_issue:
+                            issue = (
+                                "The completed caption failed the existing "
+                                f"content-safety check ({safety_issue})."
+                            )
+                    if issue is None:
+                        return composed, None
+            last_issue = issue
             self.store.record_generation_event(
                 action="gemini_generation_rejected",
                 admin_id=self.admin_id,
@@ -1739,7 +1743,7 @@ class EducationTopicPromotionManager:
         return None, (
             "Gemini's caption failed content checks after two attempts. "
             "No draft was saved. Last issue: "
-            f"{retry_feedback or 'content validation failed'}"
+            f"{last_issue or 'content validation failed'}"
         )
 
     @staticmethod

@@ -141,7 +141,7 @@ class GeminiChannelContentTests(unittest.TestCase):
         instruction = payload["systemInstruction"]["parts"][0]["text"]
         prompt = payload["contents"][0]["parts"][0]["text"]
         self.assertIn("distinct angle", instruction)
-        self.assertIn("trade breakdowns are shared in the Education Group", instruction)
+        self.assertIn("Trade breakdowns belong in the Education Group", instruction)
         self.assertIn("not in the separate channel", instruction)
         self.assertIn("CATEGORY: engagement", instruction)
         self.assertIn("A previous promotion caption", prompt)

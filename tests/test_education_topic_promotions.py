@@ -71,7 +71,7 @@ class FakePromotionWriter:
             return (
                 f"🎓 {day.upper()} CLASS: BRING ONE GOOD QUESTION\n\n"
                 f"Our configured {day} Zoom class starts at 8:00 PM WAT. "
-                "The link will be posted in the channel when class begins.\n\n"
+                "The link will be posted in the channel when the class begins.\n\n"
                 "Trade breakdowns are shared in the Education Group's Market "
                 "Analysis topic. The separate Market Analysis channel has its "
                 "own button below.\n\n"
@@ -281,10 +281,12 @@ class EducationTopicPromotionTests(unittest.TestCase):
     def test_each_manual_start_uses_gemini_and_cancelled_copy_is_history(self) -> None:
         first, _approve_callback = self.create_review()
         cancel_callback = next(
-            button["callback_data"]
+            button.get("callback_data", "")
             for row in self.api.messages[-1]["reply_markup"]["inline_keyboard"]
             for button in row
-            if button["callback_data"].startswith("admin:education_topic_promo:cancel:")
+            if button.get("callback_data", "").startswith(
+                "admin:education_topic_promo:cancel:"
+            )
         )
         self.manager.handle_callback(
             ADMIN_ID, ADMIN_ID, True, cancel_callback, now=NOW + timedelta(seconds=1)
@@ -309,7 +311,12 @@ class EducationTopicPromotionTests(unittest.TestCase):
         regenerated = self.manager.store.get(2)
         self.assertIsNotNone(regenerated)
         self.assertNotEqual(regenerated["body"], first["body"])
-        self.assertEqual(self.api.sent_results, 0)
+        self.assertFalse(
+            any(
+                message["chat_id"] == EXPECTED_EDUCATION_GROUP_ID
+                for message in self.api.messages
+            )
+        )
 
     def test_gemini_rate_limit_fails_closed_and_is_logged(self) -> None:
         class RateLimitedWriter:
@@ -329,7 +336,12 @@ class EducationTopicPromotionTests(unittest.TestCase):
 
         self.assertEqual(manager.store.recent(), [])
         self.assertIn("Gemini is rate-limited", self.api.messages[-1]["text"])
-        self.assertEqual(self.api.sent_results, 0)
+        self.assertFalse(
+            any(
+                message["chat_id"] == EXPECTED_EDUCATION_GROUP_ID
+                for message in self.api.messages
+            )
+        )
         with sqlite3.connect(self.database_path) as connection:
             event = connection.execute(
                 """
@@ -367,7 +379,12 @@ class EducationTopicPromotionTests(unittest.TestCase):
         saved = self.manager.store.get(1)
         self.assertIsNotNone(saved)
         self.assertEqual(saved["body"], valid_caption)
-        self.assertEqual(self.api.sent_results, 0)
+        self.assertFalse(
+            any(
+                message["chat_id"] == EXPECTED_EDUCATION_GROUP_ID
+                for message in self.api.messages
+            )
+        )
 
     def test_two_invalid_gemini_captions_are_held_without_a_fallback(self) -> None:
         self.writer.responses = ["plain text", "still plain text"]
@@ -382,7 +399,12 @@ class EducationTopicPromotionTests(unittest.TestCase):
         self.assertEqual(len(self.writer.calls), 2)
         self.assertEqual(self.manager.store.recent(), [])
         self.assertIn("failed content checks after two attempts", self.api.messages[-1]["text"])
-        self.assertEqual(self.api.sent_results, 0)
+        self.assertFalse(
+            any(
+                message["chat_id"] == EXPECTED_EDUCATION_GROUP_ID
+                for message in self.api.messages
+            )
+        )
 
     def test_scheduled_class_preview_uses_gemini_and_still_requires_approval(self) -> None:
         self.manager.store.set_schedule_enabled(
@@ -397,7 +419,12 @@ class EducationTopicPromotionTests(unittest.TestCase):
         self.assertIsNotNone(saved)
         self.assertEqual(saved["status"], "review")
         self.assertIn("8:00 PM WAT", saved["body"])
-        self.assertEqual(self.api.sent_results, 0)
+        self.assertFalse(
+            any(
+                message["chat_id"] == EXPECTED_EDUCATION_GROUP_ID
+                for message in self.api.messages
+            )
+        )
 
     def test_only_explicit_approval_publishes_once_to_topic_three(self) -> None:
         row, approve_callback = self.create_review()
@@ -823,7 +850,7 @@ class EducationTopicPromotionTests(unittest.TestCase):
         self.assertIn(
             "link will be posted in the channel when the class begins", row["body"]
         )
-        self.assertIn("Trade breakdowns are shared in the Educational Group", row["body"])
+        self.assertIn("Trade breakdowns are shared in the Education Group", row["body"])
         self.assertNotIn("https://", row["body"])
         self.assertEqual(self.api.messages[-1]["chat_id"], ADMIN_ID)
         self.assertIn("Monday, 02 Nov 2026 at 07:00 PM WAT", self.api.messages[-1]["text"])
