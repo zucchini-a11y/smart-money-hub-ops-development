@@ -1629,10 +1629,16 @@ class EducationTopicPromotionManager:
         weekday: str | None,
     ) -> str | None:
         text = body.strip()
-        if not text or len(text) < 180 or len(text) > MAX_PROMO_BODY_CHARS:
+        if not text:
+            return "Gemini returned an empty promotion caption."
+        if len(text) < 180:
             return (
-                "Gemini must return a complete promotion between 180 and "
-                f"{MAX_PROMO_BODY_CHARS} characters."
+                f"Gemini caption is too short ({len(text)} characters; minimum 180)."
+            )
+        if len(text) > MAX_PROMO_BODY_CHARS:
+            return (
+                f"Gemini caption is too long ({len(text)} characters; maximum "
+                f"{MAX_PROMO_BODY_CHARS})."
             )
         if _URL.search(text) or _DISALLOWED_PROMO_MARKUP.search(text):
             return "Gemini's caption must be plain text without raw links or markup."
@@ -1784,7 +1790,14 @@ class EducationTopicPromotionManager:
                 at=_utc(now).isoformat(),
             )
             if attempt == 1:
-                if "breakdown" in issue.casefold():
+                issue_lower = issue.casefold()
+                if "too short" in issue_lower or "too long" in issue_lower:
+                    retry_feedback = (
+                        "The caption failed the length check. Return one complete "
+                        "plain-text caption between 280 and 500 characters inclusive. "
+                        "Count spaces and punctuation; do not return an explanation."
+                    )
+                elif "breakdown" in issue_lower:
                     retry_feedback = (
                         "Keep the caption strictly within the verified Gold/USD "
                         "Market Analysis channel scope. Omit unrelated feature claims."

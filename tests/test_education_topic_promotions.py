@@ -362,7 +362,9 @@ class EducationTopicPromotionTests(unittest.TestCase):
             "Tap the Open Market Analysis button below to explore the channel."
         )
         self.writer.responses = [
-            "A plain headline without the required destinations.",
+            "A plain headline without the required destinations.\n\n"
+            + "This extra text is deliberately long but still lacks the required "
+            "market scope and button call to action. " * 3,
             valid_caption,
         ]
         self.manager.handle_callback(
@@ -386,6 +388,42 @@ class EducationTopicPromotionTests(unittest.TestCase):
                 for message in self.api.messages
             )
         )
+
+    def test_short_gemini_caption_gets_specific_length_retry_and_exact_count(self) -> None:
+        self.writer.responses = ["📊 GOLD CHECK\n\nToo short.", _PROMO_CAPTIONS[0]]
+        self.manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            True,
+            "admin:education_topic_promo:create",
+            now=NOW,
+        )
+
+        self.assertEqual(len(self.writer.calls), 2)
+        self.assertIn(
+            "between 280 and 500 characters inclusive",
+            self.writer.calls[1]["retry_feedback"],
+        )
+        self.assertIn("Count spaces and punctuation", self.writer.calls[1]["retry_feedback"])
+        self.assertEqual(
+            self.manager._validate_generated_body(
+                "x" * 710,
+                recent_captions=[],
+                promotion_type="manual",
+                weekday=None,
+            ),
+            "Gemini caption is too long (710 characters; maximum 700).",
+        )
+        with sqlite3.connect(self.database_path) as connection:
+            event = connection.execute(
+                """
+                SELECT details FROM education_topic_promo_actions
+                WHERE action = 'gemini_generation_rejected'
+                ORDER BY id LIMIT 1
+                """
+            ).fetchone()
+        self.assertIn("too short", event[0])
+        self.assertIn("characters; minimum 180", event[0])
 
     def test_promotion_retry_omits_forbidden_feature_from_prompt_and_history(self) -> None:
         historical, error = self.manager.store.create_draft(

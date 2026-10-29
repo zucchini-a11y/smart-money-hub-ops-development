@@ -146,6 +146,8 @@ class GeminiChannelContentTests(unittest.TestCase):
         self.assertIn("separate Smart Money Hub Market Analysis channel", instruction)
         self.assertIn("Gold/XAUUSD", instruction)
         self.assertIn("Open Market Analysis button below", instruction)
+        self.assertIn("between 280 and 500 characters inclusive", instruction)
+        self.assertIn("count spaces and punctuation", instruction)
         self.assertIn("do not add unrelated features or services", instruction)
         self.assertNotIn("breakdown", instruction.casefold())
         self.assertIn("optional closing reminder", instruction)
