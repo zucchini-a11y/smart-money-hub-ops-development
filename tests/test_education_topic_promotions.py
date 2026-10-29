@@ -819,7 +819,7 @@ class EducationTopicPromotionTests(unittest.TestCase):
         assert row is not None
         self.assertEqual(row["scheduled_for"], MONDAY_PUBLISH.isoformat())
         self.assertEqual(row["schedule_key"], "education-topic-promo:2026-11-02:monday")
-        self.assertIn("MONDAY", row["body"])
+        self.assertIn("Monday", row["body"])
         self.assertIn("8:00 PM WAT", row["body"])
         self.assertIn(
             "link will be posted in the channel when the class begins", row["body"]
@@ -883,7 +883,7 @@ class EducationTopicPromotionTests(unittest.TestCase):
         row = self.manager.store.get(1)
         self.assertIsNotNone(row)
         assert row is not None
-        self.assertIn("THURSDAY", row["body"])
+        self.assertIn("Thursday", row["body"])
         self.assertIn("8:00 PM WAT", row["body"])
         self.assertIn("link will be posted in the channel when the class begins", row["body"])
         self.assertNotIn("http", row["body"].casefold())
