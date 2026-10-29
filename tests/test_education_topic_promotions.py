@@ -22,7 +22,7 @@ from smart_money_hub_bot.storage import Repository
 
 ADMIN_ID = 4242
 BOT_ID = 9898
-TOPIC_LINK = "https://t.me/c/3916437804/3/13"
+TOPIC_LINK = "https://t.me/c/3916437804/5/16"
 NOW = datetime(2026, 10, 29, 11, 0, tzinfo=timezone.utc)
 MONDAY_REVIEW = datetime(2026, 11, 2, 17, 55, tzinfo=timezone.utc)
 MONDAY_PUBLISH = datetime(2026, 11, 2, 18, 0, tzinfo=timezone.utc)
@@ -267,7 +267,7 @@ class EducationTopicPromotionTests(unittest.TestCase):
 
         row, _callback = self.create_review()
         self.assertEqual(row["group_chat_id"], -1003916437804)
-        self.assertEqual(row["thread_id"], 3)
+        self.assertEqual(row["thread_id"], 5)
         self.assertEqual(row["topic_source_link"], TOPIC_LINK)
         self.assertEqual(row["group_title"], "🧠 Smart Money Hub | Trading Education")
         self.assertEqual(row["channel_title"], "Smart Money Hub")
@@ -433,7 +433,7 @@ class EducationTopicPromotionTests(unittest.TestCase):
             ),
             group_chat_id=EXPECTED_EDUCATION_GROUP_ID,
             group_title="🧠 Smart Money Hub | Trading Education",
-            thread_id=3,
+            thread_id=5,
             topic_source_link=TOPIC_LINK,
             channel_link="https://t.me/+verifiedMarketAnalysisInvite",
             channel_title="Smart Money Hub",
@@ -684,7 +684,7 @@ class EducationTopicPromotionTests(unittest.TestCase):
             ),
         )
 
-    def test_only_explicit_approval_publishes_once_to_topic_three(self) -> None:
+    def test_only_explicit_approval_publishes_once_to_market_analysis_topic(self) -> None:
         row, approve_callback = self.create_review()
         self.assertEqual(
             sum(item["chat_id"] == EXPECTED_EDUCATION_GROUP_ID for item in self.api.messages),
@@ -703,7 +703,7 @@ class EducationTopicPromotionTests(unittest.TestCase):
             if item["chat_id"] == EXPECTED_EDUCATION_GROUP_ID
         ]
         self.assertEqual(len(group_posts), 1)
-        self.assertEqual(group_posts[0]["message_thread_id"], 3)
+        self.assertEqual(group_posts[0]["message_thread_id"], 5)
         self.assertEqual(group_posts[0]["parse_mode"], "HTML")
         buttons = group_posts[0]["reply_markup"]["inline_keyboard"]
         self.assertEqual(buttons[0][0]["url"], row["channel_link"])
@@ -820,7 +820,7 @@ class EducationTopicPromotionTests(unittest.TestCase):
         )
         sent = self.api.photos[-1]
         self.assertEqual(sent["chat_id"], EXPECTED_EDUCATION_GROUP_ID)
-        self.assertEqual(sent["message_thread_id"], 3)
+        self.assertEqual(sent["message_thread_id"], 5)
         self.assertEqual(sent["photo"], "synthetic-chart-file-id")
 
     def test_wrong_topic_and_missing_channel_permission_fail_closed(self) -> None:
@@ -834,6 +834,23 @@ class EducationTopicPromotionTests(unittest.TestCase):
         )
         self.assertIsNone(wrong_topic.store.get(1))
         self.assertIn("not the approved Market Analysis topic", self.api.messages[-1]["text"])
+
+        self.api.messages.clear()
+        announcements_topic = self.make_manager(
+            topic_link="https://t.me/c/3916437804/3/13"
+        )
+        announcements_topic.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            True,
+            "admin:education_topic_promo:create",
+            now=NOW,
+        )
+        self.assertIsNone(announcements_topic.store.get(1))
+        self.assertIn(
+            "not the approved Market Analysis topic",
+            self.api.messages[-1]["text"],
+        )
 
         self.api.messages.clear()
         self.api.channel_can_post = False
@@ -980,7 +997,7 @@ class EducationTopicPromotionTests(unittest.TestCase):
             body="A saved promotion draft.",
             group_chat_id=EXPECTED_EDUCATION_GROUP_ID,
             group_title="🧠 Smart Money Hub | Trading Education",
-            thread_id=3,
+            thread_id=5,
             topic_source_link=TOPIC_LINK,
             channel_link="https://t.me/+verifiedMarketAnalysisInvite",
             channel_title="Smart Money Hub",
@@ -1048,7 +1065,7 @@ class EducationTopicPromotionTests(unittest.TestCase):
                     review_deadline_at, created_at, updated_at
                 ) VALUES (
                     'Preserve this old draft.', 'old-hash', -1003916437804, 3,
-                    'https://t.me/c/3916437804/3/13',
+                    'https://t.me/c/3916437804/5/16',
                     'https://t.me/+verifiedMarketAnalysisInvite',
                     'SmartMoneyHubSignalsBot', 'review',
                     '2026-10-29T10:00:00+00:00',
@@ -1153,7 +1170,7 @@ class EducationTopicPromotionTests(unittest.TestCase):
             if item["chat_id"] == EXPECTED_EDUCATION_GROUP_ID
         ]
         self.assertEqual(len(posts), 1)
-        self.assertEqual(posts[0]["message_thread_id"], 3)
+        self.assertEqual(posts[0]["message_thread_id"], 5)
         self.assertEqual(self.manager.store.get(1)["status"], "published")
         self.assertEqual(
             self.manager.store.schedule_run(row["schedule_key"])["status"], "published"
@@ -1180,7 +1197,7 @@ class EducationTopicPromotionTests(unittest.TestCase):
         self.assertNotIn("http", row["body"].casefold())
         self.assertIn("Open Market Analysis", row["body"])
         self.assertEqual(row["group_chat_id"], EXPECTED_EDUCATION_GROUP_ID)
-        self.assertEqual(row["thread_id"], 3)
+        self.assertEqual(row["thread_id"], 5)
         self.assertEqual(row["scheduled_for"], THURSDAY_PUBLISH.isoformat())
 
     def test_scheduled_post_expires_without_approval_and_is_not_sent_late(self) -> None:
@@ -1236,7 +1253,7 @@ class EducationTopicPromotionTests(unittest.TestCase):
             if item["chat_id"] == EXPECTED_EDUCATION_GROUP_ID
         ]
         self.assertEqual(len(posts), 1)
-        self.assertEqual(posts[0]["message_thread_id"], 3)
+        self.assertEqual(posts[0]["message_thread_id"], 5)
         self.assertEqual(self.api.photos, [])
 
     def test_attaching_optional_photo_refreshes_review_and_requires_new_approval(self) -> None:
@@ -1293,7 +1310,7 @@ class EducationTopicPromotionTests(unittest.TestCase):
         published = self.manager.store.get(row["id"])
         self.assertEqual(published["status"], "published")
         self.assertEqual(self.api.photos[-1]["chat_id"], EXPECTED_EDUCATION_GROUP_ID)
-        self.assertEqual(self.api.photos[-1]["message_thread_id"], 3)
+        self.assertEqual(self.api.photos[-1]["message_thread_id"], 5)
         self.assertEqual(self.api.photos[-1]["photo"], "scheduled-chart-file-id")
 
     def test_approved_post_that_misses_publish_window_is_held_not_sent_late(self) -> None:
