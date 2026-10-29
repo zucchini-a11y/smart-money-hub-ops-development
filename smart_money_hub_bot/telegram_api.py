@@ -178,6 +178,7 @@ class TelegramAPI:
         reply_markup: dict[str, Any] | None = None,
         *,
         parse_mode: str | None = None,
+        message_thread_id: int | None = None,
         business_connection_id: str | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {"chat_id": chat_id, "text": text}
@@ -185,6 +186,8 @@ class TelegramAPI:
             payload["reply_markup"] = reply_markup
         if parse_mode is not None:
             payload["parse_mode"] = parse_mode
+        if message_thread_id is not None:
+            payload["message_thread_id"] = message_thread_id
         if business_connection_id is not None:
             payload["business_connection_id"] = business_connection_id
         result = self._request("sendMessage", payload)
@@ -198,6 +201,7 @@ class TelegramAPI:
         caption: str,
         reply_markup: dict[str, Any] | None = None,
         parse_mode: str | None = None,
+        message_thread_id: int | None = None,
     ) -> dict[str, Any]:
         """Send a Telegram-hosted photo by file_id with a formatted caption."""
         payload: dict[str, Any] = {
@@ -209,6 +213,8 @@ class TelegramAPI:
             payload["reply_markup"] = reply_markup
         if parse_mode is not None:
             payload["parse_mode"] = parse_mode
+        if message_thread_id is not None:
+            payload["message_thread_id"] = message_thread_id
         result = self._request("sendPhoto", payload)
         return result if isinstance(result, dict) else {}
 
