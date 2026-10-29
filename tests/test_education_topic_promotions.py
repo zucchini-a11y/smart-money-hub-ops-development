@@ -11,7 +11,10 @@ from smart_money_hub_bot.education_topic_promotions import (
     EducationTopicPromotionManager,
     EducationTopicPromotionStore,
 )
-from smart_money_hub_bot.channel_gemini import GeminiChannelGenerationError
+from smart_money_hub_bot.channel_gemini import (
+    GeminiChannelContentService,
+    GeminiChannelGenerationError,
+)
 from smart_money_hub_bot.telegram_api import TelegramAPIError
 from smart_money_hub_bot.education_polls import (
     EXPECTED_EDUCATION_GROUP_ID,
@@ -770,14 +773,16 @@ class EducationTopicPromotionTests(unittest.TestCase):
             "and explains liquidity and structure for educational purposes.\n\n"
             "Tap the Open Market Analysis button below to explore the channel."
         )
-        self.assertIn(
-            "Start the headline with a relevant market or Gold emoji.",
+        repaired, changed = self.manager._repair_generated_headline(no_emoji_headline)
+        self.assertTrue(changed)
+        self.assertTrue(repaired.startswith("📊 MASTERING GOLD ANALYSIS"))
+        self.assertIsNone(
             self.manager._validate_generated_body(
-                no_emoji_headline,
+                repaired,
                 recent_captions=[],
                 promotion_type="manual",
                 weekday=None,
-            ),
+            )
         )
         self.assertIn(
             "after the Market Analysis call to action",
@@ -799,6 +804,85 @@ class EducationTopicPromotionTests(unittest.TestCase):
                 wrong_zoom_destination, promotion_type="scheduled_class"
             ),
         )
+
+    def test_headline_repair_preserves_body_and_reruns_all_safety_checks(self) -> None:
+        no_headline = (
+            "Here is your caption:\n\n"
+            "The separate Market Analysis channel explores Gold/XAUUSD context "
+            "and explains liquidity, structure and confirmation.\n\n"
+            "Tap the Open Market Analysis button below to explore the channel."
+        )
+        repaired, changed = self.manager._repair_generated_headline(no_headline)
+        self.assertTrue(changed)
+        self.assertTrue(repaired.startswith("📊 GOLD & USD: MARKET CONTEXT"))
+        self.assertIn("explores Gold/XAUUSD context", repaired)
+        self.assertIsNone(
+            self.manager._validate_generated_body(
+                repaired,
+                recent_captions=[],
+                promotion_type="manual",
+                weekday=None,
+            )
+        )
+
+        unsafe_body = repaired.replace(
+            "explores Gold/XAUUSD context",
+            "guaranteed profits while exploring Gold/XAUUSD context",
+        )
+        self.assertIn(
+            "guaranteed claim",
+            self.manager._validate_generated_body(
+                unsafe_body,
+                recent_captions=[],
+                promotion_type="manual",
+                weekday=None,
+            ),
+        )
+
+    def test_generated_caption_with_repairable_headline_is_saved_after_full_validation(
+        self,
+    ) -> None:
+        self.writer.responses = [
+            "GOLD LIQUIDITY AND STRUCTURE\n\n"
+            "The separate Market Analysis channel explores Gold/XAUUSD context "
+            "and explains liquidity, structure and confirmation as educational "
+            "ideas—not automatic entry signals.\n\n"
+            "Tap the Open Market Analysis button below to explore the channel."
+        ]
+        self.manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            True,
+            "admin:education_topic_promo:create",
+            now=NOW,
+        )
+
+        saved = self.manager.store.get(1)
+        self.assertIsNotNone(saved)
+        self.assertTrue(saved["body"].startswith("📊 GOLD LIQUIDITY AND STRUCTURE"))
+        self.assertIsNone(
+            self.manager._validate_generated_body(
+                saved["body"],
+                recent_captions=[],
+                promotion_type="manual",
+                weekday=None,
+            )
+        )
+        with sqlite3.connect(self.database_path) as connection:
+            action = connection.execute(
+                """
+                SELECT action, details FROM education_topic_promo_actions
+                WHERE promotion_id IS NULL AND action = 'gemini_caption_headline_corrected'
+                """
+            ).fetchone()
+        self.assertEqual(action[0], "gemini_caption_headline_corrected")
+        self.assertIn("full_validation_rerun", action[1])
+
+    def test_promotion_prompt_requires_a_short_relevant_headline_first(self) -> None:
+        instruction = GeminiChannelContentService._promotion_system_instruction()
+        self.assertIn("first non-empty line", instruction)
+        self.assertIn("12 words maximum", instruction)
+        self.assertIn("Do not begin with a greeting, preamble, label", instruction)
 
     def test_only_explicit_approval_publishes_once_to_market_analysis_topic(self) -> None:
         row, approve_callback = self.create_review()

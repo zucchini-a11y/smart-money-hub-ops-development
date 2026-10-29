@@ -59,6 +59,16 @@ _MARKET_VALUE_TOPIC = re.compile(
     r"order\s+blocks?|displacement|confirmation)\b",
     re.IGNORECASE,
 )
+_PROMO_HEADLINE_TOPIC = re.compile(
+    r"\b(?:gold|xau\s*/?\s*usd|market\s+analysis|levels?|liquidity|"
+    r"market\s+structure|POIs?|FVGs?|fair\s+value\s+gaps?|order\s+blocks?|"
+    r"displacement|confirmation)\b",
+    re.IGNORECASE,
+)
+_PROMO_HEADLINE_PREAMBLE = re.compile(
+    r"^(?:here(?:'s| is)\b|caption\b|headline\b|promotion\b|title\b)",
+    re.IGNORECASE,
+)
 _MARKET_ANALYSIS_CTA = re.compile(
     r"\b(?:tap|open|explore|visit|check\s+out|head\s+to|join)\b"
     r".{0,100}\b(?:market\s+analysis|the\s+button|button\s+below)\b",
@@ -644,6 +654,7 @@ class EducationTopicPromotionStore:
             "gemini_generation_failed",
             "gemini_generation_rejected",
             "gemini_caption_scope_corrected",
+            "gemini_caption_headline_corrected",
         } else "gemini_generation_failed"
         with self._connection() as connection:
             self._action(
@@ -1753,6 +1764,51 @@ class EducationTopicPromotionManager:
         return None
 
     @staticmethod
+    def _repair_generated_headline(body: str) -> tuple[str, bool]:
+        """Repair only a malformed first line; all full-content checks still run."""
+        lines = body.strip().splitlines()
+        first_index = next(
+            (index for index, line in enumerate(lines) if line.strip()), None
+        )
+        allowed_emojis = (
+            "📊", "🥇", "🪙", "💧", "🎯", "🧠", "📈", "🔍", "📚", "🌍", "🧭"
+        )
+        if first_index is None:
+            return "📊 GOLD & USD: MARKET CONTEXT", True
+
+        first_line = lines[first_index].strip()
+        has_topic = bool(_PROMO_HEADLINE_TOPIC.search(first_line))
+        has_allowed_emoji = first_line.startswith(allowed_emojis)
+        if (
+            has_topic
+            and has_allowed_emoji
+            and len(first_line) <= 100
+            and any(character.isalpha() for character in first_line)
+        ):
+            return body.strip(), False
+
+        cleaned = re.sub(r"^[^\w]+", "", first_line, flags=re.UNICODE).strip()
+        if (
+            has_topic
+            and cleaned
+            and len(cleaned) <= 94
+            and any(character.isalpha() for character in cleaned)
+        ):
+            headline = f"📊 {cleaned}"
+            lines[first_index] = headline
+            return "\n".join(lines).strip(), True
+
+        fallback = "📊 GOLD & USD: MARKET CONTEXT"
+        if _PROMO_HEADLINE_PREAMBLE.match(first_line):
+            lines.pop(first_index)
+            repaired = [fallback, *lines]
+        else:
+            # Preserve a substantive opening line as body copy instead of
+            # discarding useful content merely because it was not a headline.
+            repaired = [fallback, "", *lines]
+        return "\n".join(repaired).strip(), True
+
+    @staticmethod
     def _novelty_core(text: str) -> str:
         lines = []
         for line in text.splitlines():
@@ -1892,6 +1948,18 @@ class EducationTopicPromotionManager:
                     ),
                     at=_utc(now).isoformat(),
                 )
+            candidate, headline_corrected = self._repair_generated_headline(candidate)
+            if headline_corrected:
+                self.store.record_generation_event(
+                    action="gemini_caption_headline_corrected",
+                    admin_id=self.admin_id,
+                    model=model,
+                    details=(
+                        f"type={promotion_type};attempt={attempt};"
+                        "deterministic_relevant_headline;full_validation_rerun"
+                    ),
+                    at=_utc(now).isoformat(),
+                )
             issue = self._validate_generated_body(
                 candidate,
                 recent_captions=history,
@@ -1920,6 +1988,12 @@ class EducationTopicPromotionManager:
                     retry_feedback = (
                         "Keep the caption strictly within the verified Gold/USD "
                         "Market Analysis channel scope. Omit unrelated feature claims."
+                    )
+                elif "headline" in issue_lower:
+                    retry_feedback = (
+                        "The first non-empty line must be a short, relevant, "
+                        "emoji-led Gold/USD headline naming the topic. Put the "
+                        "headline before the body; do not add a greeting or preamble."
                     )
                 else:
                     retry_feedback = (
