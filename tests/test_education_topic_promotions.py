@@ -353,7 +353,6 @@ class EducationTopicPromotionTests(unittest.TestCase):
         self.assertIsNotNone(saved)
         self.assertTrue(saved["body"].startswith(valid_hook))
         self.assertIn("Trade breakdowns are shared in the Education Group", saved["body"])
-        self.assertIn("8:00 PM", saved["body"]) if False else None
         self.assertFalse(
             any(
                 message["chat_id"] == EXPECTED_EDUCATION_GROUP_ID
