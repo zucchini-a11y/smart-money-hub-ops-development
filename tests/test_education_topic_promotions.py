@@ -387,6 +387,62 @@ class EducationTopicPromotionTests(unittest.TestCase):
             )
         )
 
+    def test_promotion_retry_omits_forbidden_feature_from_prompt_and_history(self) -> None:
+        historical, error = self.manager.store.create_draft(
+            body=(
+                _PROMO_CAPTIONS[0]
+                + "\n\nTrade breakdowns are shared in a different topic."
+            ),
+            group_chat_id=EXPECTED_EDUCATION_GROUP_ID,
+            group_title="🧠 Smart Money Hub | Trading Education",
+            thread_id=3,
+            topic_source_link=TOPIC_LINK,
+            channel_link="https://t.me/+verifiedMarketAnalysisInvite",
+            channel_title="Smart Money Hub",
+            bot_username="SmartMoneyHubSignalsBot",
+            admin_id=ADMIN_ID,
+            now=NOW - timedelta(minutes=1),
+        )
+        self.assertIsNone(error)
+        self.assertIsNotNone(historical)
+        assert historical is not None
+        self.assertTrue(
+            self.manager.store.cancel(
+                int(historical["id"]),
+                admin_id=ADMIN_ID,
+                version=1,
+                at=NOW.isoformat(),
+            )
+        )
+
+        rejected_caption = (
+            "📊 GOLD MARKET ANALYSIS AND STRUCTURE\n\n"
+            "The separate Market Analysis channel explores Gold/XAUUSD context, "
+            "liquidity and structure. It also includes trade breakdowns for "
+            "members to study.\n\n"
+            "Tap the Open Market Analysis button below to explore the channel."
+        )
+        self.writer.responses = [rejected_caption, _PROMO_CAPTIONS[1]]
+        self.manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            True,
+            "admin:education_topic_promo:create",
+            now=NOW + timedelta(seconds=1),
+        )
+
+        self.assertEqual(len(self.writer.calls), 2)
+        self.assertFalse(
+            any(
+                "breakdown" in str(item.get("body") or "").casefold()
+                for item in self.writer.calls[0]["recent_captions"]
+            )
+        )
+        self.assertNotIn("breakdown", self.writer.calls[1]["retry_feedback"].casefold())
+        saved = self.manager.store.get(int(historical["id"]) + 1)
+        self.assertIsNotNone(saved)
+        self.assertEqual(saved["body"], _PROMO_CAPTIONS[1])
+
     def test_two_invalid_gemini_captions_are_held_without_a_fallback(self) -> None:
         self.writer.responses = ["plain text", "still plain text"]
         self.manager.handle_callback(

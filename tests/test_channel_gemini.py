@@ -146,13 +146,15 @@ class GeminiChannelContentTests(unittest.TestCase):
         self.assertIn("separate Smart Money Hub Market Analysis channel", instruction)
         self.assertIn("Gold/XAUUSD", instruction)
         self.assertIn("Open Market Analysis button below", instruction)
-        self.assertIn("Never claim trade breakdowns are posted", instruction)
+        self.assertIn("do not add unrelated features or services", instruction)
+        self.assertNotIn("breakdown", instruction.casefold())
         self.assertIn("optional closing reminder", instruction)
         self.assertIn("it is not mandatory in every promotion", instruction)
         self.assertNotIn("hook", instruction)
         self.assertIn("A previous promotion caption", prompt)
         self.assertIn("cancelled", prompt)
         self.assertIn("separate Market Analysis channel", prompt)
+        self.assertNotIn("breakdown", prompt.casefold())
 
     def test_promotion_rate_limit_fails_without_model_fallback(self) -> None:
         request_url = (

@@ -1700,6 +1700,11 @@ class EducationTopicPromotionManager:
             return None, "Gemini is not configured for promotions. No draft was created."
 
         history = self.store.recent_captions()
+        prompt_history = [
+            item
+            for item in history
+            if "breakdown" not in str(item.get("body") or "").casefold()
+        ]
         model = str(getattr(self.writer, "model", "gemini-3.5-flash-lite"))
         retry_feedback: str | None = None
         last_issue: str | None = None
@@ -1714,7 +1719,7 @@ class EducationTopicPromotionManager:
         for attempt in range(1, 3):
             try:
                 body = self.writer.generate_promotion(
-                    recent_captions=history,
+                    recent_captions=prompt_history,
                     promotion_type=promotion_type,
                     weekday=weekday,
                     retry_feedback=retry_feedback,
@@ -1779,11 +1784,17 @@ class EducationTopicPromotionManager:
                 at=_utc(now).isoformat(),
             )
             if attempt == 1:
-                retry_feedback = (
-                    f"The previous response failed this check: {issue} "
-                    "Return a materially different, corrected, complete promotion "
-                    "caption. Follow all destination, class, and safety rules."
-                )
+                if "breakdown" in issue.casefold():
+                    retry_feedback = (
+                        "Keep the caption strictly within the verified Gold/USD "
+                        "Market Analysis channel scope. Omit unrelated feature claims."
+                    )
+                else:
+                    retry_feedback = (
+                        f"The previous response failed this check: {issue} "
+                        "Return a materially different, corrected, complete promotion "
+                        "caption. Follow all destination, class, and safety rules."
+                    )
         return None, (
             "Gemini's caption failed content checks after two attempts. "
             "No draft was saved. Last issue: "
