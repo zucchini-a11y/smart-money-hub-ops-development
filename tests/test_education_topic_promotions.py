@@ -536,9 +536,21 @@ class EducationTopicPromotionTests(unittest.TestCase):
         self.assertNotIn("breakdown", saved["body"].casefold())
 
     def test_out_of_scope_sentence_is_removed_then_full_checks_run(self) -> None:
+        out_of_scope = (
+            "In our dedicated analysis channel, we break down live Gold and USD "
+            "context by examining crucial market levels and liquidity shifts."
+        )
+        raw_caption = _PROMO_CAPTIONS[0] + "\n\n" + out_of_scope
+        self.assertIsNotNone(
+            self.manager._validate_generated_body(
+                raw_caption,
+                recent_captions=[],
+                promotion_type="manual",
+                weekday=None,
+            )
+        )
         self.writer.responses = [
-            _PROMO_CAPTIONS[0]
-            + "\n\nTrade breakdowns are available in this group."
+            raw_caption
         ]
 
         self.manager.handle_callback(
@@ -577,6 +589,52 @@ class EducationTopicPromotionTests(unittest.TestCase):
             ).fetchone()
         self.assertIsNotNone(event)
         self.assertIn("full_validation_rerun", event[0])
+
+    def test_published_caption_correction_updates_only_expected_message_and_audits(self) -> None:
+        row, approve_callback = self.create_review()
+        self.manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            True,
+            approve_callback,
+            now=NOW + timedelta(minutes=1),
+        )
+        posted = self.manager.store.get(int(row["id"]))
+        self.assertEqual(posted["status"], "published")
+        message_id = int(posted["telegram_message_id"])
+        corrected_body = _PROMO_CAPTIONS[1]
+
+        self.assertFalse(
+            self.manager.store.record_published_caption_correction(
+                int(row["id"]),
+                message_id + 1,
+                corrected_body,
+                admin_id=ADMIN_ID,
+                at=(NOW + timedelta(minutes=2)).isoformat(),
+            )
+        )
+        self.assertTrue(
+            self.manager.store.record_published_caption_correction(
+                int(row["id"]),
+                message_id,
+                corrected_body,
+                admin_id=ADMIN_ID,
+                at=(NOW + timedelta(minutes=2)).isoformat(),
+            )
+        )
+        self.assertEqual(
+            self.manager.store.get(int(row["id"]))["body"], corrected_body
+        )
+        with sqlite3.connect(self.database_path) as connection:
+            action = connection.execute(
+                """
+                SELECT action, details FROM education_topic_promo_actions
+                WHERE promotion_id = ? AND action = 'published_caption_corrected'
+                """,
+                (row["id"],),
+            ).fetchone()
+        self.assertIsNotNone(action)
+        self.assertIn(f"message_id={message_id}", action[1])
 
     def test_two_invalid_gemini_captions_are_held_without_a_fallback(self) -> None:
         self.writer.responses = ["plain text", "still plain text"]

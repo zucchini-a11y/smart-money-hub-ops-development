@@ -66,7 +66,7 @@ _MARKET_ANALYSIS_CTA = re.compile(
 )
 _ZOOM_OR_CLASS = re.compile(r"\b(?:zoom|classes?|class\s+link|class\s+access)\b", re.I)
 _WRONG_BREAKDOWN_DESTINATION = re.compile(
-    r"\b(?:breakdowns?|breaks\s+down)\b", re.I
+    r"\b(?:breakdowns?|breaks?\s+down)\b", re.I
 )
 _UNSUPPORTED_INSTITUTIONAL_PROMO_CLAIMS = re.compile(
     r"\b(?:institutional|institutions?|market\s+makers?|liquidity\s+providers?)\b",
@@ -1225,6 +1225,56 @@ class EducationTopicPromotionStore:
                     )
             return bool(cursor.rowcount)
 
+    def record_published_caption_correction(
+        self,
+        promotion_id: int,
+        message_id: int,
+        body: str,
+        *,
+        admin_id: int,
+        at: str,
+    ) -> bool:
+        """Persist an in-place correction only for the expected published message."""
+        timestamp = _utc(_parse_time(at)).isoformat()
+        with self._connection() as connection:
+            row = connection.execute(
+                """
+                SELECT body_hash FROM education_topic_promotions
+                WHERE id = ? AND status = 'published'
+                    AND telegram_message_id = ?
+                """,
+                (promotion_id, message_id),
+            ).fetchone()
+            if not row:
+                return False
+            old_hash = str(row["body_hash"])
+            new_hash = _body_hash(body)
+            if old_hash == new_hash:
+                return False
+            cursor = connection.execute(
+                """
+                UPDATE education_topic_promotions
+                SET body = ?, body_hash = ?, updated_at = ?
+                WHERE id = ? AND status = 'published'
+                    AND telegram_message_id = ? AND body_hash = ?
+                """,
+                (body, new_hash, timestamp, promotion_id, message_id, old_hash),
+            )
+            if not cursor.rowcount:
+                return False
+            self._action(
+                connection,
+                promotion_id,
+                "published_caption_corrected",
+                admin_id,
+                (
+                    f"message_id={message_id};old_body_hash={old_hash};"
+                    f"new_body_hash={new_hash}"
+                ),
+                timestamp,
+            )
+            return True
+
     def fail_publish(
         self,
         promotion_id: int,
@@ -1762,7 +1812,9 @@ class EducationTopicPromotionManager:
         prompt_history = [
             item
             for item in history
-            if "breakdown" not in str(item.get("body") or "").casefold()
+            if not _WRONG_BREAKDOWN_DESTINATION.search(
+                str(item.get("body") or "")
+            )
         ]
         model = str(getattr(self.writer, "model", "gemini-3.5-flash-lite"))
         retry_feedback: str | None = None
