@@ -413,6 +413,7 @@ class SmartMoneyHubBot:
         daily_calendar_brief: DailyCalendarBriefPublisher | None = None,
         personal_reply_assistant: PersonalTelegramReplyAssistant | None = None,
         reply_draft_assistant: PersonalTelegramReplyAssistant | None = None,
+        education_market_analysis_topic_link: str | None = None,
     ) -> None:
         self.api = api
         self.store = Repository(database_path)
@@ -431,6 +432,7 @@ class SmartMoneyHubBot:
             channel_writer,
             education_group_id=education_group_id,
             daily_brief_enabled=daily_calendar_brief is not None,
+            education_market_analysis_topic_link=education_market_analysis_topic_link,
         )
         self.education_polls = EducationPollPublisher(
             api,
@@ -1412,6 +1414,13 @@ class SmartMoneyHubBot:
             and isinstance(chat.get("id"), int)
             and chat.get("type") == "private"
         ):
+            if self.admin_dashboard.education_topic_promotions.handle_admin_photo(
+                int(chat["id"]),
+                int(sender["id"]),
+                message["photo"],
+                is_private=True,
+            ):
+                return
             if self.admin_dashboard.channel_posts.handle_admin_photo(
                 int(chat["id"]),
                 int(sender["id"]),
@@ -1505,6 +1514,19 @@ class SmartMoneyHubBot:
         )
         if (
             is_private
+            and self.admin_dashboard.education_topic_promotions.has_input_pending(
+                telegram_id
+            )
+            and self.admin_dashboard.education_topic_promotions.handle_admin_text(
+                chat_id,
+                telegram_id,
+                text,
+                is_private=True,
+            )
+        ):
+            return
+        if (
+            is_private
             and self.admin_dashboard.session_open_posts.has_edit_pending(telegram_id)
         ):
             if command == "/cancel":
@@ -1548,6 +1570,12 @@ class SmartMoneyHubBot:
             or self.admin_dashboard.knowledge_is_pending(telegram_id)
             or self.admin_dashboard.calendar_is_pending(telegram_id)
             or self.admin_dashboard.has_channel_promo_state(telegram_id)
+            or (
+                is_private
+                and self.admin_dashboard.education_topic_promotions.has_input_pending(
+                    telegram_id
+                )
+            )
             or (
                 is_private
                 and self.admin_dashboard.has_channel_post_edit_pending(telegram_id)
@@ -3937,6 +3965,10 @@ class SmartMoneyHubBot:
             self.admin_dashboard.session_open_posts.dispatch_due(current)
         except Exception:
             logger.exception("Could not dispatch scheduled session-open posts.")
+        try:
+            self.admin_dashboard.education_topic_promotions.dispatch_due(current)
+        except Exception:
+            logger.exception("Could not expire Education topic promotion reviews.")
 
     def _notify_content_admin(self, message: str) -> None:
         """Send private status only; never send generated content to a group here."""

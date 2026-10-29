@@ -131,6 +131,52 @@ class TelegramUpdateSubscriptionTests(unittest.TestCase):
             },
         )
 
+    def test_send_message_with_result_can_target_a_forum_topic(self) -> None:
+        api = TelegramAPI("synthetic-test-token")
+        with patch.object(api, "_request", return_value={"message_id": 89}) as request:
+            result = api.send_message_with_result(
+                -100123,
+                "Approved topic post.",
+                parse_mode="HTML",
+                message_thread_id=456,
+            )
+
+        self.assertEqual(result, {"message_id": 89})
+        request.assert_called_once_with(
+            "sendMessage",
+            {
+                "chat_id": -100123,
+                "text": "Approved topic post.",
+                "parse_mode": "HTML",
+                "message_thread_id": 456,
+            },
+        )
+
+    def test_send_photo_with_result_can_target_a_forum_topic(self) -> None:
+        api = TelegramAPI("synthetic-test-token")
+        with patch.object(
+            api, "_request", return_value={"message_id": 90}
+        ) as request:
+            result = api.send_photo_with_result(
+                -100123,
+                "synthetic-photo-id",
+                caption="Approved image post.",
+                parse_mode="HTML",
+                message_thread_id=456,
+            )
+
+        self.assertEqual(result, {"message_id": 90})
+        request.assert_called_once_with(
+            "sendPhoto",
+            {
+                "chat_id": -100123,
+                "photo": "synthetic-photo-id",
+                "caption": "Approved image post.",
+                "parse_mode": "HTML",
+                "message_thread_id": 456,
+            },
+        )
+
     def test_send_poll_uses_anonymous_quiz_and_topic(self) -> None:
         api = TelegramAPI("synthetic-test-token")
         with patch.object(

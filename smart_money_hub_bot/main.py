@@ -138,6 +138,9 @@ def main() -> None:
             coach_service=coach_service,
             channel_writer=channel_writer,
             education_group_id=education_group_id,
+            education_market_analysis_topic_link=os.getenv(
+                "SMH_EDUCATION_MARKET_ANALYSIS_TOPIC_LINK", ""
+            ).strip(),
             daily_calendar_brief=daily_calendar_brief,
             personal_reply_assistant=personal_reply_assistant,
             reply_draft_assistant=reply_draft_assistant,

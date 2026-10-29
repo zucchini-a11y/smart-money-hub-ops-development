@@ -8,12 +8,14 @@ import logging
 import re
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time as time_of_day, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator
 from urllib.parse import urlsplit
+from zoneinfo import ZoneInfo
 
 from .education_polls import (
+    EducationPollError,
     EXPECTED_EDUCATION_GROUP_ID,
     EXPECTED_MARKET_ANALYSIS_CHANNEL_ID,
     parse_education_poll_message_link,
@@ -25,8 +27,14 @@ logger = logging.getLogger(__name__)
 REVIEW_WINDOW = timedelta(minutes=5)
 DEFAULT_COOLDOWN_DAYS = 14
 ALLOWED_COOLDOWNS = {7, 14, 28}
+PROMO_SCHEDULE_TIME = time_of_day(19, 0)
+PROMO_REVIEW_LEAD = timedelta(minutes=5)
+PROMO_REVIEW_LATE_TOLERANCE = timedelta(minutes=1)
+PROMO_PUBLISH_GRACE = timedelta(minutes=2)
 MAX_PROMO_BODY_CHARS = 700
 EXPECTED_BOT_USERNAME = "SmartMoneyHubSignalsBot"
+EXPECTED_MARKET_ANALYSIS_THREAD_ID = 3
+WAT = ZoneInfo("Africa/Lagos")
 
 _PROMO_BODIES = (
     "Looking for a separate place to follow Smart Money Hub market analysis? "
@@ -40,8 +48,64 @@ _PROMO_BODIES = (
     "and treat analysis as context, not an entry signal.",
 )
 
+_SCHEDULED_PROMO_BODIES = {
+    "monday": (
+        "📣 MONDAY | FREE CLASS TONIGHT\n\n"
+        "Our free Zoom class starts at 8:00 PM WAT. The link will be posted in "
+        "the channel when the class begins. Bring a question and join us for "
+        "tonight’s learning session.",
+        "🌱 A NEW WEEK, A NEW CHANCE TO LEARN\n\n"
+        "Our free Zoom class starts at 8:00 PM WAT. The link will be posted in "
+        "the channel when the class begins. Come ready to learn and take part.",
+        "📚 MAKE ROOM FOR LEARNING TONIGHT\n\n"
+        "Join our free Zoom class at 8:00 PM WAT. The link will be shared in "
+        "the channel when the class begins. Bring your questions.",
+        "👋 SEE YOU IN CLASS TONIGHT?\n\n"
+        "Our free Zoom class starts at 8:00 PM WAT. Its link will be posted in "
+        "the channel when the class begins. Join the discussion and learn with us.",
+        "🎓 MONDAY IS A GOOD DAY TO KEEP LEARNING\n\n"
+        "Our free Zoom class begins at 8:00 PM WAT. The link will be posted in "
+        "the channel when the class begins. Bring a question for the session.",
+        "📣 TONIGHT’S FREE CLASS IS AT 8:00 PM WAT\n\n"
+        "The Zoom link will be posted in the channel when class begins. Join us "
+        "for an evening of shared learning and discussion.",
+        "🧠 START THE WEEK WITH A LEARNING SESSION\n\n"
+        "Our free Zoom class starts at 8:00 PM WAT. The link will be shared in "
+        "the channel when it begins. We hope you can join us.",
+        "✨ CLASS NIGHT IS HERE\n\n"
+        "Our free Zoom class begins at 8:00 PM WAT. The link will be posted in "
+        "the channel when the class starts. Bring your questions and take part.",
+    ),
+    "thursday": (
+        "📊 THURSDAY | FREE CLASS REMINDER\n\n"
+        "Our free Zoom class starts at 8:00 PM WAT. The link will be posted in "
+        "the channel when the class begins. Join in and bring a question.",
+        "👋 LET’S KEEP THE LEARNING GOING\n\n"
+        "The free Zoom class begins at 8:00 PM WAT. The link will appear in the "
+        "channel when class starts. We’d love to see you there.",
+        "📚 JOIN THE CONVERSATION TONIGHT\n\n"
+        "Our free Zoom class starts at 8:00 PM WAT. The link will be shared in "
+        "the channel when the session begins. Bring your questions.",
+        "🧠 A QUICK REMINDER FOR THIS EVENING\n\n"
+        "Our free Zoom class begins at 8:00 PM WAT. Its link will be posted in "
+        "the channel when class starts. Come ready to take part.",
+        "🎓 THURSDAY’S LEARNING SESSION IS TONIGHT\n\n"
+        "The free Zoom class starts at 8:00 PM WAT. The link will be posted in "
+        "the channel when it begins. Join us for the discussion.",
+        "✨ MAKE TIME FOR TONIGHT’S CLASS\n\n"
+        "Our free Zoom class begins at 8:00 PM WAT. The Zoom link will be shared "
+        "in the channel when the class starts. We hope you can join.",
+        "📣 CLASS STARTS AT 8:00 PM WAT\n\n"
+        "Join our free Zoom session tonight. The link will be posted in the "
+        "channel when the class begins. Bring one question to work through.",
+        "💬 COME LEARN WITH THE COMMUNITY TONIGHT\n\n"
+        "Our free Zoom class starts at 8:00 PM WAT. The link will be posted in "
+        "the channel when the session begins. Your questions are welcome.",
+    ),
+}
+
 _DISALLOWED_PROMO_CLAIMS = re.compile(
-    r"\b(?:guaranteed\s+(?:profit|profits|returns)|"
+    r"\b(?:guarantee(?:d)?\s+(?:profit|profits|returns)|"
     r"risk[\s-]?free\s+(?:profit|trading|returns)|"
     r"100%\s+(?:win(?:ning)?|profit)|"
     r"buy\s+now|sell\s+now|"
@@ -99,7 +163,9 @@ class EducationTopicPromotionStore:
                     id INTEGER PRIMARY KEY CHECK (id = 1),
                     cooldown_days INTEGER NOT NULL DEFAULT 14,
                     next_variant_index INTEGER NOT NULL DEFAULT 0,
+                    scheduled_variant_index INTEGER NOT NULL DEFAULT 0,
                     last_published_at TEXT,
+                    scheduled_enabled INTEGER NOT NULL DEFAULT 1,
                     updated_at TEXT NOT NULL
                 );
                 INSERT OR IGNORE INTO education_topic_promo_settings (id, updated_at)
@@ -110,10 +176,15 @@ class EducationTopicPromotionStore:
                     body TEXT NOT NULL,
                     body_hash TEXT NOT NULL,
                     group_chat_id INTEGER NOT NULL,
+                    group_title TEXT NOT NULL,
                     thread_id INTEGER NOT NULL,
                     topic_source_link TEXT NOT NULL,
                     channel_link TEXT NOT NULL,
+                    channel_title TEXT NOT NULL,
                     bot_username TEXT NOT NULL,
+                    scheduled_for TEXT,
+                    schedule_key TEXT,
+                    approved_at TEXT,
                     status TEXT NOT NULL CHECK (status IN (
                         'review', 'editing', 'publishing', 'published',
                         'cancelled', 'expired', 'failed',
@@ -136,6 +207,8 @@ class EducationTopicPromotionStore:
                 );
                 CREATE INDEX IF NOT EXISTS education_topic_promo_review
                 ON education_topic_promotions (status, review_deadline_at);
+                CREATE UNIQUE INDEX IF NOT EXISTS education_topic_promo_schedule_key
+                ON education_topic_promotions (schedule_key) WHERE schedule_key IS NOT NULL;
 
                 CREATE TABLE IF NOT EXISTS education_topic_promo_actions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -145,6 +218,75 @@ class EducationTopicPromotionStore:
                     details TEXT,
                     created_at TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS education_topic_promo_schedule_runs (
+                    schedule_key TEXT PRIMARY KEY,
+                    scheduled_for TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    promotion_id INTEGER REFERENCES education_topic_promotions(id),
+                    details TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                """
+            )
+            columns = {
+                str(row["name"])
+                for row in connection.execute(
+                    "PRAGMA table_info(education_topic_promotions)"
+                ).fetchall()
+            }
+            if "group_title" not in columns:
+                connection.execute(
+                    """
+                    ALTER TABLE education_topic_promotions
+                    ADD COLUMN group_title TEXT NOT NULL DEFAULT 'Education group'
+                    """
+                )
+            if "channel_title" not in columns:
+                connection.execute(
+                    """
+                    ALTER TABLE education_topic_promotions
+                    ADD COLUMN channel_title TEXT NOT NULL DEFAULT 'Market Analysis channel'
+                    """
+                )
+            if "scheduled_for" not in columns:
+                connection.execute(
+                    "ALTER TABLE education_topic_promotions ADD COLUMN scheduled_for TEXT"
+                )
+            if "schedule_key" not in columns:
+                connection.execute(
+                    "ALTER TABLE education_topic_promotions ADD COLUMN schedule_key TEXT"
+                )
+            if "approved_at" not in columns:
+                connection.execute(
+                    "ALTER TABLE education_topic_promotions ADD COLUMN approved_at TEXT"
+                )
+            settings_columns = {
+                str(row["name"])
+                for row in connection.execute(
+                    "PRAGMA table_info(education_topic_promo_settings)"
+                ).fetchall()
+            }
+            if "scheduled_enabled" not in settings_columns:
+                connection.execute(
+                    """
+                    ALTER TABLE education_topic_promo_settings
+                    ADD COLUMN scheduled_enabled INTEGER NOT NULL DEFAULT 1
+                    """
+                )
+            if "scheduled_variant_index" not in settings_columns:
+                connection.execute(
+                    """
+                    ALTER TABLE education_topic_promo_settings
+                    ADD COLUMN scheduled_variant_index INTEGER NOT NULL DEFAULT 0
+                    """
+                )
+            connection.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS education_topic_promo_schedule_key
+                ON education_topic_promotions (schedule_key)
+                WHERE schedule_key IS NOT NULL
                 """
             )
 
@@ -192,7 +334,9 @@ class EducationTopicPromotionStore:
             return dict(row) if row else {
                 "cooldown_days": DEFAULT_COOLDOWN_DAYS,
                 "next_variant_index": 0,
+                "scheduled_variant_index": 0,
                 "last_published_at": None,
+                "scheduled_enabled": 1,
             }
 
     def set_cooldown(self, days: int, *, admin_id: int, at: str) -> bool:
@@ -216,21 +360,108 @@ class EducationTopicPromotionStore:
             )
         return True
 
+    def set_schedule_enabled(
+        self, enabled: bool, *, admin_id: int, at: str
+    ) -> None:
+        with self._connection() as connection:
+            connection.execute(
+                """
+                UPDATE education_topic_promo_settings
+                SET scheduled_enabled = ?, updated_at = ? WHERE id = 1
+                """,
+                (int(enabled), at),
+            )
+            connection.execute(
+                """
+                INSERT INTO education_topic_promo_actions
+                    (promotion_id, action, admin_id, details, created_at)
+                VALUES (NULL, 'schedule_enabled_changed', ?, ?, ?)
+                """,
+                (admin_id, f"enabled={int(enabled)}", at),
+            )
+
+    def schedule_run(self, schedule_key: str) -> dict[str, Any] | None:
+        with self._connection() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM education_topic_promo_schedule_runs
+                WHERE schedule_key = ?
+                """,
+                (schedule_key,),
+            ).fetchone()
+            return dict(row) if row else None
+
+    def record_schedule_event(
+        self,
+        *,
+        schedule_key: str,
+        scheduled_for: datetime,
+        status: str,
+        details: str,
+        at: str,
+        admin_id: int | None = None,
+    ) -> bool:
+        if status not in {"missed", "failed", "disabled"}:
+            raise ValueError("Unsupported promotion schedule event status.")
+        with self._connection() as connection:
+            cursor = connection.execute(
+                """
+                INSERT OR IGNORE INTO education_topic_promo_schedule_runs
+                    (schedule_key, scheduled_for, status, promotion_id, details,
+                     created_at, updated_at)
+                VALUES (?, ?, ?, NULL, ?, ?, ?)
+                """,
+                (
+                    schedule_key,
+                    _utc(scheduled_for).isoformat(),
+                    status,
+                    details[:500],
+                    at,
+                    at,
+                ),
+            )
+            if cursor.rowcount:
+                connection.execute(
+                    """
+                    INSERT INTO education_topic_promo_actions
+                        (promotion_id, action, admin_id, details, created_at)
+                    VALUES (NULL, ?, ?, ?, ?)
+                    """,
+                    (
+                        f"scheduled_{status}",
+                        admin_id,
+                        f"schedule_key={schedule_key};{details}"[:500],
+                        at,
+                    ),
+                )
+            return bool(cursor.rowcount)
+
     def create_draft(
         self,
         *,
         body: str,
         group_chat_id: int,
+        group_title: str,
         thread_id: int,
         topic_source_link: str,
         channel_link: str,
+        channel_title: str,
         bot_username: str,
         admin_id: int,
         now: datetime,
+        scheduled_for: datetime | None = None,
+        schedule_key: str | None = None,
     ) -> tuple[dict[str, Any] | None, str | None]:
         current = _utc(now)
         timestamp = current.isoformat()
-        deadline = (current + REVIEW_WINDOW).isoformat()
+        scheduled = _utc(scheduled_for) if scheduled_for else None
+        if scheduled is not None and not schedule_key:
+            return None, "Scheduled promotions require a unique schedule key."
+        deadline = (
+            scheduled.isoformat()
+            if scheduled
+            else (current + REVIEW_WINDOW).isoformat()
+        )
         digest = _body_hash(body)
         connection = self._connect()
         try:
@@ -245,6 +476,14 @@ class EducationTopicPromotionStore:
             if active:
                 connection.rollback()
                 return None, "An earlier group promotion is still pending or needs delivery verification."
+            if schedule_key:
+                prior_run = connection.execute(
+                    "SELECT status FROM education_topic_promo_schedule_runs WHERE schedule_key = ?",
+                    (schedule_key,),
+                ).fetchone()
+                if prior_run:
+                    connection.rollback()
+                    return None, "This scheduled promotion has already been handled."
             settings = connection.execute(
                 "SELECT * FROM education_topic_promo_settings WHERE id = 1"
             ).fetchone()
@@ -256,37 +495,56 @@ class EducationTopicPromotionStore:
                 if settings and settings["last_published_at"]
                 else None
             )
-            if last_published and current < last_published + timedelta(days=cooldown_days):
+            if (
+                scheduled is None
+                and last_published
+                and current < last_published + timedelta(days=cooldown_days)
+            ):
                 available_at = (last_published + timedelta(days=cooldown_days)).isoformat()
                 connection.rollback()
                 return None, f"Posting frequency limit reached; another promotion is available after {available_at}."
-            duplicate = connection.execute(
-                """
-                SELECT id FROM education_topic_promotions
-                WHERE status = 'published' AND body_hash = ?
-                LIMIT 1
-                """,
-                (digest,),
-            ).fetchone()
+            if scheduled is None:
+                duplicate = connection.execute(
+                    """
+                    SELECT id FROM education_topic_promotions
+                    WHERE status = 'published' AND body_hash = ? LIMIT 1
+                    """,
+                    (digest,),
+                ).fetchone()
+            else:
+                duplicate = connection.execute(
+                    """
+                    SELECT id FROM education_topic_promotions
+                    WHERE status = 'published' AND body_hash = ?
+                        AND published_at >= ?
+                    LIMIT 1
+                    """,
+                    (digest, (current - timedelta(days=180)).isoformat()),
+                ).fetchone()
             if duplicate:
                 connection.rollback()
                 return None, "This promotion wording has already been published. A fresh draft is required."
             cursor = connection.execute(
                 """
                 INSERT INTO education_topic_promotions (
-                    body, body_hash, group_chat_id, thread_id, topic_source_link,
-                    channel_link, bot_username, status, review_started_at,
+                    body, body_hash, group_chat_id, group_title, thread_id,
+                    topic_source_link, channel_link, channel_title, bot_username,
+                    scheduled_for, schedule_key, approved_at, status, review_started_at,
                     review_deadline_at, review_version, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'review', ?, ?, 1, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'review', ?, ?, 1, ?, ?)
                 """,
                 (
                     body,
                     digest,
                     group_chat_id,
+                    group_title,
                     thread_id,
                     topic_source_link,
                     channel_link,
+                    channel_title,
                     bot_username,
+                    scheduled.isoformat() if scheduled else None,
+                    schedule_key,
                     timestamp,
                     deadline,
                     timestamp,
@@ -302,10 +560,30 @@ class EducationTopicPromotionStore:
                 f"target_chat_id={group_chat_id};thread_id={thread_id}",
                 timestamp,
             )
+            if schedule_key and scheduled:
+                connection.execute(
+                    """
+                    INSERT INTO education_topic_promo_schedule_runs
+                        (schedule_key, scheduled_for, status, promotion_id,
+                         details, created_at, updated_at)
+                    VALUES (?, ?, 'review_pending', ?, ?, ?, ?)
+                    """,
+                    (
+                        schedule_key,
+                        scheduled.isoformat(),
+                        promotion_id,
+                        "private review prepared; awaiting delivery and admin approval",
+                        timestamp,
+                        timestamp,
+                    ),
+                )
+            variant_column = (
+                "scheduled_variant_index" if scheduled else "next_variant_index"
+            )
             connection.execute(
-                """
+                f"""
                 UPDATE education_topic_promo_settings
-                SET next_variant_index = next_variant_index + 1, updated_at = ?
+                SET {variant_column} = {variant_column} + 1, updated_at = ?
                 WHERE id = 1
                 """,
                 (timestamp,),
@@ -357,7 +635,10 @@ class EducationTopicPromotionStore:
             )
             if cursor.rowcount:
                 row = connection.execute(
-                    "SELECT group_chat_id, thread_id FROM education_topic_promotions WHERE id = ?",
+                    """
+                    SELECT group_chat_id, thread_id, schedule_key
+                    FROM education_topic_promotions WHERE id = ?
+                    """,
                     (promotion_id,),
                 ).fetchone()
                 self._action(
@@ -368,6 +649,15 @@ class EducationTopicPromotionStore:
                     f"target_chat_id={row['group_chat_id']};thread_id={row['thread_id']}",
                     at,
                 )
+                if row["schedule_key"]:
+                    connection.execute(
+                        """
+                        UPDATE education_topic_promo_schedule_runs
+                        SET status = 'awaiting_approval', updated_at = ?
+                        WHERE schedule_key = ?
+                        """,
+                        (at, row["schedule_key"]),
+                    )
             return bool(cursor.rowcount)
 
     def mark_preview_failed(
@@ -385,6 +675,20 @@ class EducationTopicPromotionStore:
                 (at, promotion_id, version),
             )
             if cursor.rowcount:
+                row = connection.execute(
+                    "SELECT schedule_key FROM education_topic_promotions WHERE id = ?",
+                    (promotion_id,),
+                ).fetchone()
+                if row and row["schedule_key"]:
+                    connection.execute(
+                        """
+                        UPDATE education_topic_promo_schedule_runs
+                        SET status = 'failed', details = 'private preview delivery failed',
+                            updated_at = ?
+                        WHERE schedule_key = ?
+                        """,
+                        (at, row["schedule_key"]),
+                    )
                 self._action(
                     connection,
                     promotion_id,
@@ -430,11 +734,23 @@ class EducationTopicPromotionStore:
         current = _utc(now)
         timestamp = current.isoformat()
         with self._connection() as connection:
+            existing = connection.execute(
+                "SELECT scheduled_for, schedule_key FROM education_topic_promotions WHERE id = ?",
+                (promotion_id,),
+            ).fetchone()
+            if not existing:
+                return False
+            next_deadline = (
+                str(existing["scheduled_for"])
+                if existing["scheduled_for"]
+                else (current + REVIEW_WINDOW).isoformat()
+            )
             cursor = connection.execute(
                 """
                 UPDATE education_topic_promotions
                 SET body = ?, body_hash = ?, status = 'review', edit_admin_id = NULL,
                     review_started_at = ?, review_deadline_at = ?, review_sent_at = NULL,
+                    review_version = review_version + 1,
                     photo_upload_pending = 0, photo_upload_admin_id = NULL,
                     updated_at = ?
                 WHERE id = ? AND status = 'editing' AND edit_admin_id = ?
@@ -444,7 +760,7 @@ class EducationTopicPromotionStore:
                     body,
                     _body_hash(body),
                     timestamp,
-                    (current + REVIEW_WINDOW).isoformat(),
+                    next_deadline,
                     timestamp,
                     promotion_id,
                     admin_id,
@@ -462,7 +778,9 @@ class EducationTopicPromotionStore:
             cursor = connection.execute(
                 """
                 UPDATE education_topic_promotions
-                SET photo_upload_pending = 1, photo_upload_admin_id = ?, updated_at = ?
+                SET photo_upload_pending = 1, photo_upload_admin_id = ?,
+                    review_sent_at = NULL, review_version = review_version + 1,
+                    updated_at = ?
                 WHERE id = ? AND status = 'review' AND review_sent_at IS NOT NULL
                     AND review_deadline_at > ? AND review_version = ?
                 """,
@@ -500,12 +818,50 @@ class EducationTopicPromotionStore:
             ).fetchone()
             return row is not None
 
+    def editing_for_admin(self, admin_id: int, *, at: str) -> dict[str, Any] | None:
+        with self._connection() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM education_topic_promotions
+                WHERE status = 'editing' AND edit_admin_id = ?
+                    AND review_deadline_at > ?
+                ORDER BY id DESC LIMIT 1
+                """,
+                (admin_id, at),
+            ).fetchone()
+            return dict(row) if row else None
+
+    def cancellable_input_for_admin(self, admin_id: int, *, at: str) -> int | None:
+        with self._connection() as connection:
+            row = connection.execute(
+                """
+                SELECT id FROM education_topic_promotions
+                WHERE status IN ('editing', 'review')
+                    AND (edit_admin_id = ? OR photo_upload_admin_id = ?)
+                    AND review_deadline_at > ?
+                ORDER BY id DESC LIMIT 1
+                """,
+                (admin_id, admin_id, at),
+            ).fetchone()
+            return int(row["id"]) if row else None
+
     def attach_photo(
         self, promotion_id: int, file_id: str, *, admin_id: int, now: datetime
     ) -> bool:
         current = _utc(now)
         timestamp = current.isoformat()
         with self._connection() as connection:
+            existing = connection.execute(
+                "SELECT scheduled_for FROM education_topic_promotions WHERE id = ?",
+                (promotion_id,),
+            ).fetchone()
+            if not existing:
+                return False
+            next_deadline = (
+                str(existing["scheduled_for"])
+                if existing["scheduled_for"]
+                else (current + REVIEW_WINDOW).isoformat()
+            )
             cursor = connection.execute(
                 """
                 UPDATE education_topic_promotions
@@ -520,7 +876,7 @@ class EducationTopicPromotionStore:
                 (
                     file_id,
                     timestamp,
-                    (current + REVIEW_WINDOW).isoformat(),
+                    next_deadline,
                     timestamp,
                     promotion_id,
                     admin_id,
@@ -549,6 +905,20 @@ class EducationTopicPromotionStore:
             )
             if cursor.rowcount:
                 self._action(connection, promotion_id, "cancelled", admin_id, "", at)
+                row = connection.execute(
+                    "SELECT schedule_key FROM education_topic_promotions WHERE id = ?",
+                    (promotion_id,),
+                ).fetchone()
+                if row and row["schedule_key"]:
+                    connection.execute(
+                        """
+                        UPDATE education_topic_promo_schedule_runs
+                        SET status = 'cancelled', details = 'admin cancelled the preview',
+                            updated_at = ?
+                        WHERE schedule_key = ?
+                        """,
+                        (at, row["schedule_key"]),
+                    )
             return bool(cursor.rowcount)
 
     def claim_publish(
@@ -573,7 +943,10 @@ class EducationTopicPromotionStore:
             )
             if cursor.rowcount:
                 row = connection.execute(
-                    "SELECT group_chat_id, thread_id FROM education_topic_promotions WHERE id = ?",
+                    """
+                    SELECT group_chat_id, thread_id, schedule_key
+                    FROM education_topic_promotions WHERE id = ?
+                    """,
                     (promotion_id,),
                 ).fetchone()
                 self._action(
@@ -584,6 +957,168 @@ class EducationTopicPromotionStore:
                     f"target_chat_id={row['group_chat_id']};thread_id={row['thread_id']}",
                     at,
                 )
+            return bool(cursor.rowcount)
+
+    def approve_scheduled(
+        self,
+        promotion_id: int,
+        *,
+        admin_id: int,
+        version: int,
+        at: str,
+    ) -> bool:
+        with self._connection() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE education_topic_promotions
+                SET approved_at = ?, updated_at = ?
+                WHERE id = ? AND status = 'review' AND scheduled_for IS NOT NULL
+                    AND review_sent_at IS NOT NULL AND review_deadline_at > ?
+                    AND approved_at IS NULL AND publish_attempts = 0
+                    AND review_version = ?
+                """,
+                (at, at, promotion_id, at, version),
+            )
+            if cursor.rowcount:
+                row = connection.execute(
+                    """
+                    SELECT group_chat_id, thread_id, schedule_key, scheduled_for
+                    FROM education_topic_promotions WHERE id = ?
+                    """,
+                    (promotion_id,),
+                ).fetchone()
+                self._action(
+                    connection,
+                    promotion_id,
+                    "scheduled_post_approved",
+                    admin_id,
+                    f"target_chat_id={row['group_chat_id']};thread_id={row['thread_id']};"
+                    f"scheduled_for={row['scheduled_for']}",
+                    at,
+                )
+                if row["schedule_key"]:
+                    connection.execute(
+                        """
+                        UPDATE education_topic_promo_schedule_runs
+                        SET status = 'approved', updated_at = ?
+                        WHERE schedule_key = ?
+                        """,
+                        (at, row["schedule_key"]),
+                    )
+            return bool(cursor.rowcount)
+
+    def scheduled_posts_due(self, *, at: str) -> list[dict[str, Any]]:
+        current = _parse_time(at)
+        if current is None:
+            return []
+        oldest = (current - PROMO_PUBLISH_GRACE).isoformat()
+        with self._connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM education_topic_promotions
+                WHERE status = 'review' AND scheduled_for IS NOT NULL
+                    AND approved_at IS NOT NULL AND review_sent_at IS NOT NULL
+                    AND publish_attempts = 0 AND scheduled_for <= ?
+                    AND scheduled_for >= ?
+                ORDER BY scheduled_for, id
+                """,
+                (at, oldest),
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def claim_scheduled_publish(
+        self,
+        promotion_id: int,
+        *,
+        admin_id: int,
+        version: int,
+        at: str,
+    ) -> bool:
+        current = _parse_time(at)
+        if current is None:
+            return False
+        oldest = (current - PROMO_PUBLISH_GRACE).isoformat()
+        with self._connection() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE education_topic_promotions
+                SET status = 'publishing', publish_attempts = publish_attempts + 1,
+                    updated_at = ?
+                WHERE id = ? AND status = 'review' AND scheduled_for IS NOT NULL
+                    AND scheduled_for <= ? AND scheduled_for >= ?
+                    AND approved_at IS NOT NULL AND review_sent_at IS NOT NULL
+                    AND publish_attempts = 0 AND review_version = ?
+                """,
+                (at, promotion_id, at, oldest, version),
+            )
+            if cursor.rowcount:
+                row = connection.execute(
+                    "SELECT group_chat_id, thread_id, schedule_key FROM education_topic_promotions WHERE id = ?",
+                    (promotion_id,),
+                ).fetchone()
+                self._action(
+                    connection,
+                    promotion_id,
+                    "scheduled_publish_started",
+                    admin_id,
+                    f"target_chat_id={row['group_chat_id']};thread_id={row['thread_id']}",
+                    at,
+                )
+                if row["schedule_key"]:
+                    connection.execute(
+                        """
+                        UPDATE education_topic_promo_schedule_runs
+                        SET status = 'publishing', updated_at = ?
+                        WHERE schedule_key = ?
+                        """,
+                        (at, row["schedule_key"]),
+                    )
+            return bool(cursor.rowcount)
+
+    def fail_scheduled_review(
+        self,
+        promotion_id: int,
+        *,
+        admin_id: int | None,
+        category: str,
+        at: str,
+    ) -> bool:
+        with self._connection() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE education_topic_promotions
+                SET status = 'failed', failure_category = ?, updated_at = ?
+                WHERE id = ? AND status IN ('review', 'editing')
+                    AND scheduled_for IS NOT NULL AND approved_at IS NOT NULL
+                """,
+                (category[:100], at, promotion_id),
+            )
+            if cursor.rowcount:
+                row = connection.execute(
+                    "SELECT group_chat_id, thread_id, schedule_key FROM education_topic_promotions WHERE id = ?",
+                    (promotion_id,),
+                ).fetchone()
+                details = (
+                    f"target_chat_id={row['group_chat_id']};thread_id={row['thread_id']};"
+                    f"category={category[:100]}"
+                )
+                self._action(
+                    connection,
+                    promotion_id,
+                    "scheduled_publish_held",
+                    admin_id,
+                    details,
+                    at,
+                )
+                if row["schedule_key"]:
+                    connection.execute(
+                        """
+                        UPDATE education_topic_promo_schedule_runs
+                        SET status = 'failed', details = ?, updated_at = ?
+                        WHERE schedule_key = ?
+                        """,
+                        (category[:500], at, row["schedule_key"]),
+                    )
             return bool(cursor.rowcount)
 
     def finish_publish(
@@ -619,6 +1154,19 @@ class EducationTopicPromotionStore:
                     f"target_chat_id={row['group_chat_id']};thread_id={row['thread_id']};message_id={message_id}",
                     at,
                 )
+                if row["schedule_key"]:
+                    connection.execute(
+                        """
+                        UPDATE education_topic_promo_schedule_runs
+                        SET status = 'published', details = ?, updated_at = ?
+                        WHERE schedule_key = ?
+                        """,
+                        (
+                            f"telegram_message_id={message_id}",
+                            at,
+                            row["schedule_key"],
+                        ),
+                    )
             return bool(cursor.rowcount)
 
     def fail_publish(
@@ -642,7 +1190,10 @@ class EducationTopicPromotionStore:
             )
             if cursor.rowcount:
                 row = connection.execute(
-                    "SELECT group_chat_id, thread_id FROM education_topic_promotions WHERE id = ?",
+                    """
+                    SELECT group_chat_id, thread_id, schedule_key
+                    FROM education_topic_promotions WHERE id = ?
+                    """,
                     (promotion_id,),
                 ).fetchone()
                 self._action(
@@ -653,12 +1204,26 @@ class EducationTopicPromotionStore:
                     f"target_chat_id={row['group_chat_id']};thread_id={row['thread_id']};category={category[:100]}",
                     at,
                 )
+                if row["schedule_key"]:
+                    connection.execute(
+                        """
+                        UPDATE education_topic_promo_schedule_runs
+                        SET status = ?, details = ?, updated_at = ?
+                        WHERE schedule_key = ?
+                        """,
+                        (
+                            status,
+                            category[:500],
+                            at,
+                            row["schedule_key"],
+                        ),
+                    )
 
     def expire_due(self, *, at: str) -> list[dict[str, Any]]:
         with self._connection() as connection:
             rows = connection.execute(
                 """
-                SELECT id, group_chat_id, thread_id
+                SELECT id, group_chat_id, thread_id, schedule_key
                 FROM education_topic_promotions
                 WHERE status IN ('review', 'editing') AND review_deadline_at <= ?
                 """,
@@ -683,7 +1248,81 @@ class EducationTopicPromotionStore:
                     f"target_chat_id={row['group_chat_id']};thread_id={row['thread_id']}",
                     at,
                 )
+                if row["schedule_key"]:
+                    connection.execute(
+                        """
+                        UPDATE education_topic_promo_schedule_runs
+                        SET status = 'expired', details = 'approval window expired',
+                            updated_at = ?
+                        WHERE schedule_key = ?
+                        """,
+                        (at, row["schedule_key"]),
+                    )
             return [dict(row) for row in rows]
+
+    def recover_interrupted(self, *, at: str) -> list[dict[str, Any]]:
+        """Close interrupted sends as uncertain so they can never auto-retry."""
+        recovered: list[dict[str, Any]] = []
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            publishing = connection.execute(
+                """
+                SELECT id, group_chat_id, thread_id
+                FROM education_topic_promotions WHERE status = 'publishing'
+                """
+            ).fetchall()
+            for row in publishing:
+                connection.execute(
+                    """
+                    UPDATE education_topic_promotions
+                    SET status = 'delivery_unknown',
+                        failure_category = 'process_interrupted_during_send',
+                        updated_at = ?
+                    WHERE id = ? AND status = 'publishing'
+                    """,
+                    (at, row["id"]),
+                )
+                self._action(
+                    connection,
+                    int(row["id"]),
+                    "restart_delivery_unknown",
+                    None,
+                    f"target_chat_id={row['group_chat_id']};thread_id={row['thread_id']}",
+                    at,
+                )
+                recovered.append(
+                    {"id": int(row["id"]), "status": "delivery_unknown"}
+                )
+            unsent_previews = connection.execute(
+                """
+                SELECT id, group_chat_id, thread_id
+                FROM education_topic_promotions
+                WHERE status = 'review' AND review_sent_at IS NULL
+                """
+            ).fetchall()
+            for row in unsent_previews:
+                connection.execute(
+                    """
+                    UPDATE education_topic_promotions
+                    SET status = 'review_delivery_failed',
+                        failure_category = 'process_interrupted_before_preview_confirmation',
+                        updated_at = ?
+                    WHERE id = ? AND status = 'review' AND review_sent_at IS NULL
+                    """,
+                    (at, row["id"]),
+                )
+                self._action(
+                    connection,
+                    int(row["id"]),
+                    "restart_preview_unconfirmed",
+                    None,
+                    "No member destination was contacted",
+                    at,
+                )
+                recovered.append(
+                    {"id": int(row["id"]), "status": "review_delivery_failed"}
+                )
+        return recovered
 
 
 class EducationTopicPromotionManager:
@@ -705,6 +1344,7 @@ class EducationTopicPromotionManager:
         self.market_channel_id = market_channel_id
         self.topic_message_link = (topic_message_link or "").strip()
         self.store = EducationTopicPromotionStore(database_path)
+        self._recovery_checked = False
         self.thread_id: int | None = None
         self.topic_config_error: str | None = None
         try:
@@ -715,10 +1355,17 @@ class EducationTopicPromotionManager:
                 raise ValueError("The topic link does not contain a forum thread ID.")
             if group_id != education_group_id or group_id != EXPECTED_EDUCATION_GROUP_ID:
                 raise ValueError("The topic link does not match the configured Education group.")
+            if thread_id != EXPECTED_MARKET_ANALYSIS_THREAD_ID:
+                raise ValueError("The configured link is not the approved Market Analysis topic.")
             self.thread_id = thread_id
-        except (TypeError, ValueError):
+        except (EducationPollError, TypeError, ValueError) as error:
+            detail = (
+                str(error)
+                if isinstance(error, ValueError)
+                else "The configured link could not be parsed."
+            )
             self.topic_config_error = (
-                "The configured Market Analysis topic link is missing or invalid. "
+                f"The configured Market Analysis topic link is invalid: {detail} "
                 "No group post can be prepared until the correct topic-specific "
                 "Telegram link is configured."
             )
@@ -747,7 +1394,7 @@ class EducationTopicPromotionManager:
             and chat_id == self.admin_id
         )
 
-    def _verify_targets(self) -> tuple[str, str, str]:
+    def _verify_targets(self) -> tuple[str, str, str, str, str]:
         if self.topic_config_error:
             raise ValueError(self.topic_config_error)
         if (
@@ -808,11 +1455,33 @@ class EducationTopicPromotionManager:
                 "Telegram did not provide a usable Market Analysis channel link. "
                 "No link was invented."
             )
-        return channel_link, f"https://t.me/{username}", username
+        group_title = group.get("title")
+        channel_title = channel.get("title")
+        if not isinstance(group_title, str) or not group_title.strip():
+            raise ValueError("Telegram did not confirm the Education group name.")
+        if not isinstance(channel_title, str) or not channel_title.strip():
+            raise ValueError("Telegram did not confirm the Market Analysis channel name.")
+        return (
+            channel_link,
+            f"https://t.me/{username}",
+            username,
+            group_title.strip(),
+            channel_title.strip(),
+        )
 
     @staticmethod
     def _body_for(index: int) -> str:
         return _PROMO_BODIES[index % len(_PROMO_BODIES)]
+
+    @staticmethod
+    def _scheduled_body_for(index: int, weekday: str) -> str:
+        variants = _SCHEDULED_PROMO_BODIES[weekday]
+        lead = variants[(index // 2) % len(variants)]
+        return (
+            f"{lead}\n\n"
+            "📌 Trade breakdowns are shared in the Educational Group’s Market "
+            "Analysis topic. The separate Market Analysis channel is linked below."
+        )
 
     @staticmethod
     def _validate_body(body: str) -> str | None:
@@ -836,26 +1505,32 @@ class EducationTopicPromotionManager:
 
     @staticmethod
     def _member_keyboard(channel_link: str, bot_link: str) -> dict[str, Any]:
-        version = int(promotion["review_version"])
-        promotion_id = int(promotion["id"])
         return {
             "inline_keyboard": [
                 [{"text": "📊 Open Market Analysis", "url": channel_link}],
-                [{"text": "🤖 Open Smart Money Hub Bot", "url": bot_link}],
+                [{"text": "Coach", "url": bot_link}],
             ]
         }
 
     def _review_keyboard(self, promotion: dict[str, Any]) -> dict[str, Any]:
+        version = int(promotion["review_version"])
+        promotion_id = int(promotion["id"])
         links = self._member_keyboard(
             str(promotion["channel_link"]),
             f"https://t.me/{promotion['bot_username']}",
         )["inline_keyboard"]
+        scheduled_for = _parse_time(str(promotion["scheduled_for"])) if promotion.get("scheduled_for") else None
+        approve_label = (
+            f"✅ Approve for {scheduled_for.astimezone(WAT).strftime('%H:%M WAT')}"
+            if scheduled_for
+            else "✅ Approve & Publish"
+        )
         return {
             "inline_keyboard": [
                 *links,
                 [
                     {
-                        "text": "✅ Approve & Publish",
+                        "text": approve_label,
                         "callback_data": f"admin:education_topic_promo:approve:{promotion_id}:{version}",
                     },
                     {
@@ -885,10 +1560,32 @@ class EducationTopicPromotionManager:
             )
             return
         deadline = _parse_time(str(promotion["review_deadline_at"]))
+        scheduled_for = (
+            _parse_time(str(promotion["scheduled_for"]))
+            if promotion.get("scheduled_for")
+            else None
+        )
+        if scheduled_for:
+            review_line = (
+                "Approve before "
+                f"{scheduled_for.astimezone(WAT).strftime('%H:%M WAT')} to publish "
+                "at the scheduled time. No approval means no post."
+            )
+            scheduled_line = (
+                f"Scheduled: {scheduled_for.astimezone(WAT).strftime('%A, %d %b %Y at %I:%M %p WAT')}\n"
+            )
+        else:
+            review_line = (
+                "Approve within five minutes (until "
+                f"{deadline.astimezone(WAT).strftime('%H:%M WAT') if deadline else 'deadline unavailable'})."
+            )
+            scheduled_line = ""
         caption = (
             "🔒 <b>PRIVATE REVIEW — NOT PUBLISHED</b>\n"
-            f"Target: Education group · Market Analysis topic · thread {promotion['thread_id']}\n"
-            f"Approve within five minutes (until {deadline.strftime('%H:%M:%S UTC') if deadline else 'deadline unavailable'}).\n\n"
+            f"Target: {html.escape(str(promotion['group_title']))} · "
+            f"Market Analysis topic (thread {promotion['thread_id']})\n"
+            f"Market Analysis channel: {html.escape(str(promotion['channel_title']))}\n"
+            f"{scheduled_line}{review_line}\n\n"
             f"{self._render(str(promotion['body']))}"
         )
         keyboard = self._review_keyboard(promotion)
@@ -952,8 +1649,13 @@ class EducationTopicPromotionManager:
             ),
             "Every post requires an explicit approval within five minutes.",
             "No approval means the draft expires without posting.",
-            f"Minimum interval: once every {settings['cooldown_days']} days.",
-            "Automatic posting: disabled.",
+            f"Manual promotion interval: once every {settings['cooldown_days']} days.",
+            (
+                "Scheduled class promotions: Monday and Thursday at 7:00 PM WAT; "
+                "private preview five minutes earlier; each post needs approval."
+                if settings.get("scheduled_enabled")
+                else "Scheduled Monday/Thursday class promotions: paused."
+            ),
             "",
             "Recent promotions:",
         ]
@@ -984,6 +1686,18 @@ class EducationTopicPromotionManager:
                     "text": f"Every 4 weeks{' ✓' if settings['cooldown_days'] == 28 else ''}",
                     "callback_data": "admin:education_topic_promo:interval:28",
                 },
+            ],
+            [
+                {
+                    "text": "⏸ Pause Mon/Thu schedule"
+                    if settings.get("scheduled_enabled")
+                    else "▶️ Enable Mon/Thu schedule",
+                    "callback_data": (
+                        "admin:education_topic_promo:schedule:disable"
+                        if settings.get("scheduled_enabled")
+                        else "admin:education_topic_promo:schedule:enable"
+                    ),
+                }
             ],
             [{"text": "🔙 Back to Admin Dashboard", "callback_data": "admin:home"}],
         ]
@@ -1020,6 +1734,19 @@ class EducationTopicPromotionManager:
                 )
             else:
                 self.api.send_message(chat_id, "That promotion interval is not supported.")
+            self.show_controls(chat_id)
+            return True
+        if len(parts) == 4 and parts[2] == "schedule":
+            if parts[3] in {"enable", "disable"}:
+                enabled = parts[3] == "enable"
+                self.store.set_schedule_enabled(
+                    enabled, admin_id=admin_id, at=current.isoformat()
+                )
+                self.api.send_message(
+                    chat_id,
+                    "Monday/Thursday promotional previews are "
+                    + ("enabled." if enabled else "paused."),
+                )
             self.show_controls(chat_id)
             return True
         if data == "admin:education_topic_promo:create":
@@ -1085,7 +1812,9 @@ class EducationTopicPromotionManager:
         self, chat_id: int, admin_id: int, now: datetime
     ) -> None:
         try:
-            channel_link, _bot_link, username = self._verify_targets()
+            channel_link, _bot_link, username, group_title, channel_title = (
+                self._verify_targets()
+            )
         except ValueError as error:
             self.api.send_message(chat_id, str(error))
             return
@@ -1098,9 +1827,11 @@ class EducationTopicPromotionManager:
         promotion, error = self.store.create_draft(
             body=body,
             group_chat_id=int(self.education_group_id),
+            group_title=group_title,
             thread_id=int(self.thread_id),
             topic_source_link=self.topic_message_link,
             channel_link=channel_link,
+            channel_title=channel_title,
             bot_username=username,
             admin_id=admin_id,
             now=now,
@@ -1124,7 +1855,9 @@ class EducationTopicPromotionManager:
             self.api.send_message(chat_id, f"Not published: {issue}")
             return
         try:
-            channel_link, bot_link, username = self._verify_targets()
+            channel_link, bot_link, username, _group_title, _channel_title = (
+                self._verify_targets()
+            )
         except ValueError as error:
             self.api.send_message(chat_id, f"Not published: {error}")
             return
@@ -1138,6 +1871,31 @@ class EducationTopicPromotionManager:
                 chat_id,
                 "Not published: the verified link or destination changed after preview. "
                 "Cancel this draft and prepare a fresh one.",
+            )
+            return
+        if promotion.get("scheduled_for"):
+            if not self.store.approve_scheduled(
+                promotion_id,
+                admin_id=admin_id,
+                version=version,
+                at=_utc(now).isoformat(),
+            ):
+                self.api.send_message(
+                    chat_id,
+                    "Not scheduled: approval was late, the preview was not delivered, "
+                    "or this post was already handled.",
+                )
+                return
+            scheduled_for = _parse_time(str(promotion["scheduled_for"]))
+            scheduled_label = (
+                scheduled_for.astimezone(WAT).strftime("%A at %I:%M %p WAT")
+                if scheduled_for
+                else "the scheduled time"
+            )
+            self.api.send_message(
+                chat_id,
+                f"Approved. The post is queued for {scheduled_label}; it will publish "
+                "only if the final destination and content checks pass.",
             )
             return
         if not self.store.claim_publish(
@@ -1173,7 +1931,9 @@ class EducationTopicPromotionManager:
                     message_thread_id=int(self.thread_id),
                 )
         except TelegramAPIError as error:
-            unknown = error.delivery_unknown
+            unknown = error.delivery_unknown or (
+                error.http_status is not None and error.http_status >= 500
+            )
             self.store.fail_publish(
                 promotion_id,
                 admin_id=admin_id,
@@ -1236,35 +1996,21 @@ class EducationTopicPromotionManager:
         if not self.has_input_pending(admin_id, now=current):
             return False
         if text.strip().casefold() == "/cancel":
-            with self.store._connect() as connection:
-                row = connection.execute(
-                    """
-                    SELECT id FROM education_topic_promotions
-                    WHERE status IN ('editing', 'review')
-                        AND (edit_admin_id = ? OR photo_upload_admin_id = ?)
-                    ORDER BY id DESC LIMIT 1
-                    """,
-                    (admin_id, admin_id),
-                ).fetchone()
-            if row:
+            promotion_id = self.store.cancellable_input_for_admin(
+                admin_id, at=current.isoformat()
+            )
+            if promotion_id is not None:
                 self.store.cancel(
-                    int(row["id"]), admin_id=admin_id, at=current.isoformat()
+                    promotion_id,
+                    admin_id=admin_id,
+                    version=None,
+                    at=current.isoformat(),
                 )
             self.api.send_message(chat_id, "Promotion cancelled. Nothing was posted.")
             return True
-        promotion = None
-        with self.store._connect() as connection:
-            row = connection.execute(
-                """
-                SELECT * FROM education_topic_promotions
-                WHERE status = 'editing' AND edit_admin_id = ?
-                    AND review_deadline_at > ?
-                ORDER BY id DESC LIMIT 1
-                """,
-                (admin_id, current.isoformat()),
-            ).fetchone()
-            if row:
-                promotion = dict(row)
+        promotion = self.store.editing_for_admin(
+            admin_id, at=current.isoformat()
+        )
         if promotion is None:
             self.api.send_message(
                 chat_id, "A photo is pending. Send one image or use /cancel."
@@ -1338,6 +2084,28 @@ class EducationTopicPromotionManager:
 
     def dispatch_due(self, now: datetime | None = None) -> None:
         current = _utc(now or datetime.now(timezone.utc))
+        if not self._recovery_checked:
+            self._recovery_checked = True
+            recovered = self.store.recover_interrupted(at=current.isoformat())
+            if self.admin_id is not None:
+                for item in recovered:
+                    note = (
+                        "Delivery may have happened before restart. Check the Market "
+                        "Analysis topic; the bot will not retry this promotion."
+                        if item["status"] == "delivery_unknown"
+                        else "The private preview was not confirmed before restart. "
+                        "No group post was sent."
+                    )
+                    try:
+                        self.api.send_message(
+                            self.admin_id,
+                            f"Promotion #{item['id']} needs attention: {note}",
+                        )
+                    except TelegramAPIError:
+                        logger.warning(
+                            "Could not notify admin about recovered group promo %s.",
+                            item["id"],
+                        )
         expired = self.store.expire_due(at=current.isoformat())
         for promotion in expired:
             logger.info(

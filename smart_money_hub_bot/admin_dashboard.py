@@ -28,6 +28,7 @@ from .economic_calendar_admin import (
     build_weekly_calendar_preview,
 )
 from .education_morning import EducationMorningStore
+from .education_topic_promotions import EducationTopicPromotionManager
 from .trade_ledger import TradeLedger, TradeLedgerError
 from .knowledge_approval import can_approve
 from .knowledge_drafting import parse_research_material, validate_answer_draft
@@ -86,6 +87,7 @@ class AdminDashboard:
         calendar_review: OfficialCalendarReadRepository | None = None,
         education_group_id: int | None = None,
         daily_brief_enabled: bool = False,
+        education_market_analysis_topic_link: str | None = None,
     ) -> None:
         self.api = api
         self.store = store
@@ -128,6 +130,14 @@ class AdminDashboard:
             writer=channel_writer,
             history_store=store,
             channel_post_manager=self.channel_posts,
+        )
+        self.education_topic_promotions = EducationTopicPromotionManager(
+            api,
+            store.database_path,
+            admin_id=admin_id,
+            education_group_id=education_group_id,
+            market_channel_id=main_channel_id,
+            topic_message_link=education_market_analysis_topic_link,
         )
         self._search_pending: set[int] = set()
         self._broadcast_pending: set[int] = set()
@@ -578,6 +588,19 @@ class AdminDashboard:
         self, chat_id: int, telegram_id: int, is_private: bool, data: str
     ) -> None:
         if not self._authorize(chat_id, telegram_id, is_private):
+            return
+        if data.startswith("admin:education_topic_promo"):
+            self.cancel_calendar_action(telegram_id)
+            self.cancel_knowledge_action(telegram_id)
+            self.cancel_broadcast(telegram_id)
+            self.cancel_single_member_dm(telegram_id)
+            self.cancel_channel_promo(telegram_id)
+            self.cancel_channel_post_edit(telegram_id)
+            self.session_open_posts.cancel_edit(telegram_id)
+            self.cancel_search(telegram_id)
+            self.education_topic_promotions.handle_callback(
+                chat_id, telegram_id, is_private, data
+            )
             return
         if not data.startswith("admin:market_awareness"):
             self.cancel_calendar_action(telegram_id)
@@ -1037,6 +1060,12 @@ class AdminDashboard:
                 [{"text": "📨 Send One-Time DM", "callback_data": "admin:dm_broadcast"}],
                 [{"text": "✉️ Send One-Time DM to One Member", "callback_data": "admin:dm_member"}],
                 [{"text": "📣 Promote Bot in Channel", "callback_data": "admin:channel_promo"}],
+                [
+                    {
+                        "text": "📣 Promote in Education Market Analysis",
+                        "callback_data": "admin:education_topic_promo",
+                    }
+                ],
                 [{"text": "🏠 Main Menu", "callback_data": "nav:home"}],
             ]
         }
