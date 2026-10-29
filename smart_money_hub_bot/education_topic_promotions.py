@@ -15,7 +15,7 @@ from typing import Any, Iterator
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
-from .channel_content import PROMO_FEATURES, validate_channel_post
+from .channel_content import validate_channel_post
 from .channel_gemini import GeminiChannelGenerationError
 from .education_polls import (
     EducationPollError,
@@ -48,6 +48,21 @@ _DISALLOWED_PROMO_CLAIMS = re.compile(
     re.IGNORECASE,
 )
 _URL = re.compile(r"https?://\S+", re.IGNORECASE)
+_MARKET_ANALYSIS_CTA = re.compile(
+    r"\b(?:tap|open|explore|visit|check\s+out|head\s+to|join)\b"
+    r".{0,100}\b(?:market\s+analysis|the\s+button|button\s+below)\b",
+    re.IGNORECASE | re.DOTALL,
+)
+_ZOOM_OR_CLASS = re.compile(r"\b(?:zoom|classes?|class\s+link|class\s+access)\b", re.I)
+_WRONG_BREAKDOWN_DESTINATION = re.compile(r"\bbreakdowns?\b", re.I)
+_DISALLOWED_PROMO_MARKUP = re.compile(r"(?:\*\*|__|`|<[^>]+>)")
+_ZOOM_LINK_ALREADY_AVAILABLE = re.compile(
+    r"\b(?:already|now)\s+(?:available|posted|live)\b", re.IGNORECASE
+)
+_CLASS_LINK_TIMING = re.compile(
+    r"\bwhen\s+(?:the\s+)?(?:class|session)\s+(?:begins|starts)\b",
+    re.IGNORECASE,
+)
 
 
 def _utc(value: datetime) -> datetime:
@@ -1492,6 +1507,65 @@ class EducationTopicPromotionManager:
             return "Keep links in the verified buttons; remove URLs from the caption."
         if _DISALLOWED_PROMO_CLAIMS.search(text):
             return "The caption contains a trading result, guaranteed claim, or direct signal."
+        folded = text.casefold()
+        if "market analysis" not in folded or not re.search(
+            r"\b(?:gold|xau\s*/?\s*usd)\b", folded
+        ):
+            return (
+                "The promotion must focus on the separate Market Analysis channel "
+                "and its Gold/USD educational coverage."
+            )
+        if not _MARKET_ANALYSIS_CTA.search(text):
+            return (
+                "Add a clear primary call to action directing readers to the "
+                "Open Market Analysis button."
+            )
+        if _WRONG_BREAKDOWN_DESTINATION.search(text):
+            return (
+                "Do not mention trade breakdowns in this promotion; they are shared "
+                "in the Education Group topic, not the separate channel."
+            )
+        if re.search(r"\b(?:coach|assistant|bot|pro signals?)\b", folded):
+            return (
+                "Keep the caption focused on the separate Market Analysis channel; "
+                "the Coach button remains available separately."
+            )
+
+        class_paragraphs = [
+            paragraph
+            for paragraph in (part.strip() for part in body.split("\n\n"))
+            if paragraph and _ZOOM_OR_CLASS.search(paragraph)
+        ]
+        if class_paragraphs:
+            if len(class_paragraphs) > 1:
+                return "Keep any Zoom reminder to one short, secondary paragraph."
+            class_line = class_paragraphs[0]
+            if _ZOOM_LINK_ALREADY_AVAILABLE.search(class_line):
+                return "Do not say the Zoom link is already available."
+            if "monday" not in class_line.casefold() or "thursday" not in class_line.casefold():
+                return "A Zoom reminder must use the configured Monday and Thursday schedule."
+            if not re.search(r"\b8(?::00)?\s*pm\s*wat\b", class_line, re.IGNORECASE):
+                return "A Zoom reminder must use the configured 8:00 PM WAT class time."
+            if "main smart money hub channel" not in class_line.casefold():
+                return (
+                    "Say that class access is shared in the main Smart Money Hub "
+                    "channel, not the Education Group."
+                )
+            if not _CLASS_LINK_TIMING.search(class_line):
+                return "Say the class link is posted when the class or session begins."
+            if "education group" in class_line.casefold():
+                return "Never direct members to the Education Group for the Zoom link."
+            cta = _MARKET_ANALYSIS_CTA.search(body)
+            if cta is None or body.rfind(class_line) < cta.end():
+                return "Keep the optional Zoom reminder after the Market Analysis call to action."
+
+        safety_issue = validate_channel_post(
+            body.strip(),
+            is_promo=False,
+            require_golden_rule=False,
+        )
+        if safety_issue:
+            return f"The caption failed the existing content-safety check ({safety_issue})."
         return None
 
     @classmethod
@@ -1504,80 +1578,26 @@ class EducationTopicPromotionManager:
         weekday: str | None,
     ) -> str | None:
         text = body.strip()
-        if not text or len(text) > 220:
-            return "Gemini's original hook must be 1–220 characters."
-        if _URL.search(text) or re.search(r"(?:\*\*|__|`|<[^>]+>)", text):
-            return "Gemini's hook must be plain text without links or markup."
-        if _DISALLOWED_PROMO_CLAIMS.search(text):
-            return "Gemini's hook contains a trading result, guaranteed claim, or direct signal."
-        lines = [line.strip() for line in body.strip().splitlines() if line.strip()]
-        if not lines:
-            return "Gemini returned an empty caption."
-        headline = lines[0]
-        if not headline.startswith(
-            (
-                "📚",
-                "📊",
-                "🧠",
-                "🎯",
-                "💬",
-                "🎓",
-                "✨",
-                "🌱",
-                "🤝",
-                "👋",
-                "📣",
-                "📈",
-                "💡",
-            )
-        ):
-            return "The caption needs a relevant emoji at the start of its headline."
-        title_text = re.sub(r"^[^\w]+", "", headline, flags=re.UNICODE)
-        title_letters = [char for char in title_text if char.isalpha()]
-        if not title_letters or sum(char.isupper() for char in title_letters) / len(title_letters) < 0.55:
-            return "The headline must be short and uppercase."
-        restricted_terms = (
-            "coach",
-            "assessment",
-            "challenge",
-            "journal",
-            "progress",
-            "signal",
-            "market analysis",
-            "trade breakdown",
-            "zoom",
-            "class",
-            "monday",
-            "thursday",
-            "8:00 pm",
-            "profit",
-            "result",
-            "testimonial",
-            "guarantee",
-        )
-        if any(term in text.casefold() for term in restricted_terms):
+        if not text or len(text) < 180 or len(text) > MAX_PROMO_BODY_CHARS:
             return (
-                "Keep Gemini's unique section to an evergreen learning hook; "
-                "the bot adds the verified destination and feature details."
+                "Gemini must return a complete promotion between 180 and "
+                f"{MAX_PROMO_BODY_CHARS} characters."
             )
-        safety_issue = validate_channel_post(
-            f"{text}\n\nNO CONFIRMATION, NO ENTRY.",
-            is_promo=False,
-        )
-        if safety_issue:
-            return f"The caption failed the existing content-safety check ({safety_issue})."
+        if _URL.search(text) or _DISALLOWED_PROMO_MARKUP.search(text):
+            return "Gemini's caption must be plain text without raw links or markup."
+        lines = [line.strip() for line in body.strip().splitlines() if line.strip()]
+        headline = lines[0]
+        if len(headline) > 100 or not any(char.isalpha() for char in headline):
+            return "Gemini's caption needs a short, relevant headline."
+        body_issue = cls._validate_body(text)
+        if body_issue:
+            return body_issue
 
-        headline_key = " ".join(re.sub(r"[^\w\s]", " ", headline.casefold()).split())
         for item in recent_captions:
             prior = str(item.get("body") or "").strip()
             prior_lines = [line.strip() for line in prior.splitlines() if line.strip()]
             if not prior_lines:
                 continue
-            prior_headline = " ".join(
-                re.sub(r"[^\w\s]", " ", prior_lines[0].casefold()).split()
-            )
-            if headline_key and headline_key == prior_headline:
-                return "The headline repeats a recent promotion; choose a new angle."
             current_core = cls._novelty_core(body)
             prior_core = cls._novelty_core(prior)
             if (
@@ -1592,27 +1612,8 @@ class EducationTopicPromotionManager:
     def _compose_generated_body(
         cls, hook: str, *, promotion_type: str, weekday: str | None
     ) -> str:
-        paragraphs = [hook.strip()]
-        if promotion_type == "scheduled_class":
-            day = (weekday or "").strip()
-            if day.casefold() not in {"monday", "thursday"}:
-                raise ValueError("The scheduled class day is unavailable.")
-            paragraphs.append(
-                f"📅 The configured {day} Zoom class starts at 8:00 PM WAT. "
-                "The link will be posted in the channel when the class begins."
-            )
-        paragraphs.extend(
-            [
-                "📌 Trade breakdowns are shared in the Education Group's "
-                "Market Analysis topic.",
-                "📊 The separate Market Analysis channel has its own button below.",
-                "🤖 "
-                + PROMO_FEATURES[0]
-                + " Tap the Coach button below to open the Smart Money Hub bot; "
-                "send /start if prompted.",
-            ]
-        )
-        return "\n\n".join(paragraphs)
+        del cls, promotion_type, weekday
+        return hook.strip()
 
     @staticmethod
     def _novelty_core(text: str) -> str:
@@ -1622,11 +1623,8 @@ class EducationTopicPromotionManager:
             if any(
                 marker in lowered
                 for marker in (
-                    "trade breakdown",
-                    "market analysis topic",
+                    "open market analysis button",
                     "separate market analysis channel",
-                    "coach button",
-                    "ask the private coach",
                     "no confirmation, no entry",
                 )
             ):
@@ -1684,8 +1682,8 @@ class EducationTopicPromotionManager:
                 )
                 if attempt == 1 and error.category in retryable_generation_errors:
                     retry_feedback = (
-                        "The previous response was empty or malformed. Return the "
-                        "required CATEGORY and POST sections with a complete caption."
+                        "The previous response was empty or malformed. Return one "
+                        "complete promotion caption with no labels or explanation."
                     )
                     continue
                 self.store.record_generation_event(
@@ -1734,15 +1732,6 @@ class EducationTopicPromotionManager:
                 else:
                     issue = self._validate_body(composed)
                     if issue is None:
-                        safety_issue = validate_channel_post(
-                            f"{composed}\n\nNO CONFIRMATION, NO ENTRY.",
-                            is_promo=False,
-                        )
-                        if safety_issue:
-                            issue = (
-                                "The completed caption failed the existing "
-                                f"content-safety check ({safety_issue})."
-                            )
                     if issue is None:
                         return composed, None
             last_issue = issue
@@ -1756,8 +1745,8 @@ class EducationTopicPromotionManager:
             if attempt == 1:
                 retry_feedback = (
                     f"The previous response failed this check: {issue} "
-                    "Write only a different, corrected 1–220 character hook. "
-                    "Follow the hook-only system instructions."
+                    "Return a materially different, corrected, complete promotion "
+                    "caption. Follow all destination, class, and safety rules."
                 )
         return None, (
             "Gemini's caption failed content checks after two attempts. "
@@ -1788,9 +1777,8 @@ class EducationTopicPromotionManager:
     @staticmethod
     def _render(body: str) -> str:
         return (
-            "📣 <b>SMART MONEY HUB | EDUCATION GROUP</b>\n\n"
+            "📊 <b>SMART MONEY HUB | MARKET ANALYSIS</b>\n\n"
             f"{html.escape(body, quote=False)}\n\n"
-            "🛡️ <b>NO CONFIRMATION, NO ENTRY.</b>\n\n"
             "For educational purposes only. Trading involves risk."
         )
 

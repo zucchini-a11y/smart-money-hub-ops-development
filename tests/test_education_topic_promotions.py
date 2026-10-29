@@ -29,11 +29,35 @@ MONDAY_PUBLISH = datetime(2026, 11, 2, 18, 0, tzinfo=timezone.utc)
 THURSDAY_REVIEW = datetime(2026, 11, 5, 17, 55, tzinfo=timezone.utc)
 THURSDAY_PUBLISH = datetime(2026, 11, 5, 18, 0, tzinfo=timezone.utc)
 
-_PROMO_OPENERS = (
-    ("📚 BUILD A BETTER CHART ROUTINE", "Start with one clear question before drawing a zone."),
-    ("🧠 LET PROCESS LEAD THE CHART", "A written plan can help keep attention on evidence, not excitement."),
-    ("🎯 MAKE EVERY MARK ON YOUR CHART COUNT", "Choose what you are studying before you decide what a level means."),
-    ("💬 LEARN, REVIEW, AND KEEP IMPROVING", "A thoughtful review can turn one chart observation into a useful lesson."),
+_PROMO_CAPTIONS = (
+    (
+        "📊 GOLD CONTEXT, WITHOUT THE GUESSWORK\n\n"
+        "The separate Market Analysis channel explores Gold/XAUUSD and explains "
+        "how structure, liquidity and confirmation fit together. Learn to study "
+        "the reasoning behind a chart without treating one concept as an entry signal.\n\n"
+        "Tap the Open Market Analysis button below to explore the channel."
+    ),
+    (
+        "🧭 WHAT TO NOTICE WHEN GOLD IS ON YOUR CHART\n\n"
+        "Explore how the separate Market Analysis channel connects Gold/XAUUSD "
+        "context with market structure, POIs and confirmation. The aim is to "
+        "understand what a chart concept can—and cannot—tell you.\n\n"
+        "Open the separate Market Analysis channel with the button below."
+    ),
+    (
+        "✨ READ THE REASON, NOT JUST THE LEVEL\n\n"
+        "The separate Market Analysis channel shares educational Gold/XAUUSD "
+        "insights, including ways to think about liquidity, FVGs and displacement. "
+        "Use the analysis to build understanding, not to assume a trade is confirmed.\n\n"
+        "Tap the Open Market Analysis button to take a look."
+    ),
+    (
+        "📚 A CLEARER WAY TO STUDY GOLD\n\n"
+        "Want to understand more of the thinking behind market movement? The "
+        "separate Market Analysis channel covers Gold/XAUUSD context and SMC ideas "
+        "such as order blocks, structure and confirmation—without promising outcomes.\n\n"
+        "Explore the separate Market Analysis channel using the button below."
+    ),
 )
 
 
@@ -66,8 +90,7 @@ class FakePromotionWriter:
                 raise response
             return response
 
-        opener, lead = _PROMO_OPENERS[(len(self.calls) - 1) % len(_PROMO_OPENERS)]
-        return f"{opener}\n\n{lead}"
+        return _PROMO_CAPTIONS[(len(self.calls) - 1) % len(_PROMO_CAPTIONS)]
 
 
 class FakeTelegramAPI:
@@ -331,13 +354,16 @@ class EducationTopicPromotionTests(unittest.TestCase):
         self.assertIn("gemini_rate_limit", event[1])
 
     def test_invalid_gemini_caption_retries_once_then_saves_only_valid_result(self) -> None:
-        valid_hook = (
-            "🎯 PLAN BEFORE YOU FOLLOW A LEVEL\n\n"
-            "Choose one clear question to guide your chart review today."
+        valid_caption = (
+            "💧 UNDERSTAND WHAT A GOLD LEVEL CAN TELL YOU\n\n"
+            "The separate Market Analysis channel explores Gold/XAUUSD context "
+            "and explains liquidity, structure and confirmation as educational "
+            "ideas—not automatic entry signals.\n\n"
+            "Tap the Open Market Analysis button below to explore the channel."
         )
         self.writer.responses = [
             "A plain headline without the required destinations.",
-            valid_hook,
+            valid_caption,
         ]
         self.manager.handle_callback(
             ADMIN_ID,
@@ -351,8 +377,9 @@ class EducationTopicPromotionTests(unittest.TestCase):
         self.assertIn("failed this check", self.writer.calls[1]["retry_feedback"])
         saved = self.manager.store.get(1)
         self.assertIsNotNone(saved)
-        self.assertTrue(saved["body"].startswith(valid_hook))
-        self.assertIn("Trade breakdowns are shared in the Education Group", saved["body"])
+        self.assertEqual(saved["body"], valid_caption)
+        self.assertNotIn("trade breakdown", saved["body"].casefold())
+        self.assertNotIn("Coach", saved["body"])
         self.assertFalse(
             any(
                 message["chat_id"] == EXPECTED_EDUCATION_GROUP_ID
@@ -392,12 +419,72 @@ class EducationTopicPromotionTests(unittest.TestCase):
         saved = self.manager.store.get(1)
         self.assertIsNotNone(saved)
         self.assertEqual(saved["status"], "review")
-        self.assertIn("8:00 PM WAT", saved["body"])
+        self.assertIn("separate Market Analysis channel", saved["body"])
+        self.assertNotIn("Zoom", saved["body"])
         self.assertFalse(
             any(
                 message["chat_id"] == EXPECTED_EDUCATION_GROUP_ID
                 for message in self.api.messages
             )
+        )
+
+    def test_zoom_reminder_is_optional_secondary_and_points_to_main_channel(self) -> None:
+        with_zoom = (
+            "📊 GOLD ANALYSIS THAT EXPLAINS THE WHY\n\n"
+            "The separate Market Analysis channel explores Gold/XAUUSD context "
+            "and explains market structure, liquidity and confirmation in an "
+            "educational way.\n\n"
+            "Tap the Open Market Analysis button below to explore the channel.\n\n"
+            "🎓 Free Zoom classes are Monday and Thursday at 8:00 PM WAT. "
+            "The link will be posted in the main Smart Money Hub channel when "
+            "the class begins."
+        )
+        self.writer.responses = [with_zoom]
+        self.manager.store.set_schedule_enabled(
+            True, admin_id=ADMIN_ID, at=NOW.isoformat()
+        )
+        self.manager.dispatch_due(MONDAY_REVIEW)
+
+        saved = self.manager.store.get(1)
+        self.assertIsNotNone(saved)
+        self.assertIn("main Smart Money Hub channel when the class begins", saved["body"])
+        self.assertNotIn("zoom.us", saved["body"].casefold())
+
+    def test_promotions_do_not_require_brand_mantra_or_append_static_copy(self) -> None:
+        with self.create_review()[0] as row:
+            self.assertNotIn("NO CONFIRMATION, NO ENTRY.", row["body"])
+            self.assertNotIn("Education Group", row["body"])
+            self.assertNotIn("Coach", row["body"])
+            self.assertIn("SMART MONEY HUB | MARKET ANALYSIS", self.api.messages[-1]["text"])
+            self.assertNotIn("EDUCATION GROUP</b>", self.api.messages[-1]["text"])
+
+    def test_promotion_holds_wrong_destination_claims_and_bad_zoom_direction(self) -> None:
+        invalid_breakdown = (
+            "📊 GOLD ANALYSIS AND MARKET STRUCTURE\n\n"
+            "The separate Market Analysis channel posts trade breakdowns for "
+            "Gold/XAUUSD and explains liquidity and structure.\n\n"
+            "Tap the Open Market Analysis button below to explore the channel."
+        )
+        invalid_zoom = (
+            "📊 GOLD ANALYSIS AND MARKET STRUCTURE\n\n"
+            "The separate Market Analysis channel explores Gold/XAUUSD context "
+            "and explains liquidity, structure and confirmation.\n\n"
+            "🎓 Free Zoom classes are Monday and Thursday at 8:00 PM WAT. "
+            "The link is in the Education Group now.\n\n"
+            "Tap the Open Market Analysis button below to explore the channel."
+        )
+        self.assertIn(
+            "trade breakdowns",
+            self.manager._validate_generated_body(
+                invalid_breakdown,
+                recent_captions=[],
+                promotion_type="manual",
+                weekday=None,
+            ).casefold(),
+        )
+        self.assertIn(
+            "Market Analysis call to action",
+            self.manager._validate_body(invalid_zoom),
         )
 
     def test_only_explicit_approval_publishes_once_to_topic_three(self) -> None:

@@ -678,6 +678,7 @@ def validate_channel_post(
     bot_username: str | None = None,
     verified_market_information: bool = False,
     verified_information: Sequence[str] = (),
+    require_golden_rule: bool = True,
 ) -> str | None:
     """Return a safe rejection category, or None when content is publishable."""
     text = content.strip()
@@ -685,7 +686,7 @@ def validate_channel_post(
         return "empty_content"
     if len(text) > 4000:
         return "content_too_long"
-    if "no confirmation, no entry" not in text.casefold():
+    if require_golden_rule and "no confirmation, no entry" not in text.casefold():
         return "missing_golden_rule"
     if _BANNED_PROMISES.search(text):
         return "prohibited_signal_or_promise"
