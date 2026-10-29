@@ -1267,7 +1267,7 @@ class EducationTopicPromotionStore:
             connection.execute("BEGIN IMMEDIATE")
             publishing = connection.execute(
                 """
-                SELECT id, group_chat_id, thread_id
+                SELECT id, group_chat_id, thread_id, schedule_key
                 FROM education_topic_promotions WHERE status = 'publishing'
                 """
             ).fetchall()
@@ -1290,12 +1290,23 @@ class EducationTopicPromotionStore:
                     f"target_chat_id={row['group_chat_id']};thread_id={row['thread_id']}",
                     at,
                 )
+                if row["schedule_key"]:
+                    connection.execute(
+                        """
+                        UPDATE education_topic_promo_schedule_runs
+                        SET status = 'delivery_unknown',
+                            details = 'process interrupted during send',
+                            updated_at = ?
+                        WHERE schedule_key = ?
+                        """,
+                        (at, row["schedule_key"]),
+                    )
                 recovered.append(
                     {"id": int(row["id"]), "status": "delivery_unknown"}
                 )
             unsent_previews = connection.execute(
                 """
-                SELECT id, group_chat_id, thread_id
+                SELECT id, group_chat_id, thread_id, schedule_key
                 FROM education_topic_promotions
                 WHERE status = 'review' AND review_sent_at IS NULL
                 """
@@ -1319,6 +1330,17 @@ class EducationTopicPromotionStore:
                     "No member destination was contacted",
                     at,
                 )
+                if row["schedule_key"]:
+                    connection.execute(
+                        """
+                        UPDATE education_topic_promo_schedule_runs
+                        SET status = 'failed',
+                            details = 'process restarted before preview was confirmed',
+                            updated_at = ?
+                        WHERE schedule_key = ?
+                        """,
+                        (at, row["schedule_key"]),
+                    )
                 recovered.append(
                     {"id": int(row["id"]), "status": "review_delivery_failed"}
                 )
@@ -1841,6 +1863,209 @@ class EducationTopicPromotionManager:
             return
         self._send_review(promotion, now)
 
+    @staticmethod
+    def _scheduled_slot(now: datetime) -> tuple[str, datetime, datetime] | None:
+        local_now = _utc(now).astimezone(WAT)
+        weekday = {0: "monday", 3: "thursday"}.get(local_now.weekday())
+        if weekday is None:
+            return None
+        local_scheduled = local_now.replace(
+            hour=PROMO_SCHEDULE_TIME.hour,
+            minute=PROMO_SCHEDULE_TIME.minute,
+            second=0,
+            microsecond=0,
+        )
+        scheduled_utc = local_scheduled.astimezone(timezone.utc)
+        schedule_key = f"education-topic-promo:{local_now.date().isoformat()}:{weekday}"
+        return schedule_key, scheduled_utc, local_scheduled
+
+    def _notify_schedule_issue(self, message: str) -> None:
+        if self.admin_id is None:
+            logger.error("Education-topic scheduled promotion issue: %s", message)
+            return
+        try:
+            self.api.send_message(self.admin_id, message)
+        except TelegramAPIError:
+            logger.exception("Could not notify the admin about a scheduled promotion issue.")
+
+    def _create_scheduled_preview(
+        self,
+        *,
+        now: datetime,
+        schedule_key: str,
+        scheduled_for: datetime,
+        local_scheduled: datetime,
+        weekday: str,
+    ) -> None:
+        if self.store.schedule_run(schedule_key):
+            return
+        if self.admin_id is None:
+            details = "admin private-chat destination is not configured"
+            if self.store.record_schedule_event(
+                schedule_key=schedule_key,
+                scheduled_for=scheduled_for,
+                status="failed",
+                details=details,
+                at=_utc(now).isoformat(),
+            ):
+                self._notify_schedule_issue(
+                    "The Monday/Thursday promotion was held: admin private chat is not configured."
+                )
+            return
+        try:
+            channel_link, _bot_link, username, group_title, channel_title = (
+                self._verify_targets()
+            )
+        except ValueError as error:
+            if self.store.record_schedule_event(
+                schedule_key=schedule_key,
+                scheduled_for=scheduled_for,
+                status="failed",
+                details=f"destination verification failed: {error}",
+                at=_utc(now).isoformat(),
+                admin_id=self.admin_id,
+            ):
+                self._notify_schedule_issue(
+                    f"Scheduled promotion held; destination verification failed: {error}"
+                )
+            return
+        settings = self.store.settings()
+        body = self._scheduled_body_for(
+            int(settings.get("scheduled_variant_index", 0)), weekday
+        )
+        issue = self._validate_body(body)
+        if issue:
+            if self.store.record_schedule_event(
+                schedule_key=schedule_key,
+                scheduled_for=scheduled_for,
+                status="failed",
+                details=f"content validation failed: {issue}",
+                at=_utc(now).isoformat(),
+                admin_id=self.admin_id,
+            ):
+                self._notify_schedule_issue(
+                    f"Scheduled promotion held by content validation: {issue}"
+                )
+            return
+        promotion, error = self.store.create_draft(
+            body=body,
+            group_chat_id=int(self.education_group_id),
+            group_title=group_title,
+            thread_id=int(self.thread_id),
+            topic_source_link=self.topic_message_link,
+            channel_link=channel_link,
+            channel_title=channel_title,
+            bot_username=username,
+            admin_id=self.admin_id,
+            now=now,
+            scheduled_for=scheduled_for,
+            schedule_key=schedule_key,
+        )
+        if error or promotion is None:
+            # A manual draft can temporarily occupy the one-at-a-time slot.
+            # Keep trying during the five-minute review window, then record a
+            # missed schedule once the publication time passes.
+            if error and "earlier group promotion" in error:
+                logger.info(
+                    "Scheduled promotion waiting for active review schedule_key=%s",
+                    schedule_key,
+                )
+                return
+            if self.store.record_schedule_event(
+                schedule_key=schedule_key,
+                scheduled_for=scheduled_for,
+                status="failed",
+                details=error or "draft creation failed",
+                at=_utc(now).isoformat(),
+                admin_id=self.admin_id,
+            ):
+                self._notify_schedule_issue(
+                    f"Scheduled promotion was not prepared: {error or 'draft creation failed'}"
+                )
+            return
+        self._send_review(promotion, now)
+        logger.info(
+            "Education topic scheduled preview created promotion_id=%s "
+            "schedule_key=%s target_chat_id=%s thread_id=%s scheduled_for_wat=%s",
+            promotion["id"],
+            schedule_key,
+            self.education_group_id,
+            self.thread_id,
+            local_scheduled.isoformat(),
+        )
+
+    def _publish_scheduled_post(
+        self, promotion: dict[str, Any], now: datetime
+    ) -> None:
+        promotion_id = int(promotion["id"])
+        if self.admin_id is None:
+            self.store.fail_scheduled_review(
+                promotion_id,
+                admin_id=None,
+                category="admin_private_chat_unavailable",
+                at=_utc(now).isoformat(),
+            )
+            return
+        issue = self._validate_body(str(promotion["body"]))
+        if issue:
+            self.store.fail_scheduled_review(
+                promotion_id,
+                admin_id=self.admin_id,
+                category=f"content_validation:{issue}",
+                at=_utc(now).isoformat(),
+            )
+            self._notify_schedule_issue(
+                f"Scheduled promotion #{promotion_id} was held: {issue}"
+            )
+            return
+        try:
+            channel_link, bot_link, username, _group_title, _channel_title = (
+                self._verify_targets()
+            )
+        except ValueError as error:
+            self.store.fail_scheduled_review(
+                promotion_id,
+                admin_id=self.admin_id,
+                category="destination_verification_failed",
+                at=_utc(now).isoformat(),
+            )
+            self._notify_schedule_issue(
+                f"Scheduled promotion #{promotion_id} was held because destination "
+                f"verification failed: {error}"
+            )
+            return
+        if (
+            channel_link != promotion["channel_link"]
+            or username != promotion["bot_username"]
+            or promotion["group_chat_id"] != self.education_group_id
+            or promotion["thread_id"] != self.thread_id
+        ):
+            self.store.fail_scheduled_review(
+                promotion_id,
+                admin_id=self.admin_id,
+                category="destination_changed_after_preview",
+                at=_utc(now).isoformat(),
+            )
+            self._notify_schedule_issue(
+                f"Scheduled promotion #{promotion_id} was held because its verified "
+                "destination changed after preview."
+            )
+            return
+        if not self.store.claim_scheduled_publish(
+            promotion_id,
+            admin_id=self.admin_id,
+            version=int(promotion["review_version"]),
+            at=_utc(now).isoformat(),
+        ):
+            return
+        self._publish_claimed(
+            chat_id=self.admin_id,
+            admin_id=self.admin_id,
+            promotion=promotion,
+            channel_link=channel_link,
+            bot_link=bot_link,
+        )
+
     def _approve(
         self,
         chat_id: int,
@@ -1910,6 +2135,24 @@ class EducationTopicPromotionManager:
                 "this draft has already been handled.",
             )
             return
+        self._publish_claimed(
+            chat_id=chat_id,
+            admin_id=admin_id,
+            promotion=promotion,
+            channel_link=channel_link,
+            bot_link=bot_link,
+        )
+
+    def _publish_claimed(
+        self,
+        *,
+        chat_id: int,
+        admin_id: int,
+        promotion: dict[str, Any],
+        channel_link: str,
+        bot_link: str,
+    ) -> None:
+        promotion_id = int(promotion["id"])
         text = self._render(str(promotion["body"]))
         keyboard = self._member_keyboard(channel_link, bot_link)
         try:
@@ -2082,6 +2325,47 @@ class EducationTopicPromotionManager:
             self._send_review(refreshed, current)
         return True
 
+    def _dispatch_scheduled_promotions(self, now: datetime) -> None:
+        settings = self.store.settings()
+        if not settings.get("scheduled_enabled"):
+            return
+        slot = self._scheduled_slot(now)
+        if slot is None:
+            return
+        schedule_key, scheduled_for, local_scheduled = slot
+        local_now = _utc(now).astimezone(WAT)
+        preview_at = local_scheduled - PROMO_REVIEW_LEAD
+        if preview_at <= local_now < local_scheduled:
+            if local_now <= preview_at + PROMO_REVIEW_LATE_TOLERANCE:
+                weekday = "monday" if local_scheduled.weekday() == 0 else "thursday"
+                self._create_scheduled_preview(
+                    now=now,
+                    schedule_key=schedule_key,
+                    scheduled_for=scheduled_for,
+                    local_scheduled=local_scheduled,
+                    weekday=weekday,
+                )
+            return
+        if local_now < local_scheduled:
+            return
+        if not self.store.schedule_run(schedule_key):
+            details = "review window missed; no scheduled promotion was published"
+            if self.store.record_schedule_event(
+                schedule_key=schedule_key,
+                scheduled_for=scheduled_for,
+                status="missed",
+                details=details,
+                at=_utc(now).isoformat(),
+            ):
+                self._notify_schedule_issue(
+                    "The Monday/Thursday promotion missed its private review window. "
+                    "Nothing was posted."
+                )
+            return
+        for promotion in self.store.scheduled_posts_due(at=_utc(now).isoformat()):
+            if promotion.get("schedule_key") == schedule_key:
+                self._publish_scheduled_post(promotion, now)
+
     def dispatch_due(self, now: datetime | None = None) -> None:
         current = _utc(now or datetime.now(timezone.utc))
         if not self._recovery_checked:
@@ -2106,6 +2390,10 @@ class EducationTopicPromotionManager:
                             "Could not notify admin about recovered group promo %s.",
                             item["id"],
                         )
+        try:
+            self._dispatch_scheduled_promotions(current)
+        except Exception:
+            logger.exception("Could not dispatch scheduled Monday/Thursday promotions.")
         expired = self.store.expire_due(at=current.isoformat())
         for promotion in expired:
             logger.info(
