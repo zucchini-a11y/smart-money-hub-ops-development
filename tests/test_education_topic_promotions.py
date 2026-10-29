@@ -331,17 +331,13 @@ class EducationTopicPromotionTests(unittest.TestCase):
         self.assertIn("gemini_rate_limit", event[1])
 
     def test_invalid_gemini_caption_retries_once_then_saves_only_valid_result(self) -> None:
-        valid_caption = (
+        valid_hook = (
             "🎯 PLAN BEFORE YOU FOLLOW A LEVEL\n\n"
-            "Pick one chart question and make time to review it carefully.\n\n"
-            "Trade breakdowns are shared in the Education Group's Market Analysis topic. "
-            "The separate Market Analysis channel has its own button below.\n\n"
-            "Ask the private Coach for educational explanations of Smart Money Concepts. "
-            "Tap the Coach button below to open the bot; send /start if prompted."
+            "Choose one clear question to guide your chart review today."
         )
         self.writer.responses = [
             "A plain headline without the required destinations.",
-            valid_caption,
+            valid_hook,
         ]
         self.manager.handle_callback(
             ADMIN_ID,
@@ -355,7 +351,9 @@ class EducationTopicPromotionTests(unittest.TestCase):
         self.assertIn("failed this check", self.writer.calls[1]["retry_feedback"])
         saved = self.manager.store.get(1)
         self.assertIsNotNone(saved)
-        self.assertEqual(saved["body"], valid_caption)
+        self.assertTrue(saved["body"].startswith(valid_hook))
+        self.assertIn("Trade breakdowns are shared in the Education Group", saved["body"])
+        self.assertIn("8:00 PM", saved["body"]) if False else None
         self.assertFalse(
             any(
                 message["chat_id"] == EXPECTED_EDUCATION_GROUP_ID

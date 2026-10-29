@@ -140,13 +140,13 @@ class GeminiChannelContentTests(unittest.TestCase):
         self.assertEqual(mocked.call_count, 1)
         instruction = payload["systemInstruction"]["parts"][0]["text"]
         prompt = payload["contents"][0]["parts"][0]["text"]
-        self.assertIn("distinct angle", instruction)
-        self.assertIn("Trade breakdowns belong in the Education Group", instruction)
-        self.assertIn("not in the separate channel", instruction)
+        self.assertIn("materially different", instruction)
+        self.assertIn("application appends all verified destination", instruction)
+        self.assertIn("Do not mention the group, topic, channel", instruction)
         self.assertIn("CATEGORY: engagement", instruction)
         self.assertIn("A previous promotion caption", prompt)
         self.assertIn("cancelled", prompt)
-        self.assertIn("Do not include a class or Zoom reminder", prompt)
+        self.assertNotIn("CLASS_WEEKDAY", prompt)
 
     def test_promotion_rate_limit_fails_without_model_fallback(self) -> None:
         request_url = (
