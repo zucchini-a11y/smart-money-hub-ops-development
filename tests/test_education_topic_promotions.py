@@ -550,7 +550,7 @@ class EducationTopicPromotionTests(unittest.TestCase):
             )
         )
 
-    def test_scheduled_class_preview_uses_gemini_and_still_requires_approval(self) -> None:
+    def test_scheduled_class_preview_uses_gemini_and_needs_no_approval(self) -> None:
         self.manager.store.set_schedule_enabled(
             True, admin_id=ADMIN_ID, at=NOW.isoformat()
         )
@@ -564,6 +564,16 @@ class EducationTopicPromotionTests(unittest.TestCase):
         self.assertEqual(saved["status"], "review")
         self.assertIn("separate Market Analysis channel", saved["body"])
         self.assertNotIn("Zoom", saved["body"])
+        self.assertIn("No approval is needed", self.api.messages[-1]["text"])
+        self.assertIn("publish automatically", self.api.messages[-1]["text"])
+        self.assertFalse(
+            any(
+                "approve" in button["callback_data"]
+                for row in self.api.messages[-1]["reply_markup"]["inline_keyboard"]
+                for button in row
+                if "callback_data" in button
+            )
+        )
         self.assertFalse(
             any(
                 message["chat_id"] == EXPECTED_EDUCATION_GROUP_ID
@@ -1123,7 +1133,7 @@ class EducationTopicPromotionTests(unittest.TestCase):
             )
         )
 
-    def test_monday_preview_is_private_and_approval_queues_for_1900_wat(self) -> None:
+    def test_monday_preview_is_private_and_auto_publishes_at_1900_wat(self) -> None:
         self.manager.dispatch_due(MONDAY_REVIEW)
         row = self.manager.store.get(1)
         self.assertIsNotNone(row)
@@ -1148,20 +1158,9 @@ class EducationTopicPromotionTests(unittest.TestCase):
             0,
         )
 
-        keyboard = self.api.messages[-1]["reply_markup"]["inline_keyboard"]
-        approve_callback = keyboard[2][0]["callback_data"]
-        self.assertEqual(keyboard[2][0]["text"], "✅ Approve for 19:00 WAT")
-        self.manager.handle_callback(
-            ADMIN_ID,
-            ADMIN_ID,
-            True,
-            approve_callback,
-            now=MONDAY_REVIEW + timedelta(minutes=3),
-        )
-        self.assertEqual(self.manager.store.get(1)["approved_at"], (MONDAY_REVIEW + timedelta(minutes=3)).isoformat())
-        self.assertFalse(
-            any(item["chat_id"] == EXPECTED_EDUCATION_GROUP_ID for item in self.api.messages)
-        )
+        self.assertIn("publish automatically at 19:00 WAT", self.api.messages[-1]["text"])
+        self.assertIn("No approval is needed", self.api.messages[-1]["text"])
+        self.assertIsNone(row["approved_at"])
 
         self.manager.dispatch_due(MONDAY_PUBLISH)
         posts = [
@@ -1200,11 +1199,12 @@ class EducationTopicPromotionTests(unittest.TestCase):
         self.assertEqual(row["thread_id"], 5)
         self.assertEqual(row["scheduled_for"], THURSDAY_PUBLISH.isoformat())
 
-    def test_scheduled_post_expires_without_approval_and_is_not_sent_late(self) -> None:
+    def test_scheduled_post_missed_window_is_not_sent_late(self) -> None:
         self.manager.dispatch_due(MONDAY_REVIEW)
-        self.manager.dispatch_due(MONDAY_PUBLISH)
+        self.manager.dispatch_due(MONDAY_PUBLISH + timedelta(minutes=3))
         row = self.manager.store.get(1)
         self.assertEqual(row["status"], "expired")
+        self.assertEqual(row["failure_category"], "scheduled_publish_window_missed")
         self.assertEqual(
             self.manager.store.schedule_run(row["schedule_key"])["status"], "expired"
         )
@@ -1212,7 +1212,7 @@ class EducationTopicPromotionTests(unittest.TestCase):
             any(item["chat_id"] == EXPECTED_EDUCATION_GROUP_ID for item in self.api.messages)
         )
 
-    def test_scheduled_post_publishes_as_text_when_optional_photo_is_not_added(self) -> None:
+    def test_scheduled_post_publishes_as_text_without_photo_or_approval(self) -> None:
         self.manager.dispatch_due(MONDAY_REVIEW)
         row = self.manager.store.get(1)
         self.assertIsNotNone(row)
@@ -1220,7 +1220,6 @@ class EducationTopicPromotionTests(unittest.TestCase):
         preview = self.api.messages[-1]
         keyboard = preview["reply_markup"]["inline_keyboard"]
         photo_callback = keyboard[3][0]["callback_data"]
-        approve_callback = keyboard[2][0]["callback_data"]
 
         self.manager.handle_callback(
             ADMIN_ID,
@@ -1234,14 +1233,7 @@ class EducationTopicPromotionTests(unittest.TestCase):
         self.assertIsNotNone(photo_requested["review_sent_at"])
         self.assertEqual(photo_requested["review_version"], row["review_version"])
 
-        # No image arrives; approval and the scheduled publish must still work.
-        self.manager.handle_callback(
-            ADMIN_ID,
-            ADMIN_ID,
-            True,
-            approve_callback,
-            now=MONDAY_REVIEW + timedelta(minutes=2),
-        )
+        # No image or admin response arrives; validated text still publishes on schedule.
         self.manager.dispatch_due(MONDAY_PUBLISH)
 
         published = self.manager.store.get(row["id"])
@@ -1256,7 +1248,7 @@ class EducationTopicPromotionTests(unittest.TestCase):
         self.assertEqual(posts[0]["message_thread_id"], 5)
         self.assertEqual(self.api.photos, [])
 
-    def test_attaching_optional_photo_refreshes_review_and_requires_new_approval(self) -> None:
+    def test_attaching_optional_photo_refreshes_review_and_auto_publishes(self) -> None:
         self.manager.dispatch_due(MONDAY_REVIEW)
         row = self.manager.store.get(1)
         self.assertIsNotNone(row)
@@ -1264,8 +1256,6 @@ class EducationTopicPromotionTests(unittest.TestCase):
         initial_preview = self.api.messages[-1]
         initial_keyboard = initial_preview["reply_markup"]["inline_keyboard"]
         photo_callback = initial_keyboard[3][0]["callback_data"]
-        old_approve_callback = initial_keyboard[2][0]["callback_data"]
-
         self.manager.handle_callback(
             ADMIN_ID,
             ADMIN_ID,
@@ -1282,29 +1272,8 @@ class EducationTopicPromotionTests(unittest.TestCase):
         )
         updated = self.manager.store.get(row["id"])
         self.assertEqual(updated["photo_file_id"], "scheduled-chart-file-id")
-        self.assertIsNone(updated["approved_at"])
         self.assertEqual(updated["review_version"], row["review_version"] + 1)
 
-        self.manager.handle_callback(
-            ADMIN_ID,
-            ADMIN_ID,
-            True,
-            old_approve_callback,
-            now=MONDAY_REVIEW + timedelta(minutes=2),
-        )
-        self.assertIsNone(self.manager.store.get(row["id"])["approved_at"])
-
-        revised_preview = self.api.photos[-1]
-        new_approve_callback = revised_preview["reply_markup"]["inline_keyboard"][2][0][
-            "callback_data"
-        ]
-        self.manager.handle_callback(
-            ADMIN_ID,
-            ADMIN_ID,
-            True,
-            new_approve_callback,
-            now=MONDAY_REVIEW + timedelta(minutes=3),
-        )
         self.manager.dispatch_due(MONDAY_PUBLISH)
 
         published = self.manager.store.get(row["id"])
@@ -1313,27 +1282,19 @@ class EducationTopicPromotionTests(unittest.TestCase):
         self.assertEqual(self.api.photos[-1]["message_thread_id"], 5)
         self.assertEqual(self.api.photos[-1]["photo"], "scheduled-chart-file-id")
 
-    def test_approved_post_that_misses_publish_window_is_held_not_sent_late(self) -> None:
+    def test_unanswered_scheduled_post_that_misses_publish_window_is_held(self) -> None:
         self.manager.dispatch_due(MONDAY_REVIEW)
         row = self.manager.store.get(1)
-        callback = self.api.messages[-1]["reply_markup"]["inline_keyboard"][2][0]["callback_data"]
-        self.manager.handle_callback(
-            ADMIN_ID,
-            ADMIN_ID,
-            True,
-            callback,
-            now=MONDAY_REVIEW + timedelta(minutes=2),
-        )
         self.manager.dispatch_due(MONDAY_PUBLISH + timedelta(minutes=3))
         expired = self.manager.store.get(row["id"])
         self.assertEqual(expired["status"], "expired")
-        self.assertEqual(expired["failure_category"], "approved_schedule_missed")
+        self.assertEqual(expired["failure_category"], "scheduled_publish_window_missed")
         self.assertEqual(
             self.manager.store.schedule_run(row["schedule_key"])["details"],
-            "approved post missed its scheduled window",
+            "scheduled post missed its publication window",
         )
         self.assertTrue(
-            any("missed its scheduled publication window" in item["text"] for item in self.api.messages)
+            any("missed its publication window" in item["text"] for item in self.api.messages)
         )
         self.assertFalse(
             any(item["chat_id"] == EXPECTED_EDUCATION_GROUP_ID for item in self.api.messages)
@@ -1362,17 +1323,9 @@ class EducationTopicPromotionTests(unittest.TestCase):
         self.assertEqual(self.api.messages, [])
         self.assertEqual(self.api.photos, [])
 
-    def test_approved_scheduled_draft_recovers_after_restart_without_duplicate(self) -> None:
+    def test_unanswered_scheduled_draft_recovers_after_restart_without_duplicate(self) -> None:
         self.manager.dispatch_due(MONDAY_REVIEW)
         row = self.manager.store.get(1)
-        callback = self.api.messages[-1]["reply_markup"]["inline_keyboard"][2][0]["callback_data"]
-        self.manager.handle_callback(
-            ADMIN_ID,
-            ADMIN_ID,
-            True,
-            callback,
-            now=MONDAY_REVIEW + timedelta(minutes=2),
-        )
         restarted = self.make_manager()
         restarted.dispatch_due(MONDAY_PUBLISH)
         restarted.dispatch_due(MONDAY_PUBLISH + timedelta(seconds=20))

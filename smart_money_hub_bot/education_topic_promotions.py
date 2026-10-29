@@ -1,4 +1,4 @@
-"""Admin-approved, one-at-a-time promotions for the Education Market Analysis topic."""
+"""Guarded one-at-a-time promotions for the Education Market Analysis topic."""
 
 from __future__ import annotations
 
@@ -417,6 +417,7 @@ class EducationTopicPromotionStore:
         scheduled_for: datetime | None = None,
         schedule_key: str | None = None,
         generation_model: str | None = None,
+        cooldown_override_reason: str | None = None,
     ) -> tuple[dict[str, Any] | None, str | None]:
         current = _utc(now)
         timestamp = current.isoformat()
@@ -461,10 +462,15 @@ class EducationTopicPromotionStore:
                 if settings and settings["last_published_at"]
                 else None
             )
+            cooldown_override = bool(
+                cooldown_override_reason
+                and str(cooldown_override_reason).strip()
+            )
             if (
                 scheduled is None
                 and last_published
                 and current < last_published + timedelta(days=cooldown_days)
+                and not cooldown_override
             ):
                 available_at = (last_published + timedelta(days=cooldown_days)).isoformat()
                 connection.rollback()
@@ -527,6 +533,25 @@ class EducationTopicPromotionStore:
                 f"generator={generation_model or 'unknown'}",
                 timestamp,
             )
+            if (
+                scheduled is None
+                and last_published
+                and current < last_published + timedelta(days=cooldown_days)
+                and cooldown_override
+            ):
+                reason = re.sub(
+                    r"\s+",
+                    " ",
+                    str(cooldown_override_reason),
+                ).strip()[:200]
+                self._action(
+                    connection,
+                    promotion_id,
+                    "owner_requested_cooldown_override",
+                    admin_id,
+                    f"reason={reason};cooldown_days={cooldown_days}",
+                    timestamp,
+                )
             if schedule_key and scheduled:
                 connection.execute(
                     """
@@ -539,7 +564,7 @@ class EducationTopicPromotionStore:
                         schedule_key,
                         scheduled.isoformat(),
                         promotion_id,
-                        "private review prepared; awaiting delivery and admin approval",
+                        "private review prepared; waiting for scheduled time and final checks",
                         timestamp,
                         timestamp,
                     ),
@@ -663,7 +688,7 @@ class EducationTopicPromotionStore:
                     connection.execute(
                         """
                         UPDATE education_topic_promo_schedule_runs
-                        SET status = 'awaiting_approval', updated_at = ?
+                        SET status = 'awaiting_publication', updated_at = ?
                         WHERE schedule_key = ?
                         """,
                         (at, row["schedule_key"]),
@@ -1044,7 +1069,7 @@ class EducationTopicPromotionStore:
                 """
                 SELECT * FROM education_topic_promotions
                 WHERE status = 'review' AND scheduled_for IS NOT NULL
-                    AND approved_at IS NOT NULL AND review_sent_at IS NOT NULL
+                    AND review_sent_at IS NOT NULL
                     AND publish_attempts = 0 AND scheduled_for <= ?
                     AND scheduled_for >= ?
                 ORDER BY scheduled_for, id
@@ -1074,7 +1099,7 @@ class EducationTopicPromotionStore:
                     updated_at = ?
                 WHERE id = ? AND status = 'review' AND scheduled_for IS NOT NULL
                     AND scheduled_for <= ? AND scheduled_for >= ?
-                    AND approved_at IS NOT NULL AND review_sent_at IS NOT NULL
+                    AND review_sent_at IS NOT NULL
                     AND publish_attempts = 0 AND review_version = ?
                 """,
                 (at, promotion_id, at, oldest, version),
@@ -1087,7 +1112,7 @@ class EducationTopicPromotionStore:
                 self._action(
                     connection,
                     promotion_id,
-                    "scheduled_publish_started",
+                    "scheduled_auto_publish_started",
                     admin_id,
                     f"target_chat_id={row['group_chat_id']};thread_id={row['thread_id']}",
                     at,
@@ -1117,7 +1142,7 @@ class EducationTopicPromotionStore:
                 UPDATE education_topic_promotions
                 SET status = 'failed', failure_category = ?, updated_at = ?
                 WHERE id = ? AND status IN ('review', 'editing')
-                    AND scheduled_for IS NOT NULL AND approved_at IS NOT NULL
+                    AND scheduled_for IS NOT NULL
                 """,
                 (category[:100], at, promotion_id),
             )
@@ -1267,6 +1292,7 @@ class EducationTopicPromotionStore:
                     UPDATE education_topic_promotions
                     SET status = 'expired',
                         failure_category = CASE
+                            WHEN scheduled_for IS NOT NULL THEN 'scheduled_publish_window_missed'
                             WHEN approved_at IS NOT NULL THEN 'approved_schedule_missed'
                             ELSE 'approval_window_expired'
                         END,
@@ -1291,13 +1317,19 @@ class EducationTopicPromotionStore:
                         UPDATE education_topic_promo_schedule_runs
                         SET status = 'expired',
                             details = CASE
+                                WHEN ? IS NOT NULL THEN 'scheduled post missed its publication window'
                                 WHEN ? IS NOT NULL THEN 'approved post missed its scheduled window'
                                 ELSE 'approval window expired'
                             END,
                             updated_at = ?
                         WHERE schedule_key = ?
                         """,
-                        (row["approved_at"], at, row["schedule_key"]),
+                        (
+                            row["scheduled_for"],
+                            row["approved_at"],
+                            at,
+                            row["schedule_key"],
+                        ),
                     )
             return [dict(row) for row in rows]
 
@@ -1894,6 +1926,22 @@ class EducationTopicPromotionManager:
             f"https://t.me/{promotion['bot_username']}",
         )["inline_keyboard"]
         scheduled_for = _parse_time(str(promotion["scheduled_for"])) if promotion.get("scheduled_for") else None
+        edit_and_cancel = [
+            {
+                "text": "✏️ Edit Caption",
+                "callback_data": f"admin:education_topic_promo:edit:{promotion_id}:{version}",
+            },
+            {
+                "text": "Cancel",
+                "callback_data": f"admin:education_topic_promo:cancel:{promotion_id}:{version}",
+            },
+        ]
+        add_photo = {
+            "text": "🖼 Add Picture",
+            "callback_data": f"admin:education_topic_promo:photo:{promotion_id}:{version}",
+        }
+        if scheduled_for:
+            return {"inline_keyboard": [*links, edit_and_cancel, [add_photo]]}
         approve_label = (
             f"✅ Approve for {scheduled_for.astimezone(WAT).strftime('%H:%M WAT')}"
             if scheduled_for
@@ -1907,20 +1955,11 @@ class EducationTopicPromotionManager:
                         "text": approve_label,
                         "callback_data": f"admin:education_topic_promo:approve:{promotion_id}:{version}",
                     },
-                    {
-                        "text": "✏️ Edit Caption",
-                        "callback_data": f"admin:education_topic_promo:edit:{promotion_id}:{version}",
-                    },
+                    edit_and_cancel[0],
                 ],
                 [
-                    {
-                        "text": "🖼 Add Picture",
-                        "callback_data": f"admin:education_topic_promo:photo:{promotion_id}:{version}",
-                    },
-                    {
-                        "text": "Cancel",
-                        "callback_data": f"admin:education_topic_promo:cancel:{promotion_id}:{version}",
-                    },
+                    add_photo,
+                    edit_and_cancel[1],
                 ],
             ]
         }
@@ -1941,9 +1980,11 @@ class EducationTopicPromotionManager:
         )
         if scheduled_for:
             review_line = (
-                "Approve before "
-                f"{scheduled_for.astimezone(WAT).strftime('%H:%M WAT')} to publish "
-                "at the scheduled time. No approval means no post."
+                "It will publish automatically at "
+                f"{scheduled_for.astimezone(WAT).strftime('%H:%M WAT')} if the final "
+                "content and destination checks pass. No approval is needed. "
+                "Add a photo if you want one; otherwise it will be text-only. "
+                "Edit or cancel before publication."
             )
             scheduled_line = (
                 f"Scheduled: {scheduled_for.astimezone(WAT).strftime('%A, %d %b %Y at %I:%M %p WAT')}\n"
@@ -2816,11 +2857,16 @@ class EducationTopicPromotionManager:
                     self.api.send_message(
                         self.admin_id,
                         (
-                            f"Promotion draft #{promotion['id']} was approved but missed "
-                            "its scheduled publication window. It was not posted late."
-                            if was_approved
-                            else f"Promotion draft #{promotion['id']} expired without approval. "
-                            "Nothing was posted."
+                            f"Scheduled promotion #{promotion['id']} missed its publication "
+                            "window. It was not posted late."
+                            if promotion.get("scheduled_for")
+                            else (
+                                f"Promotion draft #{promotion['id']} was approved but missed "
+                                "its scheduled publication window. It was not posted late."
+                                if was_approved
+                                else f"Promotion draft #{promotion['id']} expired without approval. "
+                                "Nothing was posted."
+                            )
                         ),
                     )
                 except TelegramAPIError:

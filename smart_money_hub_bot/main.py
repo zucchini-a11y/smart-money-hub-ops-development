@@ -151,7 +151,8 @@ def main() -> None:
         )
         logging.getLogger(__name__).info(
             "Education-group Market Analysis promotions are scheduled for Monday and "
-            "Thursday at 19:00 WAT; each post requires approval from the 18:55 private preview."
+            "Thursday at 19:00 WAT; the 18:55 private preview is optional to review, "
+            "and eligible posts publish automatically after final checks."
         )
     except (ValueError, ZoneInfoNotFoundError):
         raise SystemExit(
