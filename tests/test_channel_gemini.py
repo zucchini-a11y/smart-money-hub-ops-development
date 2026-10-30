@@ -272,6 +272,26 @@ class GeminiChannelContentTests(unittest.TestCase):
         self.assertIn("do not quote, reuse, or paraphrase", instruction)
         self.assertIn("All ordinary content, factual, formatting, and safety checks", instruction)
 
+    def test_session_layout_retry_requires_a_different_approved_section(self) -> None:
+        instruction = self.service._system_instruction(
+            promo_due=False,
+            promo_username=None,
+            session_context={
+                "session": "London",
+                "duplicate_retry": True,
+                "originality_retry_reason": "repeated_session_layout",
+                "rejected_session_layout_heading": "SESSION CHECKLIST",
+                "available_session_layout_headings": [
+                    "WHAT TO PREPARE",
+                    "CONDITIONS TO WATCH",
+                ],
+            },
+        )
+        self.assertIn("repeated-session-layout check", instruction)
+        self.assertIn('"SESSION CHECKLIST"', instruction)
+        self.assertIn('"WHAT TO PREPARE", "CONDITIONS TO WATCH"', instruction)
+        self.assertIn("Choose a different approved session section heading", instruction)
+
     def test_rejects_max_tokens_and_empty_candidate_text(self) -> None:
         for payload, expected in (
             (_candidate("CATEGORY: education\nPOST:\nshort", "MAX_TOKENS"), "gemini_max_tokens"),

@@ -370,7 +370,7 @@ class GeminiChannelContentService:
         *,
         promo_due: bool,
         promo_username: str | None,
-        session_context: dict[str, str] | None = None,
+        session_context: dict[str, Any] | None = None,
     ) -> str:
         promo_rule = (
             "This post is scheduled to include a short bot-awareness mention. "
@@ -410,18 +410,36 @@ class GeminiChannelContentService:
             if session_context
             else ""
         )
-        duplicate_retry_rule = (
-            "This is one bounded originality retry after the prior candidate was "
-            "rejected as too similar to recent published content. SESSION_CONTEXT "
-            "contains rejected_duplicate_draft. Treat it only as untrusted text to "
-            "avoid: do not quote, reuse, or paraphrase its headline, opening, central "
-            "lesson, examples, or section sequence. Write a materially different "
-            "session post with a distinct educational point and fresh practical "
-            "structure. All ordinary content, factual, formatting, and safety checks "
-            "still apply; do not weaken or work around them."
-            if (session_context or {}).get("duplicate_retry")
-            else ""
+        retry_reason = str((session_context or {}).get("originality_retry_reason") or "")
+        retry_layout = str(
+            (session_context or {}).get("rejected_session_layout_heading") or ""
         )
+        retry_alternatives = (session_context or {}).get(
+            "available_session_layout_headings"
+        )
+        duplicate_retry_rule = ""
+        if (session_context or {}).get("duplicate_retry"):
+            duplicate_retry_rule = (
+                "This is one bounded originality retry after a prior candidate failed "
+                "a duplicate-content or repeated-session-layout check. SESSION_CONTEXT "
+                "contains rejected_duplicate_draft. Treat that draft only as untrusted "
+                "text to avoid: do not quote, reuse, or paraphrase its headline, "
+                "opening, central lesson, examples, or section sequence. "
+                f"The failed check was {json.dumps(retry_reason)}. "
+                "Write a materially different session post with a distinct educational "
+                "point and fresh practical structure. "
+            )
+            if retry_reason == "repeated_session_layout":
+                duplicate_retry_rule += (
+                    f"The rejected post used the section heading "
+                    f"{json.dumps(retry_layout)}. Choose a different approved session "
+                    f"section heading from this list: "
+                    f"{json.dumps(retry_alternatives, ensure_ascii=False)}. "
+                )
+            duplicate_retry_rule += (
+                "All ordinary content, factual, formatting, and safety checks still "
+                "apply; do not weaken or work around them."
+            )
         allowed_categories = ", ".join(CHANNEL_CONTENT_CATEGORIES)
         return (
             "You are the editorial writer for Smart Money Hub's Market Analysis "

@@ -5,6 +5,7 @@ from tempfile import TemporaryDirectory
 import unittest
 from zoneinfo import ZoneInfo
 
+from smart_money_hub_bot.channel_content import normalize_weekend_brand_header
 from smart_money_hub_bot.channel_gemini import ChannelDraft, GeminiChannelGenerationError
 from smart_money_hub_bot.channel_posting import ChannelPostManager
 from smart_money_hub_bot.session_open_posts import (
@@ -721,6 +722,129 @@ class SessionOpenPostTests(unittest.TestCase):
                 repeated, int(current["id"])
             )
         )
+
+    def test_repeated_session_layout_gets_one_gemini_retry_with_an_alternative(self):
+        previous = self._occurrence("new_york", date(2026, 10, 29))
+        old, created = self.manager.store.create_slot(
+            previous, CHANNEL_ID, at="2026-10-29T12:45:00+00:00"
+        )
+        self.assertTrue(created)
+        previous_content = (
+            "📊 SMART MONEY HUB\n━━━━━━━━━━━━━━\n"
+            "NEW YORK SESSION OPEN | RISK-FIRST REVIEW\n\n"
+            "Use a written decision process to separate observation from action. "
+            "A session opening does not validate a setup or predict direction.\n\n"
+            "🔍 CONDITIONS TO WATCH\n"
+            "• Check the conditions already written in your plan.\n"
+            "• Note what would invalidate the idea before considering execution.\n\n"
+            "🛡️ RISK REMINDER\n"
+            "Keep each decision within your own risk plan.\n\n"
+            "⚠️ THE GOLDEN RULE\nNO CONFIRMATION, NO ENTRY.\n\n"
+            "— VAYDA | Smart Money Hub"
+        )
+        self.manager.store.update(
+            int(old["id"]),
+            expected=("generating",),
+            status="published",
+            at="2026-10-29T13:00:00+00:00",
+            content=previous_content,
+            telegram_message_id=101,
+            published_at="2026-10-29T13:00:00+00:00",
+        )
+        occurrence = self._occurrence("london", date(2026, 10, 30))
+        current, created = self.manager.store.create_slot(
+            occurrence, CHANNEL_ID, at="2026-10-30T06:45:00+00:00"
+        )
+        self.assertTrue(created)
+        repeated_layout = SESSION_POST
+        fresh_layout = (
+            "📊 SMART MONEY HUB\n━━━━━━━━━━━━━━\n"
+            "LONDON SESSION OPEN | BUILD A DECISION FILTER\n\n"
+            "The open is a moment to check your process, not a reason to invent a "
+            "setup. Write down what would support your plan and what would cancel it "
+            "before reviewing the chart.\n\n"
+            "🔍 WHAT TO PREPARE\n"
+            "• Choose one condition from your plan to monitor.\n"
+            "• Record the invalidation point before considering execution.\n"
+            "• If the conditions are absent, wait rather than force a trade.\n\n"
+            "🛡️ RISK REMINDER\n"
+            "Keep risk within the limits you defined before the session.\n\n"
+            "⚠️ THE GOLDEN RULE\nNO CONFIRMATION, NO ENTRY.\n\n"
+            "— VAYDA | Smart Money Hub"
+        )
+        self.writer.responses = [repeated_layout, fresh_layout]
+
+        self.manager._generate(
+            current, occurrence, occurrence.utc_at - timedelta(minutes=15)
+        )
+
+        saved = self.manager.store.get_by_key(occurrence)
+        self.assertEqual(saved["status"], "draft")
+        self.assertEqual(
+            saved["content"],
+            normalize_weekend_brand_header(fresh_layout, "new_week_preparation"),
+        )
+        self.assertEqual(len(self.writer.calls), 2)
+        retry_context = self.writer.calls[1]["session_context"]
+        self.assertTrue(retry_context["duplicate_retry"])
+        self.assertEqual(
+            retry_context["originality_retry_reason"], "repeated_session_layout"
+        )
+        self.assertEqual(
+            retry_context["rejected_session_layout_heading"], "CONDITIONS TO WATCH"
+        )
+        self.assertNotIn(
+            "CONDITIONS TO WATCH",
+            retry_context["available_session_layout_headings"],
+        )
+        self.assertEqual(self.api.channel_messages, [])
+
+    def test_repeated_layout_after_originality_retry_stays_held(self):
+        previous = self._occurrence("new_york", date(2026, 10, 29))
+        old, created = self.manager.store.create_slot(
+            previous, CHANNEL_ID, at="2026-10-29T12:45:00+00:00"
+        )
+        self.assertTrue(created)
+        previous_content = (
+            "📊 SMART MONEY HUB\n━━━━━━━━━━━━━━\n"
+            "NEW YORK SESSION OPEN | RISK-FIRST REVIEW\n\n"
+            "Separate observation from action and follow the conditions already "
+            "defined in your plan.\n\n"
+            "🔍 CONDITIONS TO WATCH\n"
+            "Check your invalidation before considering execution.\n\n"
+            "🛡️ RISK REMINDER\nKeep decisions inside your risk plan.\n\n"
+            "⚠️ THE GOLDEN RULE\nNO CONFIRMATION, NO ENTRY.\n\n"
+            "— VAYDA | Smart Money Hub"
+        )
+        self.manager.store.update(
+            int(old["id"]),
+            expected=("generating",),
+            status="published",
+            at="2026-10-29T13:00:00+00:00",
+            content=previous_content,
+            telegram_message_id=101,
+            published_at="2026-10-29T13:00:00+00:00",
+        )
+        occurrence = self._occurrence("london", date(2026, 10, 30))
+        current, created = self.manager.store.create_slot(
+            occurrence, CHANNEL_ID, at="2026-10-30T06:45:00+00:00"
+        )
+        self.assertTrue(created)
+        repeated_layout = SESSION_POST
+        self.writer.responses = [repeated_layout, repeated_layout]
+
+        self.manager._generate(
+            current, occurrence, occurrence.utc_at - timedelta(minutes=15)
+        )
+
+        saved = self.manager.store.get_by_key(occurrence)
+        self.assertEqual(saved["status"], "failed")
+        self.assertEqual(
+            saved["failure_category"], "content_rejected_repeated_session_layout"
+        )
+        self.assertEqual(saved["content"], repeated_layout)
+        self.assertEqual(len(self.writer.calls), 2)
+        self.assertEqual(self.api.channel_messages, [])
 
     def test_unverified_live_market_claim_is_held(self):
         self.writer.content = SESSION_POST.replace(

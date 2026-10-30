@@ -87,6 +87,11 @@ _STATUS_VALUES = (
     "missed",
 )
 _CANONICAL = re.compile(r"[^a-z0-9]+")
+_SESSION_LAYOUT_HEADINGS = (
+    "WHAT TO PREPARE",
+    "CONDITIONS TO WATCH",
+    "SESSION CHECKLIST",
+)
 
 
 def validate_session_open_post(content: str, post: dict[str, Any]) -> str | None:
@@ -125,14 +130,7 @@ def validate_session_open_post(content: str, post: dict[str, Any]) -> str | None
     wat_time = str(post.get("schedule_time_wat") or "").strip()
     if not local_time or not wat_time:
         return "session_schedule_time_missing"
-    if not any(
-        heading in upper
-        for heading in (
-            "WHAT TO PREPARE",
-            "CONDITIONS TO WATCH",
-            "SESSION CHECKLIST",
-        )
-    ):
+    if not any(heading in upper for heading in _SESSION_LAYOUT_HEADINGS):
         return "session_template_section_missing"
     if "RISK REMINDER" not in upper and "RISK CHECK" not in upper:
         return "session_risk_reminder_missing"
@@ -152,7 +150,7 @@ def _session_close_utc(occurrence: SessionOccurrence) -> datetime:
 
 def _session_layout_heading(content: str) -> str | None:
     upper = content.upper()
-    for heading in ("WHAT TO PREPARE", "CONDITIONS TO WATCH", "SESSION CHECKLIST"):
+    for heading in _SESSION_LAYOUT_HEADINGS:
         if heading in upper:
             return heading
     return None
@@ -1180,7 +1178,8 @@ class SessionOpenPostManager:
         history = self.history_store.get_recent_channel_post_contents(
             limit=12, chat_id=self.destination_chat_id
         )
-        rejected_duplicate_draft: str | None = None
+        rejected_originality_draft: str | None = None
+        rejected_originality_reason: str | None = None
         rejection: str | None = None
         content = ""
         admin_feedback = self.history_store.get_recent_channel_post_feedback(limit=5)
@@ -1197,14 +1196,17 @@ class SessionOpenPostManager:
                     session_context=context,
                 )
             except GeminiChannelGenerationError as error:
-                if rejected_duplicate_draft is not None:
+                if rejected_originality_draft is not None:
+                    retry_cause = (rejected_originality_reason or "originality").replace(
+                        "_", " "
+                    )
                     self._hold(
                         post,
-                        f"content_rejected_duplicate_retry_{error.category}",
-                        "Gemini produced a duplicate session post. Its one originality "
-                        f"retry failed ({error.category}); the duplicate draft was "
-                        "preserved for review and nothing was published.",
-                        content=rejected_duplicate_draft,
+                        f"content_rejected_{rejected_originality_reason}_retry_{error.category}",
+                        f"The first session candidate failed {retry_cause}; its one "
+                        f"fresh originality retry failed ({error.category}). The first "
+                        "candidate was preserved for review and nothing was published.",
+                        content=rejected_originality_draft,
                     )
                     return
                 if error.http_status == 429:
@@ -1230,14 +1232,17 @@ class SessionOpenPostManager:
                 logger.exception(
                     "Session-open content generation failed unexpectedly."
                 )
-                if rejected_duplicate_draft is not None:
+                if rejected_originality_draft is not None:
+                    retry_cause = (rejected_originality_reason or "originality").replace(
+                        "_", " "
+                    )
                     self._hold(
                         post,
-                        "content_rejected_duplicate_retry_gemini_unexpected_error",
-                        "Gemini produced a duplicate session post. Its one originality "
-                        "retry failed unexpectedly; the duplicate draft was preserved "
-                        "for review and nothing was published.",
-                        content=rejected_duplicate_draft,
+                        f"content_rejected_{rejected_originality_reason}_retry_gemini_unexpected_error",
+                        f"The first session candidate failed {retry_cause}; its one "
+                        "fresh originality retry failed unexpectedly. The first "
+                        "candidate was preserved for review and nothing was published.",
+                        content=rejected_originality_draft,
                     )
                 else:
                     self._hold(
@@ -1259,13 +1264,22 @@ class SessionOpenPostManager:
                 content, int(post["id"])
             ):
                 rejection = "repeated_session_layout"
-            if rejection != "duplicate_content" or attempt == 1:
+            if rejection not in {"duplicate_content", "repeated_session_layout"} or attempt == 1:
                 break
-            rejected_duplicate_draft = content
+            rejected_originality_draft = content
+            rejected_originality_reason = rejection
+            rejected_layout = _session_layout_heading(content)
             context = {
                 **context,
                 "duplicate_retry": True,
                 "rejected_duplicate_draft": content[:1600],
+                "originality_retry_reason": rejection,
+                "rejected_session_layout_heading": rejected_layout or "",
+                "available_session_layout_headings": [
+                    heading
+                    for heading in _SESSION_LAYOUT_HEADINGS
+                    if heading != rejected_layout
+                ],
             }
 
         if rejection:
