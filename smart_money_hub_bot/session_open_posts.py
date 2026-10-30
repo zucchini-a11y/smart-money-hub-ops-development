@@ -86,6 +86,7 @@ _STATUS_VALUES = (
     "delivery_unknown",
     "missed",
 )
+_TERMINAL_STATUSES = ("published", "delivery_unknown", "cancelled")
 _CANONICAL = re.compile(r"[^a-z0-9]+")
 _SESSION_LAYOUT_HEADINGS = (
     "WHAT TO PREPARE",
@@ -415,12 +416,15 @@ class SessionOpenPostStore:
             values.append(value)
         values.extend([post_id, *expected])
         placeholders = ", ".join("?" for _ in expected)
+        terminal_placeholders = ", ".join("?" for _ in _TERMINAL_STATUSES)
+        values.extend(_TERMINAL_STATUSES)
         with self._database() as connection:
             cursor = connection.execute(
                 f"""
                 UPDATE session_open_channel_posts
                 SET {", ".join(assignments)}
                 WHERE id = ? AND status IN ({placeholders})
+                    AND status NOT IN ({terminal_placeholders})
                 """,
                 values,
             )

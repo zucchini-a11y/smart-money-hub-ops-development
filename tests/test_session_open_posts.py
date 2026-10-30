@@ -638,6 +638,58 @@ class SessionOpenPostTests(unittest.TestCase):
         self.assertEqual(len(notices), 1)
         self.assertEqual(self.api.channel_messages, [])
 
+    def test_terminal_session_states_cannot_be_downgraded(self):
+        terminal_cases = (
+            ("asia", "published", None, 101, "2026-10-26T01:10:00+00:00"),
+            (
+                "london",
+                "delivery_unknown",
+                "telegram_delivery_unknown",
+                None,
+                None,
+            ),
+            ("new_york", "cancelled", None, None, None),
+        )
+        for index, (code, terminal_status, failure, message_id, published_at) in enumerate(
+            terminal_cases
+        ):
+            with self.subTest(status=terminal_status):
+                occurrence = self._occurrence(code)
+                post, created = self.manager.store.create_slot(
+                    occurrence,
+                    CHANNEL_ID,
+                    at=f"2026-10-26T00:00:0{index}+00:00",
+                )
+                self.assertTrue(created)
+                terminal_fields = {"failure_category": failure}
+                if message_id is not None:
+                    terminal_fields["telegram_message_id"] = message_id
+                    terminal_fields["published_at"] = published_at
+                self.assertTrue(
+                    self.manager.store.update(
+                        int(post["id"]),
+                        expected=("generating",),
+                        status=terminal_status,
+                        at=f"2026-10-26T00:00:1{index}+00:00",
+                        **terminal_fields,
+                    )
+                )
+
+                changed = self.manager.store.update(
+                    int(post["id"]),
+                    expected=(terminal_status,),
+                    status="failed",
+                    at="2026-10-26T12:00:00+00:00",
+                    failure_category="session_open_recovery_window_expired",
+                )
+
+                saved = self.manager.store.get(int(post["id"]))
+                self.assertFalse(changed)
+                self.assertEqual(saved["status"], terminal_status)
+                self.assertEqual(saved["failure_category"], failure)
+                self.assertEqual(saved["telegram_message_id"], message_id)
+                self.assertEqual(saved["published_at"], published_at)
+
     def test_interrupted_late_generation_recovers_after_restart(self):
         self.writer.content = LATE_SESSION_POST
         occurrence = self._occurrence("asia")
