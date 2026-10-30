@@ -2757,6 +2757,22 @@ class BotFlowTests(unittest.TestCase):
         self.assertIn("at", record_poll.call_args.kwargs)
         self.assertIn("started_at", record_poll.call_args.kwargs)
 
+    def test_run_privately_notifies_admin_after_long_poll_outage(self) -> None:
+        self.api.get_updates = Mock(side_effect=[[], KeyboardInterrupt()])
+        with patch("smart_money_hub_bot.bot.threading.Thread"):
+            with patch.object(
+                self.bot.store, "record_successful_bot_poll", return_value=10_476
+            ):
+                with patch.object(self.bot, "_notify_content_admin") as notify:
+                    with self.assertRaises(KeyboardInterrupt):
+                        self.bot.run()
+
+        notify.assert_called_once()
+        message = notify.call_args.args[0]
+        self.assertIn("2h 54m", message)
+        self.assertIn("checking scheduled posts", message)
+        self.assertIn("not sent late", message)
+
     def test_polling_heartbeat_reports_active_and_stale_poll_age(self) -> None:
         self.assertEqual(POLLING_HEARTBEAT_INTERVAL_SECONDS, 30)
         self.bot._last_successful_poll_at = 100.0

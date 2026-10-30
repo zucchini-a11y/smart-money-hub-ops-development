@@ -525,6 +525,7 @@ class SmartMoneyHubBot:
                             "(downtime_seconds=%s).",
                             int(downtime_seconds),
                         )
+                        self._notify_polling_recovery(downtime_seconds)
                 except Exception:
                     logger.exception("Could not persist Telegram polling health.")
                 retry_delay = 1
@@ -3980,6 +3981,21 @@ class SmartMoneyHubBot:
             self.api.send_message(self.admin_id, message)
         except TelegramAPIError:
             logger.warning("Could not privately notify the administrator about content status.")
+
+    def _notify_polling_recovery(self, downtime_seconds: float) -> None:
+        total_minutes = max(0, int(downtime_seconds) // 60)
+        hours, minutes = divmod(total_minutes, 60)
+        duration = (
+            f"{hours}h {minutes}m"
+            if hours
+            else f"{minutes}m"
+        )
+        self._notify_content_admin(
+            "Telegram polling has recovered after about "
+            f"{duration} without a successful poll. I’m checking scheduled posts "
+            "now. Session posts for sessions that have already ended stay held "
+            "and are not sent late."
+        )
 
     def _dispatch_weekly_checkin(self, local_now: datetime) -> None:
         schedule_key = local_now.date().isoformat()
