@@ -261,7 +261,7 @@ class KnowledgeImprovementTests(unittest.TestCase):
         )
         member_reply = api.messages[-1]
         self.assertIn("Broker and platform rules can vary or change", member_reply["text"])
-        self.assertIn("administrator", member_reply["text"])
+        self.assertNotIn("sent this to an administrator", member_reply["text"])
         feedback_buttons = member_reply["reply_markup"]["inline_keyboard"][0]
         feedback_data = feedback_buttons[1]["callback_data"]
         self.assertTrue(feedback_data.startswith("coach:feedback:"))

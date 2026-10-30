@@ -240,6 +240,9 @@ class GeminiCoachTests(unittest.TestCase):
         self.assertIn("praise effort or reasoning specifically", instruction)
         self.assertIn("Never use guilt, pressure, artificial urgency", instruction)
         self.assertIn("vary your phrasing", instruction)
+        self.assertIn("general-purpose conversational assistant", instruction)
+        self.assertIn("Answer ordinary questions across topics", instruction)
+        self.assertIn("do not reject a question just because it is outside SMC", instruction)
         self.assertIn("general educational questions about economic releases", instruction)
         self.assertIn("broker terms, and platform features", instruction)
         self.assertIn("do not send them to review just because of their category", instruction)
@@ -1144,7 +1147,9 @@ class GeminiCoachTests(unittest.TestCase):
         self.assertIsNotNone(routed.assessment)
         self.assertEqual(routed.assessment.confidence, "low")
         self.assertTrue(routed.assessment.needs_research)
-        self.assertIn("sent this to an administrator", routed.reply.response)
+        self.assertIn("I am not certain about this yet.", routed.reply.response)
+        self.assertIn("I can’t verify the current detail from here", routed.reply.response)
+        self.assertNotIn("sent this to an administrator", routed.reply.response)
         self.assertEqual(routed.response_path, "fallback")
 
     def test_simple_messages_skip_gemini_but_live_questions_can_use_it(self) -> None:
@@ -1165,7 +1170,8 @@ class GeminiCoachTests(unittest.TestCase):
         provider.evaluate.assert_called_once()
         self.assertEqual(unknown.response_path, "gemini_review")
         self.assertIn("I can explain inflation reports generally", unknown.reply.response)
-        self.assertIn("sent this to an administrator", unknown.reply.response)
+        self.assertIn("I can’t verify its latest release here", unknown.reply.response)
+        self.assertNotIn("sent this to an administrator", unknown.reply.response)
 
     def test_economic_and_broker_education_reaches_gemini(self) -> None:
         questions = (
@@ -1238,7 +1244,27 @@ class GeminiCoachTests(unittest.TestCase):
         self.assertEqual(routed.response_path, "fallback")
         self.assertTrue(routed.reply.requires_review)
         self.assertTrue(routed.assessment.needs_research)
-        self.assertIn("sent this to an administrator", routed.reply.response)
+        self.assertNotIn("sent this to an administrator", routed.reply.response)
+        self.assertIn("Share the specific source or example", routed.reply.response)
+
+    def test_general_question_gets_direct_gemini_answer(self) -> None:
+        question = "Can you help me write a polite message to reschedule a meeting?"
+        answer = "Sure: “Could we move our meeting to another time that works for you?”"
+        service = GeminiCoachService("test-key")
+        router = CoachMessageRouter(service, _EmptyKnowledgeStore())
+
+        with patch(
+            "smart_money_hub_bot.gemini_coach.urlopen",
+            return_value=_response(answer),
+        ) as mocked_urlopen:
+            routed = router.route(991, question)
+
+        self.assertEqual(mocked_urlopen.call_count, 1)
+        self.assertEqual(routed.response_path, "gemini_success")
+        self.assertEqual(routed.reply.response, answer)
+        self.assertIsNotNone(routed.assessment)
+        self.assertEqual(routed.assessment.confidence, "high")
+        self.assertFalse(routed.reply.requires_review)
 
     def test_private_telegram_update_sends_gemini_answer_from_provider(self) -> None:
         synthetic_key = "test-key-never-log"

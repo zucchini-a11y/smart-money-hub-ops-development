@@ -188,7 +188,6 @@ class CoachMessageRouter:
                 reply = self._needs_review_reply(
                     reply,
                     topic=assessment.topic,
-                    include_ai_note=include_ai_note,
                 )
             else:
                 reply = ai_evaluate_answer(
@@ -234,7 +233,6 @@ class CoachMessageRouter:
         reply: CoachReply,
         *,
         topic: str | None = None,
-        include_ai_note: bool = False,
     ) -> CoachReply:
         review_guidance = {
             "Current Market Information": (
@@ -254,18 +252,15 @@ class CoachMessageRouter:
         }
         guidance = review_guidance.get(
             topic or reply.detected_topic,
-            "I couldn’t confirm a dependable answer this time. Narrow it to one term or "
-            "share the specific example you want explained, and I’ll take another pass.",
+            "I can’t verify the current detail from here. Share the specific source or "
+            "example, and I can help interpret it.",
         )
-        review_notice = "I’ve sent this to an administrator to check."
         answer = reply.response.strip()
-        if include_ai_note and answer:
-            response = (
-                f"Coach note — not verified yet:\n{answer}\n\n"
-                f"{guidance} {review_notice}"
-            )
-        else:
-            response = f"{guidance} {review_notice}"
+        response = (
+            answer
+            if answer and guidance.casefold() in answer.casefold()
+            else f"{answer}\n\n{guidance}" if answer else guidance
+        )
         return CoachReply(
             response,
             reply.detected_topic,

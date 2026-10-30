@@ -26,7 +26,7 @@ The bot uses long polling. Run only one process with this token at a time. Teleg
 
 The education and journal flows emphasize confirmation, retests, liquidity and displacement context, valid POIs, avoiding chase entries, and risk management. The bot is for education and record-keeping; it does not predict trades or promise profits. Back and Main Menu buttons are available through active flows.
 
-The coach is a deterministic, offline rule-based system, not a general conversational AI. It handles known SMC concepts and common coaching situations, uses recent stored Coach exchanges to continue some follow-ups, and is explicit when a request is outside its scope. It does not see charts, check live prices, or know unrecorded preferences. No paid AI provider is connected or required.
+When Gemini is configured, the private Coach can answer general questions as well as trading-education questions, using recent saved Coach exchanges for relevant follow-ups. It cannot see live channel posts, inspect charts, check live prices, or know unrecorded preferences. If Gemini is unavailable, the local rule-based Coach can still handle supported SMC concepts and common coaching situations; it cannot provide general AI answers.
 
 ## Find your Telegram ID and enable admin stats
 

@@ -135,7 +135,11 @@ class MessageRouterTests(unittest.TestCase):
         self.assertEqual(result.assessment.topic, "Economic News and Fundamentals")
         self.assertIn("latest release", result.reply.response)
         self.assertIn("Share the headline or figures", result.reply.response)
-        self.assertIn("administrator", result.reply.response)
+        self.assertNotIn("administrator", result.reply.response)
+        self.assertEqual(
+            result.reply.response.count("I can explain what the report measures"),
+            1,
+        )
         self.assertEqual(result.response_path, "fallback")
 
     def test_approved_knowledge_answers_before_gemini(self) -> None:
