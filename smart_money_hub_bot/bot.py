@@ -1834,6 +1834,23 @@ class SmartMoneyHubBot:
             )
             return
 
+        # Explicit poll actions from the configured owner must work even while
+        # Coach is in a guided conversation. Keep this deterministic and narrow:
+        # only private admin messages that explicitly request a poll can publish.
+        if (
+            is_private
+            and self.admin_id is not None
+            and telegram_id == self.admin_id
+            and is_on_demand_poll_request(text)
+        ):
+            request_key = (
+                f"update-{update_id}"
+                if isinstance(update_id, int)
+                else f"direct-{uuid.uuid4().hex}"
+            )
+            self.education_polls.post_now(request_key)
+            return
+
         if requested_action:
             self._open_requested_member_action(
                 requested_action,
@@ -1870,19 +1887,6 @@ class SmartMoneyHubBot:
                 )
             else:
                 self._accept_text_answer(session, text)
-            return
-        if (
-            is_private
-            and self.admin_id is not None
-            and telegram_id == self.admin_id
-            and is_on_demand_poll_request(text)
-        ):
-            request_key = (
-                f"update-{update_id}"
-                if isinstance(update_id, int)
-                else f"direct-{uuid.uuid4().hex}"
-            )
-            self.education_polls.post_now(request_key)
             return
         if command in {"/ask", "/scenario"}:
             if not self._is_education_group(chat_id, is_private):

@@ -49,12 +49,13 @@ def is_on_demand_poll_request(text: str) -> bool:
     normalized = " ".join(text.strip().casefold().split())
     return bool(
         re.fullmatch(
+            r"(?:(?:please\s+)?fix\s+(?:this|it|the missed poll)\s+and\s+)?"
             r"(?:(?:please\s+)?(?:can|could)\s+you\s+|"
-            r"(?:please\s+)?|i want you to\s+)"
+            r"(?:please\s+)?|i want you to\s+|help me\s+(?:to\s+)?)"
             r"(?:post|publish|send|create|make)\s+"
-            r"(?:(?:a|an)\s+)?(?:new\s+)?"
+            r"(?:(?:the|a|an)\s+)?(?:(?:new|fresh)\s+)?"
             r"(?:(?:smc|education(?:al)?(?:\s+group)?)\s+)?"
-            r"poll\s+(?:now|today|right now)[.!?]?",
+            r"poll(?:\s+(?:now|today|right now|immediately))?[.!?]?",
             normalized,
         )
     )

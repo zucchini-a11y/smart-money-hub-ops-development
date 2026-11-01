@@ -493,8 +493,12 @@ class EducationPollTests(unittest.TestCase):
     def test_natural_language_trigger_is_specific(self) -> None:
         self.assertTrue(is_on_demand_poll_request("  Post a new SMC poll now! "))
         self.assertTrue(is_on_demand_poll_request("Could you create an education poll today?"))
+        self.assertTrue(is_on_demand_poll_request("Post the poll"))
+        self.assertTrue(is_on_demand_poll_request("Fix this and post the poll"))
+        self.assertTrue(is_on_demand_poll_request("Help me post a fresh poll now"))
         self.assertFalse(is_on_demand_poll_request("What is a poll?"))
         self.assertFalse(is_on_demand_poll_request("Post this poll later"))
+        self.assertFalse(is_on_demand_poll_request("The poll is ready to post"))
 
     def test_admin_private_text_triggers_immediate_poll(self) -> None:
         bot = SmartMoneyHubBot(
@@ -517,7 +521,7 @@ class EducationPollTests(unittest.TestCase):
         )
         bot.education_polls.post_now.assert_called_once_with("update-12345")
 
-    def test_active_admin_session_keeps_precedence_over_poll_request(self) -> None:
+    def test_active_admin_session_does_not_block_explicit_poll_request(self) -> None:
         bot = SmartMoneyHubBot(
             self.api,
             str(Path(self.temp_dir.name) / "bot-session.sqlite3"),
@@ -538,12 +542,11 @@ class EducationPollTests(unittest.TestCase):
                 "message": {
                     "from": {"id": 77, "is_bot": False, "first_name": "Admin"},
                     "chat": {"id": 77, "type": "private"},
-                    "text": "Post a poll now",
+                    "text": "Fix this and post the poll",
                 },
             }
         )
-        bot.education_polls.post_now.assert_not_called()
-        self.assertEqual(self.api.messages[-1]["chat_id"], 77)
+        bot.education_polls.post_now.assert_called_once_with("update-12346")
 
     def test_non_admin_private_text_does_not_trigger_poll(self) -> None:
         bot = SmartMoneyHubBot(
