@@ -11,6 +11,7 @@ from smart_money_hub_bot.daily_calendar_brief import (
     DailyCalendarBriefStore,
     build_daily_usd_gold_brief,
 )
+from smart_money_hub_bot.brief_photo_review import NewsBriefPhotoPrompts
 from smart_money_hub_bot.economic_calendar_phase1 import (
     OfficialCalendarRecord,
     OfficialCalendarRepository,
@@ -121,6 +122,7 @@ class DailyCalendarBriefTests(unittest.TestCase):
         self,
         *,
         channel_id: int = MARKET_ANALYSIS_CHANNEL_ID,
+        photo_prompts: NewsBriefPhotoPrompts | None = None,
         refresh=add_verified_sources,
     ) -> DailyCalendarBriefPublisher:
         return DailyCalendarBriefPublisher(
@@ -128,8 +130,25 @@ class DailyCalendarBriefTests(unittest.TestCase):
             self.database,
             admin_id=444,
             channel_id=channel_id,
+            photo_prompts=photo_prompts,
             source_refresh=refresh,
         )
+
+    def test_photo_prompt_is_private_and_ignored_photo_does_not_hold_brief(self) -> None:
+        prompts = NewsBriefPhotoPrompts(
+            self.api, self.database, admin_id=444
+        )
+        publisher = self.make_publisher(photo_prompts=prompts)
+        prompt_time = datetime(2026, 10, 28, 22, 55, tzinfo=timezone.utc)
+
+        self.assertTrue(publisher.dispatch_photo_prompt(prompt_time))
+        self.assertEqual(self.api.admin_messages[0]["chat_id"], 444)
+        self.assertIn("Market Analysis channel", self.api.admin_messages[0]["text"])
+        self.assertFalse(publisher.dispatch_photo_prompt(prompt_time))
+
+        self.assertEqual(publisher.dispatch(NOW), "published")
+        self.assertEqual(len(self.api.channel_messages), 1)
+        self.assertEqual(self.api.send_attempts, 1)
 
     def test_publishes_verified_daily_brief_once_and_recovers_after_restart(self) -> None:
         publisher = self.make_publisher()
@@ -139,10 +158,11 @@ class DailyCalendarBriefTests(unittest.TestCase):
         message = self.api.channel_messages[0]
         self.assertEqual(message["chat_id"], MARKET_ANALYSIS_CHANNEL_ID)
         self.assertEqual(message["parse_mode"], "HTML")
-        self.assertIn("DAILY USD &amp; GOLD BRIEF", message["text"])
-        self.assertIn("USD &amp; MACRO UPDATE", message["text"])
-        self.assertIn("GOLD IMPACT", message["text"])
-        self.assertIn("TODAY’S HIGH-IMPACT EVENTS", message["text"])
+        self.assertIn("SMART MONEY HUB | DAILY NEWS", message["text"])
+        self.assertIn("HIGH-IMPACT NEWS", message["text"])
+        self.assertIn("MEDIUM-IMPACT NEWS", message["text"])
+        self.assertIn("GOLD (XAUUSD) WATCH", message["text"])
+        self.assertIn("VERIFIED U.S. RELEASES", message["text"])
         self.assertIn("SOURCES &amp; CHECK TIME", message["text"])
         self.assertIn("13:30 WAT", message["text"])
         self.assertIn("Gross Domestic Product", message["text"])
@@ -325,12 +345,13 @@ class DailyCalendarBriefTests(unittest.TestCase):
             now=NOW,
         )
 
-        self.assertIn("DAILY USD &amp; GOLD BRIEF", preview)
-        self.assertIn("USD &amp; MACRO UPDATE", preview)
-        self.assertIn("GOLD IMPACT", preview)
-        self.assertIn("TODAY’S HIGH-IMPACT EVENTS", preview)
+        self.assertIn("SMART MONEY HUB | DAILY NEWS", preview)
+        self.assertIn("HIGH-IMPACT NEWS", preview)
+        self.assertIn("MEDIUM-IMPACT NEWS", preview)
+        self.assertIn("GOLD (XAUUSD) WATCH", preview)
+        self.assertIn("VERIFIED U.S. RELEASES", preview)
         self.assertIn("No verified BEA release is scheduled for this date.", preview)
-        self.assertIn("no verified release results or current market data", preview)
+        self.assertIn("No verified result or current market data", preview)
         self.assertIn("Census times are omitted until its timezone is confirmed", preview)
         self.assertNotIn("HTTP 403", preview)
         self.assertIn("NO CONFIRMATION, NO ENTRY.", preview)

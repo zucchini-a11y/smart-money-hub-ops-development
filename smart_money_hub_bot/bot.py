@@ -28,6 +28,7 @@ from .group_knowledge import (
 )
 from .daily_calendar_brief import DailyCalendarBriefPublisher
 from .weekly_calendar_brief import WeeklyCalendarBriefPublisher
+from .brief_photo_review import NewsBriefPhotoPrompts
 from .education_polls import EducationPollPublisher, is_on_demand_poll_request
 from .education_morning import EducationMorningPublisher
 from .message_router import CoachMessageRouter
@@ -413,6 +414,7 @@ class SmartMoneyHubBot:
         education_group_id: int | None = DEFAULT_EDUCATION_GROUP_ID,
         daily_calendar_brief: DailyCalendarBriefPublisher | None = None,
         weekly_calendar_brief: WeeklyCalendarBriefPublisher | None = None,
+        news_brief_photo_prompts: NewsBriefPhotoPrompts | None = None,
         personal_reply_assistant: PersonalTelegramReplyAssistant | None = None,
         reply_draft_assistant: PersonalTelegramReplyAssistant | None = None,
         education_market_analysis_topic_link: str | None = None,
@@ -452,6 +454,7 @@ class SmartMoneyHubBot:
         )
         self.daily_calendar_brief = daily_calendar_brief
         self.weekly_calendar_brief = weekly_calendar_brief
+        self.news_brief_photo_prompts = news_brief_photo_prompts
         self.personal_reply_assistant = personal_reply_assistant
         self.reply_draft_assistant = reply_draft_assistant
         self.reminder_zone = ZoneInfo(reminder_timezone)
@@ -1418,6 +1421,13 @@ class SmartMoneyHubBot:
             and isinstance(chat.get("id"), int)
             and chat.get("type") == "private"
         ):
+            if self.news_brief_photo_prompts is not None and self.news_brief_photo_prompts.handle_admin_photo(
+                int(chat["id"]),
+                int(sender["id"]),
+                message["photo"],
+                is_private=True,
+            ):
+                return
             if self.admin_dashboard.education_topic_promotions.handle_admin_photo(
                 int(chat["id"]),
                 int(sender["id"]),
@@ -2186,6 +2196,15 @@ class SmartMoneyHubBot:
                 "Could not acknowledge Telegram callback; continuing to process it: %s",
                 error,
             )
+
+        if data.startswith("newsbrief:") and self.news_brief_photo_prompts is not None:
+            if self.news_brief_photo_prompts.handle_callback(
+                data,
+                actor_id=telegram_id,
+                chat_id=chat_id,
+                is_private=is_private,
+            ):
+                return
 
         if data not in {
             "admin:dm_broadcast",
@@ -4025,10 +4044,18 @@ class SmartMoneyHubBot:
             logger.exception("Could not create scheduled community-content drafts.")
         if self.daily_calendar_brief is not None:
             try:
+                self.daily_calendar_brief.dispatch_photo_prompt(current)
+            except Exception:
+                logger.exception("Could not send the daily USD/Gold photo prompt.")
+            try:
                 self.daily_calendar_brief.dispatch(current)
             except Exception:
                 logger.exception("Could not dispatch the daily USD/Gold calendar brief.")
         if self.weekly_calendar_brief is not None:
+            try:
+                self.weekly_calendar_brief.dispatch_photo_prompt(current)
+            except Exception:
+                logger.exception("Could not send the weekly USD/Gold photo prompt.")
             try:
                 self.weekly_calendar_brief.dispatch(current)
             except Exception:

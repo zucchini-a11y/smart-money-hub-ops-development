@@ -5,11 +5,15 @@ import unittest
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-from smart_money_hub_bot.daily_calendar_brief import MARKET_ANALYSIS_CHANNEL_ID
 from smart_money_hub_bot.economic_calendar_phase1 import (
     OfficialCalendarRecord,
     OfficialCalendarRepository,
 )
+from smart_money_hub_bot.group_features import (
+    DEFAULT_EDUCATION_GROUP_ID,
+    EDUCATION_ANNOUNCEMENTS_THREAD_ID,
+)
+from smart_money_hub_bot.brief_photo_review import NewsBriefPhotoPrompts
 from smart_money_hub_bot.telegram_api import TelegramAPIError
 from smart_money_hub_bot.weekly_calendar_brief import (
     WeeklyCalendarBriefPublisher,
@@ -105,27 +109,42 @@ class FakeTelegramAPI:
         self.admin_messages: list[dict] = []
         self.send_attempts = 0
         self.uncertain_send = False
-        self.chat_id = MARKET_ANALYSIS_CHANNEL_ID
-        self.chat_title = "Smart Money Hub"
-        self.member = {"status": "administrator", "can_post_messages": True}
+        self.chat_id = DEFAULT_EDUCATION_GROUP_ID
+        self.chat_title = "Smart Money Hub Education Suite"
+        self.member = {"status": "administrator", "can_send_messages": True}
 
     def get_me(self) -> dict:
         return {"id": 12345}
 
     def get_chat(self, chat_id: int) -> dict:
-        return {"id": self.chat_id, "type": "channel", "title": self.chat_title}
+        return {
+            "id": self.chat_id,
+            "type": "supergroup",
+            "title": self.chat_title,
+            "is_forum": True,
+        }
 
     def get_chat_member(self, chat_id: int, user_id: int) -> dict:
         return self.member
 
     def send_message_with_result(
-        self, chat_id: int, text: str, *, parse_mode: str | None = None
+        self,
+        chat_id: int,
+        text: str,
+        *,
+        parse_mode: str | None = None,
+        message_thread_id: int | None = None,
     ) -> dict:
         self.send_attempts += 1
         if self.uncertain_send:
             raise TelegramAPIError("delivery unknown", delivery_unknown=True)
         self.channel_messages.append(
-            {"chat_id": chat_id, "text": text, "parse_mode": parse_mode}
+            {
+                "chat_id": chat_id,
+                "text": text,
+                "parse_mode": parse_mode,
+                "message_thread_id": message_thread_id,
+            }
         )
         return {"message_id": 77}
 
@@ -137,7 +156,9 @@ class FakeTelegramAPI:
         *,
         parse_mode: str | None = None,
     ) -> None:
-        self.admin_messages.append({"chat_id": chat_id, "text": text})
+        self.admin_messages.append(
+            {"chat_id": chat_id, "text": text, "reply_markup": reply_markup}
+        )
 
 
 class WeeklyCalendarBriefTests(unittest.TestCase):
@@ -147,13 +168,42 @@ class WeeklyCalendarBriefTests(unittest.TestCase):
         self.database = Path(self.temp_dir.name) / "weekly.sqlite3"
         self.api = FakeTelegramAPI()
 
-    def publisher(self, *, channel_id: int = MARKET_ANALYSIS_CHANNEL_ID, refresh=add_current_sources):
+    def publisher(
+        self,
+        *,
+        group_id: int = DEFAULT_EDUCATION_GROUP_ID,
+        thread_id: int = EDUCATION_ANNOUNCEMENTS_THREAD_ID,
+        photo_prompts: NewsBriefPhotoPrompts | None = None,
+        refresh=add_current_sources,
+    ):
         return WeeklyCalendarBriefPublisher(
             self.api,
             self.database,
             admin_id=444,
-            channel_id=channel_id,
+            group_id=group_id,
+            thread_id=thread_id,
+            photo_prompts=photo_prompts,
             source_refresh=refresh,
+        )
+
+    def test_weekly_photo_prompt_targets_monday_announcements_topic(self):
+        prompts = NewsBriefPhotoPrompts(
+            self.api, self.database, admin_id=444
+        )
+        publisher = self.publisher(photo_prompts=prompts)
+        sunday_2355_wat = datetime(2026, 11, 1, 22, 55, tzinfo=timezone.utc)
+
+        self.assertTrue(publisher.dispatch_photo_prompt(sunday_2355_wat))
+        self.assertEqual(self.api.admin_messages[0]["chat_id"], 444)
+        self.assertIn(
+            "Education Suite Announcements topic",
+            self.api.admin_messages[0]["text"],
+        )
+        self.assertEqual(
+            self.api.admin_messages[0]["reply_markup"]["inline_keyboard"][0][0][
+                "callback_data"
+            ],
+            "newsbrief:photo:weekly:2026-11-02",
         )
 
     def test_weekly_preview_converts_verified_bls_times_and_hides_census_time(self):
@@ -165,7 +215,7 @@ class WeeklyCalendarBriefTests(unittest.TestCase):
             repository.list_source_status(),
             now=NOW,
         )
-        self.assertIn("WEEKLY USD &amp; GOLD BRIEF", report)
+        self.assertIn("SMART MONEY HUB | WEEKLY NEWS OUTLOOK", report)
         self.assertIn("03 Nov", report)
         self.assertIn("16:00 WAT", report)
         self.assertIn("06 Nov", report)
@@ -174,7 +224,7 @@ class WeeklyCalendarBriefTests(unittest.TestCase):
         self.assertIn("Time: Unavailable in WAT", report)
         self.assertNotIn("10:00 AM", report)
         self.assertIn("Impact: Unavailable", report)
-        self.assertIn("Previous: Unavailable · Forecast: Unavailable", report)
+        self.assertIn("Previous: Unavailable · 📊 Forecast: Unavailable", report)
         self.assertIn("DOL schedule coverage is unavailable", report)
         self.assertIn("NO CONFIRMATION, NO ENTRY", report)
         self.assertLessEqual(len(report.encode("utf-16-le")) // 2, 4096)
@@ -217,7 +267,10 @@ class WeeklyCalendarBriefTests(unittest.TestCase):
         self.assertEqual(publisher.dispatch(NOW), "published")
         self.assertEqual(len(self.api.channel_messages), 1)
         message = self.api.channel_messages[0]
-        self.assertEqual(message["chat_id"], MARKET_ANALYSIS_CHANNEL_ID)
+        self.assertEqual(message["chat_id"], DEFAULT_EDUCATION_GROUP_ID)
+        self.assertEqual(
+            message["message_thread_id"], EDUCATION_ANNOUNCEMENTS_THREAD_ID
+        )
         self.assertEqual(message["parse_mode"], "HTML")
         self.assertIn("16:00 WAT", message["text"])
         saved = WeeklyCalendarBriefStore(self.database).get(WEEK_START)
@@ -265,9 +318,16 @@ class WeeklyCalendarBriefTests(unittest.TestCase):
         self.assertEqual(self.api.channel_messages, [])
         self.assertTrue(self.api.admin_messages)
 
-    def test_destination_mismatch_holds_without_send(self):
+    def test_wrong_group_holds_without_send(self):
         self.assertEqual(
-            self.publisher(channel_id=-1001234567890).dispatch(NOW),
+            self.publisher(group_id=-1001234567890).dispatch(NOW),
+            "held",
+        )
+
+    def test_wrong_topic_holds_without_send(self):
+        self.database = Path(self.temp_dir.name) / "wrong-topic.sqlite3"
+        self.assertEqual(
+            self.publisher(thread_id=5).dispatch(NOW),
             "held",
         )
         self.assertEqual(self.api.channel_messages, [])

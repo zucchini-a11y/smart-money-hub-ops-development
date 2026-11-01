@@ -15,12 +15,19 @@ from zoneinfo import ZoneInfo
 
 from .daily_calendar_brief import (
     CALENDAR_STALE_AFTER,
-    MARKET_ANALYSIS_CHANNEL_ID,
     TELEGRAM_MESSAGE_LIMIT_UTF16,
 )
 from .economic_calendar_phase1 import (
     OfficialCalendarRepository,
     fetch_and_store_official_schedules,
+)
+from .group_features import (
+    DEFAULT_EDUCATION_GROUP_ID,
+    EDUCATION_ANNOUNCEMENTS_THREAD_ID,
+)
+from .brief_photo_review import (
+    NewsBriefPhotoPrompts,
+    send_brief_with_optional_photo,
 )
 from .telegram_api import TelegramAPI, TelegramAPIError
 
@@ -217,71 +224,98 @@ def build_weekly_usd_gold_brief(
         )
     )
     lines = [
-        "🌍 <b>VAYDA SMART MONEY HUB | WEEKLY USD &amp; GOLD BRIEF</b>",
-        f"📅 Week of {week_start.strftime('%d %B %Y')} · WAT",
+        "🌍 <b>SMART MONEY HUB | WEEKLY NEWS OUTLOOK 📊</b>",
+        f"📅 Week: {week_start.strftime('%d %b')} – {week_end.strftime('%d %b %Y')}",
         "",
-        "🇺🇸 <b>USD &amp; MACRO UPDATE</b>",
-        "This is an official U.S. economic-release calendar. It contains "
-        "scheduled events only; it does not claim live market prices or "
-        "unverified breaking news.",
+        "━━━━━━━━━━━━━━",
         "",
-        "🥇 <b>GOLD IMPACT</b>",
-        "Economic releases may influence growth and interest-rate expectations, "
-        "which can affect USD and gold. Direction is uncertain and can differ "
-        "from an initial interpretation.",
+        "🔺 Official sources do not provide a consistent impact rating here. "
+        "Impact is marked unavailable rather than inferred.",
         "",
-        "📅 <b>THIS WEEK’S U.S. RELEASES</b>",
     ]
 
-    if not events:
-        lines.extend(
-            [
-                "No fresh, verified entries from the configured official "
-                "calendars were found for this week.",
-                "",
-            ]
-        )
+    by_date: dict[date, list[tuple[datetime | None, dict]]] = {}
     for event_date, event_at, record in events:
-        title = html.escape(str(record.get("title") or "Official U.S. release"))
-        source = str(record.get("source_name") or "Official source")
-        source_url = str(record.get("source_url") or "")
-        label = {
-            "U.S. Bureau of Economic Analysis": "BEA",
-            "U.S. Bureau of Labor Statistics": "BLS",
-            "U.S. Census Bureau": "U.S. Census Bureau",
-            "Federal Reserve": "Federal Reserve",
-        }.get(source, source)
+        by_date.setdefault(event_date, []).append((event_at, record))
 
-        if source == "U.S. Census Bureau":
-            timing = "Time: Unavailable in WAT; source timezone is not verified."
-        elif source == "Federal Reserve":
-            timing = "Meeting window; no decision release time is stated."
-        elif event_at is not None:
-            timing = (
-                f"{event_at.astimezone(WAT).strftime('%H:%M WAT')} "
-                "(converted from the source’s verified timezone)"
-            )
-        else:
-            timing = "Time: Unavailable; source timezone is not verified."
-
+    for day_offset in range(5):
+        event_date = week_start + timedelta(days=day_offset)
         lines.extend(
             [
-                f"• <b>{event_date.strftime('%a, %d %b')} — {title}</b>",
-                timing,
-                "Impact: Unavailable from the official schedule.",
-                "Previous: "
-                + html.escape(str(record.get("previous") or "Unavailable"))
-                + " · Forecast: "
-                + html.escape(str(record.get("forecast") or "Unavailable"))
-                + " · Actual: "
-                + html.escape(
-                    str(record.get("actual") or "Unavailable from schedule source")
-                ),
-                f"Possible relevance: {_event_relevance(str(record.get('title') or ''))}",
-                f"Source: {_escape_link(source_url, label)}",
+                "━━━━━━━━━━━━━━",
                 "",
+                f"🗓️ <b>{event_date.strftime('%A').upper()} · "
+                f"{event_date.strftime('%d %b')}</b>",
             ]
         )
+        daily_events = by_date.get(event_date, [])
+        if not daily_events:
+            lines.append("No fresh, verified U.S. release listed for this day.")
+        for event_at, record in daily_events:
+            title_text = str(record.get("title") or "Official U.S. release")
+            title = html.escape(title_text)
+            source = str(record.get("source_name") or "Official source")
+            source_url = str(record.get("source_url") or "")
+            label = {
+                "U.S. Bureau of Economic Analysis": "BEA",
+                "U.S. Bureau of Labor Statistics": "BLS",
+                "U.S. Census Bureau": "U.S. Census Bureau",
+                "Federal Reserve": "Federal Reserve",
+            }.get(source, source)
+
+            if source == "U.S. Census Bureau":
+                timing = "Time: Unavailable in WAT; source timezone is not verified."
+            elif source == "Federal Reserve":
+                timing = "Meeting window; no decision release time is stated."
+            elif event_at is not None:
+                timing = (
+                    f"{event_at.astimezone(WAT).strftime('%H:%M WAT')} "
+                    "(converted from the source’s verified timezone)"
+                )
+            else:
+                timing = "Time: Unavailable; source timezone is not verified."
+
+            lines.extend(
+                [
+                    f"📰 <b>{event_date.strftime('%a, %d %b')} — {title}</b> — {timing}",
+                    "🔺 Impact: Unavailable from the official schedule.",
+                    "📌 Previous: "
+                    + html.escape(str(record.get("previous") or "Unavailable"))
+                    + " · 📊 Forecast: "
+                    + html.escape(str(record.get("forecast") or "Unavailable"))
+                    + " · Actual: "
+                    + html.escape(
+                        str(record.get("actual") or "Unavailable from schedule source")
+                    ),
+                    f"Possible relevance: {_event_relevance(title_text)}",
+                    f"Source: {_escape_link(source_url, label)}",
+                ]
+            )
+        lines.append("")
+
+    weekend_events = [
+        (event_date, event_at, record)
+        for event_date, event_at, record in events
+        if event_date.weekday() >= 5
+    ]
+    if weekend_events:
+        lines.extend(["━━━━━━━━━━━━━━", "", "🗓️ <b>WEEKEND</b>"])
+        for event_date, event_at, record in weekend_events:
+            title = html.escape(str(record.get("title") or "Official U.S. release"))
+            timing = (
+                f"{event_at.astimezone(WAT).strftime('%H:%M WAT')}"
+                if event_at is not None
+                else "Time unavailable in WAT"
+            )
+            source = str(record.get("source_name") or "Official source")
+            source_url = str(record.get("source_url") or "")
+            lines.extend(
+                [
+                    f"📰 <b>{title}</b> — {timing}",
+                    "🔺 Impact: Unavailable from the official schedule.",
+                    f"Source: {_escape_link(source_url, source)}",
+                ]
+            )
 
     source_checks = [
         (name, statuses.get(name, {}))
@@ -316,17 +350,33 @@ def build_weekly_usd_gold_brief(
             "Census times are not converted or used for reminders because its "
             "source timezone is not verified."
         )
-    status_parts.append(
-        "Missing figures and impact classifications are not inferred."
-    )
+    status_parts.append("Missing figures and impact classifications are not inferred.")
 
     lines.extend(
         [
-            "🎯 <b>WHAT TRADERS SHOULD WATCH</b>",
-            "Check verified results when released and observe the market response. "
-            "A scheduled event is not an entry signal.",
+            "━━━━━━━━━━━━━━",
             "",
-            "⚠️ <b>NO CONFIRMATION, NO ENTRY.</b>",
+            "🥇 <b>GOLD (XAUUSD) — WEEKLY WATCH</b>",
+            "📈 Bullish drivers: No verified current market data is connected to "
+            "confirm a bullish driver.",
+            "📉 Bearish drivers: No verified current market data is connected to "
+            "confirm a bearish driver.",
+            "",
+            "💵 <b>USD / FED WATCH</b>",
+            "Only listed official U.S. calendar events are included. Live rate "
+            "expectations, Treasury yields, and current USD readings are unavailable.",
+            "",
+            "⚠️ <b>OUR APPROACH</b>",
+            "• Mark key POIs before major releases.",
+            "• Avoid impulsive entries during news spikes.",
+            "• Wait for liquidity, displacement, and confirmation.",
+            "• Manage risk and respect your SL.",
+            "",
+            "<b>NO CONFIRMATION, NO ENTRY. 🎯</b>",
+            "",
+            "<b>SMART MONEY HUB</b>",
+            "Learn • Confirm • Execute • Grow",
+            "",
             "📌 <b>SOURCE STATUS</b>",
             f"Official calendars checked: {checked_label}.",
             " ".join(status_parts),
@@ -430,16 +480,37 @@ class WeeklyCalendarBriefPublisher:
         database_path: str | Path,
         *,
         admin_id: int | None,
-        channel_id: int | None,
+        group_id: int | None,
+        thread_id: int = EDUCATION_ANNOUNCEMENTS_THREAD_ID,
+        photo_prompts: NewsBriefPhotoPrompts | None = None,
         source_refresh=fetch_and_store_official_schedules,
     ) -> None:
         self.api = api
         self.database_path = Path(database_path)
         self.admin_id = admin_id
-        self.channel_id = channel_id
+        self.group_id = group_id
+        self.thread_id = thread_id
+        self.photo_prompts = photo_prompts
         self.calendar = OfficialCalendarRepository(database_path)
         self.store = WeeklyCalendarBriefStore(database_path)
         self.source_refresh = source_refresh
+
+    def dispatch_photo_prompt(self, now: datetime | None = None) -> bool:
+        if self.photo_prompts is None:
+            return False
+        current = _utc(now or datetime.now(timezone.utc))
+        local_now = current.astimezone(WAT)
+        if local_now.weekday() != 6 or local_now.hour != 23 or local_now.minute < 55:
+            return False
+        brief_date = local_now.date() + timedelta(days=1)
+        scheduled_at = datetime.combine(brief_date, WEEKLY_BRIEF_TIME, tzinfo=WAT)
+        return self.photo_prompts.send_prompt_if_due(
+            "weekly",
+            brief_date,
+            scheduled_at,
+            destination="Education Suite Announcements topic",
+            now=current,
+        )
 
     def dispatch(self, now: datetime | None = None) -> str:
         current = _utc(now or datetime.now(timezone.utc))
@@ -448,7 +519,7 @@ class WeeklyCalendarBriefPublisher:
             return "not_due"
         if local_now.time().replace(tzinfo=None) < WEEKLY_BRIEF_TIME:
             return "not_due"
-        if self.admin_id is None or self.channel_id is None:
+        if self.admin_id is None or self.group_id is None:
             return "disabled"
 
         week_start = local_now.date()
@@ -463,7 +534,8 @@ class WeeklyCalendarBriefPublisher:
                 )
                 self._notify_admin(
                     "Weekly USD/Gold brief delivery is uncertain after an "
-                    "interrupted send. Check Market Analysis before any retry.",
+                    "interrupted send. Check the Education Suite Announcements "
+                    "topic before any retry.",
                 )
                 return "delivery_unknown"
             return f"already_{prior_status}"
@@ -513,15 +585,19 @@ class WeeklyCalendarBriefPublisher:
                 now=current,
             )
             self._verify_destination()
-            result = self.api.send_message_with_result(
-                int(self.channel_id), report, parse_mode="HTML"
+            photo_file_id = (
+                self.photo_prompts.photo_file_id("weekly", week_start)
+                if self.photo_prompts is not None
+                else None
             )
-            message_id = result.get("message_id") if isinstance(result, dict) else None
-            if not isinstance(message_id, int) or message_id <= 0:
-                raise TelegramAPIError(
-                    "Telegram did not confirm the weekly message.",
-                    delivery_unknown=True,
-                )
+            message_id, photo_status = send_brief_with_optional_photo(
+                self.api,
+                int(self.group_id),
+                report,
+                photo_file_id=photo_file_id,
+                message_thread_id=self.thread_id,
+                photo_caption="📊 SMART MONEY HUB | WEEKLY NEWS OUTLOOK",
+            )
             self.store.finish(
                 week_start,
                 status="published",
@@ -529,6 +605,14 @@ class WeeklyCalendarBriefPublisher:
                 content=report,
                 message_id=message_id,
             )
+            if self.photo_prompts is not None:
+                self.photo_prompts.mark_published("weekly", week_start, now=current)
+            if photo_status not in {"not_requested", "sent"}:
+                self._notify_admin(
+                    "The weekly brief text was published in Education Suite "
+                    "Announcements, but its optional picture was not confirmed. "
+                    "Check the topic before taking action; the bot will not resend it."
+                )
             incomplete = [
                 name
                 for name in ("BLS", "Census", "Federal Reserve", "DOL")
@@ -602,26 +686,29 @@ class WeeklyCalendarBriefPublisher:
             return "held"
 
     def _verify_destination(self) -> None:
-        if int(self.channel_id or 0) != MARKET_ANALYSIS_CHANNEL_ID:
+        if (
+            int(self.group_id or 0) != DEFAULT_EDUCATION_GROUP_ID
+            or int(self.thread_id) != EDUCATION_ANNOUNCEMENTS_THREAD_ID
+        ):
             raise ValueError("weekly_brief_destination_mismatch")
         bot = self.api.get_me()
         bot_id = int(bot.get("id", 0))
-        chat = self.api.get_chat(int(self.channel_id))
+        chat = self.api.get_chat(int(self.group_id))
         title = str(chat.get("title") or "").casefold()
         if (
             bot_id <= 0
-            or int(chat.get("id", 0)) != MARKET_ANALYSIS_CHANNEL_ID
-            or chat.get("type") != "channel"
+            or int(chat.get("id", 0)) != DEFAULT_EDUCATION_GROUP_ID
+            or chat.get("type") != "supergroup"
+            or chat.get("is_forum") is not True
             or "pro signals" in title
             or re.search(r"\b(?:test|testing|sandbox)\b", title)
         ):
             raise ValueError("weekly_brief_destination_not_verified")
-        member = self.api.get_chat_member(int(self.channel_id), bot_id)
+        member = self.api.get_chat_member(int(self.group_id), bot_id)
         status = member.get("status")
-        if not (
-            status == "creator"
-            or (status == "administrator" and member.get("can_post_messages") is True)
-        ):
+        if status not in {"creator", "administrator", "member"} or member.get(
+            "can_send_messages"
+        ) is False:
             raise ValueError("weekly_brief_posting_permission_missing")
 
     @staticmethod

@@ -11,11 +11,17 @@ The daily brief is approved for 12:00 AM WAT delivery to the configured Market A
 
 **How to apply:** only describe facts supported by a verified source and timestamp. Hold affected items when a source is blocked, stale, timezone-ambiguous, or lacks redistribution permission; never route them to Market Analysis by default or imply automated trading.
 
-The weekly official USD/gold calendar is approved for Monday at 12:00 AM WAT in the same configured Market Analysis channel. The daily brief remains enabled at that time, so both separate briefs should be sent.
+The weekly official USD/gold calendar is for the Education Suite Announcements topic (group -1003916437804, thread 3) at Monday 12:00 AM WAT. The daily brief remains in the configured Market Analysis channel and also runs at midnight.
 
-**Why:** the user chose Monday 12:00 AM WAT for the weekly brief and asked that Sunday's daily brief and the weekly brief both run at midnight.
+**Why:** the user clarified that the weekly report is an Education Suite announcement, while the daily report belongs in the Market Analysis channel.
 
-**How to apply:** preserve the daily schedule and destination; run the weekly calendar independently at Monday 00:00 WAT, with separate idempotency and delivery records.
+**How to apply:** preserve the daily schedule and destination; run the weekly calendar independently at Monday 00:00 WAT in the configured Education group’s verified Announcements topic, with separate idempotency and delivery records.
+
+Five minutes before each daily or weekly brief, privately ask the administrator whether to add a picture. No reply or no picture must never delay the scheduled text brief; any selected picture is a separate companion post, not a reason to truncate the sourced report.
+
+**Why:** the user wants a chance to add an image but explicitly requires the brief to publish on time without waiting for one.
+
+**How to apply:** keep the optional photo flow private and admin-only, persist selection safely across restarts, and publish the complete verified text at the scheduled time whether or not an image is attached.
 
 The calendar review screen is private-admin-only and read-only. It must not trigger source fetches, scheduler work, or publishing, and Gemini must never fill missing source fields.
 

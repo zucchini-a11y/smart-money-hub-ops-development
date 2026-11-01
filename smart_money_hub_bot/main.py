@@ -9,8 +9,12 @@ from .bot import SmartMoneyHubBot
 from .channel_gemini import GeminiChannelContentService
 from .coach import RuleBasedCoachService
 from .daily_calendar_brief import DailyCalendarBriefPublisher
+from .brief_photo_review import NewsBriefPhotoPrompts
 from .gemini_coach import GeminiCoachService, GEMINI_MODEL
-from .group_features import DEFAULT_EDUCATION_GROUP_ID
+from .group_features import (
+    DEFAULT_EDUCATION_GROUP_ID,
+    EDUCATION_ANNOUNCEMENTS_THREAD_ID,
+)
 from .personal_reply_assistant import PersonalTelegramReplyAssistant
 from .storage import DEFAULT_DATABASE_PATH
 from .telegram_api import TelegramAPI
@@ -116,6 +120,15 @@ def main() -> None:
         weekly_brief_enabled = os.getenv(
             "SMH_WEEKLY_USD_GOLD_BRIEF_ENABLED", "false"
         ).strip().casefold() in {"1", "true", "yes", "on"}
+        brief_photo_prompts = (
+            NewsBriefPhotoPrompts(
+                TelegramAPI(token),
+                str(database_path),
+                admin_id=admin_id,
+            )
+            if admin_id is not None and (daily_brief_enabled or weekly_brief_enabled)
+            else None
+        )
         weekly_calendar_brief = None
         if daily_brief_enabled:
             if admin_id is None or main_channel_id is None:
@@ -129,26 +142,30 @@ def main() -> None:
                     str(database_path),
                     admin_id=admin_id,
                     channel_id=main_channel_id,
+                    photo_prompts=brief_photo_prompts,
                 )
                 logging.getLogger(__name__).info(
                     "Daily USD/Gold official calendar brief enabled for 00:00 WAT."
                 )
         if weekly_brief_enabled:
-            if admin_id is None or main_channel_id is None:
+            if admin_id is None or education_group_id is None:
                 logging.getLogger(__name__).error(
-                    "Weekly USD/Gold brief is enabled but admin or Market Analysis "
-                    "channel configuration is missing; publisher remains disabled."
+                    "Weekly USD/Gold brief is enabled but admin or Education Suite "
+                    "group configuration is missing; publisher remains disabled."
                 )
             else:
                 weekly_calendar_brief = WeeklyCalendarBriefPublisher(
                     TelegramAPI(token),
                     str(database_path),
                     admin_id=admin_id,
-                    channel_id=main_channel_id,
+                    group_id=education_group_id,
+                    thread_id=EDUCATION_ANNOUNCEMENTS_THREAD_ID,
+                    photo_prompts=brief_photo_prompts,
                 )
                 logging.getLogger(__name__).info(
                     "Weekly USD/Gold official calendar brief enabled for Monday "
-                    "00:00 WAT; it runs alongside the daily brief."
+                    "00:00 WAT in the Education Suite Announcements topic; "
+                    "the daily brief remains in Market Analysis."
                 )
         bot = SmartMoneyHubBot(
             TelegramAPI(token),
@@ -165,6 +182,7 @@ def main() -> None:
             ).strip(),
             daily_calendar_brief=daily_calendar_brief,
             weekly_calendar_brief=weekly_calendar_brief,
+            news_brief_photo_prompts=brief_photo_prompts,
             personal_reply_assistant=personal_reply_assistant,
             reply_draft_assistant=reply_draft_assistant,
         )

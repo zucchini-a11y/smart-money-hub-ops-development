@@ -4,6 +4,9 @@ from dataclasses import dataclass
 
 
 DEFAULT_EDUCATION_GROUP_ID = -1003916437804
+# The owner-provided topic link identifies thread 3 as the Education Suite
+# Announcements topic. Keep this distinct from Market Analysis (thread 5).
+EDUCATION_ANNOUNCEMENTS_THREAD_ID = 3
 
 
 @dataclass(frozen=True)

@@ -18,6 +18,10 @@ from .economic_calendar_phase1 import (
     OfficialCalendarRepository,
     fetch_and_store_official_schedules,
 )
+from .brief_photo_review import (
+    NewsBriefPhotoPrompts,
+    send_brief_with_optional_photo,
+)
 from .telegram_api import TelegramAPI, TelegramAPIError
 
 logger = logging.getLogger(__name__)
@@ -93,27 +97,28 @@ def build_daily_usd_gold_brief(
 
     verified_events.sort(key=lambda item: item[0])
     lines = [
-        "🌍 <b>VAYDA SMART MONEY HUB | DAILY USD &amp; GOLD BRIEF</b>",
-        f"📅 {brief_date.strftime('%A, %d %B %Y')} · 12:00 AM WAT",
+        "🗞️ <b>SMART MONEY HUB | DAILY NEWS 📊</b>",
+        f"📅 Date: {brief_date.strftime('%A, %d %B %Y')}",
+        "🌍 Session: Asia (WAT publication window; not live market status)",
         "",
-        "🇺🇸 <b>USD &amp; MACRO UPDATE</b>",
-        "No verified release results or official-policy updates are available "
-        "in the source records used for this brief.",
+        "━━━━━━━━━━━━━━",
         "",
-        "🥇 <b>GOLD IMPACT</b>",
-        "Potential bullish factors: None confirmed in these verified records.",
-        "Potential bearish factors: None confirmed in these verified records.",
-        "What remains uncertain: no verified release results or current market "
-        "data are available to assess direction.",
+        "🔴 <b>HIGH-IMPACT NEWS</b>",
+        "High-impact ratings are unavailable from the approved official "
+        "calendar sources; no event is labeled high impact.",
         "",
-        "📅 <b>TODAY’S HIGH-IMPACT EVENTS</b>",
+        "🟠 <b>MEDIUM-IMPACT NEWS</b>",
+        "Medium-impact ratings are unavailable from the approved official "
+        "calendar sources; no event is labeled medium impact.",
+        "",
+        "📅 <b>VERIFIED U.S. RELEASES</b>",
     ]
     if not verified_events:
         lines.extend(
             [
-                "No verified BEA release is scheduled for this date. BLS and DOL "
-                "coverage is not verified, and Census times are omitted until its "
-                "timezone is confirmed; this is not a complete event list.",
+                "No verified BEA release is scheduled for this date. "
+                "This is not a complete event list: BLS and DOL coverage is not "
+                "verified, and Census times are omitted until its timezone is confirmed.",
                 "",
             ]
         )
@@ -122,12 +127,13 @@ def build_daily_usd_gold_brief(
         url = html.escape(str(record["source_url"]), quote=True)
         lines.extend(
             [
-                f"⏰ <b>{event_at.astimezone(WAT).strftime('%H:%M WAT')} — {title}</b>",
-                "Impact classification: Unavailable from this source",
-                "Previous: Unavailable · Forecast: Unavailable",
+                f"🕒 <b>{event_at.astimezone(WAT).strftime('%H:%M WAT')}</b>",
+                f"📰 {title}",
+                "🔺 Impact: Unavailable from the official schedule",
+                "📊 Forecast: Unavailable",
+                "📌 Previous: Unavailable",
                 "Actual: Unavailable from this schedule source",
                 f'Source: <a href="{url}">U.S. Bureau of Economic Analysis</a>',
-                "",
             ]
         )
         if "personal income and outlays" in str(record.get("title", "")).casefold():
@@ -168,11 +174,27 @@ def build_daily_usd_gold_brief(
         )
     lines.extend(
         [
-            "🎯 <b>WHAT TRADERS SHOULD WATCH</b>",
-            "Check verified release data and observe the market response when "
-            "available. A scheduled event is not an entry signal.",
+            "━━━━━━━━━━━━━━",
             "",
-            "⚠️ <b>NO CONFIRMATION, NO ENTRY.</b>",
+            "🥇 <b>GOLD (XAUUSD) WATCH</b>",
+            "📈 Potential bullish factors: No verified result or current market "
+            "data is available to confirm a bullish driver.",
+            "📉 Potential bearish factors: No verified result or current market "
+            "data is available to confirm a bearish driver.",
+            "",
+            "💵 <b>USD WATCH</b>",
+            "Only the verified BEA schedule is included here. Live USD readings, "
+            "Treasury yields, and unscheduled news are not connected.",
+            "",
+            "⚠️ <b>TRADE SMART</b>",
+            "News can cause volatility, spread widening, and sudden price "
+            "movements. Wait for confirmation before entering.",
+            "",
+            "<b>NO CONFIRMATION, NO ENTRY. 🎯</b>",
+            "",
+            "<b>SMART MONEY HUB</b>",
+            "Learn • Confirm • Execute • Grow",
+            "",
             "📌 <b>SOURCES &amp; CHECK TIME</b>",
         ]
     )
@@ -383,15 +405,34 @@ class DailyCalendarBriefPublisher:
         *,
         admin_id: int | None,
         channel_id: int | None,
+        photo_prompts: NewsBriefPhotoPrompts | None = None,
         source_refresh=fetch_and_store_official_schedules,
     ) -> None:
         self.api = api
         self.database_path = Path(database_path)
         self.admin_id = admin_id
         self.channel_id = channel_id
+        self.photo_prompts = photo_prompts
         self.calendar = OfficialCalendarRepository(database_path)
         self.store = DailyCalendarBriefStore(database_path)
         self.source_refresh = source_refresh
+
+    def dispatch_photo_prompt(self, now: datetime | None = None) -> bool:
+        if self.photo_prompts is None:
+            return False
+        current = _as_utc(now or datetime.now(timezone.utc))
+        local_now = current.astimezone(WAT)
+        if local_now.hour != 23 or local_now.minute < 55:
+            return False
+        brief_date = local_now.date() + timedelta(days=1)
+        scheduled_at = datetime.combine(brief_date, DAILY_BRIEF_TIME, tzinfo=WAT)
+        return self.photo_prompts.send_prompt_if_due(
+            "daily",
+            brief_date,
+            scheduled_at,
+            destination="Market Analysis channel",
+            now=current,
+        )
 
     def dispatch(self, now: datetime | None = None) -> str:
         current = _as_utc(now or datetime.now(timezone.utc))
@@ -468,15 +509,18 @@ class DailyCalendarBriefPublisher:
                 now=current,
             )
             self._verify_destination()
-            result = self.api.send_message_with_result(
-                int(self.channel_id), report, parse_mode="HTML"
+            photo_file_id = (
+                self.photo_prompts.photo_file_id("daily", local_now.date())
+                if self.photo_prompts is not None
+                else None
             )
-            message_id = result.get("message_id") if isinstance(result, dict) else None
-            if not isinstance(message_id, int) or message_id <= 0:
-                raise TelegramAPIError(
-                    "Telegram did not confirm the channel message.",
-                    delivery_unknown=True,
-                )
+            message_id, photo_status = send_brief_with_optional_photo(
+                self.api,
+                int(self.channel_id),
+                report,
+                photo_file_id=photo_file_id,
+                photo_caption="📊 SMART MONEY HUB | DAILY NEWS",
+            )
             self.store.finish(
                 local_now.date(),
                 status="published",
@@ -484,6 +528,18 @@ class DailyCalendarBriefPublisher:
                 content=report,
                 message_id=message_id,
             )
+            if self.photo_prompts is not None:
+                self.photo_prompts.mark_published(
+                    "daily", local_now.date(), now=current
+                )
+            if photo_status not in {"not_requested", "sent"}:
+                self._notify_admin(
+                    local_now.date(),
+                    "photo_delivery_not_confirmed",
+                    "The daily brief text was published, but its optional picture "
+                    "was not confirmed. Check the channel before taking action; "
+                    "the bot will not resend it.",
+                )
             logger.info(
                 "Daily USD/Gold brief published (date=%s, route=official_calendar, "
                 "message_confirmed=true).",
