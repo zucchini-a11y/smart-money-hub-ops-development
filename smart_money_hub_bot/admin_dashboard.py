@@ -74,6 +74,49 @@ CHANNEL_PROMO_TEXT = (
     "— VAYDA | Smart Money Hub"
 )
 CHANNEL_PROMO_URL = "https://t.me/SmartMoneyHubSignalsBot"
+ADMIN_MENU_TEXT_ACTIONS = {
+    "all members": "admin:members",
+    "members": "admin:members",
+    "list members": "admin:members",
+    "statistics": "admin:statistics",
+    "admin statistics": "admin:statistics",
+    "member statistics": "admin:statistics",
+    "weak topics": "admin:weak_topics",
+    "trade journals": "admin:trade_journals",
+    "member trade journals": "admin:trade_journals",
+    "search member": "admin:search",
+    "search for a member": "admin:search",
+    "find member": "admin:search",
+    "member progress": "admin:progress",
+    "progress of members": "admin:progress",
+    "dm coach stats": "admin:dm_coach",
+    "knowledge improvement": "admin:knowledge",
+    "market awareness": "admin:market_awareness",
+    "market awareness review": "admin:market_awareness",
+    "channel content": "admin:channel_posts",
+    "education morning posts": "admin:group_morning",
+    "morning posts": "admin:group_morning",
+    "education polls": "admin:education_polls",
+    "polls": "admin:education_polls",
+    "content and trade records": "admin:content",
+    "one time dm": "admin:dm_broadcast",
+    "one time dm to all members": "admin:dm_broadcast",
+    "send one time dm": "admin:dm_broadcast",
+    "send one time dm to all members": "admin:dm_broadcast",
+    "one time dm to one member": "admin:dm_member",
+    "send one time dm to one member": "admin:dm_member",
+    "dm one member": "admin:dm_member",
+    "promote bot in channel": "admin:channel_promo",
+    "channel promotion": "admin:channel_promo",
+    "promote in education market analysis": "admin:education_topic_promo",
+    "education market analysis promotion": "admin:education_topic_promo",
+}
+ADMIN_MENU_HELP_ALIASES = {
+    "admin commands",
+    "show admin commands",
+    "what can i ask you to do",
+    "what admin actions can you do",
+}
 
 
 class AdminDashboard:
@@ -236,6 +279,70 @@ class AdminDashboard:
     def open(self, chat_id: int, telegram_id: int, is_private: bool) -> None:
         if self._authorize(chat_id, telegram_id, is_private):
             self._show_dashboard(chat_id)
+
+    def handle_admin_menu_text(
+        self, chat_id: int, telegram_id: int, is_private: bool, text: str
+    ) -> bool:
+        """Route exact admin-only text aliases to existing dashboard callbacks."""
+        if (
+            not is_private
+            or self.admin_id is None
+            or telegram_id != self.admin_id
+            or chat_id != telegram_id
+        ):
+            return False
+
+        normalized = " ".join(text.casefold().replace("&", "and").split())
+        normalized = normalized.strip(" \t\r\n.!?")
+        normalized = normalized.replace("one-time", "one time")
+        prefixes = (
+            "please ",
+            "can you ",
+            "could you ",
+            "would you ",
+            "i want you to ",
+            "i want to ",
+            "i want to see ",
+            "i want to open ",
+            "show me ",
+            "show ",
+            "open ",
+            "view ",
+        )
+        changed = True
+        while changed:
+            changed = False
+            for prefix in prefixes:
+                if normalized.startswith(prefix):
+                    normalized = normalized[len(prefix):].strip()
+                    changed = True
+                    break
+        for suffix in (" please", " now"):
+            while normalized.endswith(suffix):
+                normalized = normalized[:-len(suffix)].strip()
+
+        if normalized in ADMIN_MENU_HELP_ALIASES:
+            self.api.send_message(
+                chat_id,
+                "ADMIN TEXT SHORTCUTS — PRIVATE CHAT\n\n"
+                "Try: all members; statistics; weak topics; trade journals; "
+                "search member; member progress; DM Coach stats; knowledge "
+                "improvement; market awareness review; channel content; "
+                "Education morning posts; Education polls; content and trade "
+                "records; send one-time DM; send one-time DM to one member; "
+                "promote bot in channel; or promote in Education Market Analysis.\n\n"
+                "These open the matching admin screen. Message and promotion "
+                "flows still require their normal review and confirmation. "
+                "“Post an SMC poll now” remains the direct poll request.",
+                self._dashboard_keyboard(),
+            )
+            return True
+
+        callback_data = ADMIN_MENU_TEXT_ACTIONS.get(normalized)
+        if callback_data is None:
+            return False
+        self.handle_callback(chat_id, telegram_id, True, callback_data)
+        return True
 
     def handle_search_message(
         self, chat_id: int, telegram_id: int, is_private: bool, query: str

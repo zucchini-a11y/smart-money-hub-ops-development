@@ -14,7 +14,12 @@ from smart_money_hub_bot.bot import (
     POLLING_HEARTBEAT_INTERVAL_SECONDS,
     SmartMoneyHubBot,
 )
-from smart_money_hub_bot.admin_dashboard import CHANNEL_PROMO_TEXT, CHANNEL_PROMO_URL
+from smart_money_hub_bot.admin_dashboard import (
+    ADMIN_MENU_TEXT_ACTIONS,
+    CHANNEL_PROMO_TEXT,
+    CHANNEL_PROMO_URL,
+    AdminDashboard,
+)
 from smart_money_hub_bot.coach import RuleBasedCoachService
 from smart_money_hub_bot.economic_calendar_phase1 import (
     OfficialCalendarRepository,
@@ -384,6 +389,94 @@ class BotFlowTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
+
+    def test_every_admin_dashboard_button_has_a_text_shortcut(self) -> None:
+        dashboard = AdminDashboard(
+            self.api,
+            Repository(str(self.database_path)),
+            self.user_id,
+            main_channel_id=-1004481197912,
+            education_group_id=-1003916437804,
+        )
+        button_actions = {
+            button["callback_data"]
+            for row in dashboard._dashboard_keyboard()["inline_keyboard"]
+            for button in row
+            if str(button.get("callback_data", "")).startswith("admin:")
+        }
+        self.assertLessEqual(button_actions, set(ADMIN_MENU_TEXT_ACTIONS.values()))
+
+    def test_admin_text_shortcuts_open_the_matching_existing_menu_action(self) -> None:
+        self.bot.admin_id = self.user_id
+        self.bot.admin_dashboard.admin_id = self.user_id
+        with patch.object(self.bot.admin_dashboard, "handle_callback") as handler:
+            for phrase, callback_data in ADMIN_MENU_TEXT_ACTIONS.items():
+                with self.subTest(phrase=phrase):
+                    handler.reset_mock()
+                    handled = self.bot.admin_dashboard.handle_admin_menu_text(
+                        self.user_id,
+                        self.user_id,
+                        True,
+                        f"Please open {phrase}.",
+                    )
+                    self.assertTrue(handled)
+                    handler.assert_called_once_with(
+                        self.user_id, self.user_id, True, callback_data
+                    )
+
+    def test_admin_text_shortcuts_are_private_and_admin_only(self) -> None:
+        self.bot.admin_id = self.user_id
+        self.bot.admin_dashboard.admin_id = self.user_id
+        self.assertFalse(
+            self.bot.admin_dashboard.handle_admin_menu_text(
+                self.user_id + 1,
+                self.user_id + 1,
+                True,
+                "show all members",
+            )
+        )
+        self.assertFalse(
+            self.bot.admin_dashboard.handle_admin_menu_text(
+                self.user_id,
+                self.user_id,
+                False,
+                "show all members",
+            )
+        )
+
+    def test_admin_commands_text_shows_shortcut_help(self) -> None:
+        self.bot.admin_id = self.user_id
+        self.bot.admin_dashboard.admin_id = self.user_id
+        handled = self.bot.admin_dashboard.handle_admin_menu_text(
+            self.user_id,
+            self.user_id,
+            True,
+            "Show admin commands",
+        )
+        self.assertTrue(handled)
+        self.assertIn("ADMIN TEXT SHORTCUTS", self.api.messages[-1]["text"])
+        self.assertIn("Try: all members; statistics;", self.api.messages[-1]["text"])
+
+    def test_admin_text_menu_request_routes_through_private_message_handler(self) -> None:
+        self.bot.admin_id = self.user_id
+        self.bot.admin_dashboard.admin_id = self.user_id
+        with patch.object(self.bot.admin_dashboard, "handle_callback") as handler:
+            self.bot.handle_update(
+                {
+                    "message": {
+                        "from": {
+                            "id": self.user_id,
+                            "is_bot": False,
+                            "first_name": self.first_name,
+                        },
+                        "chat": {"id": self.user_id, "type": "private"},
+                        "text": "Can you show me weak topics?",
+                    }
+                }
+            )
+        handler.assert_called_once_with(
+            self.user_id, self.user_id, True, "admin:weak_topics"
+        )
 
     def test_daily_education_morning_publisher_uses_existing_scheduler_tick(self) -> None:
         now = datetime(2026, 10, 26, 7, 0, tzinfo=timezone.utc)

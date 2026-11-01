@@ -1646,7 +1646,8 @@ class SmartMoneyHubBot:
                     "my journal tomorrow at 9am” to set a one-time personal reminder.\n"
                     "Use /groupinsights to review educational-group coverage and "
                     "unanswered questions.\n"
-                    "For a new poll, type “post an SMC poll now” in this private chat."
+                    "For a new poll, type “post an SMC poll now” in this private chat.\n"
+                    "Type “admin commands” to see text shortcuts for the admin menu."
                 )
                 help_text += (
                     "\n\nPrivate reply drafts: add examples you wrote with "
@@ -1832,6 +1833,11 @@ class SmartMoneyHubBot:
             self.admin_dashboard.handle_calendar_message(
                 chat_id, telegram_id, is_private, text
             )
+            return
+
+        if self.admin_dashboard.handle_admin_menu_text(
+            chat_id, telegram_id, is_private, text
+        ):
             return
 
         # Explicit poll actions from the configured owner must work even while
