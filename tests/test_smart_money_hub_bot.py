@@ -478,6 +478,59 @@ class BotFlowTests(unittest.TestCase):
             self.user_id, self.user_id, True, "admin:weak_topics"
         )
 
+    def test_admin_text_understands_natural_requests_and_clarifies_ambiguous_ones(self) -> None:
+        self.bot.admin_id = self.user_id
+        self.bot.admin_dashboard.admin_id = self.user_id
+        with patch.object(self.bot.admin_dashboard, "handle_callback") as handler:
+            examples = (
+                (
+                    "Could you please show me all the active members?",
+                    "admin:members",
+                ),
+                (
+                    "I wanna message everyone about tomorrow's class",
+                    "admin:dm_broadcast",
+                ),
+                (
+                    "Show me the scheduled posts for this week",
+                    "admin:channel_posts",
+                ),
+                (
+                    "Can you show me who needs help with lessons?",
+                    "admin:weak_topics",
+                ),
+            )
+            for text, expected_action in examples:
+                with self.subTest(text=text):
+                    handler.reset_mock()
+                    self.assertTrue(
+                        self.bot.admin_dashboard.handle_admin_menu_text(
+                            self.user_id, self.user_id, True, text
+                        )
+                    )
+                    self.assertEqual(handler.call_args.args[-1], expected_action)
+
+            handler.reset_mock()
+            self.assertTrue(
+                self.bot.admin_dashboard.handle_admin_menu_text(
+                    self.user_id,
+                    self.user_id,
+                    True,
+                    "Show me member progress and weak topics",
+                )
+            )
+            handler.assert_not_called()
+            self.assertIn("more than one admin action", self.api.messages[-1]["text"])
+
+        self.assertFalse(
+            self.bot.admin_dashboard.handle_admin_menu_text(
+                self.user_id,
+                self.user_id,
+                True,
+                "What are weak topics in SMC?",
+            )
+        )
+
     def test_daily_education_morning_publisher_uses_existing_scheduler_tick(self) -> None:
         now = datetime(2026, 10, 26, 7, 0, tzinfo=timezone.utc)
         self.bot.education_polls.dispatch_due = Mock()

@@ -2,6 +2,7 @@
 
 from datetime import date, datetime, timedelta, timezone
 import html
+import re
 import shlex
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -76,39 +77,115 @@ CHANNEL_PROMO_TEXT = (
 CHANNEL_PROMO_URL = "https://t.me/SmartMoneyHubSignalsBot"
 ADMIN_MENU_TEXT_ACTIONS = {
     "all members": "admin:members",
+    "all the members": "admin:members",
+    "members list": "admin:members",
+    "member list": "admin:members",
+    "list of members": "admin:members",
+    "member directory": "admin:members",
+    "everyone in the group": "admin:members",
+    "active members": "admin:members",
     "members": "admin:members",
     "list members": "admin:members",
     "statistics": "admin:statistics",
+    "stats": "admin:statistics",
+    "member count": "admin:statistics",
+    "how many members": "admin:statistics",
+    "dashboard summary": "admin:statistics",
+    "admin overview": "admin:statistics",
     "admin statistics": "admin:statistics",
     "member statistics": "admin:statistics",
     "weak topics": "admin:weak_topics",
+    "learning gaps": "admin:weak_topics",
+    "quiz gaps": "admin:weak_topics",
+    "topics members struggle with": "admin:weak_topics",
+    "who needs help with lessons": "admin:weak_topics",
     "trade journals": "admin:trade_journals",
+    "member journals": "admin:trade_journals",
+    "journal entries": "admin:trade_journals",
+    "review member journals": "admin:trade_journals",
     "member trade journals": "admin:trade_journals",
     "search member": "admin:search",
     "search for a member": "admin:search",
+    "look up a member": "admin:search",
+    "find someone": "admin:search",
     "find member": "admin:search",
     "member progress": "admin:progress",
+    "learning progress": "admin:progress",
+    "progress reports": "admin:progress",
     "progress of members": "admin:progress",
     "dm coach stats": "admin:dm_coach",
+    "coach usage": "admin:dm_coach",
+    "coach usage stats": "admin:dm_coach",
     "knowledge improvement": "admin:knowledge",
+    "knowledge queue": "admin:knowledge",
+    "knowledge review": "admin:knowledge",
     "market awareness": "admin:market_awareness",
     "market awareness review": "admin:market_awareness",
+    "calendar review": "admin:market_awareness",
+    "economic calendar review": "admin:market_awareness",
     "channel content": "admin:channel_posts",
+    "channel posts": "admin:channel_posts",
+    "scheduled channel posts": "admin:channel_posts",
+    "upcoming channel posts": "admin:channel_posts",
+    "channel drafts": "admin:channel_posts",
+    "scheduled posts": "admin:channel_posts",
+    "what is scheduled": "admin:channel_posts",
     "education morning posts": "admin:group_morning",
+    "education morning schedule": "admin:group_morning",
+    "morning post schedule": "admin:group_morning",
+    "group morning post": "admin:group_morning",
     "morning posts": "admin:group_morning",
     "education polls": "admin:education_polls",
+    "education poll schedule": "admin:education_polls",
+    "poll manager": "admin:education_polls",
+    "poll management": "admin:education_polls",
+    "open a poll": "admin:education_polls",
+    "set up an education poll": "admin:education_polls",
+    "poll schedule": "admin:education_polls",
+    "poll controls": "admin:education_polls",
+    "manage education polls": "admin:education_polls",
+    "create an education poll": "admin:education_polls",
+    "create education poll": "admin:education_polls",
+    "next poll": "admin:education_polls",
     "polls": "admin:education_polls",
     "content and trade records": "admin:content",
+    "content records": "admin:content",
+    "content history": "admin:content",
+    "trade records": "admin:content",
+    "trade ledger": "admin:content",
     "one time dm": "admin:dm_broadcast",
     "one time dm to all members": "admin:dm_broadcast",
     "send one time dm": "admin:dm_broadcast",
     "send one time dm to all members": "admin:dm_broadcast",
+    "message all members": "admin:dm_broadcast",
+    "send a message to all members": "admin:dm_broadcast",
+    "send a message to everyone": "admin:dm_broadcast",
+    "send a dm to everyone": "admin:dm_broadcast",
+    "message everyone": "admin:dm_broadcast",
+    "broadcast a message": "admin:dm_broadcast",
+    "broadcast message": "admin:dm_broadcast",
+    "announcement to members": "admin:dm_broadcast",
     "one time dm to one member": "admin:dm_member",
     "send one time dm to one member": "admin:dm_member",
+    "message one member": "admin:dm_member",
+    "send a message to one member": "admin:dm_member",
+    "send a dm to one member": "admin:dm_member",
+    "message a member": "admin:dm_member",
+    "send someone a message": "admin:dm_member",
+    "send a direct message to one member": "admin:dm_member",
+    "private message a member": "admin:dm_member",
+    "message a specific member": "admin:dm_member",
     "dm one member": "admin:dm_member",
     "promote bot in channel": "admin:channel_promo",
+    "promote the bot": "admin:channel_promo",
     "channel promotion": "admin:channel_promo",
+    "bot promotion": "admin:channel_promo",
+    "share bot invitation": "admin:channel_promo",
     "promote in education market analysis": "admin:education_topic_promo",
+    "promote the education group in market analysis": "admin:education_topic_promo",
+    "education group promotion": "admin:education_topic_promo",
+    "education group promo": "admin:education_topic_promo",
+    "monday thursday promo": "admin:education_topic_promo",
     "education market analysis promotion": "admin:education_topic_promo",
 }
 ADMIN_MENU_HELP_ALIASES = {
@@ -283,7 +360,7 @@ class AdminDashboard:
     def handle_admin_menu_text(
         self, chat_id: int, telegram_id: int, is_private: bool, text: str
     ) -> bool:
-        """Route exact admin-only text aliases to existing dashboard callbacks."""
+        """Route admin text intents to existing dashboard callbacks safely."""
         if (
             not is_private
             or self.admin_id is None
@@ -294,17 +371,41 @@ class AdminDashboard:
 
         normalized = " ".join(text.casefold().replace("&", "and").split())
         normalized = normalized.strip(" \t\r\n.!?")
-        normalized = normalized.replace("one-time", "one time")
+        normalized = (
+            normalized.replace("one-time", "one time")
+            .replace("one–time", "one time")
+            .replace("one—time", "one time")
+            .replace("what’s", "what is")
+            .replace("what's", "what is")
+        )
+        original_normalized = normalized
+        if callback_data := ADMIN_MENU_TEXT_ACTIONS.get(original_normalized):
+            self.handle_callback(chat_id, telegram_id, True, callback_data)
+            return True
         prefixes = (
             "please ",
+            "can you please ",
+            "could you please ",
+            "would you please ",
             "can you ",
             "could you ",
             "would you ",
+            "can i ",
+            "could i ",
+            "how do i ",
+            "i wanna ",
             "i want you to ",
-            "i want to ",
+            "i would like to ",
+            "i'd like to ",
+            "i need to know ",
+            "i want to know ",
             "i want to see ",
             "i want to open ",
+            "i want to ",
+            "i need to ",
+            "i need ",
             "show me ",
+            "tell me ",
             "show ",
             "open ",
             "view ",
@@ -316,12 +417,20 @@ class AdminDashboard:
                 if normalized.startswith(prefix):
                     normalized = normalized[len(prefix):].strip()
                     changed = True
+                    if callback_data := ADMIN_MENU_TEXT_ACTIONS.get(normalized):
+                        self.handle_callback(
+                            chat_id, telegram_id, True, callback_data
+                        )
+                        return True
                     break
-        for suffix in (" please", " now"):
+        for suffix in (" please", " for me", " right now", " now"):
             while normalized.endswith(suffix):
                 normalized = normalized[:-len(suffix)].strip()
 
-        if normalized in ADMIN_MENU_HELP_ALIASES:
+        if (
+            original_normalized in ADMIN_MENU_HELP_ALIASES
+            or normalized in ADMIN_MENU_HELP_ALIASES
+        ):
             self.api.send_message(
                 chat_id,
                 "ADMIN TEXT SHORTCUTS — PRIVATE CHAT\n\n"
@@ -338,11 +447,105 @@ class AdminDashboard:
             )
             return True
 
-        callback_data = ADMIN_MENU_TEXT_ACTIONS.get(normalized)
-        if callback_data is None:
+        callback_data = (
+            ADMIN_MENU_TEXT_ACTIONS.get(original_normalized)
+            or ADMIN_MENU_TEXT_ACTIONS.get(normalized)
+        )
+        if callback_data is not None:
+            self.handle_callback(chat_id, telegram_id, True, callback_data)
+            return True
+
+        # Allow natural wording around a clear action, but never let a keyword
+        # mentioned in an ordinary Coach question open an admin screen.
+        explicit_action = normalized != original_normalized or bool(
+            re.match(
+                r"^(show|open|list|find|search|view|check|review|manage|send|"
+                r"message|dm|promote|create|schedule|post|how many|what is "
+                r"scheduled)\b",
+                normalized,
+            )
+        )
+        if not explicit_action:
             return False
-        self.handle_callback(chat_id, telegram_id, True, callback_data)
-        return True
+
+        matches = [
+            (len(alias), alias, action)
+            for alias, action in ADMIN_MENU_TEXT_ACTIONS.items()
+            if len(alias.split()) >= 2
+            and re.search(rf"(?<!\w){re.escape(alias)}(?!\w)", normalized)
+        ]
+        if matches:
+            # If the user clearly asked for two sections, ask which to open
+            # instead of silently choosing one.
+            actions = {action for _, _, action in matches}
+            if len(actions) > 1 and re.search(r"\b(and|also|then)\b", normalized):
+                labels = sorted(
+                    action.removeprefix("admin:").replace("_", " ").title()
+                    for action in actions
+                )
+                self.api.send_message(
+                    chat_id,
+                    "I found more than one admin action: "
+                    + ", ".join(labels)
+                    + ". Which one should I open? Send one action, or say "
+                    "“admin commands” to see the list. Nothing was changed.",
+                    self._dashboard_keyboard(),
+                )
+                return True
+            best_length = max(length for length, _, _ in matches)
+            best_actions = {
+                action
+                for length, _, action in matches
+                if length == best_length
+            }
+            if len(best_actions) == 1:
+                self.handle_callback(
+                    chat_id, telegram_id, True, next(iter(best_actions))
+                )
+                return True
+            labels = sorted(
+                action.removeprefix("admin:").replace("_", " ").title()
+                for action in best_actions
+            )
+            self.api.send_message(
+                chat_id,
+                "I’m not sure which admin action you mean: "
+                + ", ".join(labels)
+                + ". Send one action, or say “admin commands” to see the list. "
+                "Nothing was changed.",
+                self._dashboard_keyboard(),
+            )
+            return True
+
+        admin_action_terms = (
+            "member",
+            "members",
+            "weak topic",
+            "journal",
+            "coach stats",
+            "knowledge",
+            "market awareness",
+            "calendar review",
+            "channel",
+            "morning post",
+            "content record",
+            "trade record",
+            "one time dm",
+            "direct message",
+            "broadcast",
+            "promotion",
+            "progress report",
+        )
+        if any(term in normalized for term in admin_action_terms):
+            self.api.send_message(
+                chat_id,
+                "I understand you want an admin action, but I couldn’t tell "
+                "which one. Say “admin commands” to see the choices, or rephrase "
+                "the request. Nothing was sent or published.",
+                self._dashboard_keyboard(),
+            )
+            return True
+        return False
 
     def handle_search_message(
         self, chat_id: int, telegram_id: int, is_private: bool, query: str
