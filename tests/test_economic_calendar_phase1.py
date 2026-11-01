@@ -87,7 +87,7 @@ class EconomicCalendarPhaseOneTests(unittest.TestCase):
         )
         self.assertEqual(records, [])
 
-    def test_bls_ics_verifies_only_cpi_ppi_and_employment_with_source_timezone(self):
+    def test_bls_ics_verifies_allowlisted_releases_with_source_timezone(self):
         body = b"""BEGIN:VCALENDAR
 BEGIN:VEVENT
 SUMMARY:Consumer Price Index
@@ -105,6 +105,14 @@ BEGIN:VEVENT
 SUMMARY:Productivity and Costs
 DTSTART;TZID=America/New_York:20261105T083000
 END:VEVENT
+BEGIN:VEVENT
+SUMMARY:Job Openings and Labor Turnover Survey
+DTSTART;TZID=America/New_York:20261103T100000
+END:VEVENT
+BEGIN:VEVENT
+SUMMARY:Unrelated BLS release
+DTSTART;TZID=America/New_York:20261104T083000
+END:VEVENT
 END:VCALENDAR
 """
         records = parse_bls_release_ics(
@@ -120,6 +128,8 @@ END:VCALENDAR
                 "Consumer Price Index (CPI)",
                 "Producer Price Index (PPI)",
                 "Employment Situation",
+                "Productivity and Costs",
+                "Job Openings and Labor Turnover Survey",
             },
         )
         cpi = next(record for record in records if "CPI" in record.title)
@@ -131,6 +141,32 @@ END:VCALENDAR
         self.assertIsNone(cpi.forecast)
         self.assertIsNone(cpi.previous)
         self.assertIsNone(cpi.provider_impact)
+        jolts = next(record for record in records if record.title.startswith("Job Openings"))
+        self.assertEqual(jolts.event_at_wat.hour, 16)
+        self.assertEqual(jolts.event_at_wat.minute, 0)
+
+    def test_bls_daylight_saving_conversion_uses_source_zone_database(self):
+        body = b"""BEGIN:VCALENDAR
+BEGIN:VEVENT
+SUMMARY:Employment Situation
+DTSTART;TZID=America/New_York:20260310T083000
+END:VEVENT
+END:VCALENDAR
+"""
+        records = parse_bls_release_ics(
+            body,
+            retrieved_at=NOW,
+            start_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            end_at=datetime(2026, 12, 31, tzinfo=timezone.utc),
+        )
+        self.assertEqual(len(records), 1)
+        record = records[0]
+        self.assertEqual(
+            record.event_at_utc,
+            datetime(2026, 3, 10, 12, 30, tzinfo=timezone.utc),
+        )
+        self.assertEqual(record.event_at_wat.hour, 13)
+        self.assertEqual(record.event_at_wat.minute, 30)
 
     def test_bls_floating_event_time_is_not_converted_to_wat(self):
         body = b"""BEGIN:VCALENDAR
@@ -151,7 +187,7 @@ END:VCALENDAR
         self.assertIsNone(records[0].event_at_utc)
         self.assertEqual(records[0].timezone_status, "unverified_missing_source_timezone")
 
-    def test_census_retail_schedule_keeps_time_unconverted_without_timezone_evidence(self):
+    def test_census_allowlisted_schedule_keeps_time_unconverted_without_timezone(self):
         page = b"""
         <table id="calendar">
           <tr><th>Indicator</th><th>Release Date</th><th>Time</th>
@@ -162,10 +198,14 @@ END:VCALENDAR
               <td class="hiden">A202701150830</td></tr>
           <tr><td><a href="/housing/">New Residential Construction</a></td>
               <td>January 20, 2027</td><td>8:30 AM</td><td>December 2026</td></tr>
+          <tr><td><a href="/construction/">Construction Spending (Construction Put in Place)</a></td>
+              <td>November 2, 2026</td><td>10:00 AM</td><td>September 2026</td></tr>
+          <tr><td><a href="/trade/">U.S. International Trade in Goods and Services</a></td>
+              <td>November 4, 2026</td><td>8:30 AM</td><td>September 2026</td></tr>
         </table>
         """
         records = parse_census_retail_calendar(page, retrieved_at=NOW)
-        self.assertEqual(len(records), 1)
+        self.assertEqual(len(records), 3)
         record = records[0]
         self.assertEqual(
             record.title, "Advance Monthly Sales for Retail and Food Services"
@@ -178,6 +218,11 @@ END:VCALENDAR
         self.assertEqual(
             record.source_url, "https://www.census.gov/retail/marts/www/"
         )
+        construction = next(
+            item for item in records if item.title.startswith("Construction Spending")
+        )
+        self.assertEqual(construction.release_date_text, "November 2, 2026")
+        self.assertIsNone(construction.event_at_utc)
 
     def test_phase_one_preview_does_not_invent_wat_or_macro_values(self):
         record = {
@@ -239,10 +284,19 @@ END:VCALENDAR
             url = request.full_url
             if "release_dates.json" in url:
                 return Response(json.dumps(bea).encode())
-            if "calendar-listview.html" in url:
+            if "calendar-listview-" in url:
                 return Response(census_html)
             if "bls.gov" in url:
                 raise HTTPError(url, 403, "blocked", {}, None)
+            if "federalreserve.gov" in url:
+                fed_html = b"""
+                <h4><a>2026 FOMC Meetings</a></h4>
+                <div class="row fomc-meeting">
+                  <div class="fomc-meeting__month">December</div>
+                  <div class="fomc-meeting__date">8-9*</div>
+                </div>
+                """
+                return Response(fed_html)
             if "dol.gov" in url:
                 raise HTTPError(url, 403, "blocked", {}, None)
             raise AssertionError("Unexpected official source request.")
@@ -253,14 +307,19 @@ END:VCALENDAR
         self.assertEqual(result["BEA"], 1)
         self.assertEqual(result["Census"], 1)
         self.assertEqual(result["BLS"], "UNAVAILABLE — SOURCE NOT VERIFIED")
+        self.assertEqual(result["Federal Reserve"], 1)
         self.assertEqual(result["DOL"], "UNAVAILABLE — SOURCE NOT VERIFIED")
 
         calendar_repo = OfficialCalendarRepository(self.database)
         rows = calendar_repo.list_records()
-        self.assertEqual(len(rows), 2)
+        self.assertEqual(len(rows), 3)
         self.assertEqual(
             {row["source_name"] for row in rows},
-            {"U.S. Bureau of Economic Analysis", "U.S. Census Bureau"},
+            {
+                "U.S. Bureau of Economic Analysis",
+                "U.S. Census Bureau",
+                "Federal Reserve",
+            },
         )
         statuses = {row["source_name"]: row for row in calendar_repo.list_source_status()}
         self.assertEqual(statuses["BLS"]["failure_category"], "permission_error")

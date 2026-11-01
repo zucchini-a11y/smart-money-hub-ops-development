@@ -308,7 +308,7 @@ def parse_bls_release_ics(
     start_at: datetime,
     end_at: datetime,
 ) -> list[OfficialCalendarRecord]:
-    """Parse only official BLS CPI, PPI, and Employment Situation schedule items."""
+    """Parse allowlisted official BLS releases relevant to USD and gold."""
     if any(value.tzinfo is None for value in (retrieved_at, start_at, end_at)):
         raise ValueError("Calendar range and retrieval time must be timezone-aware.")
 
@@ -318,6 +318,8 @@ def parse_bls_release_ics(
         (("consumer price index",), "Consumer Price Index (CPI)"),
         (("producer price index",), "Producer Price Index (PPI)"),
         (("employment situation", "nonfarm payroll"), "Employment Situation"),
+        (("job openings and labor turnover survey",), "Job Openings and Labor Turnover Survey"),
+        (("productivity and costs",), "Productivity and Costs"),
     )
     records: list[OfficialCalendarRecord] = []
 
@@ -398,7 +400,7 @@ def parse_census_retail_calendar(
     *,
     retrieved_at: datetime,
 ) -> list[OfficialCalendarRecord]:
-    """Parse Census retail release labels without assuming an unstated timezone."""
+    """Parse allowlisted Census USD-relevant releases without guessing timezone."""
     if retrieved_at.tzinfo is None:
         raise ValueError("Retrieval time must be timezone-aware.")
     try:
@@ -408,11 +410,24 @@ def parse_census_retail_calendar(
         raise NewsSourceError("malformed_census_calendar") from None
 
     results: list[OfficialCalendarRecord] = []
+    allowed_titles = {
+        "advance monthly sales for retail and food services":
+            "Advance Monthly Sales for Retail and Food Services",
+        "construction spending (construction put in place)":
+            "Construction Spending (Construction Put in Place)",
+        "full report - manufacturers' shipments, inventories and orders":
+            "Full Report - Manufacturers' Shipments, Inventories and Orders",
+        "full report - manufacturers' shipments, inventories, and orders":
+            "Full Report - Manufacturers' Shipments, Inventories and Orders",
+        "u.s. international trade in goods and services":
+            "U.S. International Trade in Goods and Services",
+    }
     for cells in parser.rows:
         if len(cells) < 4:
             continue
-        title = cells[0].get("text", "")
-        if title.casefold() != "advance monthly sales for retail and food services":
+        source_title = cells[0].get("text", "")
+        title = allowed_titles.get(source_title.casefold())
+        if title is None:
             continue
         release_date = cells[1].get("text", "")
         release_time = cells[2].get("text", "")
@@ -1124,11 +1139,10 @@ def fetch_and_store_official_schedules(
     opener=urlopen,
     sleep=time.sleep,
 ) -> dict[str, int | str]:
-    """Fetch BEA/Census official schedules and record BLS/DOL source failures.
+    """Fetch allowlisted official U.S. schedules and record source health.
 
-    This is an explicit ingestion operation, not an automated job. It never
-    sends Telegram messages, and source failures create a persistent admin
-    notification for later delivery after destination approval.
+    Source ingestion never sends Telegram messages. Source failures create a
+    persistent admin notification for later delivery.
     """
     observed = now or datetime.now(timezone.utc)
     if observed.tzinfo is None:
@@ -1165,6 +1179,16 @@ def fetch_and_store_official_schedules(
                 end_at=end_at,
             ),
         ),
+        (
+            "Federal Reserve",
+            FED_FOMC_CALENDAR_URL,
+            lambda body: parse_fed_fomc_calendar(
+                body,
+                retrieved_at=observed,
+                start_at=start_at,
+                end_at=end_at,
+            ),
+        ),
         ("DOL", DOL_CLAIMS_SCHEDULE_URL, None),
     )
     for source_name, url, parser in sources:
@@ -1173,12 +1197,26 @@ def fetch_and_store_official_schedules(
             def fetch():
                 nonlocal attempts
                 attempts += 1
+                if source_name == "Census":
+                    census_pages = []
+                    for year in (observed.year, observed.year + 1):
+                        year_url = (
+                            "https://www.census.gov/economic-indicators/"
+                            f"calendar-listview-{year}.html"
+                        )
+                        census_pages.append(_fetch_bytes(year_url, opener=opener)[0])
+                    return b"\n".join(census_pages)
                 return _fetch_bytes(url, opener=opener)[0]
 
             body = fetch_with_bounded_backoff(fetch, sleep=sleep)
             if parser is None:
                 raise NewsSourceError("source_format_not_verified")
-            records = parser(body)
+            parsed_records = parser(body)
+            # Census's rolling window reads two official year pages; the
+            # boundary between them can repeat an event. Keep one source row.
+            records = list(
+                {record.external_id: record for record in parsed_records}.values()
+            )
             calendar_repo.save_records(records)
             calendar_repo.record_source_status(
                 source_name,

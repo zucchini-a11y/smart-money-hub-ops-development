@@ -14,6 +14,7 @@ from .group_features import DEFAULT_EDUCATION_GROUP_ID
 from .personal_reply_assistant import PersonalTelegramReplyAssistant
 from .storage import DEFAULT_DATABASE_PATH
 from .telegram_api import TelegramAPI
+from .weekly_calendar_brief import WeeklyCalendarBriefPublisher
 
 
 def main() -> None:
@@ -112,6 +113,10 @@ def main() -> None:
             "SMH_DAILY_USD_GOLD_BRIEF_ENABLED", "false"
         ).strip().casefold() in {"1", "true", "yes", "on"}
         daily_calendar_brief = None
+        weekly_brief_enabled = os.getenv(
+            "SMH_WEEKLY_USD_GOLD_BRIEF_ENABLED", "false"
+        ).strip().casefold() in {"1", "true", "yes", "on"}
+        weekly_calendar_brief = None
         if daily_brief_enabled:
             if admin_id is None or main_channel_id is None:
                 logging.getLogger(__name__).error(
@@ -128,6 +133,23 @@ def main() -> None:
                 logging.getLogger(__name__).info(
                     "Daily USD/Gold official calendar brief enabled for 00:00 WAT."
                 )
+        if weekly_brief_enabled:
+            if admin_id is None or main_channel_id is None:
+                logging.getLogger(__name__).error(
+                    "Weekly USD/Gold brief is enabled but admin or Market Analysis "
+                    "channel configuration is missing; publisher remains disabled."
+                )
+            else:
+                weekly_calendar_brief = WeeklyCalendarBriefPublisher(
+                    TelegramAPI(token),
+                    str(database_path),
+                    admin_id=admin_id,
+                    channel_id=main_channel_id,
+                )
+                logging.getLogger(__name__).info(
+                    "Weekly USD/Gold official calendar brief enabled for Monday "
+                    "00:00 WAT; it runs alongside the daily brief."
+                )
         bot = SmartMoneyHubBot(
             TelegramAPI(token),
             str(database_path),
@@ -142,6 +164,7 @@ def main() -> None:
                 "SMH_EDUCATION_MARKET_ANALYSIS_TOPIC_LINK", ""
             ).strip(),
             daily_calendar_brief=daily_calendar_brief,
+            weekly_calendar_brief=weekly_calendar_brief,
             personal_reply_assistant=personal_reply_assistant,
             reply_draft_assistant=reply_draft_assistant,
         )

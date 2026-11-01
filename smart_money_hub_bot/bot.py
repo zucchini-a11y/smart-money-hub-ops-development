@@ -27,6 +27,7 @@ from .group_knowledge import (
     topic_update_from_message,
 )
 from .daily_calendar_brief import DailyCalendarBriefPublisher
+from .weekly_calendar_brief import WeeklyCalendarBriefPublisher
 from .education_polls import EducationPollPublisher, is_on_demand_poll_request
 from .education_morning import EducationMorningPublisher
 from .message_router import CoachMessageRouter
@@ -411,6 +412,7 @@ class SmartMoneyHubBot:
         channel_writer: GeminiChannelContentService | None = None,
         education_group_id: int | None = DEFAULT_EDUCATION_GROUP_ID,
         daily_calendar_brief: DailyCalendarBriefPublisher | None = None,
+        weekly_calendar_brief: WeeklyCalendarBriefPublisher | None = None,
         personal_reply_assistant: PersonalTelegramReplyAssistant | None = None,
         reply_draft_assistant: PersonalTelegramReplyAssistant | None = None,
         education_market_analysis_topic_link: str | None = None,
@@ -449,6 +451,7 @@ class SmartMoneyHubBot:
             group_history_store=self.store,
         )
         self.daily_calendar_brief = daily_calendar_brief
+        self.weekly_calendar_brief = weekly_calendar_brief
         self.personal_reply_assistant = personal_reply_assistant
         self.reply_draft_assistant = reply_draft_assistant
         self.reminder_zone = ZoneInfo(reminder_timezone)
@@ -4025,6 +4028,11 @@ class SmartMoneyHubBot:
                 self.daily_calendar_brief.dispatch(current)
             except Exception:
                 logger.exception("Could not dispatch the daily USD/Gold calendar brief.")
+        if self.weekly_calendar_brief is not None:
+            try:
+                self.weekly_calendar_brief.dispatch(current)
+            except Exception:
+                logger.exception("Could not dispatch the weekly USD/Gold calendar brief.")
         self.admin_dashboard.channel_posts.dispatch_due(current)
         try:
             self.admin_dashboard.session_open_posts.dispatch_due(current)

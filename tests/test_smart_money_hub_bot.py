@@ -3172,6 +3172,20 @@ class DailyCalendarSchedulerIntegrationTests(unittest.TestCase):
 
             brief_publisher.dispatch.assert_called_once_with(now)
 
+    def test_bot_dispatches_weekly_brief_from_the_normal_scheduler_tick(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            brief_publisher = Mock()
+            bot = SmartMoneyHubBot(
+                FakeTelegramAPI(),
+                str(Path(temp_dir) / "bot.sqlite3"),
+                weekly_calendar_brief=brief_publisher,
+            )
+            now = datetime(2026, 11, 1, 23, 5, tzinfo=timezone.utc)
+
+            bot._dispatch_due_reminders(now)
+
+            brief_publisher.dispatch.assert_called_once_with(now)
+
 
 if __name__ == "__main__":
     unittest.main()
