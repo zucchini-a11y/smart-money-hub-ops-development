@@ -4,6 +4,7 @@ import json
 import uuid
 from typing import Any
 from urllib.error import HTTPError, URLError
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 
@@ -132,6 +133,54 @@ class TelegramAPI:
             {"chat_id": chat_id, "user_id": user_id},
         )
         return result if isinstance(result, dict) else {}
+
+    def get_file(self, file_id: str) -> dict[str, Any]:
+        if not isinstance(file_id, str) or not file_id or len(file_id) > 512:
+            raise TelegramAPIError("Telegram file reference is invalid.")
+        result = self._request("getFile", {"file_id": file_id}, timeout=15)
+        return result if isinstance(result, dict) else {}
+
+    def download_file(
+        self,
+        file_path: str,
+        *,
+        max_bytes: int = 4_000_000,
+    ) -> tuple[bytes, str]:
+        """Download a Telegram file with a strict size cap and sanitized errors."""
+        if (
+            not isinstance(file_path, str)
+            or not file_path
+            or len(file_path) > 1024
+            or file_path.startswith("/")
+            or ".." in file_path.split("/")
+            or max_bytes < 1
+        ):
+            raise TelegramAPIError("Telegram file reference is invalid.")
+        file_base = self._base_url.replace(
+            "https://api.telegram.org/bot",
+            "https://api.telegram.org/file/bot",
+            1,
+        )
+        file_url = file_base + quote(file_path, safe="/")
+        request = Request(file_url, method="GET")
+        try:
+            with urlopen(request, timeout=20) as response:
+                declared_size = response.headers.get("Content-Length")
+                if declared_size and int(declared_size) > max_bytes:
+                    raise TelegramAPIError("Telegram image exceeds the size limit.")
+                content = response.read(max_bytes + 1)
+                content_type = str(
+                    response.headers.get("Content-Type", "application/octet-stream")
+                ).split(";", 1)[0].strip().lower()
+        except HTTPError:
+            raise TelegramAPIError("Telegram file download was rejected.") from None
+        except (URLError, TimeoutError, OSError, ValueError):
+            raise TelegramAPIError("Telegram file download failed.") from None
+        if len(content) > max_bytes:
+            raise TelegramAPIError("Telegram image exceeds the size limit.")
+        if content_type not in {"image/jpeg", "image/png", "image/webp"}:
+            raise TelegramAPIError("Telegram file is not a supported image.")
+        return content, content_type
 
     def get_updates(self, offset: int | None, timeout: int = 25) -> list[dict[str, Any]]:
         payload: dict[str, Any] = {
