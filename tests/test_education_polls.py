@@ -141,6 +141,9 @@ class FakeTelegramAPI:
             }
         )
 
+    def answer_callback_query(self, callback_query_id: str) -> None:
+        return None
+
 
 class _TelegramHtmlParser(HTMLParser):
     def __init__(self) -> None:
@@ -565,6 +568,79 @@ class EducationPollTests(unittest.TestCase):
                     "chat": {"id": 88, "type": "private"},
                     "text": "Post a poll now",
                 },
+            }
+        )
+        bot.education_polls.post_now.assert_not_called()
+
+    def test_admin_dashboard_exposes_confirmed_poll_action(self) -> None:
+        bot = SmartMoneyHubBot(
+            self.api,
+            str(Path(self.temp_dir.name) / "bot-admin-polls.sqlite3"),
+            admin_id=77,
+            education_group_id=EXPECTED_EDUCATION_GROUP_ID,
+            main_channel_id=EXPECTED_MARKET_ANALYSIS_CHANNEL_ID,
+        )
+        bot.education_polls.post_now = Mock(return_value="published")
+
+        bot.handle_update(
+            {
+                "callback_query": {
+                    "id": "poll-menu-open",
+                    "from": {"id": 77, "is_bot": False, "first_name": "Admin"},
+                    "message": {
+                        "message_id": 700,
+                        "chat": {"id": 77, "type": "private"},
+                    },
+                    "data": "admin:education_polls",
+                }
+            }
+        )
+        poll_screen = self.api.messages[-1]
+        self.assertIn("Education group", poll_screen["text"])
+        self.assertIn("Market Analysis channel", poll_screen["text"])
+        self.assertIn("Saturday 9:00 PM WAT", poll_screen["text"])
+        self.assertEqual(
+            poll_screen["reply_markup"]["inline_keyboard"][0][0]["callback_data"],
+            "admin:education_polls:post_now",
+        )
+        bot.education_polls.post_now.assert_not_called()
+
+        bot.handle_update(
+            {
+                "callback_query": {
+                    "id": "poll-menu-confirm",
+                    "from": {"id": 77, "is_bot": False, "first_name": "Admin"},
+                    "message": {
+                        "message_id": 701,
+                        "chat": {"id": 77, "type": "private"},
+                    },
+                    "data": "admin:education_polls:post_now",
+                }
+            }
+        )
+        bot.education_polls.post_now.assert_called_once_with("admin-menu-77-701")
+        self.assertIn("poll is live", self.api.messages[-1]["text"].lower())
+
+    def test_non_admin_cannot_trigger_dashboard_poll_action(self) -> None:
+        bot = SmartMoneyHubBot(
+            self.api,
+            str(Path(self.temp_dir.name) / "bot-admin-polls-denied.sqlite3"),
+            admin_id=77,
+            education_group_id=EXPECTED_EDUCATION_GROUP_ID,
+            main_channel_id=EXPECTED_MARKET_ANALYSIS_CHANNEL_ID,
+        )
+        bot.education_polls.post_now = Mock(return_value="published")
+        bot.handle_update(
+            {
+                "callback_query": {
+                    "id": "poll-menu-non-admin",
+                    "from": {"id": 88, "is_bot": False, "first_name": "Member"},
+                    "message": {
+                        "message_id": 702,
+                        "chat": {"id": 88, "type": "private"},
+                    },
+                    "data": "admin:education_polls:post_now",
+                }
             }
         )
         bot.education_polls.post_now.assert_not_called()

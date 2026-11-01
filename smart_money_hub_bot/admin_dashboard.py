@@ -659,6 +659,8 @@ class AdminDashboard:
             self._show_market_awareness_review(chat_id, page=0)
         elif data == "admin:group_morning":
             self._show_education_morning(chat_id)
+        elif data in {"admin:education_polls", "admin:education_polls:open"}:
+            self._show_education_polls(chat_id)
         elif data == "admin:content":
             self._show_content_overview(chat_id)
         elif data in {
@@ -1057,6 +1059,7 @@ class AdminDashboard:
                 ],
                 [{"text": "🗓️ Channel Content", "callback_data": "admin:channel_posts"}],
                 [{"text": "🌅 Education Morning Posts", "callback_data": "admin:group_morning"}],
+                [{"text": "🗳️ Education Polls", "callback_data": "admin:education_polls"}],
                 [{"text": "🧾 Content & Trade Records", "callback_data": "admin:content"}],
                 [{"text": "📨 Send One-Time DM", "callback_data": "admin:dm_broadcast"}],
                 [{"text": "✉️ Send One-Time DM to One Member", "callback_data": "admin:dm_member"}],
@@ -1070,6 +1073,37 @@ class AdminDashboard:
                 [{"text": "🏠 Main Menu", "callback_data": "nav:home"}],
             ]
         }
+
+    def _show_education_polls(self, chat_id: int) -> None:
+        group_status = (
+            "configured Education group"
+            if self.education_group_id is not None
+            else "not configured"
+        )
+        channel_status = (
+            "configured Market Analysis channel"
+            if self.main_channel_id is not None
+            else "not configured"
+        )
+        self.api.send_message(
+            chat_id,
+            "🗳️ EDUCATION POLLS\n\n"
+            "Post a poll now to the "
+            f"{group_status}. The bot also sends a poll preview with a vote button "
+            f"to the {channel_status}.\n\n"
+            "This manual action does not change the weekly Saturday 9:00 PM WAT poll.",
+            {
+                "inline_keyboard": [
+                    [
+                        {
+                            "text": "Post Education Poll Now",
+                            "callback_data": "admin:education_polls:post_now",
+                        }
+                    ],
+                    [{"text": "⬅️ Admin Dashboard", "callback_data": "admin:home"}],
+                ]
+            },
+        )
 
     def handle_group_morning_command(
         self,

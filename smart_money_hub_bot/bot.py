@@ -2197,6 +2197,60 @@ class SmartMoneyHubBot:
             )
             return
 
+        if data == "admin:education_polls:post_now":
+            if (
+                not is_private
+                or self.admin_id is None
+                or telegram_id != self.admin_id
+                or chat_id != telegram_id
+            ):
+                return
+            confirmation_message_id = message.get("message_id")
+            if not isinstance(confirmation_message_id, int):
+                self.api.send_message(
+                    chat_id,
+                    "I couldn't identify this poll request. Open /admin and try again.",
+                )
+                return
+            # The confirmation message ID keeps repeated taps on the same button
+            # idempotent. A newly opened poll screen gets a fresh request key.
+            request_key = f"admin-menu-{chat_id}-{confirmation_message_id}"
+            try:
+                status = self.education_polls.post_now(request_key)
+            except Exception:
+                logger.exception("Admin Education poll action failed unexpectedly.")
+                self.api.send_message(
+                    chat_id,
+                    "I couldn't complete the poll request. Check the group and "
+                    "Market Analysis channel before trying again.",
+                )
+                return
+            if status == "published":
+                result_message = (
+                    "The poll is live in the Education group, and its preview with "
+                    "the voting button is in the Market Analysis channel."
+                )
+            elif status == "delivery_unknown":
+                result_message = (
+                    "Telegram delivery could not be confirmed. Check the Education "
+                    "group before requesting another poll; I did not retry."
+                )
+            elif status in {"group_sent", "channel_failed", "channel_delivery_unknown"}:
+                result_message = (
+                    "The poll is in the Education group, but the Market Analysis "
+                    "preview did not complete normally. Check the channel before "
+                    "retrying; I did not send a second poll."
+                )
+            elif status == "failed":
+                result_message = (
+                    "The poll was held because a destination or publishing check "
+                    "failed. Check the admin status message before retrying."
+                )
+            else:
+                result_message = f"Poll request status: {status}."
+            self.api.send_message(chat_id, result_message)
+            return
+
         feedback_match = re.fullmatch(
             r"coach:feedback:(\d+):(helpful|unhelpful|unclear)", data
         )
