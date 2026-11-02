@@ -604,6 +604,47 @@ class BotFlowTests(unittest.TestCase):
         self.assertIn("CONTENT & TRADE RECORDS", report)
         self.assertIn("publish anything", report)
 
+    def test_admin_can_ask_what_the_next_channel_post_is(self) -> None:
+        self.bot.admin_id = self.user_id
+        dashboard = self.bot.admin_dashboard
+        dashboard.admin_id = self.user_id
+        dashboard.channel_posts.destination_chat_id = -1004481197912
+        self.bot.store.create_scheduled_channel_post(
+            schedule_date="2099-01-01",
+            schedule_time="10:00",
+            requested_category="education",
+            category="education",
+            content="Upcoming saved channel post.",
+            destination_chat_id=-1004481197912,
+            is_promo=False,
+            bot_username=None,
+            next_category_index=0,
+            next_promo_feature_index=0,
+            last_promo_date=None,
+            status="draft",
+            generation_source="gemini",
+        )
+
+        self.bot.handle_update(
+            {
+                "message": {
+                    "from": {
+                        "id": self.user_id,
+                        "is_bot": False,
+                        "first_name": self.first_name,
+                    },
+                    "chat": {"id": self.user_id, "type": "private"},
+                    "text": "What's the next post?",
+                }
+            }
+        )
+
+        report = self.api.messages[-1]["text"]
+        self.assertIn("CHANNEL CONTENT SCHEDULER", report)
+        self.assertIn("2099-01-01", report)
+        self.assertIn("Education", report)
+        self.assertNotIn("I do not have access", report)
+
     def test_full_status_text_alias_is_restricted_to_private_admin_chat(self) -> None:
         self.bot.admin_id = self.user_id
         dashboard = self.bot.admin_dashboard
