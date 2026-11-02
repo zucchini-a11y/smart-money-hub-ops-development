@@ -5,11 +5,16 @@ import unittest
 from datetime import date, datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
+from unittest.mock import patch
 
 from smart_money_hub_bot.brief_photo_review import (
     NewsBriefPhotoPrompts,
+    PHOTO_PROMPT_LEAD_SECONDS,
+    append_verified_image_highlights,
+    build_verified_image_evidence,
     send_brief_with_optional_photo,
 )
+from smart_money_hub_bot.news_brief_image_analysis import NewsImageAnalysis
 
 WAT = ZoneInfo("Africa/Lagos")
 
@@ -33,6 +38,22 @@ class FakeAPI:
         self.sent_photos.append({"chat_id": chat_id, "photo": photo, **kwargs})
         return {"message_id": 80}
 
+    def get_file(self, file_id):
+        return {"file_path": "photos/admin-image.jpg"}
+
+    def download_file(self, file_path, *, max_bytes):
+        return b"test-image-bytes", "image/jpeg"
+
+
+class FakeImageAnalyzer:
+    def __init__(self, ids=("bea:event-1",)):
+        self.ids = ids
+        self.calls = []
+
+    def analyze(self, image_bytes, mime_type, verified_evidence):
+        self.calls.append((image_bytes, mime_type, verified_evidence))
+        return NewsImageAnalysis(tuple(self.ids))
+
 
 class NewsBriefPhotoPromptTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -40,84 +61,123 @@ class NewsBriefPhotoPromptTests(unittest.TestCase):
         self.addCleanup(self.temp_dir.cleanup)
         self.database = Path(self.temp_dir.name) / "photos.sqlite3"
         self.api = FakeAPI()
+        self.evidence = [
+            {
+                "external_id": "bea:event-1",
+                "source_name": "U.S. Bureau of Economic Analysis",
+                "title": "Personal Income and Outlays",
+                "source_url": "https://www.bea.gov/news/2026/personal-income-and-outlays",
+                "release_date_text": "2026-10-29",
+                "release_time_text": "08:30 AM ET",
+                "event_at_utc": "2026-10-29T12:30:00+00:00",
+                "timezone_status": "verified_explicit_utc_offset",
+                "verification_status": "verified_schedule",
+                "retrieved_at_utc": "2026-10-28T22:30:00+00:00",
+            }
+        ]
+        self.image_analyzer = FakeImageAnalyzer()
         self.prompts = NewsBriefPhotoPrompts(
-            self.api, self.database, admin_id=444
+            self.api,
+            self.database,
+            admin_id=444,
+            image_analyzer=self.image_analyzer,
         )
         self.target_date = date(2026, 10, 29)
         self.scheduled_at = datetime(2026, 10, 29, 0, 0, tzinfo=WAT)
-        self.prompt_time = datetime(2026, 10, 28, 22, 55, tzinfo=timezone.utc)
+        self.prompt_time = datetime(2026, 10, 28, 22, 30, tzinfo=timezone.utc)
+        self.preview = "<b>Verified calendar report</b>"
 
-    def test_prompt_is_private_idempotent_and_explicitly_optional(self) -> None:
-        sent = self.prompts.send_prompt_if_due(
+    def _send_prompt(self):
+        return self.prompts.send_prompt_if_due(
             "daily",
             self.target_date,
             self.scheduled_at,
             destination="Market Analysis channel",
             now=self.prompt_time,
+            preview_content=self.preview,
+            verified_evidence=self.evidence,
         )
+
+    def test_prompt_is_private_idempotent_and_explicitly_optional(self) -> None:
+        self.assertEqual(PHOTO_PROMPT_LEAD_SECONDS, 30 * 60)
+        sent = self._send_prompt()
         self.assertTrue(sent)
-        self.assertFalse(
-            self.prompts.send_prompt_if_due(
-                "daily",
-                self.target_date,
-                self.scheduled_at,
-                destination="Market Analysis channel",
-                now=self.prompt_time,
-            )
-        )
+        self.assertFalse(self._send_prompt())
         message = self.api.admin_messages[0]
         self.assertEqual(message["chat_id"], 444)
-        self.assertIn("text-only", message["text"])
-        keyboard = message["reply_markup"]["inline_keyboard"][0]
+        self.assertIn("PREVIEW — NOT PUBLISHED", message["text"])
+        self.assertIn("30", self.api.admin_messages[2]["text"])
+        self.assertEqual(self.api.admin_messages[1]["text"], self.preview)
+        keyboard = self.api.admin_messages[2]["reply_markup"]["inline_keyboard"][0]
         self.assertEqual(keyboard[0]["callback_data"], "newsbrief:photo:daily:2026-10-29")
         self.assertEqual(keyboard[1]["callback_data"], "newsbrief:none:daily:2026-10-29")
 
-    def test_prompt_is_not_sent_before_the_five_minute_window(self) -> None:
+    def test_prompt_is_not_sent_before_the_thirty_minute_window(self) -> None:
         self.assertFalse(
             self.prompts.send_prompt_if_due(
                 "daily",
                 self.target_date,
                 self.scheduled_at,
                 destination="Market Analysis channel",
-                now=datetime(2026, 10, 28, 22, 54, 59, tzinfo=timezone.utc),
+                now=datetime(2026, 10, 28, 22, 29, 59, tzinfo=timezone.utc),
+                preview_content=self.preview,
+                verified_evidence=self.evidence,
             )
         )
         self.assertFalse(self.api.admin_messages)
 
-    def test_selected_photo_persists_across_restart(self) -> None:
-        self.prompts.send_prompt_if_due(
-            "daily",
-            self.target_date,
-            self.scheduled_at,
-            destination="Market Analysis channel",
-            now=self.prompt_time,
-        )
+    def test_photo_is_read_and_verified_before_updated_preview_and_persistence(self) -> None:
+        self._send_prompt()
         self.assertTrue(
             self.prompts.handle_callback(
                 "newsbrief:photo:daily:2026-10-29",
                 actor_id=444,
                 chat_id=444,
                 is_private=True,
-                now=datetime(2026, 10, 28, 22, 56, tzinfo=timezone.utc),
+                now=datetime(2026, 10, 28, 22, 31, tzinfo=timezone.utc),
             )
         )
         self.assertTrue(
             self.prompts.handle_admin_photo(
                 444,
                 444,
-                [{"file_id": "telegram-photo-file-id"}],
+                [{"file_id": "telegram-photo-file-id", "file_size": 1200}],
                 is_private=True,
-                now=datetime(2026, 10, 28, 22, 57, tzinfo=timezone.utc),
+                now=datetime(2026, 10, 28, 22, 32, tzinfo=timezone.utc),
             )
         )
+        self.assertEqual(
+            self.image_analyzer.calls[0][2][0]["external_id"],
+            "bea:event-1",
+        )
+        self.assertIn("IMAGE-RELATED VERIFIED CALENDAR ITEMS", self.api.admin_messages[-1]["text"])
 
         restarted = NewsBriefPhotoPrompts(
-            self.api, self.database, admin_id=444
+            self.api,
+            self.database,
+            admin_id=444,
+            image_analyzer=self.image_analyzer,
         )
         self.assertEqual(
             restarted.photo_file_id("daily", self.target_date),
             "telegram-photo-file-id",
         )
+        report, photo_id = restarted.publication_media(
+            "daily",
+            self.target_date,
+            self.preview,
+            self.evidence,
+            [
+                {
+                    "source_name": "BEA",
+                    "status": "verified_schedule",
+                    "checked_at_utc": "2026-10-28T22:32:00+00:00",
+                }
+            ],
+            now=datetime(2026, 10, 28, 22, 33, tzinfo=timezone.utc),
+        )
+        self.assertEqual(photo_id, "telegram-photo-file-id")
+        self.assertIn("IMAGE-RELATED VERIFIED CALENDAR ITEMS", report)
         restarted.mark_published(
             "daily",
             self.target_date,
@@ -126,13 +186,7 @@ class NewsBriefPhotoPromptTests(unittest.TestCase):
         self.assertIsNone(restarted.photo_file_id("daily", self.target_date))
 
     def test_non_admin_cannot_select_or_attach_a_photo(self) -> None:
-        self.prompts.send_prompt_if_due(
-            "daily",
-            self.target_date,
-            self.scheduled_at,
-            destination="Market Analysis channel",
-            now=self.prompt_time,
-        )
+        self._send_prompt()
         self.assertTrue(
             self.prompts.handle_callback(
                 "newsbrief:photo:daily:2026-10-29",
@@ -153,6 +207,107 @@ class NewsBriefPhotoPromptTests(unittest.TestCase):
         )
         self.assertIsNone(self.prompts.photo_file_id("daily", self.target_date))
 
+    def test_unmatched_image_is_not_saved_or_published(self) -> None:
+        self._send_prompt()
+        self.image_analyzer.ids = ("not-an-official-record",)
+        self.prompts.handle_callback(
+            "newsbrief:photo:daily:2026-10-29",
+            actor_id=444,
+            chat_id=444,
+            is_private=True,
+            now=datetime(2026, 10, 28, 22, 31, tzinfo=timezone.utc),
+        )
+        self.prompts.handle_admin_photo(
+            444,
+            444,
+            [{"file_id": "telegram-photo-file-id"}],
+            is_private=True,
+            now=datetime(2026, 10, 28, 22, 32, tzinfo=timezone.utc),
+        )
+        self.assertIsNone(self.prompts.photo_file_id("daily", self.target_date))
+        self.assertIn("did not clearly match", self.api.admin_messages[-1]["text"])
+
+    def test_image_check_finishing_at_publication_time_is_not_attached(self) -> None:
+        self._send_prompt()
+        self.prompts.handle_callback(
+            "newsbrief:photo:daily:2026-10-29",
+            actor_id=444,
+            chat_id=444,
+            is_private=True,
+            now=datetime(2026, 10, 28, 22, 59, 50, tzinfo=timezone.utc),
+        )
+        with patch(
+            "smart_money_hub_bot.brief_photo_review.time.monotonic",
+            side_effect=[100.0, 110.0],
+        ):
+            handled = self.prompts.handle_admin_photo(
+                444,
+                444,
+                [{"file_id": "telegram-photo-file-id"}],
+                is_private=True,
+                now=datetime(2026, 10, 28, 22, 59, 55, tzinfo=timezone.utc),
+            )
+        self.assertTrue(handled)
+        self.assertIsNone(self.prompts.photo_file_id("daily", self.target_date))
+        self.assertIn("scheduled time arrived", self.api.admin_messages[-1]["text"])
+
+    def test_missing_image_analyzer_holds_photo_but_not_text(self) -> None:
+        self._send_prompt()
+        without_analyzer = NewsBriefPhotoPrompts(
+            self.api,
+            self.database,
+            admin_id=444,
+        )
+        without_analyzer.handle_callback(
+            "newsbrief:photo:daily:2026-10-29",
+            actor_id=444,
+            chat_id=444,
+            is_private=True,
+            now=datetime(2026, 10, 28, 22, 31, tzinfo=timezone.utc),
+        )
+        without_analyzer.handle_admin_photo(
+            444,
+            444,
+            [{"file_id": "telegram-photo-file-id"}],
+            is_private=True,
+            now=datetime(2026, 10, 28, 22, 32, tzinfo=timezone.utc),
+        )
+        self.assertIsNone(without_analyzer.photo_file_id("daily", self.target_date))
+        self.assertIn("text brief remains on schedule", self.api.admin_messages[-1]["text"])
+
+    def test_current_source_failure_removes_matched_photo_before_publication(self) -> None:
+        self._send_prompt()
+        self.prompts.handle_callback(
+            "newsbrief:photo:daily:2026-10-29",
+            actor_id=444,
+            chat_id=444,
+            is_private=True,
+            now=datetime(2026, 10, 28, 22, 31, tzinfo=timezone.utc),
+        )
+        self.prompts.handle_admin_photo(
+            444,
+            444,
+            [{"file_id": "telegram-photo-file-id"}],
+            is_private=True,
+            now=datetime(2026, 10, 28, 22, 32, tzinfo=timezone.utc),
+        )
+        report, photo_id = self.prompts.publication_media(
+            "daily",
+            self.target_date,
+            self.preview,
+            self.evidence,
+            [
+                {
+                    "source_name": "BEA",
+                    "status": "unavailable",
+                    "checked_at_utc": "2026-10-28T22:32:00+00:00",
+                }
+            ],
+            now=datetime(2026, 10, 28, 22, 33, tzinfo=timezone.utc),
+        )
+        self.assertEqual(report, self.preview)
+        self.assertIsNone(photo_id)
+
     def test_no_photo_still_sends_the_scheduled_text_brief(self) -> None:
         message_id, photo_status = send_brief_with_optional_photo(
             self.api,
@@ -165,6 +320,47 @@ class NewsBriefPhotoPromptTests(unittest.TestCase):
         self.assertEqual(photo_status, "not_requested")
         self.assertEqual(self.api.sent_text[0]["text"], "<b>Verified report</b>")
         self.assertEqual(self.api.sent_photos, [])
+
+    def test_verified_image_highlight_escapes_source_text_and_obeys_message_limit(self) -> None:
+        highlighted = append_verified_image_highlights(
+            self.preview,
+            self.evidence,
+            ["bea:event-1"],
+        )
+        self.assertIn("Personal Income and Outlays", highlighted)
+        self.assertIn("Source: <a href=", highlighted)
+        self.assertNotIn("image-bytes", highlighted)
+        self.assertLessEqual(len(highlighted.encode("utf-16-le")) // 2, 4096)
+
+    def test_only_fresh_source_verified_records_can_be_sent_to_gemini(self) -> None:
+        evidence = build_verified_image_evidence(
+            "daily",
+            self.target_date,
+            self.evidence,
+            [
+                {
+                    "source_name": "BEA",
+                    "status": "verified_schedule",
+                    "checked_at_utc": "2026-10-28T22:30:00+00:00",
+                }
+            ],
+            now=datetime(2026, 10, 28, 22, 30, tzinfo=timezone.utc),
+        )
+        self.assertEqual([item["external_id"] for item in evidence], ["bea:event-1"])
+        stale = build_verified_image_evidence(
+            "daily",
+            self.target_date,
+            self.evidence,
+            [
+                {
+                    "source_name": "BEA",
+                    "status": "unavailable",
+                    "checked_at_utc": "2026-10-28T22:30:00+00:00",
+                }
+            ],
+            now=datetime(2026, 10, 28, 22, 30, tzinfo=timezone.utc),
+        )
+        self.assertEqual(stale, [])
 
     def test_optional_photo_is_attached_without_delaying_text(self) -> None:
         message_id, photo_status = send_brief_with_optional_photo(

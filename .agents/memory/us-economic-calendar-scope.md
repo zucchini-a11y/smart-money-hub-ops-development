@@ -17,11 +17,11 @@ The weekly official USD/gold calendar is for the Education Suite Announcements t
 
 **How to apply:** preserve the daily schedule and destination; run the weekly calendar independently at Monday 00:00 WAT in the configured Education group’s verified Announcements topic, with separate idempotency and delivery records.
 
-Five minutes before each daily or weekly brief, privately ask the administrator whether to add a picture. No reply or no picture must never delay the scheduled text brief; any selected picture is a separate companion post, not a reason to truncate the sourced report.
+Thirty minutes before each daily or weekly brief, privately send the administrator the complete unpublished preview, destination, WAT publication time, and picture/no-picture actions. A picture may be read by Gemini only to match it to a currently verified official calendar record. The image is not a source of publishable facts; unsupported or conflicting claims are excluded. No reply or no picture must never delay the scheduled text brief; a verified picture is a separate companion post.
 
-**Why:** the user wants a chance to add an image but explicitly requires the brief to publish on time without waiting for one.
+**Why:** the user wants the full news preview and an optional picture decision 30 minutes before publication, while keeping the scheduled text post on time.
 
-**How to apply:** keep the optional photo flow private and admin-only, persist selection safely across restarts, and publish the complete verified text at the scheduled time whether or not an image is attached.
+**How to apply:** keep preview and image handling private/admin-only; use Gemini only to identify image-relevant official records, re-check those records before publication, and publish the complete verified text on schedule even if no picture is added or the image check fails.
 
 The calendar review screen is private-admin-only and read-only. It must not trigger source fetches, scheduler work, or publishing, and Gemini must never fill missing source fields.
 

@@ -199,8 +199,10 @@ class WeeklyCalendarBriefTests(unittest.TestCase):
             "Education Suite Announcements topic",
             self.api.admin_messages[0]["text"],
         )
+        self.assertIn("Scheduled: 00:00 WAT", self.api.admin_messages[0]["text"])
+        self.assertIn("WEEKLY NEWS OUTLOOK", self.api.admin_messages[1]["text"])
         self.assertEqual(
-            self.api.admin_messages[0]["reply_markup"]["inline_keyboard"][0][0][
+            self.api.admin_messages[2]["reply_markup"]["inline_keyboard"][0][0][
                 "callback_data"
             ],
             "newsbrief:photo:weekly:2026-11-02",

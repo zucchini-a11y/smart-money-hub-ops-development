@@ -138,13 +138,26 @@ class DailyCalendarBriefTests(unittest.TestCase):
         prompts = NewsBriefPhotoPrompts(
             self.api, self.database, admin_id=444
         )
-        publisher = self.make_publisher(photo_prompts=prompts)
+        refresh_count = 0
+
+        def refresh_once(database_path, *, now):
+            nonlocal refresh_count
+            refresh_count += 1
+            add_verified_sources(database_path, now=now)
+
+        publisher = self.make_publisher(
+            photo_prompts=prompts,
+            refresh=refresh_once,
+        )
         prompt_time = datetime(2026, 10, 28, 22, 55, tzinfo=timezone.utc)
 
         self.assertTrue(publisher.dispatch_photo_prompt(prompt_time))
         self.assertEqual(self.api.admin_messages[0]["chat_id"], 444)
         self.assertIn("Market Analysis channel", self.api.admin_messages[0]["text"])
+        self.assertIn("Scheduled: 00:00 WAT", self.api.admin_messages[0]["text"])
+        self.assertIn("SMART MONEY HUB", self.api.admin_messages[1]["text"])
         self.assertFalse(publisher.dispatch_photo_prompt(prompt_time))
+        self.assertEqual(refresh_count, 1)
 
         self.assertEqual(publisher.dispatch(NOW), "published")
         self.assertEqual(len(self.api.channel_messages), 1)

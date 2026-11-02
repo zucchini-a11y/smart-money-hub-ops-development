@@ -7,6 +7,7 @@ import json
 import logging
 import re
 import sqlite3
+import time
 from contextlib import closing
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -151,7 +152,7 @@ def build_verified_image_evidence(
         if brief_type == "daily" and (
             source != "U.S. Bureau of Economic Analysis"
             or _parse_timestamp(record.get("event_at_utc")) is None
-            or record.get("timezone_status") not in {"verified_offset", "verified"}
+            or record.get("timezone_status") != "verified_explicit_utc_offset"
         ):
             continue
         result.append(dict(record))
@@ -194,10 +195,12 @@ def append_verified_image_highlights(
             else "Date unavailable"
         )
         event_at = _parse_timestamp(item.get("event_at_utc"))
-        if event_at is not None and item.get("timezone_status") in {
-            "verified_offset",
-            "verified",
-        }:
+        timezone_status = str(item.get("timezone_status") or "")
+        timezone_verified = (
+            timezone_status == "verified_explicit_utc_offset"
+            or timezone_status.startswith("verified_source_timezone:")
+        )
+        if event_at is not None and timezone_verified:
             time_text = event_at.astimezone(WAT).strftime("%H:%M WAT")
         else:
             time_text = "time unavailable"
@@ -358,8 +361,9 @@ class NewsBriefPhotoPrompts:
             f"Scheduled: {local_schedule.strftime('%H:%M WAT')}"
         )
         prompt = (
-            "Would you like to add a picture? Tap “Add picture”, then send one "
-            "image privately to this bot. Gemini will only match it to currently "
+            "This review arrives 30 minutes before publication. Would you like to "
+            "add a picture? Tap “Add picture”, then send one image privately to "
+            "this bot. Gemini will only match it to currently "
             "verified official calendar records; it cannot supply or change "
             "figures. If you do not reply or add a picture, the brief will still "
             "publish text-only at the scheduled time if final source and destination "
@@ -559,6 +563,7 @@ class NewsBriefPhotoPrompts:
             )
             return True
 
+        image_check_started = time.monotonic()
         try:
             file_info = self.api.get_file(file_id)
             file_path = file_info.get("file_path")
@@ -603,7 +608,7 @@ class NewsBriefPhotoPrompts:
                 "I couldn't safely read and check that picture this time. It won't "
                 "change the news or be posted; the text brief remains on schedule.",
             )
-            logger.exception("Unexpected failure while checking a brief image.")
+            logger.warning("Unexpected failure while checking a brief image.")
             return True
 
         if not matched_ids:
@@ -618,13 +623,29 @@ class NewsBriefPhotoPrompts:
             )
             return True
 
+        completed_at = current + timedelta(
+            seconds=max(0.0, time.monotonic() - image_check_started)
+        )
+        if (
+            not self._before_publication(brief_type, brief_date, completed_at)
+            or self._status(brief_type, brief_date)
+            not in {"awaiting_photo", "photo_attached"}
+        ):
+            self._clear_selection()
+            self.api.send_message(
+                chat_id,
+                "The scheduled time arrived while I was checking the picture. It "
+                "was not attached, and the brief was not delayed.",
+            )
+            return True
+
         updated_preview = append_verified_image_highlights(
             preview,
             evidence,
             matched_ids,
         )
         with closing(sqlite3.connect(self.database_path)) as connection, connection:
-            connection.execute(
+            update_result = connection.execute(
                 """
                 UPDATE news_brief_photo_reviews
                 SET status='photo_attached', photo_file_id=?, updated_at_utc=?,
@@ -642,10 +663,18 @@ class NewsBriefPhotoPrompts:
                     brief_date.isoformat(),
                 ),
             )
-            connection.execute(
-                "DELETE FROM news_brief_photo_selection WHERE admin_id=?",
-                (self.admin_id,),
+            if update_result.rowcount == 1:
+                connection.execute(
+                    "DELETE FROM news_brief_photo_selection WHERE admin_id=?",
+                    (self.admin_id,),
+                )
+        if update_result.rowcount != 1:
+            self.api.send_message(
+                chat_id,
+                "The brief changed status while I was checking the picture. It "
+                "was not attached, and the scheduled post was not delayed.",
             )
+            return True
         self.api.send_message(
             chat_id,
             "Gemini matched the picture to verified official calendar records. "
@@ -669,6 +698,62 @@ class NewsBriefPhotoPrompts:
         if row and row[1] == "photo_attached" and isinstance(row[0], str):
             return row[0]
         return None
+
+    def publication_media(
+        self,
+        brief_type: str,
+        brief_date: date,
+        report: str,
+        records: list[dict],
+        source_status: list[dict],
+        *,
+        now: datetime,
+    ) -> tuple[str, str | None]:
+        """Revalidate image-matched IDs against current official records."""
+        with closing(sqlite3.connect(self.database_path)) as connection:
+            row = connection.execute(
+                """
+                SELECT status, photo_file_id, matched_event_ids_json
+                FROM news_brief_photo_reviews
+                WHERE brief_type=? AND brief_date=?
+                """,
+                (brief_type, brief_date.isoformat()),
+            ).fetchone()
+        if not row or row[0] != "photo_attached":
+            return report, None
+        try:
+            matched = json.loads(str(row[2] or "[]"))
+        except json.JSONDecodeError:
+            matched = []
+        if not isinstance(matched, list):
+            matched = []
+        current_evidence = build_verified_image_evidence(
+            brief_type,
+            brief_date,
+            records,
+            source_status,
+            now=now,
+        )
+        current_ids = {
+            str(item.get("external_id"))
+            for item in current_evidence
+            if item.get("external_id")
+        }
+        valid_ids = [
+            item
+            for item in matched
+            if isinstance(item, str) and item in current_ids
+        ]
+        if not valid_ids:
+            self._exclude_unverified_photo(brief_type, brief_date, now)
+            return report, None
+        updated_report = append_verified_image_highlights(
+            report,
+            current_evidence,
+            valid_ids,
+        )
+        photo = row[1] if isinstance(row[1], str) and row[1] else None
+        return updated_report, photo
 
     def mark_published(
         self, brief_type: str, brief_date: date, *, now: datetime
@@ -699,6 +784,87 @@ class NewsBriefPhotoPrompts:
                 (brief_type, brief_date.isoformat()),
             ).fetchone()
         return str(row[0]) if row else None
+
+    def has_review(self, brief_type: str, brief_date: date) -> bool:
+        return self._status(brief_type, brief_date) is not None
+
+    def _before_publication(
+        self,
+        brief_type: str,
+        brief_date: date,
+        current: datetime,
+    ) -> bool:
+        if current.tzinfo is None:
+            return False
+        with closing(sqlite3.connect(self.database_path)) as connection:
+            row = connection.execute(
+                """
+                SELECT scheduled_at_utc FROM news_brief_photo_reviews
+                WHERE brief_type=? AND brief_date=?
+                """,
+                (brief_type, brief_date.isoformat()),
+            ).fetchone()
+        scheduled = _parse_timestamp(row[0]) if row else None
+        return scheduled is not None and current.astimezone(timezone.utc) < scheduled
+
+    def _record_image_rejection(
+        self,
+        brief_type: str,
+        brief_date: date,
+        reason: str,
+        now: datetime,
+    ) -> None:
+        with closing(sqlite3.connect(self.database_path)) as connection, connection:
+            connection.execute(
+                """
+                UPDATE news_brief_photo_reviews
+                SET status='awaiting_photo', photo_file_id=NULL,
+                    matched_event_ids_json='[]', image_analysis_status=?,
+                    updated_at_utc=?
+                WHERE brief_type=? AND brief_date=?
+                """,
+                (
+                    reason,
+                    _timestamp(now),
+                    brief_type,
+                    brief_date.isoformat(),
+                ),
+            )
+            connection.execute(
+                "DELETE FROM news_brief_photo_selection WHERE admin_id=?",
+                (self.admin_id,),
+            )
+
+    def _exclude_unverified_photo(
+        self,
+        brief_type: str,
+        brief_date: date,
+        now: datetime,
+    ) -> None:
+        with closing(sqlite3.connect(self.database_path)) as connection, connection:
+            changed = connection.execute(
+                """
+                UPDATE news_brief_photo_reviews
+                SET status='photo_unverified', photo_file_id=NULL,
+                    image_analysis_status='source_no_longer_verified',
+                    updated_at_utc=?
+                WHERE brief_type=? AND brief_date=? AND status='photo_attached'
+                """,
+                (_timestamp(now), brief_type, brief_date.isoformat()),
+            ).rowcount
+        if changed and self.admin_id is not None:
+            try:
+                self.api.send_message(
+                    int(self.admin_id),
+                    "I left the picture out because its official calendar record "
+                    "was no longer fresh and verified at publication time. The "
+                    "text brief continues through its normal source and "
+                    "destination checks.",
+                )
+            except Exception:
+                logger.warning(
+                    "Could not notify admin that a brief image was excluded."
+                )
 
     def _set_status(
         self,

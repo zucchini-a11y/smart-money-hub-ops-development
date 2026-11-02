@@ -20,6 +20,7 @@ from .economic_calendar_phase1 import (
 )
 from .brief_photo_review import (
     NewsBriefPhotoPrompts,
+    build_verified_image_evidence,
     send_brief_with_optional_photo,
 )
 from .telegram_api import TelegramAPI, TelegramAPIError
@@ -422,16 +423,36 @@ class DailyCalendarBriefPublisher:
             return False
         current = _as_utc(now or datetime.now(timezone.utc))
         local_now = current.astimezone(WAT)
-        if local_now.hour != 23 or local_now.minute < 55:
+        if local_now.hour != 23 or local_now.minute < 30:
             return False
         brief_date = local_now.date() + timedelta(days=1)
+        if self.photo_prompts.has_review("daily", brief_date):
+            return False
         scheduled_at = datetime.combine(brief_date, DAILY_BRIEF_TIME, tzinfo=WAT)
+        self.source_refresh(self.database_path, now=current)
+        statuses = self.calendar.list_source_status()
+        records = self.calendar.list_records()
+        report = build_daily_usd_gold_brief(
+            brief_date,
+            records,
+            statuses,
+            now=current,
+        )
+        evidence = build_verified_image_evidence(
+            "daily",
+            brief_date,
+            records,
+            statuses,
+            now=current,
+        )
         return self.photo_prompts.send_prompt_if_due(
             "daily",
             brief_date,
             scheduled_at,
             destination="Market Analysis channel",
             now=current,
+            preview_content=report,
+            verified_evidence=evidence,
         )
 
     def dispatch(self, now: datetime | None = None) -> str:
@@ -502,18 +523,25 @@ class DailyCalendarBriefPublisher:
                 )
                 return "held_source_unverified"
 
+            records = self.calendar.list_records()
             report = build_daily_usd_gold_brief(
                 local_now.date(),
-                self.calendar.list_records(),
+                records,
                 statuses,
                 now=current,
             )
             self._verify_destination()
-            photo_file_id = (
-                self.photo_prompts.photo_file_id("daily", local_now.date())
-                if self.photo_prompts is not None
-                else None
-            )
+            if self.photo_prompts is not None:
+                report, photo_file_id = self.photo_prompts.publication_media(
+                    "daily",
+                    local_now.date(),
+                    report,
+                    records,
+                    statuses,
+                    now=current,
+                )
+            else:
+                photo_file_id = None
             message_id, photo_status = send_brief_with_optional_photo(
                 self.api,
                 int(self.channel_id),

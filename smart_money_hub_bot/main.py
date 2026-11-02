@@ -15,6 +15,7 @@ from .group_features import (
     DEFAULT_EDUCATION_GROUP_ID,
     EDUCATION_ANNOUNCEMENTS_THREAD_ID,
 )
+from .news_brief_image_analysis import GeminiNewsImageAnalysisService
 from .personal_reply_assistant import PersonalTelegramReplyAssistant
 from .storage import DEFAULT_DATABASE_PATH
 from .telegram_api import TelegramAPI
@@ -125,6 +126,11 @@ def main() -> None:
                 TelegramAPI(token),
                 str(database_path),
                 admin_id=admin_id,
+                image_analyzer=(
+                    GeminiNewsImageAnalysisService(gemini_api_key)
+                    if gemini_api_key
+                    else None
+                ),
             )
             if admin_id is not None and (daily_brief_enabled or weekly_brief_enabled)
             else None
