@@ -87,6 +87,10 @@ _STATUS_VALUES = (
     "missed",
 )
 _TERMINAL_STATUSES = ("published", "delivery_unknown", "cancelled")
+_DUPLICATE_RETRYABLE_FAILURE_PREFIXES = (
+    "content_rejected_duplicate_content",
+    "content_rejected_repeated_session_layout",
+)
 _CANONICAL = re.compile(r"[^a-z0-9]+")
 _SESSION_LAYOUT_HEADINGS = (
     "WHAT TO PREPARE",
@@ -925,15 +929,23 @@ class SessionOpenPostManager:
     ) -> None:
         post_id = int(post["id"])
         failure_category = str(post.get("failure_category") or "")
+        has_content = bool(str(post.get("content") or "").strip())
+        retrying_duplicate = self._is_duplicate_retryable_failure(failure_category)
         if (
             post.get("status") != "failed"
-            or not failure_category.startswith("gemini_")
-            or str(post.get("content") or "").strip()
+            or not (
+                (
+                    failure_category.startswith("gemini_")
+                    and not has_content
+                )
+                or (retrying_duplicate and has_content)
+            )
         ):
             self.api.send_message(
                 chat_id,
-                "AI retry is available only for an empty session draft held after "
-                "a Gemini generation failure. Existing content was not replaced.",
+                "AI retry is available for an empty Gemini failure or a draft held "
+                "for duplicate content/layout. Existing content is kept unless a "
+                "replacement passes every check.",
             )
             self._show_post(chat_id, post)
             return
@@ -993,7 +1005,16 @@ class SessionOpenPostManager:
         if generating is None:
             return
         self._generate(
-            generating, occurrence, current, late_recovery=late_recovery
+            generating,
+            occurrence,
+            current,
+            late_recovery=late_recovery,
+            rejected_originality_draft=(
+                str(post.get("content") or "") if retrying_duplicate else None
+            ),
+            rejected_originality_reason=(
+                "duplicate_content" if retrying_duplicate else None
+            ),
         )
         refreshed = self.store.get(post_id)
         if refreshed is None:
@@ -1156,6 +1177,8 @@ class SessionOpenPostManager:
         current: datetime,
         *,
         late_recovery: bool = False,
+        rejected_originality_draft: str | None = None,
+        rejected_originality_reason: str | None = None,
     ) -> None:
         if self.writer is None:
             self._hold(post, "gemini_not_configured", "Gemini is unavailable; no session post was sent.")
@@ -1179,6 +1202,15 @@ class SessionOpenPostManager:
             "late_recovery": late_recovery,
             "session_underway": late_recovery,
         }
+        if rejected_originality_draft is not None:
+            context = {
+                **context,
+                "duplicate_retry": True,
+                "rejected_duplicate_draft": rejected_originality_draft[:1600],
+                "originality_retry_reason": (
+                    rejected_originality_reason or "duplicate_content"
+                ),
+            }
         history = self.history_store.get_recent_channel_post_contents(
             limit=12, chat_id=self.destination_chat_id
         )
@@ -1207,9 +1239,9 @@ class SessionOpenPostManager:
                     self._hold(
                         post,
                         f"content_rejected_{rejected_originality_reason}_retry_{error.category}",
-                        f"The first session candidate failed {retry_cause}; its one "
-                        f"fresh originality retry failed ({error.category}). The first "
-                        "candidate was preserved for review and nothing was published.",
+                        f"The prior session candidate failed {retry_cause}; its fresh "
+                        f"retry failed ({error.category}). The prior candidate was "
+                        "preserved for review and nothing was published.",
                         content=rejected_originality_draft,
                     )
                     return
@@ -1243,9 +1275,9 @@ class SessionOpenPostManager:
                     self._hold(
                         post,
                         f"content_rejected_{rejected_originality_reason}_retry_gemini_unexpected_error",
-                        f"The first session candidate failed {retry_cause}; its one "
-                        "fresh originality retry failed unexpectedly. The first "
-                        "candidate was preserved for review and nothing was published.",
+                        f"The prior session candidate failed {retry_cause}; its fresh "
+                        "retry failed unexpectedly. The prior candidate was "
+                        "preserved for review and nothing was published.",
                         content=rejected_originality_draft,
                     )
                 else:
@@ -1542,8 +1574,16 @@ class SessionOpenPostManager:
         actions: list[dict[str, str]] = []
         if (
             status == "failed"
-            and failure_category.startswith("gemini_")
-            and not str(post.get("content") or "").strip()
+            and (
+                (
+                    failure_category.startswith("gemini_")
+                    and not str(post.get("content") or "").strip()
+                )
+                or (
+                    self._is_duplicate_retryable_failure(failure_category)
+                    and bool(str(post.get("content") or "").strip())
+                )
+            )
         ):
             actions.append(
                 {
@@ -1584,6 +1624,13 @@ class SessionOpenPostManager:
         )
         markup = {"inline_keyboard": rows}
         self.api.send_message(chat_id, intro + content, markup, parse_mode="HTML")
+
+    @staticmethod
+    def _is_duplicate_retryable_failure(failure_category: str) -> bool:
+        return any(
+            failure_category.startswith(prefix)
+            for prefix in _DUPLICATE_RETRYABLE_FAILURE_PREFIXES
+        )
 
     def _is_duplicate(
         self, content: str, post_id: int, *, exclude_current: bool = False

@@ -92,6 +92,22 @@ FRESH_LATE_NY_POST = (
     "— VAYDA | Smart Money Hub."
 )
 
+FRESH_LONDON_SESSION_POST = (
+    "📊 SMART MONEY HUB | MARKET PREPARATION\n"
+    "━━━━━━━━━━━━━━\n\n"
+    "🇬🇧 LONDON SESSION OPEN | EXECUTION CHECK\n\n"
+    "A new session is a prompt to review your plan, not a reason to force a trade. "
+    "Keep your decisions tied to the chart evidence you can verify.\n\n"
+    "🔍 SESSION CHECKLIST\n"
+    "✅ Recheck the structure and levels already marked on your chart.\n"
+    "✅ Decide what confirmation would support your plan.\n"
+    "✅ Step aside if the setup or invalidation is unclear.\n\n"
+    "🛡️ RISK CHECK\n"
+    "Keep position risk within your written limits.\n\n"
+    "NO CONFIRMATION, NO ENTRY.\n\n"
+    "— VAYDA | Smart Money Hub."
+)
+
 
 class FakeWriter:
     def __init__(
@@ -1130,6 +1146,38 @@ class SessionOpenPostTests(unittest.TestCase):
         )
         self.assertEqual(saved["content"], DUPLICATE_LATE_NY_POST)
         self.assertEqual(len(self.writer.calls), 2)
+        self.assertEqual(self.api.channel_messages, [])
+
+    def test_admin_can_retry_a_duplicate_held_draft_before_session_open(self):
+        occurrence = self._occurrence("london")
+        current = occurrence.utc_at - timedelta(minutes=13)
+        post, created = self.manager.store.create_slot(
+            occurrence, CHANNEL_ID, at=current.isoformat()
+        )
+        self.assertTrue(created)
+        self.manager.store.update(
+            int(post["id"]),
+            expected=("generating",),
+            status="failed",
+            at=(current - timedelta(minutes=1)).isoformat(),
+            failure_category="content_rejected_duplicate_content",
+            content=SESSION_POST,
+        )
+        self.writer.responses = [FRESH_LONDON_SESSION_POST]
+
+        held = self.manager.store.get(int(post["id"]))
+        self.manager._retry_failed_generation(ADMIN_ID, held, current)
+
+        saved = self.manager.store.get(int(post["id"]))
+        self.assertEqual(saved["status"], "draft")
+        self.assertEqual(saved["content"], FRESH_LONDON_SESSION_POST)
+        self.assertEqual(len(self.writer.calls), 1)
+        retry_context = self.writer.calls[0]["session_context"]
+        self.assertTrue(retry_context["duplicate_retry"])
+        self.assertEqual(
+            retry_context["rejected_duplicate_draft"],
+            SESSION_POST[:1600],
+        )
         self.assertEqual(self.api.channel_messages, [])
 
 
