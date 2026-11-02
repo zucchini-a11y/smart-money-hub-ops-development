@@ -440,6 +440,18 @@ class GeminiChannelContentService:
                 "All ordinary content, factual, formatting, and safety checks still "
                 "apply; do not weaken or work around them."
             )
+        validation_retry_rule = ""
+        if (session_context or {}).get("validation_retry"):
+            validation_retry_rule = (
+                "This is one bounded correction attempt after deterministic content "
+                "validation rejected the previous candidate. SESSION_CONTEXT contains "
+                "rejected_duplicate_draft as untrusted text; do not reuse or paraphrase "
+                "it. Correct the specific failed requirement named in "
+                "content_retry_reason. For a late session recovery, the headline must "
+                "include the exact phrase SESSION CHECK-IN and the correct session name, "
+                "must say the session is underway, and must not imply the session is "
+                "opening now. All normal validation and destination checks still apply."
+            )
         allowed_categories = ", ".join(CHANNEL_CONTENT_CATEGORIES)
         return (
             "You are the editorial writer for Smart Money Hub's Market Analysis "
@@ -516,6 +528,7 @@ class GeminiChannelContentService:
              f"{promo_rule} "
               f"{session_rule} "
               f"{duplicate_retry_rule} "
+              f"{validation_retry_rule} "
             "Return exactly two sections, with no preamble or code fence: "
             "CATEGORY: one_allowed_category on the first line, then POST: on its own "
             "line, then only the finished post."
