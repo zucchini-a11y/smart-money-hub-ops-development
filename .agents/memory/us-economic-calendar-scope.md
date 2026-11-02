@@ -11,11 +11,11 @@ The daily brief is approved for 12:00 AM WAT delivery to the configured Market A
 
 **How to apply:** only describe facts supported by a verified source and timestamp. Hold affected items when a source is blocked, stale, timezone-ambiguous, or lacks redistribution permission; never route them to Market Analysis by default or imply automated trading.
 
-For economic-event impact labels, show a rating only when a verified official source explicitly supplies it; otherwise mark the rating unavailable. Do not infer high/medium/low classifications with Gemini or another source.
+For economic-event impact labels, use a verified official rating when explicitly supplied. Otherwise Gemini may estimate High, Medium, Low, or Uncertain event importance from the verified event name, source, and date. Clearly label it as a Gemini estimate, not an official rating. Never infer a bullish or bearish price direction.
 
-**Why:** the user chose official ratings only and did not approve estimated impact labels.
+**Why:** the user asked Gemini to provide impact ratings even when official calendars omit them.
 
-**How to apply:** keep official-source event importance separate from cautious USD/gold relevance commentary; do not present interpretation as an official rating or market-direction prediction.
+**How to apply:** send Gemini only eligible verified event records; cache estimates by event fingerprint so previews and scheduled posts match. Missing or invalid model output stays unavailable, and estimates never change factual fields or become trading advice.
 
 The weekly official USD/gold calendar is for the Education Suite Announcements topic (group -1003916437804, thread 3) at Monday 12:00 AM WAT. The daily brief remains in the configured Market Analysis channel and also runs at midnight.
 

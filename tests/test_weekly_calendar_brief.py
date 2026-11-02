@@ -231,6 +231,23 @@ class WeeklyCalendarBriefTests(unittest.TestCase):
         self.assertIn("NO CONFIRMATION, NO ENTRY", report)
         self.assertLessEqual(len(report.encode("utf-16-le")) // 2, 4096)
 
+    def test_gemini_event_importance_is_labeled_as_estimated_not_official(self):
+        add_current_sources(self.database, now=NOW)
+        repository = OfficialCalendarRepository(self.database)
+        report = build_weekly_usd_gold_brief(
+            WEEK_START,
+            repository.list_records(),
+            repository.list_source_status(),
+            now=NOW,
+            impact_estimates={
+                "census:construction-2026-11-02": "Low",
+                "bls:jolts-2026-11-03": "High",
+            },
+        )
+        self.assertIn("not official ratings or price-direction predictions", report)
+        self.assertIn("Impact: Low (Gemini estimate; not official)", report)
+        self.assertIn("Impact: High (Gemini estimate; not official)", report)
+
     def test_old_source_records_are_not_used_as_current_week_evidence(self):
         old = datetime(2026, 10, 29, tzinfo=timezone.utc)
         repository = OfficialCalendarRepository(self.database)

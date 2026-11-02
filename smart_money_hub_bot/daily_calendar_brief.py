@@ -23,6 +23,11 @@ from .brief_photo_review import (
     build_verified_image_evidence,
     send_brief_with_optional_photo,
 )
+from .event_impact_estimator import (
+    GeminiEventImpactEstimator,
+    event_impact_label,
+    event_impact_value,
+)
 from .telegram_api import TelegramAPI, TelegramAPIError
 
 logger = logging.getLogger(__name__)
@@ -67,16 +72,14 @@ def _safe_bea_url(value: object) -> bool:
     )
 
 
-def build_daily_usd_gold_brief(
+def verified_daily_events(
     brief_date: date,
     records: list[dict],
-    source_status: list[dict],
     *,
     now: datetime | None = None,
-) -> str:
-    """Render only fresh, offset-verified BEA events for one WAT date."""
+) -> list[tuple[datetime, dict]]:
+    """Select fresh, timezone-verified BEA events eligible for the daily brief."""
     observed = _as_utc(now or datetime.now(timezone.utc))
-    statuses = {str(row.get("source_name")): row for row in source_status}
     verified_events: list[tuple[datetime, dict]] = []
     for record in records:
         if record.get("source_name") != "U.S. Bureau of Economic Analysis":
@@ -95,8 +98,43 @@ def build_daily_usd_gold_brief(
         if not _safe_bea_url(record.get("source_url")):
             continue
         verified_events.append((event_at, record))
-
     verified_events.sort(key=lambda item: item[0])
+    return verified_events
+
+
+def build_daily_usd_gold_brief(
+    brief_date: date,
+    records: list[dict],
+    source_status: list[dict],
+    *,
+    now: datetime | None = None,
+    impact_estimates: dict[str, str] | None = None,
+) -> str:
+    """Render only fresh, offset-verified BEA events for one WAT date."""
+    observed = _as_utc(now or datetime.now(timezone.utc))
+    statuses = {str(row.get("source_name")): row for row in source_status}
+    verified_events = verified_daily_events(brief_date, records, now=observed)
+
+    def event_list(rating: str) -> str:
+        selected = [
+            record
+            for _, record in verified_events
+            if event_impact_value(record, impact_estimates)[0] == rating
+        ]
+        if not selected:
+            return f"No verified event received a Gemini {rating} estimate."
+        summaries = []
+        for record in selected[:8]:
+            _, provenance = event_impact_value(record, impact_estimates)
+            source_label = (
+                "official rating" if provenance == "official" else "Gemini estimate"
+            )
+            summaries.append(
+                f"• {html.escape(str(record.get('title') or 'Official BEA release')[:120])}"
+                f" ({source_label})"
+            )
+        return "\n".join(summaries)
+
     lines = [
         "🗞️ <b>SMART MONEY HUB | DAILY NEWS 📊</b>",
         f"📅 Date: {brief_date.strftime('%A, %d %B %Y')}",
@@ -105,12 +143,13 @@ def build_daily_usd_gold_brief(
         "━━━━━━━━━━━━━━",
         "",
         "🔴 <b>HIGH-IMPACT NEWS</b>",
-        "High-impact ratings are unavailable from the approved official "
-        "calendar sources; no event is labeled high impact.",
+        "Official ratings are used when supplied; otherwise Gemini estimates "
+        "importance from verified event names. Estimates are not official or "
+        "price-direction predictions.",
+        event_list("High"),
         "",
         "🟠 <b>MEDIUM-IMPACT NEWS</b>",
-        "Medium-impact ratings are unavailable from the approved official "
-        "calendar sources; no event is labeled medium impact.",
+        event_list("Medium"),
         "",
         "📅 <b>VERIFIED U.S. RELEASES</b>",
     ]
@@ -130,7 +169,7 @@ def build_daily_usd_gold_brief(
             [
                 f"🕒 <b>{event_at.astimezone(WAT).strftime('%H:%M WAT')}</b>",
                 f"📰 {title}",
-                "🔺 Impact: Unavailable from the official schedule",
+                event_impact_label(record, impact_estimates),
                 "📊 Forecast: Unavailable",
                 "📌 Previous: Unavailable",
                 "Actual: Unavailable from this schedule source",
@@ -407,6 +446,7 @@ class DailyCalendarBriefPublisher:
         admin_id: int | None,
         channel_id: int | None,
         photo_prompts: NewsBriefPhotoPrompts | None = None,
+        impact_estimator: GeminiEventImpactEstimator | None = None,
         source_refresh=fetch_and_store_official_schedules,
     ) -> None:
         self.api = api
@@ -414,6 +454,7 @@ class DailyCalendarBriefPublisher:
         self.admin_id = admin_id
         self.channel_id = channel_id
         self.photo_prompts = photo_prompts
+        self.impact_estimator = impact_estimator
         self.calendar = OfficialCalendarRepository(database_path)
         self.store = DailyCalendarBriefStore(database_path)
         self.source_refresh = source_refresh
@@ -432,11 +473,16 @@ class DailyCalendarBriefPublisher:
         self.source_refresh(self.database_path, now=current)
         statuses = self.calendar.list_source_status()
         records = self.calendar.list_records()
+        eligible_events = verified_daily_events(brief_date, records, now=current)
+        estimates = self._estimate_impacts(
+            [record for _, record in eligible_events]
+        )
         report = build_daily_usd_gold_brief(
             brief_date,
             records,
             statuses,
             now=current,
+            impact_estimates=estimates,
         )
         evidence = build_verified_image_evidence(
             "daily",
@@ -524,11 +570,18 @@ class DailyCalendarBriefPublisher:
                 return "held_source_unverified"
 
             records = self.calendar.list_records()
+            eligible_events = verified_daily_events(
+                local_now.date(), records, now=current
+            )
+            estimates = self._estimate_impacts(
+                [record for _, record in eligible_events]
+            )
             report = build_daily_usd_gold_brief(
                 local_now.date(),
                 records,
                 statuses,
                 now=current,
+                impact_estimates=estimates,
             )
             self._verify_destination()
             if self.photo_prompts is not None:
@@ -861,14 +914,27 @@ class DailyCalendarBriefPublisher:
                 if bea
                 else "bea_source_not_verified"
             )
+        records = self.calendar.list_records()
+        eligible_events = verified_daily_events(brief_date, records, now=current)
+        estimates = self._estimate_impacts([record for _, record in eligible_events])
         report = build_daily_usd_gold_brief(
             brief_date,
-            self.calendar.list_records(),
+            records,
             statuses,
             now=current,
+            impact_estimates=estimates,
         )
         self._verify_destination()
         return report
+
+    def _estimate_impacts(self, records: list[dict]) -> dict[str, str]:
+        if self.impact_estimator is None or not records:
+            return {}
+        try:
+            return self.impact_estimator.estimate(records)
+        except Exception:
+            logger.warning("Daily brief impact estimate failed; keeping rating unavailable.")
+            return {}
 
     def _review_preview(self, brief_date: date, report: str) -> str:
         return (

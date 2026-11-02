@@ -9,6 +9,7 @@ from .bot import SmartMoneyHubBot
 from .channel_gemini import GeminiChannelContentService
 from .coach import RuleBasedCoachService
 from .daily_calendar_brief import DailyCalendarBriefPublisher
+from .event_impact_estimator import GeminiEventImpactEstimator
 from .brief_photo_review import NewsBriefPhotoPrompts
 from .gemini_coach import GeminiCoachService, GEMINI_MODEL
 from .group_features import (
@@ -135,6 +136,16 @@ def main() -> None:
             if admin_id is not None and (daily_brief_enabled or weekly_brief_enabled)
             else None
         )
+        impact_estimator = (
+            GeminiEventImpactEstimator(str(database_path), gemini_api_key)
+            if gemini_api_key and (daily_brief_enabled or weekly_brief_enabled)
+            else None
+        )
+        if impact_estimator is not None:
+            logging.getLogger(__name__).info(
+                "Daily/weekly USD and gold briefs use cached, clearly labeled "
+                "Gemini event-importance estimates when official ratings are absent."
+            )
         weekly_calendar_brief = None
         if daily_brief_enabled:
             if admin_id is None or main_channel_id is None:
@@ -149,6 +160,7 @@ def main() -> None:
                     admin_id=admin_id,
                     channel_id=main_channel_id,
                     photo_prompts=brief_photo_prompts,
+                    impact_estimator=impact_estimator,
                 )
                 logging.getLogger(__name__).info(
                     "Daily USD/Gold official calendar brief enabled for 00:00 WAT."
@@ -167,6 +179,7 @@ def main() -> None:
                     group_id=education_group_id,
                     thread_id=EDUCATION_ANNOUNCEMENTS_THREAD_ID,
                     photo_prompts=brief_photo_prompts,
+                    impact_estimator=impact_estimator,
                 )
                 logging.getLogger(__name__).info(
                     "Weekly USD/Gold official calendar brief enabled for Monday "

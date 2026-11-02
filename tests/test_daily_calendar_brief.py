@@ -158,10 +158,24 @@ class DailyCalendarBriefTests(unittest.TestCase):
         self.assertIn("SMART MONEY HUB", self.api.admin_messages[1]["text"])
         self.assertFalse(publisher.dispatch_photo_prompt(prompt_time))
         self.assertEqual(refresh_count, 1)
-
         self.assertEqual(publisher.dispatch(NOW), "published")
         self.assertEqual(len(self.api.channel_messages), 1)
         self.assertEqual(self.api.send_attempts, 1)
+
+    def test_gemini_event_importance_is_labeled_as_estimated_not_official(self) -> None:
+        add_verified_sources(self.database, NOW)
+        repository = OfficialCalendarRepository(self.database)
+        report = build_daily_usd_gold_brief(
+            BRIEF_DATE,
+            repository.list_records(),
+            repository.list_source_status(),
+            now=NOW,
+            impact_estimates={"bea:gdp-2026-10-29": "High"},
+        )
+        self.assertIn("Official ratings are used when supplied", report)
+        self.assertIn("Gross Domestic Product", report)
+        self.assertIn("Impact: High (Gemini estimate; not official)", report)
+        self.assertIn("No verified event received a Gemini Medium estimate.", report)
 
     def test_publishes_verified_daily_brief_once_and_recovers_after_restart(self) -> None:
         publisher = self.make_publisher()

@@ -30,6 +30,10 @@ from .brief_photo_review import (
     build_verified_image_evidence,
     send_brief_with_optional_photo,
 )
+from .event_impact_estimator import (
+    GeminiEventImpactEstimator,
+    event_impact_label,
+)
 from .telegram_api import TelegramAPI, TelegramAPIError
 
 logger = logging.getLogger(__name__)
@@ -156,14 +160,14 @@ def _event_relevance(title: str) -> str:
     )
 
 
-def build_weekly_usd_gold_brief(
+def verified_weekly_events(
     week_start: date,
     records: list[dict],
     source_status: list[dict],
     *,
     now: datetime,
-) -> str:
-    """Render fresh official records for Monday–Sunday without inferred fields."""
+) -> list[tuple[date, datetime | None, dict]]:
+    """Select only fresh official records eligible for a weekly calendar."""
     if week_start.weekday() != 0:
         raise ValueError("Weekly brief must start on a Monday.")
     now_utc = _utc(now)
@@ -177,13 +181,13 @@ def build_weekly_usd_gold_brief(
             and _fresh_timestamp(status.get("checked_at_utc"), now_utc)
         )
 
-    events: list[tuple[date, datetime | None, dict]] = []
     eligible_sources = {
         "U.S. Bureau of Economic Analysis",
         "U.S. Bureau of Labor Statistics",
         "U.S. Census Bureau",
         "Federal Reserve",
     }
+    events: list[tuple[date, datetime | None, dict]] = []
     for record in records:
         source = str(record.get("source_name") or "")
         if source not in eligible_sources:
@@ -224,14 +228,46 @@ def build_weekly_usd_gold_brief(
             str(item[2].get("title") or ""),
         )
     )
+    return events
+
+
+def build_weekly_usd_gold_brief(
+    week_start: date,
+    records: list[dict],
+    source_status: list[dict],
+    *,
+    now: datetime,
+    impact_estimates: dict[str, str] | None = None,
+) -> str:
+    """Render fresh official records with separate Gemini impact estimates."""
+    if week_start.weekday() != 0:
+        raise ValueError("Weekly brief must start on a Monday.")
+    now_utc = _utc(now)
+    week_end = week_start + timedelta(days=6)
+    statuses = {str(row.get("source_name")): row for row in source_status}
+
+    def source_verified(name: str) -> bool:
+        status = statuses.get(name, {})
+        return (
+            status.get("status") == "verified_schedule"
+            and _fresh_timestamp(status.get("checked_at_utc"), now_utc)
+        )
+
+    events = verified_weekly_events(
+        week_start,
+        records,
+        source_status,
+        now=now_utc,
+    )
     lines = [
         "🌍 <b>SMART MONEY HUB | WEEKLY NEWS OUTLOOK 📊</b>",
         f"📅 Week: {week_start.strftime('%d %b')} – {week_end.strftime('%d %b %Y')}",
         "",
         "━━━━━━━━━━━━━━",
         "",
-        "🔺 Official sources do not provide a consistent impact rating here. "
-        "Impact is marked unavailable rather than inferred.",
+        "🔺 Official ratings are used when supplied; otherwise Gemini estimates "
+        "event importance from verified event names. Estimates are not official "
+        "ratings or price-direction predictions.",
         "",
     ]
 
@@ -279,7 +315,7 @@ def build_weekly_usd_gold_brief(
             lines.extend(
                 [
                     f"📰 <b>{event_date.strftime('%a, %d %b')} — {title}</b> — {timing}",
-                    "🔺 Impact: Unavailable from the official schedule.",
+                    event_impact_label(record, impact_estimates),
                     "📌 Previous: "
                     + html.escape(str(record.get("previous") or "Unavailable"))
                     + " · 📊 Forecast: "
@@ -313,7 +349,7 @@ def build_weekly_usd_gold_brief(
             lines.extend(
                 [
                     f"📰 <b>{title}</b> — {timing}",
-                    "🔺 Impact: Unavailable from the official schedule.",
+                    event_impact_label(record, impact_estimates),
                     f"Source: {_escape_link(source_url, source)}",
                 ]
             )
@@ -351,7 +387,10 @@ def build_weekly_usd_gold_brief(
             "Census times are not converted or used for reminders because its "
             "source timezone is not verified."
         )
-    status_parts.append("Missing figures and impact classifications are not inferred.")
+    status_parts.append(
+        "Missing figures are not inferred; Gemini impact labels are estimates, "
+        "not official ratings."
+    )
 
     lines.extend(
         [
@@ -484,6 +523,7 @@ class WeeklyCalendarBriefPublisher:
         group_id: int | None,
         thread_id: int = EDUCATION_ANNOUNCEMENTS_THREAD_ID,
         photo_prompts: NewsBriefPhotoPrompts | None = None,
+        impact_estimator: GeminiEventImpactEstimator | None = None,
         source_refresh=fetch_and_store_official_schedules,
     ) -> None:
         self.api = api
@@ -492,6 +532,7 @@ class WeeklyCalendarBriefPublisher:
         self.group_id = group_id
         self.thread_id = thread_id
         self.photo_prompts = photo_prompts
+        self.impact_estimator = impact_estimator
         self.calendar = OfficialCalendarRepository(database_path)
         self.store = WeeklyCalendarBriefStore(database_path)
         self.source_refresh = source_refresh
@@ -516,11 +557,18 @@ class WeeklyCalendarBriefPublisher:
             self.source_refresh(self.database_path, now=current)
             statuses = self.calendar.list_source_status()
         records = self.calendar.list_records()
+        eligible_events = verified_weekly_events(
+            brief_date, records, statuses, now=current
+        )
+        estimates = self._estimate_impacts(
+            [record for _, _, record in eligible_events]
+        )
         report = build_weekly_usd_gold_brief(
             brief_date,
             records,
             statuses,
             now=current,
+            impact_estimates=estimates,
         )
         evidence = build_verified_image_evidence(
             "weekly",
@@ -606,11 +654,18 @@ class WeeklyCalendarBriefPublisher:
                 return "held_source_unverified"
 
             records = self.calendar.list_records()
+            eligible_events = verified_weekly_events(
+                week_start, records, statuses, now=current
+            )
+            estimates = self._estimate_impacts(
+                [record for _, _, record in eligible_events]
+            )
             report = build_weekly_usd_gold_brief(
                 week_start,
                 records,
                 statuses,
                 now=current,
+                impact_estimates=estimates,
             )
             self._verify_destination()
             if self.photo_prompts is not None:
@@ -760,6 +815,15 @@ class WeeklyCalendarBriefPublisher:
             if age < timedelta(0) or age > SOURCE_REFRESH_REUSE_WINDOW:
                 return False
         return True
+
+    def _estimate_impacts(self, records: list[dict]) -> dict[str, str]:
+        if self.impact_estimator is None or not records:
+            return {}
+        try:
+            return self.impact_estimator.estimate(records)
+        except Exception:
+            logger.warning("Weekly brief impact estimate failed; keeping rating unavailable.")
+            return {}
 
     def _notify_admin(self, message: str) -> None:
         if self.admin_id is None:
