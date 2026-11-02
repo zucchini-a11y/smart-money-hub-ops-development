@@ -1,4 +1,4 @@
-"""Clearly labeled Gemini estimates of official event importance."""
+"""Internal Gemini estimates of verified economic-event importance."""
 
 from __future__ import annotations
 
@@ -41,16 +41,11 @@ _ENDPOINT = (
 
 
 def event_impact_label(record: dict, estimates: dict[str, str] | None) -> str:
-    """Render an official rating when present; otherwise a labeled Gemini estimate."""
-    official = record.get("provider_impact")
-    verification = str(record.get("verification_status") or "")
-    if isinstance(official, str) and official.strip() and verification in _ALLOWED_VERIFICATION:
-        return f"🔺 Impact: {html.escape(official.strip()[:40])} (official source)"
-
+    """Render the validated rating without provider or model attribution."""
     estimate, _ = event_impact_value(record, estimates)
     if estimate is not None:
-        return f"🔺 Impact: {estimate} (Gemini estimate; not official)"
-    return "🔺 Impact: Unavailable (Gemini estimate not available)"
+        return f"🔺 Impact: {estimate}"
+    return "🔺 Impact: Unavailable"
 
 
 def event_impact_value(

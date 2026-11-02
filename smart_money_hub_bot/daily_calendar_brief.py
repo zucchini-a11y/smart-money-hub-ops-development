@@ -26,7 +26,6 @@ from .brief_photo_review import (
 from .event_impact_estimator import (
     GeminiEventImpactEstimator,
     event_impact_label,
-    event_impact_value,
 )
 from .telegram_api import TelegramAPI, TelegramAPIError
 
@@ -110,153 +109,41 @@ def build_daily_usd_gold_brief(
     now: datetime | None = None,
     impact_estimates: dict[str, str] | None = None,
 ) -> str:
-    """Render only fresh, offset-verified BEA events for one WAT date."""
+    """Render a concise daily list of fresh, offset-verified BEA events."""
     observed = _as_utc(now or datetime.now(timezone.utc))
-    statuses = {str(row.get("source_name")): row for row in source_status}
     verified_events = verified_daily_events(brief_date, records, now=observed)
-
-    def event_list(rating: str) -> str:
-        selected = [
-            record
-            for _, record in verified_events
-            if event_impact_value(record, impact_estimates)[0] == rating
-        ]
-        if not selected:
-            return f"No verified event received a Gemini {rating} estimate."
-        summaries = []
-        for record in selected[:8]:
-            _, provenance = event_impact_value(record, impact_estimates)
-            source_label = (
-                "official rating" if provenance == "official" else "Gemini estimate"
-            )
-            summaries.append(
-                f"• {html.escape(str(record.get('title') or 'Official BEA release')[:120])}"
-                f" ({source_label})"
-            )
-        return "\n".join(summaries)
 
     lines = [
         "🗞️ <b>SMART MONEY HUB | DAILY NEWS 📊</b>",
         f"📅 Date: {brief_date.strftime('%A, %d %B %Y')}",
-        "🌍 Session: Asia (WAT publication window; not live market status)",
         "",
         "━━━━━━━━━━━━━━",
         "",
-        "🔴 <b>HIGH-IMPACT NEWS</b>",
-        "Official ratings are used when supplied; otherwise Gemini estimates "
-        "importance from verified event names. Estimates are not official or "
-        "price-direction predictions.",
-        event_list("High"),
-        "",
-        "🟠 <b>MEDIUM-IMPACT NEWS</b>",
-        event_list("Medium"),
-        "",
-        "📅 <b>VERIFIED U.S. RELEASES</b>",
+        "🇺🇸 <b>U.S. EVENTS</b>",
     ]
     if not verified_events:
-        lines.extend(
-            [
-                "No verified BEA release is scheduled for this date. "
-                "This is not a complete event list: BLS and DOL coverage is not "
-                "verified, and Census times are omitted until its timezone is confirmed.",
-                "",
-            ]
-        )
+        lines.append("No calendar entries listed today.")
     for event_at, record in verified_events:
-        title = html.escape(str(record.get("title") or "Official BEA release"))
-        url = html.escape(str(record["source_url"]), quote=True)
+        title = html.escape(str(record.get("title") or "U.S. release"))
         lines.extend(
             [
-                f"🕒 <b>{event_at.astimezone(WAT).strftime('%H:%M WAT')}</b>",
+                f"🕒 {event_at.astimezone(WAT).strftime('%H:%M WAT')}",
                 f"📰 {title}",
                 event_impact_label(record, impact_estimates),
-                "📊 Forecast: Unavailable",
-                "📌 Previous: Unavailable",
-                "Actual: Unavailable from this schedule source",
-                f'Source: <a href="{url}">U.S. Bureau of Economic Analysis</a>',
             ]
-        )
-        if "personal income and outlays" in str(record.get("title", "")).casefold():
-            lines.append(
-                "Possible relevance: This release includes PCE data; inflation and "
-                "household-spending information may affect rate expectations."
-            )
-        elif "gross domestic product" in str(record.get("title", "")).casefold():
-            lines.append(
-                "Possible relevance: GDP informs the U.S. growth outlook and may "
-                "affect rate expectations."
-            )
-        else:
-            lines.append(
-                "Possible relevance: The release may affect USD and gold through "
-                "economic and rate expectations."
-            )
-        lines.append(
-            "Any market reaction is uncertain and depends on the result and wider context."
         )
         lines.append("")
 
-    census = statuses.get("Census", {})
-    unavailable = []
-    for name in ("BLS", "DOL"):
-        status = statuses.get(name, {})
-        if status.get("status") != "verified_schedule":
-            unavailable.append(name)
-    coverage_parts = ["Verified schedule coverage in this brief: BEA."]
-    if unavailable:
-        coverage_parts.append(
-            f"{' and '.join(unavailable)} schedule coverage is not verified."
-        )
-    if census.get("status") == "verified_schedule":
-        coverage_parts.append(
-            "Census dates are omitted from timed listings because its timezone "
-            "is not verified."
-        )
     lines.extend(
         [
             "━━━━━━━━━━━━━━",
             "",
-            "🥇 <b>GOLD (XAUUSD) WATCH</b>",
-            "📈 Potential bullish factors: No verified result or current market "
-            "data is available to confirm a bullish driver.",
-            "📉 Potential bearish factors: No verified result or current market "
-            "data is available to confirm a bearish driver.",
-            "",
-            "💵 <b>USD WATCH</b>",
-            "Only the verified BEA schedule is included here. Live USD readings, "
-            "Treasury yields, and unscheduled news are not connected.",
-            "",
-            "⚠️ <b>TRADE SMART</b>",
-            "News can cause volatility, spread widening, and sudden price "
-            "movements. Wait for confirmation before entering.",
+            "⚠️ News can bring volatility. Wait for your confirmation before entering.",
             "",
             "<b>NO CONFIRMATION, NO ENTRY. 🎯</b>",
             "",
             "<b>SMART MONEY HUB</b>",
             "Learn • Confirm • Execute • Grow",
-            "",
-            "📌 <b>SOURCES &amp; CHECK TIME</b>",
-        ]
-    )
-    bea_status = statuses.get("BEA", {})
-    checked_at = _parse_utc(bea_status.get("checked_at_utc"))
-    if checked_at is not None:
-        checked_text = checked_at.astimezone(WAT).strftime(
-            "%a, %d %b %Y at %H:%M WAT"
-        )
-    else:
-        checked_text = "not available"
-    if verified_events:
-        source_line = "Official BEA release schedule; source links are shown with events."
-    else:
-        source_line = (
-            'Official <a href="https://www.bea.gov/news/schedule">'
-            "BEA release calendar</a>."
-        )
-    lines.extend(
-        [
-            f"{source_line} Checked: {checked_text}.",
-            "Coverage note: " + " ".join(coverage_parts),
         ]
     )
     report = "\n".join(lines)

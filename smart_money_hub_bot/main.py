@@ -143,8 +143,8 @@ def main() -> None:
         )
         if impact_estimator is not None:
             logging.getLogger(__name__).info(
-                "Daily/weekly USD and gold briefs use cached, clearly labeled "
-                "Gemini event-importance estimates when official ratings are absent."
+                "Daily/weekly USD and gold briefs render plain impact labels; "
+                "source and model details remain internal."
             )
         weekly_calendar_brief = None
         if daily_brief_enabled:

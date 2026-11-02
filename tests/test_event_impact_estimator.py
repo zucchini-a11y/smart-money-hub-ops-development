@@ -107,7 +107,7 @@ class GeminiEventImpactEstimatorTests(unittest.TestCase):
         )
         self.assertEqual(
             event_impact_label(records[0], ratings),
-            "🔺 Impact: High (Gemini estimate; not official)",
+            "🔺 Impact: High",
         )
         self.assertEqual(estimator.estimate(records), ratings)
         self.assertEqual(len(calls), 1)
@@ -217,7 +217,7 @@ class GeminiEventImpactEstimatorTests(unittest.TestCase):
         )
         self.assertEqual(
             event_impact_label(official_events()[0], None),
-            "🔺 Impact: Unavailable (Gemini estimate not available)",
+            "🔺 Impact: Unavailable",
         )
 
     def test_verified_official_rating_takes_precedence_over_estimate(self) -> None:
@@ -228,7 +228,7 @@ class GeminiEventImpactEstimatorTests(unittest.TestCase):
         }
         self.assertEqual(
             event_impact_label(record, {"bea:pce": "Low"}),
-            "🔺 Impact: High (official source)",
+            "🔺 Impact: High",
         )
 
 

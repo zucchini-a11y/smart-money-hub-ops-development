@@ -162,7 +162,7 @@ class DailyCalendarBriefTests(unittest.TestCase):
         self.assertEqual(len(self.api.channel_messages), 1)
         self.assertEqual(self.api.send_attempts, 1)
 
-    def test_gemini_event_importance_is_labeled_as_estimated_not_official(self) -> None:
+    def test_gemini_event_importance_is_rendered_as_a_plain_impact_label(self) -> None:
         add_verified_sources(self.database, NOW)
         repository = OfficialCalendarRepository(self.database)
         report = build_daily_usd_gold_brief(
@@ -172,10 +172,11 @@ class DailyCalendarBriefTests(unittest.TestCase):
             now=NOW,
             impact_estimates={"bea:gdp-2026-10-29": "High"},
         )
-        self.assertIn("Official ratings are used when supplied", report)
+        self.assertIn("U.S. EVENTS", report)
         self.assertIn("Gross Domestic Product", report)
-        self.assertIn("Impact: High (Gemini estimate; not official)", report)
-        self.assertIn("No verified event received a Gemini Medium estimate.", report)
+        self.assertIn("Impact: High", report)
+        self.assertNotIn("Gemini", report)
+        self.assertNotIn("official", report.casefold())
 
     def test_publishes_verified_daily_brief_once_and_recovers_after_restart(self) -> None:
         publisher = self.make_publisher()
@@ -186,19 +187,18 @@ class DailyCalendarBriefTests(unittest.TestCase):
         self.assertEqual(message["chat_id"], MARKET_ANALYSIS_CHANNEL_ID)
         self.assertEqual(message["parse_mode"], "HTML")
         self.assertIn("SMART MONEY HUB | DAILY NEWS", message["text"])
-        self.assertIn("HIGH-IMPACT NEWS", message["text"])
-        self.assertIn("MEDIUM-IMPACT NEWS", message["text"])
-        self.assertIn("GOLD (XAUUSD) WATCH", message["text"])
-        self.assertIn("VERIFIED U.S. RELEASES", message["text"])
-        self.assertIn("SOURCES &amp; CHECK TIME", message["text"])
+        self.assertIn("U.S. EVENTS", message["text"])
         self.assertIn("13:30 WAT", message["text"])
         self.assertIn("Gross Domestic Product", message["text"])
-        self.assertIn("Forecast: Unavailable", message["text"])
+        self.assertIn("Impact: Unavailable", message["text"])
         self.assertNotIn("HTTP 403", message["text"])
-        self.assertIn("BLS and DOL schedule coverage is not verified", message["text"])
+        self.assertNotIn("BLS", message["text"])
+        self.assertNotIn("DOL", message["text"])
         self.assertNotIn("8:30 AM", message["text"])
-        self.assertIn("Census dates are omitted from timed listings", message["text"])
-        self.assertIn("Checked: Thu, 29 Oct 2026 at 00:05 WAT", message["text"])
+        self.assertNotIn("Source:", message["text"])
+        self.assertNotIn("Forecast:", message["text"])
+        self.assertNotIn("Gemini", message["text"])
+        self.assertNotIn("official", message["text"].casefold())
         self.assertLessEqual(
             len(message["text"].encode("utf-16-le")) // 2, 4096
         )
@@ -354,9 +354,10 @@ class DailyCalendarBriefTests(unittest.TestCase):
 
         self.assertIn("&lt;GDP &amp; data&gt;", preview)
         self.assertNotIn("<GDP & data>", preview)
-        self.assertIn("Previous: Unavailable", preview)
-        self.assertIn("Forecast: Unavailable", preview)
-        self.assertIn("Actual: Unavailable", preview)
+        self.assertIn("Impact: Unavailable", preview)
+        self.assertNotIn("Previous:", preview)
+        self.assertNotIn("Forecast:", preview)
+        self.assertNotIn("Actual:", preview)
         self.assertIn("NO CONFIRMATION, NO ENTRY.", preview)
 
     def test_empty_calendar_brief_is_clear_and_does_not_pose_as_market_news(self) -> None:
@@ -373,13 +374,11 @@ class DailyCalendarBriefTests(unittest.TestCase):
         )
 
         self.assertIn("SMART MONEY HUB | DAILY NEWS", preview)
-        self.assertIn("HIGH-IMPACT NEWS", preview)
-        self.assertIn("MEDIUM-IMPACT NEWS", preview)
-        self.assertIn("GOLD (XAUUSD) WATCH", preview)
-        self.assertIn("VERIFIED U.S. RELEASES", preview)
-        self.assertIn("No verified BEA release is scheduled for this date.", preview)
-        self.assertIn("No verified result or current market data", preview)
-        self.assertIn("Census times are omitted until its timezone is confirmed", preview)
+        self.assertIn("U.S. EVENTS", preview)
+        self.assertIn("No calendar entries listed today.", preview)
+        self.assertNotIn("BLS", preview)
+        self.assertNotIn("DOL", preview)
+        self.assertNotIn("Census", preview)
         self.assertNotIn("HTTP 403", preview)
         self.assertIn("NO CONFIRMATION, NO ENTRY.", preview)
 

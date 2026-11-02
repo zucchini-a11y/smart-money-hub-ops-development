@@ -223,15 +223,19 @@ class WeeklyCalendarBriefTests(unittest.TestCase):
         self.assertIn("06 Nov", report)
         self.assertIn("14:30 WAT", report)
         self.assertIn("Construction Spending", report)
-        self.assertIn("Time: Unavailable in WAT", report)
+        self.assertNotIn("Time:", report)
         self.assertNotIn("10:00 AM", report)
         self.assertIn("Impact: Unavailable", report)
-        self.assertIn("Previous: Unavailable · 📊 Forecast: Unavailable", report)
-        self.assertIn("DOL schedule coverage is unavailable", report)
+        self.assertNotIn("Previous:", report)
+        self.assertNotIn("Forecast:", report)
+        self.assertNotIn("DOL", report)
+        self.assertNotIn("Source:", report)
+        self.assertNotIn("Gemini", report)
+        self.assertNotIn("official", report.casefold())
         self.assertIn("NO CONFIRMATION, NO ENTRY", report)
         self.assertLessEqual(len(report.encode("utf-16-le")) // 2, 4096)
 
-    def test_gemini_event_importance_is_labeled_as_estimated_not_official(self):
+    def test_gemini_event_importance_is_rendered_as_a_plain_impact_label(self):
         add_current_sources(self.database, now=NOW)
         repository = OfficialCalendarRepository(self.database)
         report = build_weekly_usd_gold_brief(
@@ -244,9 +248,10 @@ class WeeklyCalendarBriefTests(unittest.TestCase):
                 "bls:jolts-2026-11-03": "High",
             },
         )
-        self.assertIn("not official ratings or price-direction predictions", report)
-        self.assertIn("Impact: Low (Gemini estimate; not official)", report)
-        self.assertIn("Impact: High (Gemini estimate; not official)", report)
+        self.assertIn("Impact: Low", report)
+        self.assertIn("Impact: High", report)
+        self.assertNotIn("Gemini", report)
+        self.assertNotIn("official", report.casefold())
 
     def test_old_source_records_are_not_used_as_current_week_evidence(self):
         old = datetime(2026, 10, 29, tzinfo=timezone.utc)

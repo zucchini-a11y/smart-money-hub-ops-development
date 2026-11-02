@@ -150,7 +150,7 @@ class NewsBriefPhotoPromptTests(unittest.TestCase):
             self.image_analyzer.calls[0][2][0]["external_id"],
             "bea:event-1",
         )
-        self.assertIn("IMAGE-RELATED VERIFIED CALENDAR ITEMS", self.api.admin_messages[-1]["text"])
+        self.assertIn("RELATED EVENTS", self.api.admin_messages[-1]["text"])
 
         restarted = NewsBriefPhotoPrompts(
             self.api,
@@ -177,7 +177,7 @@ class NewsBriefPhotoPromptTests(unittest.TestCase):
             now=datetime(2026, 10, 28, 22, 33, tzinfo=timezone.utc),
         )
         self.assertEqual(photo_id, "telegram-photo-file-id")
-        self.assertIn("IMAGE-RELATED VERIFIED CALENDAR ITEMS", report)
+        self.assertIn("RELATED EVENTS", report)
         restarted.mark_published(
             "daily",
             self.target_date,
@@ -321,14 +321,19 @@ class NewsBriefPhotoPromptTests(unittest.TestCase):
         self.assertEqual(self.api.sent_text[0]["text"], "<b>Verified report</b>")
         self.assertEqual(self.api.sent_photos, [])
 
-    def test_verified_image_highlight_escapes_source_text_and_obeys_message_limit(self) -> None:
+    def test_verified_image_highlight_uses_concise_public_format(self) -> None:
+        report = self.preview + "\n🔺 Impact: High"
         highlighted = append_verified_image_highlights(
-            self.preview,
+            report,
             self.evidence,
             ["bea:event-1"],
         )
         self.assertIn("Personal Income and Outlays", highlighted)
-        self.assertIn("Source: <a href=", highlighted)
+        self.assertIn("Impact: High", highlighted)
+        self.assertIn("13:30 WAT", highlighted)
+        self.assertNotIn("Source:", highlighted)
+        self.assertNotIn("Gemini", highlighted)
+        self.assertNotIn("official", highlighted.casefold())
         self.assertNotIn("image-bytes", highlighted)
         self.assertLessEqual(len(highlighted.encode("utf-16-le")) // 2, 4096)
 

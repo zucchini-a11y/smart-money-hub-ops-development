@@ -87,13 +87,6 @@ def _safe_source_url(value: object) -> bool:
     )
 
 
-def _escape_link(url: str, label: str) -> str:
-    return (
-        f'<a href="{html.escape(url, quote=True)}">'
-        f"{html.escape(label)}</a>"
-    )
-
-
 def _event_date(record: dict) -> date | None:
     event_at = _parse_utc(record.get("event_at_utc"))
     if event_at is not None:
@@ -117,47 +110,6 @@ def _event_date(record: dict) -> date | None:
         except ValueError:
             return None
     return None
-
-
-def _event_relevance(title: str) -> str:
-    normalized = title.casefold()
-    if any(term in normalized for term in ("cpi", "pce", "ppi", "inflation", "price index")):
-        return (
-            "Inflation data can affect policy expectations, USD and gold; "
-            "the market response is not predetermined."
-        )
-    if any(
-        term in normalized
-        for term in (
-            "employment",
-            "payroll",
-            "job openings",
-            "jobless claims",
-            "labor",
-            "productivity",
-        )
-    ):
-        return (
-            "Labor conditions can influence policy expectations, USD and gold; "
-            "the reaction may differ from the headline."
-        )
-    if any(
-        term in normalized
-        for term in (
-            "fomc",
-            "federal reserve",
-            "interest rate",
-            "personal income",
-        )
-    ):
-        return (
-            "Policy or spending information can shape USD and gold expectations; "
-            "outcomes and reactions remain uncertain."
-        )
-    return (
-        "Growth, demand, or trade information may affect the USD outlook and "
-        "gold context; no direction is guaranteed."
-    )
 
 
 def verified_weekly_events(
@@ -239,19 +191,11 @@ def build_weekly_usd_gold_brief(
     now: datetime,
     impact_estimates: dict[str, str] | None = None,
 ) -> str:
-    """Render fresh official records with separate Gemini impact estimates."""
+    """Render a concise weekly event list with plain impact labels."""
     if week_start.weekday() != 0:
         raise ValueError("Weekly brief must start on a Monday.")
     now_utc = _utc(now)
     week_end = week_start + timedelta(days=6)
-    statuses = {str(row.get("source_name")): row for row in source_status}
-
-    def source_verified(name: str) -> bool:
-        status = statuses.get(name, {})
-        return (
-            status.get("status") == "verified_schedule"
-            and _fresh_timestamp(status.get("checked_at_utc"), now_utc)
-        )
 
     events = verified_weekly_events(
         week_start,
@@ -264,11 +208,6 @@ def build_weekly_usd_gold_brief(
         f"📅 Week: {week_start.strftime('%d %b')} – {week_end.strftime('%d %b %Y')}",
         "",
         "━━━━━━━━━━━━━━",
-        "",
-        "🔺 Official ratings are used when supplied; otherwise Gemini estimates "
-        "event importance from verified event names. Estimates are not official "
-        "ratings or price-direction predictions.",
-        "",
     ]
 
     by_date: dict[date, list[tuple[datetime | None, dict]]] = {}
@@ -287,45 +226,20 @@ def build_weekly_usd_gold_brief(
         )
         daily_events = by_date.get(event_date, [])
         if not daily_events:
-            lines.append("No fresh, verified U.S. release listed for this day.")
+            lines.append("No calendar entries listed.")
         for event_at, record in daily_events:
-            title_text = str(record.get("title") or "Official U.S. release")
+            title_text = str(record.get("title") or "U.S. release")
             title = html.escape(title_text)
-            source = str(record.get("source_name") or "Official source")
-            source_url = str(record.get("source_url") or "")
-            label = {
-                "U.S. Bureau of Economic Analysis": "BEA",
-                "U.S. Bureau of Labor Statistics": "BLS",
-                "U.S. Census Bureau": "U.S. Census Bureau",
-                "Federal Reserve": "Federal Reserve",
-            }.get(source, source)
-
-            if source == "U.S. Census Bureau":
-                timing = "Time: Unavailable in WAT; source timezone is not verified."
-            elif source == "Federal Reserve":
-                timing = "Meeting window; no decision release time is stated."
-            elif event_at is not None:
-                timing = (
-                    f"{event_at.astimezone(WAT).strftime('%H:%M WAT')} "
-                    "(converted from the source’s verified timezone)"
-                )
-            else:
-                timing = "Time: Unavailable; source timezone is not verified."
-
+            date_text = event_date.strftime("%a, %d %b")
+            time_text = (
+                f" · {event_at.astimezone(WAT).strftime('%H:%M WAT')}"
+                if event_at is not None
+                else ""
+            )
             lines.extend(
                 [
-                    f"📰 <b>{event_date.strftime('%a, %d %b')} — {title}</b> — {timing}",
+                    f"📰 <b>{date_text} — {title}</b>{time_text}",
                     event_impact_label(record, impact_estimates),
-                    "📌 Previous: "
-                    + html.escape(str(record.get("previous") or "Unavailable"))
-                    + " · 📊 Forecast: "
-                    + html.escape(str(record.get("forecast") or "Unavailable"))
-                    + " · Actual: "
-                    + html.escape(
-                        str(record.get("actual") or "Unavailable from schedule source")
-                    ),
-                    f"Possible relevance: {_event_relevance(title_text)}",
-                    f"Source: {_escape_link(source_url, label)}",
                 ]
             )
         lines.append("")
@@ -338,88 +252,29 @@ def build_weekly_usd_gold_brief(
     if weekend_events:
         lines.extend(["━━━━━━━━━━━━━━", "", "🗓️ <b>WEEKEND</b>"])
         for event_date, event_at, record in weekend_events:
-            title = html.escape(str(record.get("title") or "Official U.S. release"))
-            timing = (
-                f"{event_at.astimezone(WAT).strftime('%H:%M WAT')}"
+            title = html.escape(str(record.get("title") or "U.S. release"))
+            time_text = (
+                f" · {event_at.astimezone(WAT).strftime('%H:%M WAT')}"
                 if event_at is not None
-                else "Time unavailable in WAT"
+                else ""
             )
-            source = str(record.get("source_name") or "Official source")
-            source_url = str(record.get("source_url") or "")
             lines.extend(
                 [
-                    f"📰 <b>{title}</b> — {timing}",
+                    f"📰 <b>{event_date.strftime('%a, %d %b')} — {title}</b>{time_text}",
                     event_impact_label(record, impact_estimates),
-                    f"Source: {_escape_link(source_url, source)}",
                 ]
             )
-
-    source_checks = [
-        (name, statuses.get(name, {}))
-        for name in ("BEA", "BLS", "Census", "Federal Reserve", "DOL")
-    ]
-    checked_times = [
-        parsed
-        for _, status in source_checks
-        if (parsed := _parse_utc(status.get("checked_at_utc"))) is not None
-        and timedelta(0) <= now_utc - parsed <= CALENDAR_STALE_AFTER
-    ]
-    checked_label = (
-        max(checked_times).astimezone(WAT).strftime("%a, %d %b at %H:%M WAT")
-        if checked_times
-        else "not available"
-    )
-    unverified = [
-        name
-        for name, status in source_checks
-        if not (
-            status.get("status") == "verified_schedule"
-            and _fresh_timestamp(status.get("checked_at_utc"), now_utc)
-        )
-    ]
-    status_parts = []
-    if unverified:
-        status_parts.append(
-            f"{', '.join(unverified)} schedule coverage is unavailable or not verified."
-        )
-    if source_verified("Census"):
-        status_parts.append(
-            "Census times are not converted or used for reminders because its "
-            "source timezone is not verified."
-        )
-    status_parts.append(
-        "Missing figures are not inferred; Gemini impact labels are estimates, "
-        "not official ratings."
-    )
 
     lines.extend(
         [
             "━━━━━━━━━━━━━━",
             "",
-            "🥇 <b>GOLD (XAUUSD) — WEEKLY WATCH</b>",
-            "📈 Bullish drivers: No verified current market data is connected to "
-            "confirm a bullish driver.",
-            "📉 Bearish drivers: No verified current market data is connected to "
-            "confirm a bearish driver.",
-            "",
-            "💵 <b>USD / FED WATCH</b>",
-            "Only listed official U.S. calendar events are included. Live rate "
-            "expectations, Treasury yields, and current USD readings are unavailable.",
-            "",
-            "⚠️ <b>OUR APPROACH</b>",
-            "• Mark key POIs before major releases.",
-            "• Avoid impulsive entries during news spikes.",
-            "• Wait for liquidity, displacement, and confirmation.",
-            "• Manage risk and respect your SL.",
+            "⚠️ News can bring volatility. Wait for your confirmation before entering.",
             "",
             "<b>NO CONFIRMATION, NO ENTRY. 🎯</b>",
             "",
             "<b>SMART MONEY HUB</b>",
             "Learn • Confirm • Execute • Grow",
-            "",
-            "📌 <b>SOURCE STATUS</b>",
-            f"Official calendars checked: {checked_label}.",
-            " ".join(status_parts),
         ]
     )
     report = "\n".join(lines)

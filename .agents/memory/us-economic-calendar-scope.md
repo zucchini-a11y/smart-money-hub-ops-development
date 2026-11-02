@@ -3,19 +3,19 @@ name: U.S. economic calendar scope
 description: The selected source boundary for Smart Money Hub's USD and gold event calendar.
 ---
 
-For the USD/XAU daily brief, retain the approved VAYDA Smart Money Hub template: USD & Macro Update, Gold Impact, Today's High-Impact Events, What Traders Should Watch, sources/check time, and NO CONFIRMATION, NO ENTRY. Use official U.S. records only, omit ISM and general/geopolitical headlines, and keep BLS/DOL unavailable until their sources are verified. Never infer missing values or timezones. If no significant verified development is available, say so without inventing news.
+Keep public USD/gold calendar briefs concise: list events and plain impact labels, and show a WAT time only when verified. Do not expose Gemini/provider attribution, source-health notes, links, or unavailable-field explanations in the channel post. Keep source provenance and health available in the admin-only review view. Use approved U.S. sources only, omit ISM and general/geopolitical headlines, and do not infer missing facts or timezones.
 
 The daily brief is approved for 12:00 AM WAT delivery to the configured Market Analysis channel. Do not change that route or schedule without approval. The longer-term market-awareness scope may expand to Fed policy, Treasury data, and other instruments only when reliable sources and reuse rights are confirmed. GDELT is discovery only; leads require credible verification.
 
-**Why:** the user approved the daily brief and its established template, while requiring the content to remain source-backed and honest about unavailable news or calendar fields.
+**Why:** the user wants a simple public event calendar with impact labels and does not want technical source details in the channel.
 
-**How to apply:** only describe facts supported by a verified source and timestamp. Hold affected items when a source is blocked, stale, timezone-ambiguous, or lacks redistribution permission; never route them to Market Analysis by default or imply automated trading.
+**How to apply:** use verified source records internally; omit unverified times, figures, and events from public display. Keep the full verification state in the admin view and never imply automated trading.
 
-For economic-event impact labels, use a verified official rating when explicitly supplied. Otherwise Gemini may estimate High, Medium, Low, or Uncertain event importance from the verified event name, source, and date. Clearly label it as a Gemini estimate, not an official rating. Never infer a bullish or bearish price direction.
+For economic-event impact labels, use a verified source rating when explicitly supplied. Otherwise Gemini may estimate High, Medium, Low, or Uncertain event importance from the verified event name, source, and date. Display only the plain impact value publicly; keep the model/provider provenance internal. Never infer a bullish or bearish price direction.
 
-**Why:** the user asked Gemini to provide impact ratings even when official calendars omit them.
+**Why:** the user chose plain impact labels without Gemini or official-rating wording in channel posts.
 
-**How to apply:** send Gemini only eligible verified event records; cache estimates by event fingerprint so previews and scheduled posts match. Missing or invalid model output stays unavailable, and estimates never change factual fields or become trading advice.
+**How to apply:** send Gemini only eligible verified event records; cache estimates by event fingerprint so previews and scheduled posts match. Missing or invalid output remains unavailable, and estimates never change factual fields or become trading advice.
 
 The weekly official USD/gold calendar is for the Education Suite Announcements topic (group -1003916437804, thread 3) at Monday 12:00 AM WAT. The daily brief remains in the configured Market Analysis channel and also runs at midnight.
 

@@ -182,36 +182,32 @@ def append_verified_image_highlights(
         "",
         "━━━━━━━━━━━━━━",
         "",
-        "📷 <b>IMAGE-RELATED VERIFIED CALENDAR ITEMS</b>",
-        "Gemini matched the image to these official records. Details below come "
-        "from the linked official sources, not from the image.",
+        "📷 <b>RELATED EVENTS</b>",
     ]
     for item in rows:
-        title = html.escape(str(item.get("title") or "Official U.S. release")[:240])
+        title = html.escape(str(item.get("title") or "U.S. release")[:240])
         event_date = _event_date(item)
-        date_text = (
-            event_date.strftime("%a, %d %b %Y")
-            if event_date
-            else "Date unavailable"
-        )
+        if event_date is None:
+            continue
+        date_text = event_date.strftime("%a, %d %b %Y")
         event_at = _parse_timestamp(item.get("event_at_utc"))
         timezone_status = str(item.get("timezone_status") or "")
         timezone_verified = (
             timezone_status == "verified_explicit_utc_offset"
             or timezone_status.startswith("verified_source_timezone:")
         )
-        if event_at is not None and timezone_verified:
-            time_text = event_at.astimezone(WAT).strftime("%H:%M WAT")
-        else:
-            time_text = "time unavailable"
-        source_name = html.escape(str(item.get("source_name") or "Official source")[:80])
-        source_url = html.escape(str(item.get("source_url")), quote=True)
+        time_text = (
+            f" · {event_at.astimezone(WAT).strftime('%H:%M WAT')}"
+            if event_at is not None and timezone_verified
+            else ""
+        )
         lines.extend(
             [
-                f"• {title} — {date_text}, {time_text}",
-                f'Source: <a href="{source_url}">{source_name}</a>',
+                f"• {date_text} — {title}{time_text}",
             ]
         )
+    if len(lines) == 4:
+        return report
     updated = report.rstrip() + "\n" + "\n".join(lines)
     if _utf16_length(updated) > _MAX_TELEGRAM_MESSAGE_UTF16:
         return report
@@ -677,10 +673,8 @@ class NewsBriefPhotoPrompts:
             return True
         self.api.send_message(
             chat_id,
-            "Gemini matched the picture to verified official calendar records. "
-            "The revised preview follows; only linked official records supply its "
-            "facts. The picture will be sent separately if those records still "
-            "pass the final checks.",
+            "The picture was matched to calendar events. The revised preview "
+            "follows; its event details remain limited to verified calendar data.",
         )
         self.api.send_message(chat_id, "UPDATED PREVIEW — NOT PUBLISHED")
         self.api.send_message(chat_id, updated_preview, parse_mode="HTML")
