@@ -1185,13 +1185,12 @@ class ChannelPostManager:
             now_utc=now,
             allow_automatic_retries=True,
         )
-        if generated.get("status") == "draft":
-            self._send_preview(generated, now)
         return generated
 
     def _create_post(
-        self, target_date: date, *, now_utc: datetime
+        self, target_date: date, *, now_utc: datetime | None = None
     ) -> dict[str, Any] | None:
+        now_utc = self._as_utc(now_utc or datetime.now(timezone.utc))
         settings = self.store.get_channel_posting_settings()
         sequence = int(settings["next_category_index"])
         requested_category = next_category(CHANNEL_CONTENT_CATEGORIES, sequence)

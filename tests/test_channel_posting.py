@@ -770,11 +770,65 @@ class ChannelPostingTests(unittest.TestCase):
         self.assertEqual(len(self.writer.calls), 2)
         self.assertEqual(self.api.channel_messages, [])
         self.assertTrue(saved["preview_sent_at"])
+        self.assertEqual(
+            sum("CHANNEL POST —" in message["text"] for message in self.api.messages),
+            1,
+        )
 
         # Repeated scheduler ticks after success reuse the same saved draft.
         restarted_manager.dispatch_due(local_time(26, 9, 20))
         self.assertEqual(len(self.writer.calls), 2)
         self.assertEqual(self.api.channel_messages, [])
+        self.assertEqual(
+            sum("CHANNEL POST —" in message["text"] for message in self.api.messages),
+            1,
+        )
+
+    def test_interrupted_generation_retry_is_recovered_after_restart(self) -> None:
+        self.writer.failures.append(
+            GeminiChannelGenerationError("gemini_timeout")
+        )
+        self.manager.dispatch_due(local_time(26, 9, 15))
+        post = self.store.get_scheduled_channel_post("2026-10-26")
+        assert post is not None
+
+        claimed = self.store.claim_channel_post_generation_retry(
+            int(post["id"]),
+            at=local_time(26, 9, 20).astimezone(ZoneInfo("UTC")).isoformat(),
+            lease_until=local_time(26, 9, 22).astimezone(ZoneInfo("UTC")).isoformat(),
+            max_retries=2,
+        )
+        assert claimed is not None
+        self.assertEqual(claimed["generation_retry_count"], 1)
+
+        restarted_store = Repository(
+            f"{self.temp_dir.name}/channel-posts.sqlite3"
+        )
+        restarted_manager = ChannelPostManager(
+            self.api,
+            restarted_store,
+            ADMIN_ID,
+            CHANNEL_ID,
+            channel_writer=self.writer,
+        )
+        restarted_manager.dispatch_due(local_time(26, 9, 23))
+        recovered = restarted_store.get_channel_post(post["id"])
+        assert recovered is not None
+        self.assertEqual(recovered["status"], "failed")
+        self.assertEqual(recovered["generation_retry_count"], 1)
+        self.assertEqual(
+            recovered["generation_retry_at"],
+            local_time(26, 9, 38).astimezone(ZoneInfo("UTC")).isoformat(),
+        )
+
+        restarted_manager.dispatch_due(local_time(26, 9, 38))
+        completed = restarted_store.get_channel_post(post["id"])
+        assert completed is not None
+        self.assertEqual(completed["status"], "draft")
+        self.assertEqual(completed["generation_retry_count"], 2)
+        self.assertEqual(len(self.writer.calls), 2)
+        self.assertEqual(self.api.channel_messages, [])
+        self.assertTrue(completed["preview_sent_at"])
 
     def test_scheduled_gemini_timeout_retries_are_bounded(self) -> None:
         self.writer.failures.extend(
@@ -1803,7 +1857,7 @@ class ChannelPostingTests(unittest.TestCase):
     def test_timeout_notice_does_not_claim_an_unsaved_draft_exists(self) -> None:
         message = describe_channel_post_rejection("", "gemini_timeout")
         self.assertIn("No publishable draft was saved", message)
-        self.assertIn("one retry", message)
+        self.assertIn("request timed out", message)
         self.assertNotIn("review the saved draft", message.casefold())
 
     def test_unverified_current_market_claim_is_rejected(self) -> None:
