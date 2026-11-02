@@ -376,6 +376,23 @@ class EducationTopicPromotionTests(unittest.TestCase):
             )
         )
 
+    def test_manual_promotion_on_class_day_also_advertises_8pm_class(self) -> None:
+        class_day_now = datetime(2026, 11, 2, 17, 0, tzinfo=timezone.utc)
+        self.manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            True,
+            "admin:education_topic_promo:create",
+            now=class_day_now,
+        )
+
+        saved = self.manager.store.get(1)
+        self.assertIsNotNone(saved)
+        self.assertEqual(self.writer.calls[0]["promotion_type"], "scheduled_class")
+        self.assertEqual(self.writer.calls[0]["weekday"], "Monday")
+        self.assertIn("Monday and Thursday at 8:00 PM WAT", saved["body"])
+        self.assertIn("main Smart Money Hub channel", saved["body"])
+
     def test_gemini_rate_limit_fails_closed_and_is_logged(self) -> None:
         class RateLimitedWriter:
             model = "gemini-3.5-flash-lite"
@@ -891,6 +908,8 @@ class EducationTopicPromotionTests(unittest.TestCase):
         self.assertIn("first non-empty line", instruction)
         self.assertIn("12 words maximum", instruction)
         self.assertIn("Do not begin with a greeting, preamble, label", instruction)
+        self.assertIn("This reminder is required", instruction)
+        self.assertIn("Monday and Thursday at 8:00 PM WAT", instruction)
 
     def test_only_explicit_approval_publishes_once_to_market_analysis_topic(self) -> None:
         row, approve_callback = self.create_review()
