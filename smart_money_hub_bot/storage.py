@@ -1807,6 +1807,24 @@ class Repository:
         finally:
             connection.close()
 
+    def recent_education_poll_attempts(self, *, limit: int = 5) -> list[dict[str, Any]]:
+        """Return recent poll run outcomes without poll content or member data."""
+        safe_limit = max(1, min(int(limit), 20))
+        connection = self._connect()
+        try:
+            rows = connection.execute(
+                """
+                SELECT source, scheduled_at, status, failure_category
+                FROM education_poll_runs
+                ORDER BY scheduled_at DESC, id DESC
+                LIMIT ?
+                """,
+                (safe_limit,),
+            ).fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            connection.close()
+
     def record_education_group_question(
         self,
         *,

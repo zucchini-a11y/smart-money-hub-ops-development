@@ -436,6 +436,12 @@ class SmartMoneyHubBot:
             channel_writer,
             education_group_id=education_group_id,
             daily_brief_enabled=daily_calendar_brief is not None,
+            weekly_brief_store=(
+                weekly_calendar_brief.store
+                if weekly_calendar_brief is not None
+                else None
+            ),
+            weekly_brief_enabled=weekly_calendar_brief is not None,
             education_market_analysis_topic_link=education_market_analysis_topic_link,
         )
         self.education_polls = EducationPollPublisher(

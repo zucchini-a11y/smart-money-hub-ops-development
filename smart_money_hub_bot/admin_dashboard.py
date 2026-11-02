@@ -139,6 +139,23 @@ ADMIN_MENU_TEXT_ACTIONS = {
     "what posts are held": "admin:held_posts",
     "show held posts": "admin:held_posts",
     "check held posts": "admin:held_posts",
+    "status everything": "admin:status:all",
+    "full bot status": "admin:status:all",
+    "check everything": "admin:status:all",
+    "show all status": "admin:status:all",
+    "give me feedback of everything": "admin:status:all",
+    "feedback of everything": "admin:status:all",
+    "any issues": "admin:status:all",
+    "are there any issues": "admin:status:all",
+    "what is wrong with the bot": "admin:status:all",
+    "what is wrong with my bots": "admin:status:all",
+    "check my bot": "admin:status:all",
+    "check my bots": "admin:status:all",
+    "check for other things": "admin:status:all",
+    "check for issues": "admin:status:all",
+    "list any issues": "admin:status:all",
+    "anything broken": "admin:status:all",
+    "how is everything": "admin:status:all",
     "education morning posts": "admin:group_morning",
     "education morning schedule": "admin:group_morning",
     "morning post schedule": "admin:group_morning",
@@ -216,6 +233,8 @@ class AdminDashboard:
         calendar_review: OfficialCalendarReadRepository | None = None,
         education_group_id: int | None = None,
         daily_brief_enabled: bool = False,
+        weekly_brief_store: Any | None = None,
+        weekly_brief_enabled: bool = False,
         education_market_analysis_topic_link: str | None = None,
     ) -> None:
         self.api = api
@@ -223,6 +242,9 @@ class AdminDashboard:
         self.admin_id = admin_id
         self.main_channel_id = main_channel_id
         self.education_group_id = education_group_id
+        self.daily_brief_enabled = daily_brief_enabled
+        self.weekly_brief_store = weekly_brief_store
+        self.weekly_brief_enabled = weekly_brief_enabled
         self.calendar_review = calendar_review or OfficialCalendarReadRepository(
             store.database_path
         )
@@ -966,6 +988,9 @@ class AdminDashboard:
 
         if data == "admin:held_posts":
             self._show_held_posts(chat_id)
+            return
+        if data == "admin:status:all":
+            self._show_full_status(chat_id)
             return
         if session_open_actions:
             self.channel_posts.cancel_edit(telegram_id)
@@ -2169,6 +2194,208 @@ class AdminDashboard:
             {"inline_keyboard": buttons},
             parse_mode="HTML",
         )
+
+    def _show_full_status(self, chat_id: int) -> None:
+        """Provide a read-only operational summary from persisted bot state."""
+        now_utc = datetime.now(timezone.utc)
+        local_now = now_utc.astimezone(ZoneInfo("Africa/Lagos"))
+        today = local_now.date()
+
+        channel_settings = self.store.get_channel_posting_settings()
+        channel_queue = [
+            post
+            for post in self.store.list_channel_posts(limit=1000, pending_only=True)
+            if self.main_channel_id is None
+            or int(post.get("destination_chat_id") or 0) == int(self.main_channel_id)
+        ]
+        held_channel = [
+            post
+            for post in channel_queue
+            if str(post.get("status") or "") in {"failed", "retry_wait"}
+            or str(post.get("review_status") or "")
+            in {"missed", "delivery_failed"}
+        ]
+
+        session_upcoming = self.session_open_posts.store.list_upcoming(
+            start_utc=now_utc, limit=5
+        )
+        session_recent = self.session_open_posts.store.list_recent(limit=30)
+        session_held = [
+            post
+            for post in session_recent
+            if str(post.get("status") or "") == "failed"
+            or str(post.get("review_status") or "")
+            in {"missed", "delivery_failed"}
+        ]
+
+        morning_run = self.education_morning_store.get(today.isoformat())
+        poll_attempts = self.store.recent_education_poll_attempts(limit=3)
+        pending_polls = self.store.pending_education_poll_runs(limit=20)
+        promo_settings = self.education_topic_promotions.store.settings()
+        recent_promos = self.education_topic_promotions.store.recent(limit=3)
+
+        daily_run = (
+            self.channel_posts.daily_brief_store.get(today)
+            if self.daily_brief_enabled and self.channel_posts.daily_brief_store
+            else None
+        )
+        week_start = today - timedelta(days=today.weekday())
+        weekly_run = (
+            self.weekly_brief_store.get(week_start)
+            if self.weekly_brief_enabled and self.weekly_brief_store is not None
+            else None
+        )
+
+        content_repository = self.community_content.repository
+        schedules = content_repository.list_schedules()
+        enabled_schedules = [
+            schedule
+            for schedule in schedules
+            if str(schedule.get("enabled", "0")).casefold() in {"1", "true", "yes"}
+        ]
+        drafts = content_repository.list_drafts(limit=100)
+        draft_counts: dict[str, int] = {}
+        for draft in drafts:
+            state = str(draft.get("status") or "unknown")
+            draft_counts[state] = draft_counts.get(state, 0) + 1
+
+        source_statuses = self.calendar_review.list_source_status()
+        if not source_statuses:
+            source_summary = "No saved source checks"
+            source_problems: list[str] = []
+        else:
+            source_problems = [
+                str(item.get("source_name") or "Source")
+                for item in source_statuses
+                if str(item.get("status") or "").casefold()
+                not in {"success", "ok", "healthy"}
+            ]
+            source_summary = (
+                "Last checks: "
+                + ", ".join(
+                    f"{str(item.get('source_name') or 'source')}="
+                    f"{str(item.get('status') or 'unknown')}"
+                    for item in source_statuses
+                )
+            )
+
+        lines = [
+            "SMART MONEY HUB — FULL ADMIN STATUS",
+            f"Read-only snapshot: {local_now.strftime('%Y-%m-%d %H:%M WAT')}",
+            "",
+            "MARKET ANALYSIS",
+            (
+                f"Scheduled channel posts: "
+                f"{'PAUSED' if channel_settings.get('paused') else 'ACTIVE'}; "
+                f"{len(channel_queue)} pending, {len(held_channel)} held/failed."
+            ),
+            "Routine slots: weekdays/Saturday 10:00 WAT; Sunday 18:00 WAT.",
+            (
+                f"Session opens: {len(session_upcoming)} upcoming; "
+                f"{len(session_held)} recent held/failed."
+            ),
+            "",
+            "EDUCATION GROUP",
+            (
+                "Morning lesson: "
+                f"{'ENABLED' if self.education_morning_store.is_enabled() else 'PAUSED'} "
+                f"daily at 08:00 WAT; today: "
+                f"{self._run_status(morning_run)}."
+            ),
+            (
+                "Weekly poll: Saturday 21:00 WAT; "
+                f"{len(pending_polls)} pending run(s); latest: "
+                f"{self._run_status(poll_attempts[0] if poll_attempts else None)}."
+            ),
+            (
+                "Monday/Thursday topic promotion: "
+                f"{'ENABLED' if promo_settings.get('scheduled_enabled') else 'PAUSED'} "
+                "at 19:00 WAT; latest: "
+                f"{self._run_status(recent_promos[0] if recent_promos else None)}."
+            ),
+            "",
+            "USD & GOLD BRIEFS",
+            (
+                "Daily Market Analysis brief: "
+                f"{'ENABLED' if self.daily_brief_enabled else 'DISABLED'} "
+                f"at 00:00 WAT; today: {self._run_status(daily_run)}."
+            ),
+            (
+                "Weekly Education announcements brief: "
+                f"{'ENABLED' if self.weekly_brief_enabled else 'DISABLED'} "
+                f"Monday 00:00 WAT; this week: {self._run_status(weekly_run)}."
+            ),
+            f"Official source checks: {source_summary}.",
+            "",
+            "CONTENT & TRADE RECORDS",
+            (
+                f"Scheduled draft generation: "
+                f"{'ENABLED' if content_repository.enabled() else 'PAUSED'}; "
+                f"{len(enabled_schedules)}/{len(schedules)} routine schedules enabled."
+            ),
+            (
+                "Routine automatic publishing: "
+                f"{'ENABLED' if content_repository.setting('auto_publish_enabled') == '1' else 'DISABLED'}; "
+                "trade-result claims remain subject to the verified trade ledger."
+            ),
+            "Recent saved draft states: "
+            + (
+                ", ".join(
+                    f"{state} {count}"
+                    for state, count in sorted(draft_counts.items())
+                )
+                if draft_counts
+                else "none"
+            ),
+        ]
+
+        issues: list[str] = []
+        for post in held_channel[:3]:
+            issues.append(
+                f"Market post {post.get('schedule_date')}: "
+                f"{str(post.get('failure_category') or post.get('status')).replace('_', ' ')}"
+            )
+        for post in session_held[:2]:
+            issues.append(
+                f"{post.get('session_label') or 'Session post'} "
+                f"{post.get('schedule_date')}: "
+                f"{str(post.get('failure_category') or post.get('status')).replace('_', ' ')}"
+            )
+        if poll_attempts and str(poll_attempts[0].get("status") or "") in {
+            "failed",
+            "delivery_unknown",
+            "channel_failed",
+            "channel_delivery_unknown",
+        }:
+            latest_poll = poll_attempts[0]
+            issues.append(
+                f"Latest Education poll {latest_poll.get('scheduled_at')}: "
+                f"{str(latest_poll.get('failure_category') or latest_poll.get('status')).replace('_', ' ')}"
+            )
+        if source_problems:
+            issues.append("Calendar sources needing attention: " + ", ".join(source_problems))
+        if issues:
+            lines.extend(["", f"ISSUES ({min(len(issues), 6)} shown):"])
+            lines.extend(f"• {line}" for line in issues[:6])
+        else:
+            lines.extend(["", "ISSUES: No saved held or failed items found in these queues."])
+
+        lines.extend(
+            [
+                "",
+                "This checks saved admin status only; it does not inspect private member "
+                "messages, verify live market prices, or publish anything.",
+            ]
+        )
+        self.api.send_message(chat_id, "\n".join(lines), self._dashboard_keyboard())
+
+    @staticmethod
+    def _run_status(run: dict[str, Any] | None) -> str:
+        if not run:
+            return "no run recorded"
+        status = str(run.get("status") or "unknown")
+        failure = str(run.get("failure_category") or "")
+        return f"{status} ({failure.replace('_', ' ')})" if failure else status
 
     def _show_content_history(self, chat_id: int) -> None:
         drafts = self.community_content.repository.list_drafts(limit=30)

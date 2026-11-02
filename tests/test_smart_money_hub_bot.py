@@ -578,6 +578,66 @@ class BotFlowTests(unittest.TestCase):
         ]
         self.assertIn("admin:channel_posts:preview:1", callbacks)
 
+    def test_admin_can_request_read_only_status_of_all_scheduled_features(self) -> None:
+        self.bot.admin_id = self.user_id
+        self.bot.admin_dashboard.admin_id = self.user_id
+
+        self.bot.handle_update(
+            {
+                "message": {
+                    "from": {
+                        "id": self.user_id,
+                        "is_bot": False,
+                        "first_name": self.first_name,
+                    },
+                    "chat": {"id": self.user_id, "type": "private"},
+                    "text": "Give me feedback of everything",
+                }
+            }
+        )
+
+        report = self.api.messages[-1]["text"]
+        self.assertIn("SMART MONEY HUB — FULL ADMIN STATUS", report)
+        self.assertIn("MARKET ANALYSIS", report)
+        self.assertIn("EDUCATION GROUP", report)
+        self.assertIn("USD & GOLD BRIEFS", report)
+        self.assertIn("CONTENT & TRADE RECORDS", report)
+        self.assertIn("publish anything", report)
+
+    def test_full_status_text_alias_is_restricted_to_private_admin_chat(self) -> None:
+        self.bot.admin_id = self.user_id
+        dashboard = self.bot.admin_dashboard
+        dashboard.admin_id = self.user_id
+        before = len(self.api.messages)
+
+        handled = dashboard.handle_admin_menu_text(
+            self.user_id + 1,
+            self.user_id + 1,
+            True,
+            "status everything",
+        )
+
+        self.assertFalse(handled)
+        self.assertEqual(len(self.api.messages), before)
+
+    def test_recent_education_poll_attempts_reports_failures_without_poll_content(self) -> None:
+        run = self.bot.store.create_education_poll_run(
+            run_key="weekly:2026-11-07",
+            source="weekly",
+            scheduled_at="2026-11-07T21:00:00+01:00",
+            scenario_index=3,
+            status="failed",
+            failure_category="group_permission_missing",
+        )
+
+        recent = self.bot.store.recent_education_poll_attempts(limit=1)
+
+        self.assertEqual(len(recent), 1)
+        self.assertEqual(recent[0]["status"], "failed")
+        self.assertEqual(recent[0]["failure_category"], "group_permission_missing")
+        self.assertNotIn("question", recent[0])
+        self.assertEqual(recent[0]["source"], run["source"])
+
     def test_daily_education_morning_publisher_uses_existing_scheduler_tick(self) -> None:
         now = datetime(2026, 10, 26, 7, 0, tzinfo=timezone.utc)
         self.bot.education_polls.dispatch_due = Mock()
