@@ -51,6 +51,7 @@ _USERNAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]{4,31}$")
 _SHARED_FOOTER = re.compile(
     r"no confirmation,\s*no entry\.?", re.IGNORECASE
 )
+_REQUIRED_TRADING_RULE = "NO CONFIRMATION, NO ENTRY."
 _PROMO_LINK = re.compile(r"open\s+@\w+.*?https://t\.me/\w+", re.IGNORECASE | re.DOTALL)
 _AI_RETRYABLE_CONTENT_FAILURES = {
     "content_too_long",
@@ -520,6 +521,7 @@ class ChannelPostManager:
             "retry_checked",
             "retry_generation",
             "retry_revision",
+            "add_required_rule",
         } and len(parts) == 4:
             post = self._post_from_callback(parts[3])
             if not post:
@@ -613,6 +615,8 @@ class ChannelPostManager:
                 self._retry_generation(chat_id, post, admin_id, current_utc)
             elif action == "retry_revision":
                 self._retry_revision(chat_id, post, admin_id, current_utc)
+            elif action == "add_required_rule":
+                self._add_required_rule(chat_id, post, admin_id, current_utc)
             refreshed = self.store.get_channel_post(post_id)
             if refreshed:
                 self.show_post(chat_id, refreshed)
@@ -747,6 +751,38 @@ class ChannelPostManager:
         if not rejection:
             rejection = validate_weekend_post_format(text)
         if rejection:
+            if rejection == "missing_golden_rule":
+                text = self._with_required_trading_rule(text)
+                is_promo = is_promotional_content(text)
+                rejection = validate_channel_post(
+                    text,
+                    is_promo=is_promo,
+                    bot_username=username,
+                )
+                if not rejection:
+                    rejection = validate_weekend_post_format(text)
+                if not rejection and self._is_duplicate(
+                    text, exclude_post_id=int(post["id"])
+                ):
+                    rejection = "duplicate_content"
+                if not rejection:
+                    saved = self.store.save_channel_post_edit(
+                        int(post["id"]),
+                        text.strip(),
+                        admin_id=admin_id,
+                        is_promo=is_promo,
+                        at=current.isoformat(),
+                    )
+                    if saved:
+                        self.api.send_message(
+                            chat_id,
+                            "I added the required trading rule to the complete "
+                            "draft. It is ready for review; nothing was published.",
+                        )
+                        refreshed = self.store.get_channel_post(int(post["id"]))
+                        if refreshed:
+                            self._send_preview(refreshed, current)
+                        return True
             logger.info("Channel post edit rejected category=%s.", rejection)
             self.api.send_message(
                 chat_id,
@@ -892,6 +928,25 @@ class ChannelPostManager:
             )
         elif status in {"failed", "retry_wait"}:
             failure_category = str(post.get("failure_category") or "")
+            if (
+                status == "failed"
+                and failure_category
+                in {
+                    "gemini_content_rejected_missing_golden_rule",
+                    "missing_golden_rule",
+                }
+                and post.get("content")
+            ):
+                rows.append(
+                    [
+                        {
+                            "text": "➕ Add required rule",
+                            "callback_data": (
+                                f"admin:channel_posts:add_required_rule:{post['id']}"
+                            ),
+                        }
+                    ]
+                )
             if failure_category.startswith("gemini_revision_") or (
                 status == "failed" and self._can_retry_ai_draft(post)
             ):
@@ -1327,6 +1382,7 @@ class ChannelPostManager:
             )
 
         content = normalize_weekend_brand_header(draft.content, draft.category)
+        content = self._with_required_trading_rule(content)
         rejection = validate_channel_post(
             content,
             is_promo=bool(post["is_promo"]),
@@ -1384,6 +1440,88 @@ class ChannelPostManager:
             bool(post["is_promo"]),
         )
         return saved
+
+    @staticmethod
+    def _with_required_trading_rule(content: str) -> str:
+        """Append the fixed safety footer when a draft omits it."""
+        text = content.strip()
+        if not text:
+            return text
+        if _SHARED_FOOTER.search(text):
+            return _SHARED_FOOTER.sub(_REQUIRED_TRADING_RULE, text)
+        return f"{text}\n\n{_REQUIRED_TRADING_RULE}"
+
+    def _add_required_rule(
+        self,
+        chat_id: int,
+        post: dict[str, Any],
+        admin_id: int,
+        now_utc: datetime,
+    ) -> None:
+        """Safely recover a saved draft rejected only for the missing footer."""
+        failure = str(post.get("failure_category") or "")
+        if (
+            post.get("status") != "failed"
+            or failure
+            not in {
+                "gemini_content_rejected_missing_golden_rule",
+                "missing_golden_rule",
+            }
+            or not str(post.get("content") or "").strip()
+        ):
+            self.api.send_message(
+                chat_id,
+                "This draft cannot be corrected with the required-rule action.",
+            )
+            return
+
+        content = self._with_required_trading_rule(str(post["content"]))
+        rejection = validate_channel_post(
+            content,
+            is_promo=bool(post.get("is_promo")),
+            bot_username=post.get("bot_username"),
+        )
+        if not rejection:
+            rejection = validate_weekend_post_format(content)
+        if not rejection and self._is_duplicate(
+            content, exclude_post_id=int(post["id"])
+        ):
+            rejection = "duplicate_content"
+        if rejection:
+            self.api.send_message(
+                chat_id,
+                "I added the required rule, but the full draft still fails another "
+                f"check ({rejection.replace('_', ' ')}). It remains held and was "
+                "not published.",
+            )
+            return
+
+        settings = self.store.get_channel_posting_settings()
+        saved = self.store.complete_channel_post_generation(
+            int(post["id"]),
+            category=str(post["category"]),
+            content=content,
+            bot_username=post.get("bot_username"),
+            next_category_index=int(settings["next_category_index"]),
+            next_promo_feature_index=int(settings["next_promo_feature_index"]),
+            last_promo_date=settings.get("last_promo_date"),
+            action="admin_added_required_rule",
+            admin_id=admin_id,
+            at=self._as_utc(now_utc).isoformat(),
+        )
+        if not saved:
+            self.api.send_message(
+                chat_id,
+                "This post changed before the correction could be saved. Nothing "
+                "was published.",
+            )
+            return
+        refreshed = self.store.get_channel_post(int(post["id"]))
+        self.api.send_message(
+            chat_id,
+            "I added the exact required sentence and saved the complete corrected "
+            "draft for review. Nothing was sent to the channel.",
+        )
 
     def _retry_generation(
         self,

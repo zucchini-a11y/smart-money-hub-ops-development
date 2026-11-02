@@ -416,8 +416,9 @@ def describe_channel_post_rejection(
     if category == "missing_golden_rule":
         return (
             "The post is missing the required trading rule “NO CONFIRMATION, NO "
-            "ENTRY.” Add that exact sentence and resend the complete post. Your "
-            "saved draft is unchanged, so you can try again or send /cancel."
+            "ENTRY.” Use “Add required rule” on the saved draft and I’ll append "
+            "the exact sentence, recheck the complete post, and send you the full "
+            "corrected draft. Nothing will be published automatically."
         )
     if category == "content_too_long":
         return (

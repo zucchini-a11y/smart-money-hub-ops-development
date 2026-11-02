@@ -584,6 +584,110 @@ class ChannelPostingTests(unittest.TestCase):
         ]
         self.assertEqual(len(same_date_posts), 1)
 
+    def test_generated_draft_gets_required_rule_appended_before_validation(self) -> None:
+        post, created = self.store.create_scheduled_channel_post(
+            schedule_date="2026-10-26",
+            schedule_time="10:00",
+            requested_category="education",
+            category="education",
+            content="",
+            destination_chat_id=CHANNEL_ID,
+            is_promo=False,
+            bot_username=None,
+            next_category_index=0,
+            next_promo_feature_index=0,
+            last_promo_date=None,
+            status="failed",
+            failure_category="gemini_generation_pending",
+            generation_source="gemini_pending",
+        )
+        self.assertTrue(created)
+        self.writer.drafts.append(
+            ChannelDraft(
+                category="education",
+                content=(
+                    "📚 SMART MONEY HUB | EDUCATION\n\n"
+                    "WAIT FOR EVIDENCE BEFORE DECIDING\n\n"
+                    "A useful lesson about waiting for evidence before deciding."
+                ),
+            )
+        )
+
+        settings = self.store.get_channel_posting_settings()
+        saved = self.manager._generate_gemini_post(
+            post,
+            preferred_category="education",
+            sequence=0,
+            settings=settings,
+        )
+
+        self.assertEqual(saved["status"], "draft")
+        self.assertTrue(saved["content"].endswith("NO CONFIRMATION, NO ENTRY."))
+        self.assertIsNone(validate_channel_post(saved["content"], is_promo=False))
+        self.assertEqual(self.api.channel_attempts, [])
+        normalized = self.manager._with_required_trading_rule(
+            "A reminder: no confirmation, no entry"
+        )
+        self.assertEqual(normalized, "A reminder: NO CONFIRMATION, NO ENTRY.")
+
+    def test_admin_can_add_required_rule_to_saved_rejected_draft_for_review(self) -> None:
+        original = (
+            "📚 SMART MONEY HUB | EDUCATION\n\n"
+            "WAIT FOR EVIDENCE BEFORE DECIDING\n\n"
+            "A useful lesson about waiting for evidence before deciding."
+        )
+        post, created = self.store.create_scheduled_channel_post(
+            schedule_date="2026-10-26",
+            schedule_time="10:00",
+            requested_category="education",
+            category="education",
+            content="",
+            destination_chat_id=CHANNEL_ID,
+            is_promo=False,
+            bot_username=None,
+            next_category_index=0,
+            next_promo_feature_index=0,
+            last_promo_date=None,
+            status="failed",
+            failure_category="gemini_generation_pending",
+            generation_source="gemini_pending",
+        )
+        self.assertTrue(created)
+        self.store.set_channel_post_status(
+            int(post["id"]),
+            "failed",
+            action="gemini_generation_failed",
+            failure_category="gemini_content_rejected_missing_golden_rule",
+            rejected_content=original,
+        )
+        failed = self.store.get_channel_post(int(post["id"]))
+        assert failed is not None
+
+        self.manager.show_post(ADMIN_ID, failed)
+        buttons = self.api.messages[-1]["reply_markup"]["inline_keyboard"]
+        self.assertIn(
+            f"admin:channel_posts:add_required_rule:{post['id']}",
+            {button["callback_data"] for row in buttons for button in row},
+        )
+        self.manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:channel_posts:add_required_rule:{post['id']}",
+            local_time(26, 8, 20),
+        )
+
+        corrected = self.store.get_channel_post(int(post["id"]))
+        assert corrected is not None
+        self.assertEqual(corrected["status"], "draft")
+        self.assertTrue(corrected["content"].endswith("NO CONFIRMATION, NO ENTRY."))
+        self.assertEqual(self.api.channel_attempts, [])
+        self.assertTrue(
+            any(
+                "nothing was sent to the channel" in message["text"].lower()
+                for message in self.api.messages
+            )
+        )
+
     def test_existing_gemini_draft_missing_brand_format_can_be_retried_safely(
         self,
     ) -> None:
@@ -2001,8 +2105,8 @@ class ChannelPostingTests(unittest.TestCase):
             "missing_golden_rule",
         )
         self.assertIn("NO CONFIRMATION, NO ENTRY.", explanation)
-        self.assertIn("resend the complete post", explanation)
-        self.assertIn("saved draft is unchanged", explanation)
+        self.assertIn("Add required rule", explanation)
+        self.assertIn("Nothing will be published automatically", explanation)
 
     def test_admin_can_retry_edit_remove_promo_and_publish_only_on_action(self) -> None:
         original = (
