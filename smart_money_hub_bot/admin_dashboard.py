@@ -130,6 +130,15 @@ ADMIN_MENU_TEXT_ACTIONS = {
     "channel drafts": "admin:channel_posts",
     "scheduled posts": "admin:channel_posts",
     "what is scheduled": "admin:channel_posts",
+    "held posts": "admin:held_posts",
+    "held post": "admin:held_posts",
+    "any held posts": "admin:held_posts",
+    "any held post": "admin:held_posts",
+    "any held post it says": "admin:held_posts",
+    "are there any held posts": "admin:held_posts",
+    "what posts are held": "admin:held_posts",
+    "show held posts": "admin:held_posts",
+    "check held posts": "admin:held_posts",
     "education morning posts": "admin:group_morning",
     "education morning schedule": "admin:group_morning",
     "morning post schedule": "admin:group_morning",
@@ -955,6 +964,9 @@ class AdminDashboard:
         if data != "admin:search":
             self.cancel_search(telegram_id)
 
+        if data == "admin:held_posts":
+            self._show_held_posts(chat_id)
+            return
         if session_open_actions:
             self.channel_posts.cancel_edit(telegram_id)
             self.session_open_posts.handle_callback(chat_id, telegram_id, data)
@@ -2034,6 +2046,128 @@ class AdminDashboard:
         )
         self.api.send_message(
             chat_id, "\n".join(lines), self._dashboard_keyboard(), parse_mode="HTML"
+        )
+
+    def _show_held_posts(self, chat_id: int) -> None:
+        """Report saved unpublished failures from the Market Analysis queues."""
+        channel_destination = self.channel_posts.destination_chat_id
+        channel_holds = [
+            post
+            for post in self.store.list_channel_posts(limit=1000, pending_only=True)
+            if (
+                str(post.get("status") or "") in {"failed", "retry_wait"}
+                or str(post.get("review_status") or "")
+                in {"missed", "delivery_failed"}
+            )
+            and (
+                channel_destination is None
+                or int(post.get("destination_chat_id") or 0)
+                == int(channel_destination)
+            )
+        ]
+
+        session_store = self.session_open_posts.store
+        session_holds = [
+            post
+            for post in session_store.list_recent(limit=100)
+            if str(post.get("status") or "") == "failed"
+            or str(post.get("review_status") or "")
+            in {"missed", "delivery_failed"}
+        ]
+        today = datetime.now(ZoneInfo("Africa/Lagos")).date()
+        retryable_sessions = session_store.list_retryable_gemini_failures(
+            since_date=today - timedelta(days=30),
+            limit=100,
+        )
+        session_by_id = {
+            int(post["id"]): post for post in [*session_holds, *retryable_sessions]
+        }
+        session_holds = sorted(
+            session_by_id.values(),
+            key=lambda post: (
+                str(post.get("schedule_at_utc") or ""),
+                int(post.get("id") or 0),
+            ),
+            reverse=True,
+        )
+
+        lines = [
+            "HELD POSTS — PRIVATE ADMIN VIEW",
+            "These posts have not been published.",
+        ]
+        buttons: list[list[dict[str, str]]] = []
+        if channel_holds:
+            lines.extend(["", "Market Analysis channel:"])
+            for post in channel_holds:
+                failure = str(
+                    post.get("failure_category")
+                    or post.get("review_status")
+                    or post.get("status")
+                ).replace("_", " ")
+                category = self.channel_posts._category_label(
+                    str(post.get("category") or "post")
+                )
+                lines.append(
+                    f"• {html.escape(str(post.get('schedule_date') or 'Date unavailable'))} "
+                    f"— {html.escape(category)} — {html.escape(failure)}"
+                )
+                buttons.append(
+                    [
+                        {
+                            "text": (
+                                f"👁 Review Market post "
+                                f"{post.get('schedule_date') or post.get('id')}"
+                            )[:64],
+                            "callback_data": (
+                                f"admin:channel_posts:preview:{int(post['id'])}"
+                            ),
+                        }
+                    ]
+                )
+        else:
+            lines.extend(["", "Market Analysis channel: no held posts found."])
+
+        if session_holds:
+            lines.extend(["", "Session-open posts:"])
+            for post in session_holds:
+                failure = str(
+                    post.get("failure_category")
+                    or post.get("review_status")
+                    or post.get("status")
+                ).replace("_", " ")
+                lines.append(
+                    f"• {html.escape(str(post.get('schedule_date') or 'Date unavailable'))} "
+                    f"— {html.escape(str(post.get('session_label') or 'Session post'))} "
+                    f"— {html.escape(failure)}"
+                )
+                if post.get("content"):
+                    buttons.append(
+                        [
+                            {
+                                "text": (
+                                    f"👁 Review {post.get('session_label') or 'session'} "
+                                    f"{post.get('schedule_date') or post.get('id')}"
+                                )[:64],
+                                "callback_data": (
+                                    f"admin:session_open:preview:{int(post['id'])}"
+                                ),
+                            }
+                        ]
+                    )
+        else:
+            lines.extend(["", "Session-open posts: no held posts found."])
+
+        buttons.extend(
+            [
+                [{"text": "🗓️ Channel Content", "callback_data": "admin:channel_posts"}],
+                [{"text": "🔙 Back to Admin Dashboard", "callback_data": "admin:home"}],
+            ]
+        )
+        self.api.send_message(
+            chat_id,
+            "\n".join(lines),
+            {"inline_keyboard": buttons},
+            parse_mode="HTML",
         )
 
     def _show_content_history(self, chat_id: int) -> None:

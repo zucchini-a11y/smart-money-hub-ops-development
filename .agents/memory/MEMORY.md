@@ -8,6 +8,7 @@
 - [Gemini free-tier policy](gemini-free-tier-policy.md) — member text/history may go to Google's free tier; keep billing off and never silently use paid models.
 - [Google Gemini docs access](gemini-docs-access.md) — if documentation callbacks return 402, direct fetch from official Google docs may still work.
 - [Coach reply navigation](coach-reply-navigation.md) — keep repeated Coaching Modes buttons off replies while preserving main-menu access.
+- [Admin text controls](admin-text-controls.md) — the owner wants admin-menu actions available through clear private-chat text commands, with existing admin checks intact.
 - [Coach general questions](coach-general-questions.md) — answer ordinary questions beyond SMC while staying honest about live-data limits.
 - [Telegram typing indicator](telegram-typing-indicator.md) — the Coach's refreshed `sendChatAction` indicator was confirmed visible in Telegram.
 - [Personal reminder scope](personal-reminder-scope.md) — only the configured CEO can create one-time personal reminders; recurring stays out unless requested.

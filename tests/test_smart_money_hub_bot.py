@@ -531,6 +531,53 @@ class BotFlowTests(unittest.TestCase):
             )
         )
 
+    def test_admin_can_ask_in_text_for_held_posts_and_see_saved_queue_results(self) -> None:
+        self.bot.admin_id = self.user_id
+        dashboard = self.bot.admin_dashboard
+        dashboard.admin_id = self.user_id
+        dashboard.channel_posts.destination_chat_id = -1004481197912
+        self.bot.store.create_scheduled_channel_post(
+            schedule_date="2026-11-01",
+            schedule_time="10:00",
+            requested_category="education",
+            category="education",
+            content="Saved held test post.",
+            destination_chat_id=-1004481197912,
+            is_promo=False,
+            bot_username=None,
+            next_category_index=0,
+            next_promo_feature_index=0,
+            last_promo_date=None,
+            status="failed",
+            failure_category="content_rejected_duplicate_content",
+            generation_source="gemini",
+        )
+
+        self.bot.handle_update(
+            {
+                "message": {
+                    "from": {
+                        "id": self.user_id,
+                        "is_bot": False,
+                        "first_name": self.first_name,
+                    },
+                    "chat": {"id": self.user_id, "type": "private"},
+                    "text": "Any held post it says?",
+                }
+            }
+        )
+
+        self.assertIn("HELD POSTS — PRIVATE ADMIN VIEW", self.api.messages[-1]["text"])
+        self.assertIn("2026-11-01", self.api.messages[-1]["text"])
+        self.assertIn("duplicate content", self.api.messages[-1]["text"])
+        self.assertNotIn("I don't have direct access", self.api.messages[-1]["text"])
+        callbacks = [
+            button["callback_data"]
+            for row in self.api.messages[-1]["reply_markup"]["inline_keyboard"]
+            for button in row
+        ]
+        self.assertIn("admin:channel_posts:preview:1", callbacks)
+
     def test_daily_education_morning_publisher_uses_existing_scheduler_tick(self) -> None:
         now = datetime(2026, 10, 26, 7, 0, tzinfo=timezone.utc)
         self.bot.education_polls.dispatch_due = Mock()
