@@ -39,6 +39,14 @@ PREVIEW_RETRY_DELAY = timedelta(minutes=5)
 FINAL_REVIEW_LEAD = timedelta(minutes=5)
 CHANNEL_POSTS_PAGE_SIZE = 5
 MAX_AUTOMATIC_RATE_LIMIT_RETRIES = 1
+MAX_AUTOMATIC_GENERATION_TIMEOUT_RETRIES = 2
+_GENERATION_TIMEOUT_RETRY_DELAYS = (
+    timedelta(minutes=5),
+    timedelta(minutes=15),
+)
+_GENERATION_RETRY_LEASE = timedelta(minutes=2)
+_GENERATION_RETRY_RECOVERY_DELAY = timedelta(minutes=1)
+_GENERATION_RETRY_ATTEMPT_BUDGET = timedelta(minutes=1)
 _USERNAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]{4,31}$")
 _SHARED_FOOTER = re.compile(
     r"no confirmation,\s*no entry\.?", re.IGNORECASE
@@ -962,6 +970,10 @@ class ChannelPostManager:
         status = str(post.get("status") or "")
         failure = str(post.get("failure_category") or "")
         review_status = str(post.get("review_status") or "")
+        if status == "failed" and post.get("generation_retry_started_at"):
+            return "Retrying Draft Generation"
+        if status == "failed" and post.get("generation_retry_at"):
+            return "Draft Retry Scheduled"
         if status == "draft" and review_status == "pending":
             return "Awaiting Final Review"
         if status == "draft" and review_status == "approved":
@@ -1013,7 +1025,9 @@ class ChannelPostManager:
                 >= self._publish_time(target_date)
             ):
                 return
-            post = self._create_post(target_date)
+            post = self._create_post(target_date, now_utc=now_utc)
+        if post:
+            post = self._process_generation_retry(post, now_utc)
         if (
             post
             and post.get("generation_source") == "local"
@@ -1033,7 +1047,9 @@ class ChannelPostManager:
         ):
             self._send_preview(post, now_utc)
 
-    def _create_post(self, target_date: date) -> dict[str, Any] | None:
+    def _create_post(
+        self, target_date: date, *, now_utc: datetime
+    ) -> dict[str, Any] | None:
         settings = self.store.get_channel_posting_settings()
         sequence = int(settings["next_category_index"])
         requested_category = next_category(CHANNEL_CONTENT_CATEGORIES, sequence)
@@ -1067,6 +1083,7 @@ class ChannelPostManager:
             username,
             sequence,
             settings,
+            now_utc=now_utc,
         )
 
     def _create_gemini_post(
@@ -1078,6 +1095,8 @@ class ChannelPostManager:
         username: str | None,
         sequence: int,
         settings: dict[str, Any],
+        *,
+        now_utc: datetime,
     ) -> dict[str, Any]:
         post, created = self.store.create_scheduled_channel_post(
             schedule_date=target_date.isoformat(),
@@ -1102,6 +1121,8 @@ class ChannelPostManager:
             preferred_category=preferred_category,
             sequence=sequence,
             settings=settings,
+            now_utc=now_utc,
+            allow_automatic_retries=True,
         )
 
     def _generate_gemini_post(
@@ -1111,6 +1132,8 @@ class ChannelPostManager:
         preferred_category: str,
         sequence: int,
         settings: dict[str, Any],
+        now_utc: datetime | None = None,
+        allow_automatic_retries: bool = False,
         revision_feedback: str | None = None,
         admin_id: int | None = None,
     ) -> dict[str, Any]:
@@ -1120,6 +1143,8 @@ class ChannelPostManager:
                 "gemini_not_configured",
                 admin_id=admin_id,
                 revision=revision_feedback is not None,
+                now_utc=now_utc,
+                allow_automatic_retries=allow_automatic_retries,
             )
         try:
             verified_information: list[str] = []
@@ -1144,6 +1169,8 @@ class ChannelPostManager:
                 error.category,
                 admin_id=admin_id,
                 revision=revision_feedback is not None,
+                now_utc=now_utc,
+                allow_automatic_retries=allow_automatic_retries,
             )
         except Exception:
             logger.warning(
@@ -1154,6 +1181,8 @@ class ChannelPostManager:
                 "gemini_unexpected_error",
                 admin_id=admin_id,
                 revision=revision_feedback is not None,
+                now_utc=now_utc,
+                allow_automatic_retries=allow_automatic_retries,
             )
 
         content = normalize_weekend_brand_header(draft.content, draft.category)
@@ -1173,6 +1202,7 @@ class ChannelPostManager:
                 admin_id=admin_id,
                 revision=revision_feedback is not None,
                 rejected_content=content,
+                now_utc=now_utc,
             )
 
         next_feature_index = int(settings["next_promo_feature_index"])

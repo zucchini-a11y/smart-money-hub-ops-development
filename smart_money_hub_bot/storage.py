@@ -248,6 +248,10 @@ class Repository:
                         telegram_message_id INTEGER,
                         published_at TEXT,
                         failure_category TEXT,
+                        generation_retry_count INTEGER NOT NULL DEFAULT 0
+                            CHECK (generation_retry_count >= 0),
+                        generation_retry_at TEXT,
+                        generation_retry_started_at TEXT,
                         generation_source TEXT NOT NULL DEFAULT 'local'
                             CHECK (generation_source IN ('local', 'gemini_pending', 'gemini')),
                         admin_edit_approved INTEGER NOT NULL DEFAULT 0
@@ -670,6 +674,12 @@ class Repository:
                     ("review_sent_at", "TEXT"),
                     ("review_deadline_at", "TEXT"),
                     ("review_decision_at", "TEXT"),
+                    (
+                        "generation_retry_count",
+                        "INTEGER NOT NULL DEFAULT 0 CHECK (generation_retry_count >= 0)",
+                    ),
+                    ("generation_retry_at", "TEXT"),
+                    ("generation_retry_started_at", "TEXT"),
                     ("photo_file_id", "TEXT"),
                     ("photo_admin_id", "INTEGER"),
                     ("photo_added_at", "TEXT"),
@@ -1105,6 +1115,8 @@ class Repository:
                     UPDATE scheduled_channel_posts
                     SET category = ?, content = ?, bot_username = ?, status = 'draft',
                         failure_category = NULL, preview_sent_at = NULL,
+                        generation_retry_at = NULL,
+                        generation_retry_started_at = NULL,
                         preview_last_attempt_at = NULL, edit_admin_id = NULL,
                         edit_mode = 'replace', generation_source = 'gemini',
                         review_status = 'not_requested',
@@ -1189,6 +1201,99 @@ class Repository:
                 (post_id,),
             ).fetchone()
             return dict(row) if row else None
+        finally:
+            connection.close()
+
+    def claim_channel_post_generation_retry(
+        self,
+        post_id: int,
+        *,
+        at: str,
+        lease_until: str,
+        max_retries: int,
+    ) -> dict[str, Any] | None:
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE scheduled_channel_posts
+                    SET generation_retry_count = generation_retry_count + 1,
+                        generation_retry_at = ?, generation_retry_started_at = ?,
+                        updated_at = ?
+                    WHERE id = ? AND status = 'failed'
+                        AND failure_category = 'gemini_timeout'
+                        AND generation_source = 'gemini_pending' AND content = ''
+                        AND generation_retry_at IS NOT NULL
+                        AND generation_retry_at <= ?
+                        AND generation_retry_count < ?
+                    """,
+                    (lease_until, at, at, post_id, at, max_retries),
+                )
+                if not cursor.rowcount:
+                    return None
+                row = connection.execute(
+                    "SELECT * FROM scheduled_channel_posts WHERE id = ?",
+                    (post_id,),
+                ).fetchone()
+                if row is None:
+                    return None
+                connection.execute(
+                    """
+                    INSERT INTO channel_post_actions
+                        (post_id, action, details, created_at)
+                    VALUES (?, 'generation_retry_started', ?, ?)
+                    """,
+                    (
+                        post_id,
+                        f"attempt={int(row['generation_retry_count'])}",
+                        at,
+                    ),
+                )
+                return dict(row)
+        finally:
+            connection.close()
+
+    def recover_stale_channel_post_generation_retry(
+        self,
+        post_id: int,
+        *,
+        stale_before: str,
+        retry_at: str | None,
+        at: str,
+    ) -> str | None:
+        outcome = "scheduled" if retry_at is not None else "exhausted"
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE scheduled_channel_posts
+                    SET generation_retry_at = ?, generation_retry_started_at = NULL,
+                        updated_at = ?
+                    WHERE id = ? AND status = 'failed'
+                        AND failure_category = 'gemini_timeout'
+                        AND generation_retry_started_at IS NOT NULL
+                        AND generation_retry_started_at <= ?
+                    """,
+                    (retry_at, at, post_id, stale_before),
+                )
+                if not cursor.rowcount:
+                    return None
+                connection.execute(
+                    """
+                    INSERT INTO channel_post_actions
+                        (post_id, action, details, created_at)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (
+                        post_id,
+                        "generation_retry_recovered",
+                        outcome,
+                        at,
+                    ),
+                )
+                return outcome
         finally:
             connection.close()
 
@@ -2853,6 +2958,7 @@ class Repository:
         details: str | None = None,
         failure_category: str | None = None,
         rejected_content: str | None = None,
+        generation_retry_at: str | None = None,
         at: str | None = None,
     ) -> bool:
         allowed_statuses = {"draft", "failed", "rejected", "skipped"}
@@ -2868,6 +2974,8 @@ class Repository:
                     SET status = ?, edit_admin_id = NULL,
                         failure_category = ?,
                         content = COALESCE(?, content),
+                        generation_retry_at = ?,
+                        generation_retry_started_at = NULL,
                         updated_at = ?
                     WHERE id = ? AND status IN (
                         'draft', 'awaiting_edit', 'failed', 'retry_wait'
@@ -2877,6 +2985,7 @@ class Repository:
                         status,
                         failure_category if status == "failed" else None,
                         rejected_content if status == "failed" else None,
+                        generation_retry_at if status == "failed" else None,
                         timestamp,
                         post_id,
                     ),
@@ -2890,6 +2999,20 @@ class Repository:
                         """,
                         (post_id, action, admin_id, details, timestamp),
                     )
+                    if status == "failed" and generation_retry_at is not None:
+                        connection.execute(
+                            """
+                            INSERT INTO channel_post_actions
+                                (post_id, action, admin_id, details, created_at)
+                            VALUES (?, 'generation_retry_scheduled', ?, ?, ?)
+                            """,
+                            (
+                                post_id,
+                                admin_id,
+                                generation_retry_at,
+                                timestamp,
+                            ),
+                        )
                 return bool(cursor.rowcount)
         finally:
             connection.close()
