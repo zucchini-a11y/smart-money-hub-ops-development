@@ -931,6 +931,13 @@ class SessionOpenPostManager:
         failure_category = str(post.get("failure_category") or "")
         has_content = bool(str(post.get("content") or "").strip())
         retrying_duplicate = self._is_duplicate_retryable_failure(failure_category)
+        retrying_missing_late_headline = (
+            failure_category == "content_rejected_session_headline_missing"
+            and bool(post.get("late_recovery"))
+        )
+        retrying_rejected_content = (
+            retrying_duplicate or retrying_missing_late_headline
+        )
         if (
             post.get("status") != "failed"
             or not (
@@ -938,14 +945,14 @@ class SessionOpenPostManager:
                     failure_category.startswith("gemini_")
                     and not has_content
                 )
-                or (retrying_duplicate and has_content)
+                or (retrying_rejected_content and has_content)
             )
         ):
             self.api.send_message(
                 chat_id,
                 "AI retry is available for an empty Gemini failure or a draft held "
-                "for duplicate content/layout. Existing content is kept unless a "
-                "replacement passes every check.",
+                "for duplicate content/layout or a missing late-session headline. "
+                "Existing content is kept unless a replacement passes every check.",
             )
             self._show_post(chat_id, post)
             return
@@ -1010,11 +1017,18 @@ class SessionOpenPostManager:
             current,
             late_recovery=late_recovery,
             rejected_originality_draft=(
-                str(post.get("content") or "") if retrying_duplicate else None
+                str(post.get("content") or "") if retrying_rejected_content else None
             ),
             rejected_originality_reason=(
-                "duplicate_content" if retrying_duplicate else None
+                (
+                    "session_headline_missing"
+                    if retrying_missing_late_headline
+                    else failure_category.removeprefix("content_rejected_")
+                )
+                if retrying_rejected_content
+                else None
             ),
+            validation_retry=retrying_missing_late_headline,
         )
         refreshed = self.store.get(post_id)
         if refreshed is None:
@@ -1179,6 +1193,7 @@ class SessionOpenPostManager:
         late_recovery: bool = False,
         rejected_originality_draft: str | None = None,
         rejected_originality_reason: str | None = None,
+        validation_retry: bool = False,
     ) -> None:
         if self.writer is None:
             self._hold(post, "gemini_not_configured", "Gemini is unavailable; no session post was sent.")
@@ -1205,11 +1220,13 @@ class SessionOpenPostManager:
         if rejected_originality_draft is not None:
             context = {
                 **context,
-                "duplicate_retry": True,
+                "duplicate_retry": not validation_retry,
+                "validation_retry": validation_retry,
                 "rejected_duplicate_draft": rejected_originality_draft[:1600],
                 "originality_retry_reason": (
                     rejected_originality_reason or "duplicate_content"
                 ),
+                "content_retry_reason": rejected_originality_reason or "",
             }
         history = self.history_store.get_recent_channel_post_contents(
             limit=12, chat_id=self.destination_chat_id
@@ -1581,6 +1598,11 @@ class SessionOpenPostManager:
                 )
                 or (
                     self._is_duplicate_retryable_failure(failure_category)
+                    and bool(str(post.get("content") or "").strip())
+                )
+                or (
+                    failure_category == "content_rejected_session_headline_missing"
+                    and bool(post.get("late_recovery"))
                     and bool(str(post.get("content") or "").strip())
                 )
             )

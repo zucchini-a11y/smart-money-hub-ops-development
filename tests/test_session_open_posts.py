@@ -108,6 +108,23 @@ FRESH_LONDON_SESSION_POST = (
     "— VAYDA | Smart Money Hub."
 )
 
+FRESH_LATE_LONDON_POST = (
+    "📊 SMART MONEY HUB | SESSION CHECK-IN\n"
+    "━━━━━━━━━━━━━━\n\n"
+    "🇬🇧 LONDON SESSION CHECK-IN | STAY DISCIPLINED\n\n"
+    "With the session underway, focus on the plan you prepared rather than chasing "
+    "movement that has already happened. A missed move does not require a new trade.\n\n"
+    "🔍 SESSION CHECKLIST\n"
+    "✅ Reassess only the levels already marked on your chart.\n"
+    "✅ Wait for your planned confirmation before considering action.\n"
+    "✅ Step aside when the setup or invalidation is unclear.\n\n"
+    "🛡️ RISK REMINDER\n"
+    "Keep every decision within your written risk limits.\n\n"
+    "⚠️ THE GOLDEN RULE\n"
+    "NO CONFIRMATION, NO ENTRY.\n\n"
+    "— VAYDA | Smart Money Hub."
+)
+
 
 class FakeWriter:
     def __init__(
@@ -1179,6 +1196,41 @@ class SessionOpenPostTests(unittest.TestCase):
             SESSION_POST[:1600],
         )
         self.assertEqual(self.api.channel_messages, [])
+
+    def test_admin_can_retry_missing_late_headline_while_session_is_active(self):
+        occurrence = self._occurrence("london")
+        current = occurrence.utc_at + timedelta(minutes=1)
+        post, created = self.manager.store.create_slot(
+            occurrence, CHANNEL_ID, at=current.isoformat()
+        )
+        self.assertTrue(created)
+        self.manager.store.update(
+            int(post["id"]),
+            expected=("generating",),
+            status="failed",
+            at=current.isoformat(),
+            failure_category="content_rejected_session_headline_missing",
+            content="LONDON SESSION OPEN\nA stale candidate.",
+            late_recovery=1,
+        )
+        self.writer.responses = [FRESH_LATE_LONDON_POST]
+
+        held = self.manager.store.get(int(post["id"]))
+        self.manager._retry_failed_generation(ADMIN_ID, held, current)
+
+        saved = self.manager.store.get(int(post["id"]))
+        self.assertEqual(saved["status"], "published")
+        self.assertEqual(saved["late_recovery"], 1)
+        self.assertEqual(saved["content"], FRESH_LATE_LONDON_POST)
+        self.assertTrue(self.writer.calls[-1]["session_context"]["validation_retry"])
+        self.assertEqual(
+            self.writer.calls[-1]["session_context"]["content_retry_reason"],
+            "session_headline_missing",
+        )
+        self.assertEqual(len(self.api.channel_messages), 1)
+        self.assertIn("LONDON SESSION CHECK-IN", self.api.channel_messages[0][1])
+        self.assertNotIn("WAT", self.api.channel_messages[0][1])
+        self.assertIsNone(validate_session_open_post(saved["content"], saved))
 
 
 if __name__ == "__main__":
