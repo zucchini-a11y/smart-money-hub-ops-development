@@ -26,7 +26,7 @@ from smart_money_hub_bot.storage import Repository
 ADMIN_ID = 4242
 BOT_ID = 9898
 TOPIC_LINK = "https://t.me/c/3916437804/5/16"
-NOW = datetime(2026, 10, 29, 11, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 10, 27, 11, 0, tzinfo=timezone.utc)
 MONDAY_REVIEW = datetime(2026, 11, 2, 17, 55, tzinfo=timezone.utc)
 MONDAY_PUBLISH = datetime(2026, 11, 2, 18, 0, tzinfo=timezone.utc)
 THURSDAY_REVIEW = datetime(2026, 11, 5, 17, 55, tzinfo=timezone.utc)
@@ -93,7 +93,14 @@ class FakePromotionWriter:
                 raise response
             return response
 
-        return _PROMO_CAPTIONS[(len(self.calls) - 1) % len(_PROMO_CAPTIONS)]
+        caption = _PROMO_CAPTIONS[(len(self.calls) - 1) % len(_PROMO_CAPTIONS)]
+        if promotion_type == "scheduled_class":
+            caption += (
+                "\n\n🎓 Free Zoom classes are Monday and Thursday at 8:00 PM WAT. "
+                "The class link will be posted in the main Smart Money Hub channel "
+                "when the class begins."
+            )
+        return caption
 
 
 class FakeTelegramAPI:
@@ -672,7 +679,8 @@ class EducationTopicPromotionTests(unittest.TestCase):
         self.assertIsNotNone(saved)
         self.assertEqual(saved["status"], "review")
         self.assertIn("separate Market Analysis channel", saved["body"])
-        self.assertNotIn("Zoom", saved["body"])
+        self.assertIn("Monday and Thursday at 8:00 PM WAT", saved["body"])
+        self.assertIn("main Smart Money Hub channel", saved["body"])
         self.assertIn("No approval is needed", self.api.messages[-1]["text"])
         self.assertIn("publish automatically", self.api.messages[-1]["text"])
         self.assertFalse(
@@ -690,7 +698,7 @@ class EducationTopicPromotionTests(unittest.TestCase):
             )
         )
 
-    def test_zoom_reminder_is_optional_secondary_and_points_to_main_channel(self) -> None:
+    def test_zoom_class_advertisement_is_secondary_and_points_to_main_channel(self) -> None:
         with_zoom = (
             "📊 GOLD ANALYSIS THAT EXPLAINS THE WHY\n\n"
             "The separate Market Analysis channel explores Gold/XAUUSD context "
@@ -1331,8 +1339,8 @@ class EducationTopicPromotionTests(unittest.TestCase):
         self.assertEqual(row["scheduled_for"], MONDAY_PUBLISH.isoformat())
         self.assertEqual(row["schedule_key"], "education-topic-promo:2026-11-02:monday")
         self.assertIn("separate Market Analysis channel", row["body"])
-        self.assertNotIn("Monday", row["body"])
-        self.assertNotIn("Zoom", row["body"])
+        self.assertIn("Monday and Thursday at 8:00 PM WAT", row["body"])
+        self.assertIn("main Smart Money Hub channel", row["body"])
         self.assertNotIn("trade breakdown", row["body"].casefold())
         self.assertNotIn("https://", row["body"])
         self.assertEqual(self.api.messages[-1]["chat_id"], ADMIN_ID)
@@ -1376,18 +1384,32 @@ class EducationTopicPromotionTests(unittest.TestCase):
             1,
         )
 
-    def test_thursday_copy_can_omit_optional_class_reminder(self) -> None:
+    def test_thursday_scheduled_copy_advertises_8pm_class(self) -> None:
         self.manager.dispatch_due(THURSDAY_REVIEW)
         row = self.manager.store.get(1)
         self.assertIsNotNone(row)
         assert row is not None
-        self.assertNotIn("Thursday", row["body"])
-        self.assertNotIn("Zoom", row["body"])
+        self.assertIn("Thursday", row["body"])
+        self.assertIn("8:00 PM WAT", row["body"])
+        self.assertIn("main Smart Money Hub channel", row["body"])
         self.assertNotIn("http", row["body"].casefold())
         self.assertIn("Open Market Analysis", row["body"])
         self.assertEqual(row["group_chat_id"], EXPECTED_EDUCATION_GROUP_ID)
         self.assertEqual(row["thread_id"], 5)
         self.assertEqual(row["scheduled_for"], THURSDAY_PUBLISH.isoformat())
+
+    def test_scheduled_caption_without_class_advertisement_is_rejected(self) -> None:
+        caption = _PROMO_CAPTIONS[0]
+        issue = self.manager._validate_generated_body(
+            caption,
+            recent_captions=[],
+            promotion_type="scheduled_class",
+            weekday="Monday",
+        )
+        self.assertIn(
+            "A scheduled promotion must advertise the free Monday/Thursday Zoom class",
+            issue or "",
+        )
 
     def test_scheduled_post_missed_window_is_not_sent_late(self) -> None:
         self.manager.dispatch_due(MONDAY_REVIEW)

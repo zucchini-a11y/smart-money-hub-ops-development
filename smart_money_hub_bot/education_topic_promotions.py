@@ -1678,11 +1678,16 @@ class EducationTopicPromotionManager:
             for paragraph in (part.strip() for part in body.split("\n\n"))
             if paragraph and _ZOOM_OR_CLASS.search(paragraph)
         ]
+        if promotion_type == "scheduled_class" and not class_paragraphs:
+            return (
+                "A scheduled promotion must advertise the free Monday/Thursday "
+                "Zoom class at 8:00 PM WAT and say where its link will be shared."
+            )
         if class_paragraphs:
             if promotion_type != "scheduled_class":
                 return "Only a scheduled class promotion may include the optional Zoom reminder."
             if len(class_paragraphs) > 1:
-                return "Keep any Zoom reminder to one short, secondary paragraph."
+                return "Keep the Zoom class advertisement to one short, secondary paragraph."
             class_line = class_paragraphs[0]
             if _ZOOM_LINK_ALREADY_AVAILABLE.search(class_line):
                 return "Do not say the Zoom link is already available."
@@ -2381,9 +2386,13 @@ class EducationTopicPromotionManager:
                 "verification. Resolve it before generating another draft.",
             )
             return
+        local_now = _utc(now).astimezone(WAT)
+        class_weekday = {0: "Monday", 3: "Thursday"}.get(local_now.weekday())
+        promotion_type = "scheduled_class" if class_weekday else "manual"
         body, generation_error = self._generate_body(
             now=now,
-            promotion_type="manual",
+            promotion_type=promotion_type,
+            weekday=class_weekday,
         )
         if generation_error or body is None:
             self.api.send_message(chat_id, f"Promotion held: {generation_error}")
