@@ -731,6 +731,96 @@ class ChannelPostingTests(unittest.TestCase):
             )
         )
 
+    def test_scheduled_gemini_timeout_retries_after_restart_without_duplicate_posts(self) -> None:
+        self.writer.failures.append(
+            GeminiChannelGenerationError("gemini_timeout")
+        )
+        self.manager.dispatch_due(local_time(26, 9, 15))
+
+        failed = self.store.get_scheduled_channel_post("2026-10-26")
+        assert failed is not None
+        self.assertEqual(failed["status"], "failed")
+        self.assertEqual(failed["generation_retry_count"], 0)
+        self.assertEqual(
+            failed["generation_retry_at"],
+            local_time(26, 9, 20).astimezone(ZoneInfo("UTC")).isoformat(),
+        )
+        self.assertEqual(self.api.channel_messages, [])
+        self.assertIn("retry automatically", self.api.messages[0]["text"].lower())
+
+        restarted_store = Repository(
+            f"{self.temp_dir.name}/channel-posts.sqlite3"
+        )
+        restarted_manager = ChannelPostManager(
+            self.api,
+            restarted_store,
+            ADMIN_ID,
+            CHANNEL_ID,
+            channel_writer=self.writer,
+        )
+        restarted_manager.dispatch_due(local_time(26, 9, 19))
+        self.assertEqual(len(self.writer.calls), 1)
+        restarted_manager.dispatch_due(local_time(26, 9, 20))
+
+        saved = restarted_store.get_scheduled_channel_post("2026-10-26")
+        assert saved is not None
+        self.assertEqual(saved["status"], "draft")
+        self.assertEqual(saved["generation_retry_count"], 1)
+        self.assertIsNone(saved["generation_retry_at"])
+        self.assertEqual(len(self.writer.calls), 2)
+        self.assertEqual(self.api.channel_messages, [])
+        self.assertTrue(saved["preview_sent_at"])
+
+        # Repeated scheduler ticks after success reuse the same saved draft.
+        restarted_manager.dispatch_due(local_time(26, 9, 20))
+        self.assertEqual(len(self.writer.calls), 2)
+        self.assertEqual(self.api.channel_messages, [])
+
+    def test_scheduled_gemini_timeout_retries_are_bounded(self) -> None:
+        self.writer.failures.extend(
+            [
+                GeminiChannelGenerationError("gemini_timeout"),
+                GeminiChannelGenerationError("gemini_timeout"),
+                GeminiChannelGenerationError("gemini_timeout"),
+            ]
+        )
+        self.manager.dispatch_due(local_time(26, 9, 15))
+        self.manager.dispatch_due(local_time(26, 9, 20))
+        self.manager.dispatch_due(local_time(26, 9, 35))
+
+        post = self.store.get_scheduled_channel_post("2026-10-26")
+        assert post is not None
+        self.assertEqual(post["status"], "failed")
+        self.assertEqual(post["generation_retry_count"], 2)
+        self.assertIsNone(post["generation_retry_at"])
+        self.assertEqual(post["content"], "")
+        self.assertEqual(len(self.writer.calls), 3)
+        self.assertEqual(self.api.channel_messages, [])
+        self.assertIn(
+            "retries are exhausted",
+            self.api.messages[-1]["text"].lower(),
+        )
+
+        self.manager.dispatch_due(local_time(26, 9, 36))
+        self.assertEqual(len(self.writer.calls), 3)
+
+    def test_timeout_retry_is_not_started_if_final_review_window_is_too_close(self) -> None:
+        self.writer.failures.append(
+            GeminiChannelGenerationError("gemini_timeout")
+        )
+        self.manager.dispatch_due(local_time(26, 9, 50))
+
+        post = self.store.get_scheduled_channel_post("2026-10-26")
+        assert post is not None
+        self.assertEqual(post["status"], "failed")
+        self.assertIsNone(post["generation_retry_at"])
+        self.assertEqual(len(self.writer.calls), 1)
+        self.assertEqual(self.api.channel_messages, [])
+        self.assertIn(
+            "not enough time to retry",
+            self.api.messages[-1]["text"].lower(),
+        )
+
     def test_photo_uploaded_during_final_review_publishes_with_post_once(self) -> None:
         self.manager.dispatch_due(local_time(26, 9, 15))
         post = self.store.get_scheduled_channel_post("2026-10-26")

@@ -524,9 +524,8 @@ def describe_channel_post_rejection(
         )
     if category == "gemini_timeout":
         return (
-            "Gemini did not respond before the request timed out, even after one "
-            "retry. No publishable draft was saved and nothing was sent. Retry "
-            "generation later; the scheduled post remains held."
+            "Gemini did not respond before the request timed out. No publishable "
+            "draft was saved and nothing was sent; the scheduled post remains held."
         )
     if category == "gemini_revision_timeout":
         return (

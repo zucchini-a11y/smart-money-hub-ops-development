@@ -1047,6 +1047,148 @@ class ChannelPostManager:
         ):
             self._send_preview(post, now_utc)
 
+    def _generation_retry_fits_review_window(
+        self, post: dict[str, Any], retry_at: datetime
+    ) -> bool:
+        try:
+            scheduled_at = datetime.combine(
+                date.fromisoformat(str(post["schedule_date"])),
+                wall_time.fromisoformat(str(post["schedule_time"])),
+                tzinfo=self.timezone,
+            )
+        except (KeyError, TypeError, ValueError):
+            return False
+        final_review_at = (
+            self._as_utc(scheduled_at) - FINAL_REVIEW_LEAD
+        )
+        return (
+            self._as_utc(retry_at) + _GENERATION_RETRY_ATTEMPT_BUDGET
+            <= final_review_at
+        )
+
+    def _process_generation_retry(
+        self, post: dict[str, Any], now_utc: datetime
+    ) -> dict[str, Any]:
+        if (
+            post.get("status") != "failed"
+            or post.get("failure_category") != "gemini_timeout"
+            or post.get("generation_source") != "gemini_pending"
+            or post.get("content")
+        ):
+            return post
+
+        now = self._as_utc(now_utc)
+        retry_count = int(post.get("generation_retry_count") or 0)
+        started_value = post.get("generation_retry_started_at")
+        if started_value:
+            started_at = self._parse_datetime(str(started_value))
+            if (
+                started_at is not None
+                and now - self._as_utc(started_at) < _GENERATION_RETRY_LEASE
+            ):
+                return post
+
+            recovered_retry_at: datetime | None = None
+            if retry_count < MAX_AUTOMATIC_GENERATION_TIMEOUT_RETRIES:
+                recovered_retry_at = (
+                    now
+                    + _GENERATION_TIMEOUT_RETRY_DELAYS[retry_count]
+                )
+                if not self._generation_retry_fits_review_window(
+                    post, recovered_retry_at
+                ):
+                    recovered_retry_at = None
+            outcome = self.store.recover_stale_channel_post_generation_retry(
+                int(post["id"]),
+                stale_before=(now - _GENERATION_RETRY_LEASE).isoformat(),
+                retry_at=(
+                    recovered_retry_at.isoformat()
+                    if recovered_retry_at is not None
+                    else None
+                ),
+                at=now.isoformat(),
+            )
+            refreshed = self.store.get_channel_post(int(post["id"])) or post
+            if outcome == "exhausted":
+                self._notify_failure(
+                    refreshed,
+                    "gemini_timeout",
+                    additional_note=(
+                        "An interrupted retry could not be safely resumed before "
+                        "the final review window. The post remains held."
+                    ),
+                )
+            return refreshed
+
+        retry_at = self._parse_datetime(
+            str(post.get("generation_retry_at") or "")
+        )
+        if retry_at is None or self._as_utc(retry_at) > now:
+            return post
+
+        if retry_count >= MAX_AUTOMATIC_GENERATION_TIMEOUT_RETRIES:
+            self.store.set_channel_post_status(
+                int(post["id"]),
+                "failed",
+                action="generation_retry_exhausted",
+                details="automatic_retry_limit",
+                failure_category="gemini_timeout",
+                at=now.isoformat(),
+            )
+            exhausted = self.store.get_channel_post(int(post["id"])) or post
+            self._notify_failure(
+                exhausted,
+                "gemini_timeout",
+                additional_note=(
+                    "Automatic draft retries are exhausted; the post remains held."
+                ),
+            )
+            return exhausted
+
+        if not self._generation_retry_fits_review_window(
+            post, now + _GENERATION_RETRY_ATTEMPT_BUDGET
+        ):
+            self.store.set_channel_post_status(
+                int(post["id"]),
+                "failed",
+                action="generation_retry_window_missed",
+                details="final_review_window",
+                failure_category="gemini_timeout",
+                at=now.isoformat(),
+            )
+            held = self.store.get_channel_post(int(post["id"])) or post
+            self._notify_failure(
+                held,
+                "gemini_timeout",
+                additional_note=(
+                    "There was not enough time to retry before the final review "
+                    "window, so the post remains held."
+                ),
+            )
+            return held
+
+        claimed = self.store.claim_channel_post_generation_retry(
+            int(post["id"]),
+            at=now.isoformat(),
+            lease_until=(now + _GENERATION_RETRY_LEASE).isoformat(),
+            max_retries=MAX_AUTOMATIC_GENERATION_TIMEOUT_RETRIES,
+        )
+        if claimed is None:
+            return self.store.get_channel_post(int(post["id"])) or post
+
+        settings = self.store.get_channel_posting_settings()
+        generated = self._generate_gemini_post(
+            claimed,
+            preferred_category=str(claimed["requested_category"]),
+            sequence=int(settings["next_category_index"]),
+            settings=settings,
+            now_utc=now,
+            allow_automatic_retries=True,
+        )
+        if generated.get("status") == "draft":
+            self._send_preview(generated, now)
+        return generated
+
     def _create_post(
         self, target_date: date, *, now_utc: datetime
     ) -> dict[str, Any] | None:
@@ -1227,12 +1369,14 @@ class ChannelPostManager:
             last_promo_date=last_promo_date,
             action=action,
             admin_id=admin_id,
+            at=self._as_utc(now_utc).isoformat() if now_utc else None,
         ):
             return self._record_generation_failure(
                 post,
                 "gemini_post_state_changed",
                 admin_id=admin_id,
                 revision=revision_feedback is not None,
+                now_utc=now_utc,
             )
         saved = self.store.get_channel_post(int(post["id"])) or post
         logger.info(
@@ -1277,6 +1421,8 @@ class ChannelPostManager:
             sequence=int(settings["next_category_index"]),
             settings=settings,
             admin_id=admin_id,
+            now_utc=now_utc,
+            allow_automatic_retries=True,
         )
         if generated.get("status") == "draft":
             self._send_preview(generated, now_utc)
@@ -1312,6 +1458,7 @@ class ChannelPostManager:
             settings=settings,
             revision_feedback=feedback,
             admin_id=admin_id,
+            now_utc=now_utc,
         )
         if revised.get("status") == "draft":
             self._send_preview(revised, now_utc)
@@ -1354,6 +1501,8 @@ class ChannelPostManager:
         admin_id: int | None = None,
         revision: bool = False,
         rejected_content: str | None = None,
+        now_utc: datetime | None = None,
+        allow_automatic_retries: bool = False,
     ) -> dict[str, Any]:
         category = (
             f"gemini_revision_{failure_category.removeprefix('gemini_')}"
@@ -1364,6 +1513,22 @@ class ChannelPostManager:
                 else f"gemini_{failure_category}"
             )
         )
+        failed_at = self._as_utc(now_utc or datetime.now(timezone.utc))
+        retry_at: datetime | None = None
+        retry_count = int(post.get("generation_retry_count") or 0)
+        timeout_retry = (
+            allow_automatic_retries
+            and not revision
+            and category == "gemini_timeout"
+            and post.get("generation_source") == "gemini_pending"
+            and not post.get("content")
+        )
+        if timeout_retry and retry_count < MAX_AUTOMATIC_GENERATION_TIMEOUT_RETRIES:
+            retry_candidate = (
+                failed_at + _GENERATION_TIMEOUT_RETRY_DELAYS[retry_count]
+            )
+            if self._generation_retry_fits_review_window(post, retry_candidate):
+                retry_at = retry_candidate
         self.store.set_channel_post_status(
             int(post["id"]),
             "failed",
@@ -1372,13 +1537,38 @@ class ChannelPostManager:
             details=category,
             failure_category=category,
             rejected_content=rejected_content,
+            generation_retry_at=retry_at.isoformat() if retry_at else None,
+            at=failed_at.isoformat(),
         )
         logger.warning(
             "Market Analysis draft held failure_category=%s.",
             category,
         )
         saved = self.store.get_channel_post(int(post["id"])) or post
-        self._notify_failure(saved, category)
+        if retry_at is not None:
+            if retry_count == 0:
+                self._notify_generation_retry_scheduled(
+                    saved,
+                    retry_at,
+                    remaining=MAX_AUTOMATIC_GENERATION_TIMEOUT_RETRIES - retry_count,
+                )
+        else:
+            additional_note = None
+            if timeout_retry:
+                if retry_count >= MAX_AUTOMATIC_GENERATION_TIMEOUT_RETRIES:
+                    additional_note = (
+                        "Automatic draft retries are exhausted; the post remains held."
+                    )
+                else:
+                    additional_note = (
+                        "There was not enough time to retry before the final review "
+                        "window, so the post remains held."
+                    )
+            self._notify_failure(
+                saved,
+                category,
+                additional_note=additional_note,
+            )
         return saved
 
     def _hold_legacy_channel_draft(
@@ -1774,6 +1964,7 @@ class ChannelPostManager:
         category: str,
         *,
         verification_detail: str | None = None,
+        additional_note: str | None = None,
     ) -> None:
         if self.admin_id is None:
             return
@@ -1785,6 +1976,44 @@ class ChannelPostManager:
         message = f"{post['schedule_date']}: {reason}"
         if verification_detail:
             message += f"\n\nTelegram destination response: {verification_detail}"
+        if additional_note:
+            message += f"\n\n{additional_note}"
+        self._notify_admin(
+            message,
+            {
+                "inline_keyboard": [
+                    [
+                        {
+                            "text": "👁 Review Post",
+                            "callback_data": f"admin:channel_posts:preview:{post['id']}",
+                        }
+                    ]
+                ]
+            },
+        )
+
+    def _notify_generation_retry_scheduled(
+        self,
+        post: dict[str, Any],
+        retry_at: datetime,
+        *,
+        remaining: int,
+    ) -> None:
+        if self.admin_id is None:
+            return
+        retry_local = self._as_utc(retry_at).astimezone(self.timezone)
+        retry_time = retry_local.strftime("%H:%M WAT")
+        message = (
+            f"{post['schedule_date']}: Gemini timed out while preparing the "
+            "scheduled Market Analysis post. I will retry automatically at "
+            f"{retry_time}"
+        )
+        if remaining > 1:
+            message += " and make one more retry if needed"
+        message += (
+            ". The post stays held until it passes validation and review; "
+            "nothing has been sent to the channel."
+        )
         self._notify_admin(
             message,
             {
