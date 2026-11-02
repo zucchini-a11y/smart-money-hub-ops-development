@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 from smart_money_hub_bot.channel_content import normalize_weekend_brand_header
@@ -1037,6 +1038,39 @@ class SessionOpenPostTests(unittest.TestCase):
         self.assertEqual(saved["failure_category"], "content_rejected_duplicate_content")
         self.assertEqual(self.api.channel_messages, [])
 
+    def test_reused_session_headline_with_distinct_body_is_not_a_duplicate(self):
+        previous = self._occurrence("new_york", date(2026, 10, 28))
+        old, created = self.manager.store.create_slot(
+            previous, CHANNEL_ID, at="2026-10-28T12:45:00+00:00"
+        )
+        self.assertTrue(created)
+        self.manager.store.update(
+            int(old["id"]),
+            expected=("generating",),
+            status="published",
+            at="2026-10-28T13:00:00+00:00",
+            content=DUPLICATE_LATE_NY_POST,
+            telegram_message_id=101,
+            published_at="2026-10-28T13:00:00+00:00",
+        )
+        fresh_body = DUPLICATE_LATE_NY_POST.replace(
+            "Navigating active hours requires keeping your analysis framework steady "
+            "and ignoring short-term market noise.",
+            "Compare price with your pre-marked levels, then wait for the confirmation "
+            "and invalidation defined in your plan.",
+        )
+
+        self.assertFalse(
+            self.manager._is_duplicate(
+                fresh_body, post_id=999, exclude_current=True
+            )
+        )
+        self.assertTrue(
+            self.manager._is_duplicate(
+                DUPLICATE_LATE_NY_POST, post_id=999, exclude_current=True
+            )
+        )
+
     def test_duplicate_session_generation_gets_one_fresh_gemini_retry(self):
         previous = self._occurrence("new_york", date(2026, 10, 28))
         old, created = self.manager.store.create_slot(
@@ -1183,7 +1217,11 @@ class SessionOpenPostTests(unittest.TestCase):
         self.writer.responses = [FRESH_LONDON_SESSION_POST]
 
         held = self.manager.store.get(int(post["id"]))
-        self.manager._retry_failed_generation(ADMIN_ID, held, current)
+        with patch(
+            "smart_money_hub_bot.session_open_posts._utc_now",
+            return_value=(current + timedelta(seconds=1)).isoformat(),
+        ):
+            self.manager._retry_failed_generation(ADMIN_ID, held, current)
 
         saved = self.manager.store.get(int(post["id"]))
         self.assertEqual(saved["status"], "draft")
@@ -1196,6 +1234,51 @@ class SessionOpenPostTests(unittest.TestCase):
             SESSION_POST[:1600],
         )
         self.assertEqual(self.api.channel_messages, [])
+
+    def test_retry_inside_review_window_sends_immediate_review_then_publishes_at_open(self):
+        occurrence = self._occurrence("london")
+        current = occurrence.utc_at - timedelta(minutes=2)
+        post, created = self.manager.store.create_slot(
+            occurrence, CHANNEL_ID, at=current.isoformat()
+        )
+        self.assertTrue(created)
+        self.manager.store.update(
+            int(post["id"]),
+            expected=("generating",),
+            status="failed",
+            at=(current - timedelta(minutes=1)).isoformat(),
+            failure_category="content_rejected_duplicate_content",
+            content=SESSION_POST,
+        )
+        self.writer.responses = [FRESH_LONDON_SESSION_POST]
+        completed_at = occurrence.utc_at - timedelta(minutes=1)
+
+        with patch(
+            "smart_money_hub_bot.session_open_posts._utc_now",
+            return_value=completed_at.isoformat(),
+        ):
+            held = self.manager.store.get(int(post["id"]))
+            self.manager._retry_failed_generation(ADMIN_ID, held, current)
+
+        saved = self.manager.store.get(int(post["id"]))
+        self.assertEqual(saved["status"], "review_pending")
+        self.assertIsNotNone(saved["review_sent_at"])
+        self.assertIn(
+            "Review window: until the scheduled session opening.",
+            next(
+                text
+                for _, text, _, _ in self.api.admin_messages
+                if "SESSION-OPEN POST REVIEW" in text
+            ),
+        )
+        self.assertEqual(self.api.channel_messages, [])
+
+        self.manager.dispatch_due(occurrence.utc_at)
+
+        published = self.manager.store.get(int(post["id"]))
+        self.assertEqual(published["status"], "published")
+        self.assertEqual(published["published_at"], occurrence.utc_at.isoformat())
+        self.assertEqual(len(self.api.channel_messages), 1)
 
     def test_admin_can_retry_missing_late_headline_while_session_is_active(self):
         occurrence = self._occurrence("london")

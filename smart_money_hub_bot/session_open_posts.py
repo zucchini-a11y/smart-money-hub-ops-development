@@ -980,14 +980,6 @@ class SessionOpenPostManager:
                 )
                 self._show_post(chat_id, post)
                 return
-        elif current >= self._scheduled_at(post) - FINAL_REVIEW_LEAD:
-            self.api.send_message(
-                chat_id,
-                "AI retry is too close to the session opening to leave time for "
-                "the private review. The post remains held and will not publish.",
-            )
-            self._show_post(chat_id, post)
-            return
         if not self.store.update(
             post_id,
             expected=("failed",),
@@ -1054,11 +1046,25 @@ class SessionOpenPostManager:
                         "publish. It remains unpublished.",
                     )
             else:
-                self.api.send_message(
-                    chat_id,
-                    "Gemini retry succeeded. The draft is saved for its original "
-                    "session time and is still subject to the normal review and checks.",
+                completed_at = _as_utc(
+                    datetime.fromisoformat(_utc_now())
                 )
+                scheduled_at = self._scheduled_at(refreshed)
+                if completed_at >= scheduled_at:
+                    self._hold(
+                        refreshed,
+                        "session_retry_review_missed",
+                        "The fresh session draft finished after its scheduled opening. "
+                        "It remains held and will not publish late.",
+                    )
+                elif scheduled_at - completed_at <= FINAL_REVIEW_LEAD:
+                    self._send_review(refreshed, occurrence, completed_at)
+                else:
+                    self.api.send_message(
+                        chat_id,
+                        "Gemini retry succeeded. The draft is saved for its original "
+                        "session time and will receive its scheduled private review.",
+                    )
         elif refreshed["status"] == "failed":
             category = str(refreshed.get("failure_category") or "gemini_unknown")
             description = {
@@ -1311,7 +1317,9 @@ class SessionOpenPostManager:
                 "content": content,
             }
             rejection = validate_session_open_post(content, candidate_post)
-            if not rejection and self._is_duplicate(content, int(post["id"])):
+            if not rejection and self._is_duplicate(
+                content, int(post["id"]), exclude_current=True
+            ):
                 rejection = "duplicate_content"
             if not rejection and self._repeats_recent_session_layout(
                 content, int(post["id"])
@@ -1375,7 +1383,7 @@ class SessionOpenPostManager:
             f"Destination: Market Analysis (ID {int(post['destination_chat_id'])})\n"
             f"Scheduled: {occurrence.local_date.strftime('%A, %d %B %Y')} at "
             f"{occurrence.wat_at.strftime('%H:%M')} WAT\n"
-            "Review window: 5 minutes, until the session opens.\n\n"
+            "Review window: until the scheduled session opening.\n\n"
             f"{post['content']}\n\n"
             "Add a photo if you want; otherwise the post will be text-only. "
             "Approve, edit, or cancel. If you do not respond, an eligible post "
@@ -1675,17 +1683,19 @@ class SessionOpenPostManager:
             previous_headline = _canonical(
                 _post_headline(str(item.get("content") or ""))
             )
+            body_similarity = (
+                SequenceMatcher(None, previous, candidate).ratio()
+                if previous
+                else 0.0
+            )
+            headline_similarity = (
+                SequenceMatcher(None, previous_headline, candidate_headline).ratio()
+                if previous_headline and candidate_headline
+                else 0.0
+            )
             if previous and (
-                previous == candidate
-                or SequenceMatcher(None, previous, candidate).ratio() >= 0.97
-                or (
-                    candidate_headline
-                    and previous_headline
-                    and SequenceMatcher(
-                        None, candidate_headline, previous_headline
-                    ).ratio()
-                    >= 0.90
-                )
+                body_similarity >= 0.97
+                or (headline_similarity >= 0.90 and body_similarity >= 0.85)
             ):
                 return True
         return False
