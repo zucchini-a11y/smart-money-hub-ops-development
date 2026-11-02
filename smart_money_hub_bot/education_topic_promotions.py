@@ -32,7 +32,6 @@ DEFAULT_COOLDOWN_DAYS = 14
 ALLOWED_COOLDOWNS = {7, 14, 28}
 PROMO_SCHEDULE_TIME = time_of_day(19, 0)
 PROMO_REVIEW_LEAD = timedelta(minutes=5)
-PROMO_REVIEW_LATE_TOLERANCE = timedelta(minutes=1)
 PROMO_PUBLISH_GRACE = timedelta(minutes=2)
 MAX_PROMO_BODY_CHARS = 700
 EXPECTED_BOT_USERNAME = "SmartMoneyHubSignalsBot"
@@ -2909,7 +2908,22 @@ class EducationTopicPromotionManager:
         local_now = _utc(now).astimezone(WAT)
         preview_at = local_scheduled - PROMO_REVIEW_LEAD
         if preview_at <= local_now < local_scheduled:
-            if local_now <= preview_at + PROMO_REVIEW_LATE_TOLERANCE:
+            weekday = "monday" if local_scheduled.weekday() == 0 else "thursday"
+            self._create_scheduled_preview(
+                now=now,
+                schedule_key=schedule_key,
+                scheduled_for=scheduled_for,
+                local_scheduled=local_scheduled,
+                weekday=weekday,
+            )
+            return
+        if local_now < local_scheduled:
+            return
+        if not self.store.schedule_run(schedule_key):
+            if local_now <= local_scheduled + PROMO_PUBLISH_GRACE:
+                # If the scheduler missed the private preview window, prepare
+                # the same verified draft at the scheduled time and publish it
+                # automatically if every check passes.
                 weekday = "monday" if local_scheduled.weekday() == 0 else "thursday"
                 self._create_scheduled_preview(
                     now=now,
@@ -2918,23 +2932,22 @@ class EducationTopicPromotionManager:
                     local_scheduled=local_scheduled,
                     weekday=weekday,
                 )
-            return
-        if local_now < local_scheduled:
-            return
-        if not self.store.schedule_run(schedule_key):
-            details = "review window missed; no scheduled promotion was published"
-            if self.store.record_schedule_event(
-                schedule_key=schedule_key,
-                scheduled_for=scheduled_for,
-                status="missed",
-                details=details,
-                at=_utc(now).isoformat(),
-            ):
-                self._notify_schedule_issue(
-                    "The Monday/Thursday promotion missed its private review window. "
-                    "Nothing was posted."
-                )
-            return
+                if not self.store.schedule_run(schedule_key):
+                    return
+            else:
+                details = "review window missed; no scheduled promotion was published"
+                if self.store.record_schedule_event(
+                    schedule_key=schedule_key,
+                    scheduled_for=scheduled_for,
+                    status="missed",
+                    details=details,
+                    at=_utc(now).isoformat(),
+                ):
+                    self._notify_schedule_issue(
+                        "The Monday/Thursday promotion missed its private review "
+                        "window and the on-time recovery window. Nothing was posted."
+                    )
+                return
         for promotion in self.store.scheduled_posts_due(at=_utc(now).isoformat()):
             if promotion.get("schedule_key") == schedule_key:
                 self._publish_scheduled_post(promotion, now)

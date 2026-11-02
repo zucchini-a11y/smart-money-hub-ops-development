@@ -16,4 +16,5 @@
 - [Bot downtime recovery](bot-downtime-recovery.md) — acknowledge only messages timestamped within a long bot outage; do not apologize for new messages after recovery.
 - [Telegram Business reply disclosure](telegram-business-consent.md) — automatic replies use a brief disclosure in the first reply, with no separate YES/NO prompt.
 - [Session-open channel posts](session-open-channel-posts.md) — the owner approved additional weekday Tokyo, London, and New York prep posts using DST-aware WAT times.
+- [Education promotion publishing](education-topic-promotions.md) — scheduled Monday/Thursday topic promotions should publish without approval after checks; never publish them late.
 - [Cloudflare CLI setup](cloudflare-cli-setup.md) — install the Cloudflare CLI globally in this pnpm workspace; validate any `.replit` cleanup through its config tool.

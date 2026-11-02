@@ -1491,7 +1491,7 @@ class EducationTopicPromotionTests(unittest.TestCase):
         )
 
     def test_missed_review_window_is_recorded_once_without_a_late_preview(self) -> None:
-        missed_at = MONDAY_PUBLISH + timedelta(minutes=1)
+        missed_at = MONDAY_PUBLISH + timedelta(minutes=3)
         self.manager.dispatch_due(missed_at)
         first_count = len(self.api.messages)
         self.manager.dispatch_due(missed_at + timedelta(seconds=30))
@@ -1499,6 +1499,36 @@ class EducationTopicPromotionTests(unittest.TestCase):
         run = self.manager.store.schedule_run("education-topic-promo:2026-11-02:monday")
         self.assertEqual(run["status"], "missed")
         self.assertIn("review window missed", run["details"])
+        self.assertFalse(
+            any(item["chat_id"] == EXPECTED_EDUCATION_GROUP_ID for item in self.api.messages)
+        )
+
+    def test_missed_preview_window_recovers_and_autopublishes_within_grace(self) -> None:
+        self.manager.dispatch_due(MONDAY_PUBLISH + timedelta(minutes=1))
+
+        row = self.manager.store.get(1)
+        self.assertIsNotNone(row)
+        assert row is not None
+        self.assertEqual(row["status"], "published")
+        self.assertIsNone(row["approved_at"])
+        self.assertEqual(
+            self.manager.store.schedule_run(row["schedule_key"])["status"],
+            "published",
+        )
+        posts = [
+            item
+            for item in self.api.messages
+            if item["chat_id"] == EXPECTED_EDUCATION_GROUP_ID
+        ]
+        self.assertEqual(len(posts), 1)
+        self.assertEqual(posts[0]["message_thread_id"], 5)
+
+    def test_missed_preview_window_after_publish_grace_stays_held(self) -> None:
+        self.manager.dispatch_due(MONDAY_PUBLISH + timedelta(minutes=3))
+
+        self.assertIsNone(self.manager.store.get(1))
+        run = self.manager.store.schedule_run("education-topic-promo:2026-11-02:monday")
+        self.assertEqual(run["status"], "missed")
         self.assertFalse(
             any(item["chat_id"] == EXPECTED_EDUCATION_GROUP_ID for item in self.api.messages)
         )
