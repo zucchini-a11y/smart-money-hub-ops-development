@@ -1139,26 +1139,24 @@ class ChannelPostingTests(unittest.TestCase):
         self.assertEqual(saved["publish_attempts"], 1)
         self.assertEqual(len(api.channel_messages), 1)
 
-    def test_missing_review_window_holds_until_admin_explicitly_publishes_once(self) -> None:
+    def test_missing_review_window_auto_publishes_on_time_without_approval(self) -> None:
         manager, store, api = self.manager, self.store, self.api
         manager.dispatch_due(local_time(23, 18))
         manager.dispatch_due(local_time(24, 10))
         post = store.get_scheduled_channel_post("2026-10-24")
         assert post is not None
         self.assertEqual(post["review_status"], "missed")
-        self.assertEqual(post["status"], "draft")
-        self.assertEqual(post["publish_attempts"], 0)
-        manager.dispatch_due(local_time(24, 10, 1))
-        self.assertEqual(api.channel_messages, [])
-
-        # An explicit admin action can recover a missed review on the same
-        # scheduled WAT date; all ordinary publish checks still run.
-        manager.handle_callback(
-            ADMIN_ID,
-            ADMIN_ID,
-            f"admin:channel_posts:publish:{post['id']}",
-            local_time(24, 10, 2),
+        self.assertEqual(post["status"], "published")
+        self.assertEqual(post["publish_attempts"], 1)
+        self.assertEqual(len(api.channel_messages), 1)
+        self.assertTrue(
+            any(
+                "published at its scheduled time without approval"
+                in message["text"]
+                for message in api.messages
+            )
         )
+        manager.dispatch_due(local_time(24, 10, 1))
         published = store.get_channel_post(post["id"])
         assert published is not None
         self.assertEqual(published["status"], "published")
@@ -1175,11 +1173,10 @@ class ChannelPostingTests(unittest.TestCase):
         finally:
             connection.close()
         self.assertTrue(
-            any(action["action"] == "published" and action["admin_id"] == ADMIN_ID
-                for action in actions)
+            any(action["action"] == "published" for action in actions)
         )
 
-        # A repeated button press cannot create a second channel message.
+        # Subsequent scheduler passes cannot create a duplicate.
         manager.handle_callback(
             ADMIN_ID,
             ADMIN_ID,
@@ -1188,7 +1185,23 @@ class ChannelPostingTests(unittest.TestCase):
         )
         self.assertEqual(len(api.channel_messages), 1)
 
-    def test_failed_review_delivery_holds_post_and_notifies_admin(self) -> None:
+    def test_review_missed_outside_on_time_grace_remains_held(self) -> None:
+        manager, store, api = self.manager, self.store, self.api
+        manager.dispatch_due(local_time(23, 18))
+        manager.dispatch_due(local_time(24, 10, 2))
+        post = store.get_scheduled_channel_post("2026-10-24")
+        assert post is not None
+        self.assertEqual(post["review_status"], "missed")
+        self.assertEqual(post["status"], "draft")
+        self.assertEqual(post["publish_attempts"], 0)
+        self.assertEqual(api.channel_messages, [])
+        self.assertTrue(
+            any("published late" in message["text"] for message in api.messages)
+        )
+        manager.dispatch_due(local_time(24, 10, 5))
+        self.assertEqual(api.channel_messages, [])
+
+    def test_failed_review_delivery_auto_publishes_at_schedule_if_checks_pass(self) -> None:
         manager, store, api = self.manager, self.store, self.api
         manager.dispatch_due(local_time(26, 9))
         post = store.get_scheduled_channel_post("2026-10-26")
@@ -1202,13 +1215,20 @@ class ChannelPostingTests(unittest.TestCase):
 
         saved = store.get_channel_post(post["id"])
         assert saved is not None
-        self.assertEqual(saved["review_status"], "delivery_failed")
-        self.assertEqual(saved["status"], "draft")
-        self.assertEqual(api.channel_messages, [])
+        self.assertEqual(saved["review_status"], "missed")
+        self.assertEqual(saved["status"], "published")
+        self.assertEqual(len(api.channel_messages), 1)
         self.assertTrue(
             any(
                 "final private review message could not be delivered"
                 in message["text"].casefold()
+                for message in api.messages
+            )
+        )
+        self.assertTrue(
+            any(
+                "published at its scheduled time without approval"
+                in message["text"]
                 for message in api.messages
             )
         )

@@ -2630,7 +2630,9 @@ class Repository:
                         failure_category = 'scheduled_review_missed',
                         updated_at = ?
                     WHERE id = ? AND status IN ('draft', 'awaiting_edit')
-                        AND review_status IN ('not_requested', 'sending', 'editing')
+                        AND review_status IN (
+                            'not_requested', 'sending', 'editing', 'delivery_failed'
+                        )
                     """,
                     (at, post_id),
                 )

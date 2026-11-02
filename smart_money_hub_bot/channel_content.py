@@ -555,14 +555,16 @@ def describe_channel_post_rejection(
         )
     if category == "scheduled_review_delivery_failed":
         return (
-            "The final private review message could not be delivered. The post is "
-            "held and will not publish automatically; check the bot's private chat "
-            "access before reviewing it again."
+            "The final private review message could not be delivered. If the saved "
+            "post passes all checks, it will publish at its scheduled time without "
+            "approval; otherwise it will remain held. Check the bot's private chat "
+            "access so future reviews can reach you."
         )
     if category == "scheduled_review_delivery_uncertain":
         return (
             "The scheduler could not confirm that the final review reached you. "
-            "The post is held and will not publish automatically."
+            "At the scheduled time, the saved post will publish without approval "
+            "only if all checks pass."
         )
     if category == "scheduled_review_missed":
         return (

@@ -37,6 +37,7 @@ SUNDAY_PUBLISH_TIME = wall_time(hour=18)
 EVENING_PREVIEW_TIME = wall_time(hour=18)
 PREVIEW_RETRY_DELAY = timedelta(minutes=5)
 FINAL_REVIEW_LEAD = timedelta(minutes=5)
+MISSED_REVIEW_AUTO_PUBLISH_GRACE = timedelta(minutes=1)
 CHANNEL_POSTS_PAGE_SIZE = 5
 MAX_AUTOMATIC_RATE_LIMIT_RETRIES = 1
 MAX_AUTOMATIC_GENERATION_TIMEOUT_RETRIES = 2
@@ -169,17 +170,23 @@ class ChannelPostManager:
         if status == "draft" and post.get("review_status") in {
             "not_requested",
             "sending",
+            "delivery_failed",
         }:
             if self.store.mark_channel_post_review_missed(
                 int(post["id"]), at=current_utc.isoformat()
             ):
                 missed = self.store.get_channel_post(int(post["id"])) or post
-                category = (
-                    "scheduled_review_delivery_uncertain"
-                    if post.get("review_status") == "sending"
-                    else "scheduled_review_missed"
-                )
-                self._notify_failure(missed, category)
+                if self._missed_review_publish_window_open(missed, current_utc):
+                    self._publish(missed, current_utc, automatic=True)
+                    published = self.store.get_channel_post(int(post["id"])) or missed
+                    if published.get("status") == "published":
+                        self._notify_admin(
+                            f"{published['schedule_date']}: The private review was "
+                            "missed, but the saved post passed its checks and was "
+                            "published at its scheduled time without approval."
+                        )
+                else:
+                    self._notify_failure(missed, "scheduled_review_missed")
             return
         if status == "draft" and post.get("review_status") in {
             "approved",
@@ -1833,6 +1840,14 @@ class ChannelPostManager:
         if self.admin_id is None or self.destination_chat_id is None:
             return
         review_status = str(post.get("review_status") or "not_requested")
+        auto_publish_after_missed_review = (
+            automatic
+            and post.get("status") == "draft"
+            and review_status == "missed"
+            and post.get("failure_category") == "scheduled_review_missed"
+            and int(post.get("publish_attempts") or 0) == 0
+            and self._missed_review_publish_window_open(post, now_utc)
+        )
         explicit_publish_after_missed_review = (
             not automatic
             and admin_id is not None
@@ -1843,6 +1858,7 @@ class ChannelPostManager:
         )
         if (
             not explicit_publish_after_missed_review
+            and not auto_publish_after_missed_review
             and (
                 review_status not in {"approved", "edited", "timed_out"}
                 or not post.get("review_sent_at")
@@ -2067,6 +2083,25 @@ class ChannelPostManager:
                 failure_category=category,
             )
             self._notify_failure(post, category)
+
+    def _missed_review_publish_window_open(
+        self, post: dict[str, Any], now_utc: datetime
+    ) -> bool:
+        """Allow only an on-time publish after a missed review, never a late one."""
+        try:
+            scheduled_date = date.fromisoformat(str(post["schedule_date"]))
+            scheduled_time = wall_time.fromisoformat(str(post["schedule_time"]))
+        except (KeyError, TypeError, ValueError):
+            return False
+        current = self._as_utc(now_utc)
+        if current.astimezone(self.timezone).date() != scheduled_date:
+            return False
+        scheduled_at = datetime.combine(
+            scheduled_date, scheduled_time, tzinfo=self.timezone
+        ).astimezone(timezone.utc)
+        return scheduled_at <= current <= (
+            scheduled_at + MISSED_REVIEW_AUTO_PUBLISH_GRACE
+        )
 
     def _preflight_keyboard(self, post: dict[str, Any]) -> dict[str, Any]:
         return {
