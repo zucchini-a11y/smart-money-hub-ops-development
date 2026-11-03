@@ -626,9 +626,9 @@ class AdminDashboard:
             self.api.send_message(
                 chat_id,
                 "I can prepare a private preview for the configured Market Analysis "
-                "channel or Education group. Use: "
-                "post to Market Analysis channel: [complete post] "
-                "or post the last lesson to Education group.",
+                "channel or Education group. Include the complete post and destination, "
+                "or ask me to use your latest lesson. I’ll show you a private preview "
+                "with buttons; nothing is sent until you choose to publish it.",
             )
             return True
 
@@ -684,18 +684,64 @@ class AdminDashboard:
                 destination_chat_id=destination,
                 content_source="admin_text_request",
             )
-            self._preview_content_draft(chat_id, [draft_id])
-            self.api.send_message(
-                chat_id,
-                f"Preview ready for {destination_name}. It has not been sent. "
-                f"Review it, then use /approve {draft_id} and "
-                f"/publishcontent {draft_id} to publish. "
-                "Only the configured channel and Education group are available "
-                "through this shortcut; topic-specific posting is not supported here.",
-            )
+            self._preview_content_draft(chat_id, [draft_id], show_actions=True)
         except CommunityContentError as error:
             self.api.send_message(chat_id, f"Post held; nothing was sent. {error}")
         return True
+
+    def _handle_text_post_action(
+        self, chat_id: int, telegram_id: int, action: str, draft_id: str
+    ) -> None:
+        draft = self.community_content.repository.get_draft(draft_id)
+        if not draft:
+            self.api.send_message(chat_id, "This preview is no longer available.")
+            return
+        if action == "approve":
+            if draft["status"] == "draft":
+                try:
+                    self.community_content.repository.decide(
+                        draft_id,
+                        "approved",
+                        admin_id=telegram_id,
+                        reason="Approved from the private post preview.",
+                    )
+                except CommunityContentError:
+                    self.api.send_message(
+                        chat_id,
+                        "This preview could not be approved. It has not been published.",
+                    )
+                    return
+            elif draft["status"] != "approved":
+                self.api.send_message(
+                    chat_id,
+                    "This preview has already been handled and cannot be approved again.",
+                )
+                return
+            self.api.send_message(
+                chat_id,
+                "Approved. It is still not published. Tap Publish when you’re ready.",
+                {
+                    "inline_keyboard": [[
+                        {
+                            "text": "Publish now",
+                            "callback_data": f"admin:content_draft:publish:{draft_id}",
+                        }
+                    ]]
+                },
+            )
+            return
+        try:
+            self.community_content.publish_approved(
+                draft_id, admin_id=telegram_id, api=self.api
+            )
+        except CommunityContentError:
+            self.api.send_message(
+                chat_id,
+                "It was not published. Check the destination and bot permissions, "
+                "then prepare a new preview if needed.",
+            )
+            return
+        self.api.send_message(chat_id, "Published to the configured destination.")
 
     def handle_search_message(
         self, chat_id: int, telegram_id: int, is_private: bool, query: str
@@ -1049,6 +1095,19 @@ class AdminDashboard:
         self, chat_id: int, telegram_id: int, is_private: bool, data: str
     ) -> None:
         if not self._authorize(chat_id, telegram_id, is_private):
+            return
+        content_action = re.fullmatch(
+            r"admin:content_draft:(approve|publish):([A-F0-9]{12})",
+            data,
+            flags=re.IGNORECASE,
+        )
+        if content_action:
+            self._handle_text_post_action(
+                chat_id,
+                telegram_id,
+                content_action.group(1).casefold(),
+                content_action.group(2),
+            )
             return
         if data.startswith("admin:education_topic_promo"):
             self.cancel_calendar_action(telegram_id)
