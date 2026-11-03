@@ -198,8 +198,10 @@ class MessageRouterTests(unittest.TestCase):
         ).reply.response
 
         self.assertIn("private preview", response)
-        self.assertIn("/approve ID", response)
-        self.assertIn("/publishcontent ID", response)
+        self.assertIn("Approve", response)
+        self.assertIn("Publish", response)
+        self.assertNotIn("/", response)
+        self.assertNotIn("preview_flow_01", response)
         self.assertNotIn("cannot post directly", response)
         self.assertNotIn("copy and paste", response)
 

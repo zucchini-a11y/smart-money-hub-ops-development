@@ -737,10 +737,10 @@ class GeminiCoachService:
             "through the private admin text flow for the configured Market Analysis "
             "channel or Education group. The post must first be shown in a private "
             "preview with action buttons; require an Approve tap, followed by a "
-            "separate Publish tap. Do not display slash-command syntax, internal draft "
-            "IDs, fake preview IDs, or links in conversational posting guidance. Never "
-            "tell the administrator to copy and paste, and never claim a post was sent "
-            "unless the publishing flow confirms it."
+            "separate Publish tap. In posting guidance, do not display slash-command "
+            "syntax, internal draft IDs, fake preview IDs, or links. Never tell the "
+            "administrator to copy and paste, and never claim a post was sent unless "
+            "the publishing flow confirms it."
             if is_admin
             else ""
         )

@@ -352,7 +352,62 @@ class CommunityContentTests(unittest.TestCase):
         self.assertEqual(drafts[0]["status"], "draft")
         self.assertEqual(drafts[0]["destination_chat_id"], -100111)
         self.assertEqual(api.send_count, 0)
-        self.assertIn("not been sent", api.messages[-1][1])
+        preview_text = "\n".join(message[1] for message in api.messages)
+        self.assertIn("not published", preview_text)
+        self.assertNotIn(drafts[0]["draft_id"], preview_text)
+        self.assertNotIn("/approve", preview_text)
+        self.assertNotIn("/publishcontent", preview_text)
+        approve_button = api.messages[-1][2]["keyboard"]["inline_keyboard"][0][0]
+        self.assertEqual(approve_button["text"], "Approve preview")
+
+    def test_admin_post_preview_requires_approve_then_publish_buttons(self):
+        api = FakeAPI()
+        api.chat_type = "channel"
+        dashboard = AdminDashboard(
+            api,
+            Repository(self.database),
+            ADMIN_ID,
+            main_channel_id=-100111,
+            education_group_id=GROUP_ID,
+        )
+        dashboard.handle_admin_post_text(
+            ADMIN_ID,
+            ADMIN_ID,
+            True,
+            "Post to Market Analysis channel: "
+            "SMART MONEY HUB\n\nA reviewed educational note.",
+        )
+        draft = dashboard.community_content.repository.list_drafts(limit=1)[0]
+        approve_button = api.messages[-1][2]["keyboard"]["inline_keyboard"][0][0]
+
+        dashboard.handle_callback(
+            99, 99, True, approve_button["callback_data"]
+        )
+        self.assertEqual(
+            dashboard.community_content.repository.get_draft(draft["draft_id"])["status"],
+            "draft",
+        )
+
+        dashboard.handle_callback(
+            ADMIN_ID, ADMIN_ID, True, approve_button["callback_data"]
+        )
+        self.assertEqual(
+            dashboard.community_content.repository.get_draft(draft["draft_id"])["status"],
+            "approved",
+        )
+        self.assertEqual(api.send_count, 0)
+        publish_button = api.messages[-1][2]["keyboard"]["inline_keyboard"][0][0]
+        self.assertEqual(publish_button["text"], "Publish now")
+
+        dashboard.handle_callback(
+            ADMIN_ID, ADMIN_ID, True, publish_button["callback_data"]
+        )
+        self.assertEqual(api.send_count, 1)
+        self.assertEqual(
+            dashboard.community_content.repository.get_draft(draft["draft_id"])["status"],
+            "published",
+        )
+        self.assertEqual(api.messages[-1][1], "Published to the configured destination.")
 
     def test_admin_text_post_never_accepts_arbitrary_destination(self):
         api = FakeAPI()

@@ -374,8 +374,14 @@ class GeminiCoachTests(unittest.TestCase):
         self.assertIn("send /admin", admin_instruction)
         self.assertIn("one-time personal reminders", admin_instruction)
         self.assertIn("one-off posts can be prepared", admin_instruction)
-        self.assertIn("A private preview must come first", admin_instruction)
-        self.assertIn("Never claim the bot cannot post", admin_instruction)
+        self.assertIn("preview with action buttons", admin_instruction)
+        self.assertIn("separate Publish tap", admin_instruction)
+        self.assertIn(
+            "In posting guidance, do not display slash-command syntax",
+            admin_instruction,
+        )
+        self.assertNotIn("/approve", admin_instruction)
+        self.assertNotIn("/publishcontent", admin_instruction)
         self.assertIn("not a member-facing feature", member_instruction)
         self.assertNotIn("verified as the configured administrator", member_instruction)
         self.assertNotIn("They may set one-time personal reminders", member_instruction)

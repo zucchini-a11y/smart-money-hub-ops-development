@@ -604,6 +604,9 @@ class AdminDashboard:
             if request_text.casefold().startswith(prefix):
                 request_text = request_text[len(prefix):].lstrip()
                 break
+        request_head = re.split(r"[:\n]", request_text, maxsplit=1)[0]
+        if re.search(r"\bpolls?\b", request_head, flags=re.IGNORECASE):
+            return False
         if not re.match(r"^(post|publish|send)\b", request_text, flags=re.IGNORECASE):
             return False
         if not self._authorize(chat_id, telegram_id, is_private):
@@ -1856,7 +1859,7 @@ class AdminDashboard:
             elif command == "/weeklyreport":
                 self._create_weekly_report(chat_id, values)
             elif command == "/preview":
-                self._preview_content_draft(chat_id, positional)
+                self._preview_content_draft(chat_id, positional, show_actions=True)
             elif command == "/editdraft":
                 if not positional:
                     raise CommunityContentError("Usage: /editdraft DRAFT_ID")
@@ -2654,7 +2657,7 @@ class AdminDashboard:
             stats_start=date.fromisoformat(values["start"]) if values.get("start") else None,
             stats_end=date.fromisoformat(values["end"]) if values.get("end") else None,
         )
-        self._preview_content_draft(chat_id, [draft_id])
+        self._preview_content_draft(chat_id, [draft_id], show_actions=True)
 
     def _create_weekly_report(
         self, chat_id: int, values: dict[str, str]
@@ -2670,7 +2673,7 @@ class AdminDashboard:
             stats_start=start,
             stats_end=end,
         )
-        self._preview_content_draft(chat_id, [draft_id])
+        self._preview_content_draft(chat_id, [draft_id], show_actions=True)
 
     def _preview_content_draft(
         self, chat_id: int, positional: list[str], *, show_actions: bool = False
@@ -2684,24 +2687,34 @@ class AdminDashboard:
             draft = self.community_content.repository.get_draft(positional[0])
         if not draft:
             raise CommunityContentError("Draft not found.")
+        destination_id = int(draft["destination_chat_id"])
+        if destination_id == self.main_channel_id:
+            destination_name = "Market Analysis channel"
+        elif destination_id == self.education_group_id:
+            destination_name = "Education group"
+        else:
+            destination_name = "configured destination"
+        status = str(draft["status"])
         self.api.send_message(
             chat_id,
             (
-                "<b>Private preview</b> · not published"
+                f"<b>Private preview</b> · {html.escape(destination_name)} · "
+                f"{html.escape(status)} · not published"
                 if show_actions
                 else f"<b>Draft {html.escape(draft['draft_id'])}</b> · "
-                f"{html.escape(draft['status'])} · not published"
+                f"{html.escape(status)} · not published"
             ),
             parse_mode="HTML",
         )
         keyboard = None
-        if show_actions:
+        if show_actions and status in {"draft", "approved"}:
+            action = "approve" if status == "draft" else "publish"
             keyboard = {
                 "inline_keyboard": [[
                     {
-                        "text": "Approve preview",
+                        "text": "Approve preview" if action == "approve" else "Publish now",
                         "callback_data": (
-                            f"admin:content_draft:approve:{draft['draft_id']}"
+                            f"admin:content_draft:{action}:{draft['draft_id']}"
                         ),
                     }
                 ]]
