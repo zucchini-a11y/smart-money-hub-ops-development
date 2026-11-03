@@ -519,6 +519,7 @@ class BotFlowTests(unittest.TestCase):
             feature="chart_image",
             outcome="failure",
             failure_kind="http_timeout",
+            http_status=504,
             at="2026-11-02T10:00:00+00:00",
         )
 
@@ -530,6 +531,7 @@ class BotFlowTests(unittest.TestCase):
         self.assertIn("External curriculum files/transcripts: not configured", message)
         self.assertIn("Separate Bot 1 progress interface: not connected", message)
         self.assertIn("chart_image / http_timeout", message)
+        self.assertIn("(HTTP 504)", message)
 
     def test_admin_text_menu_request_routes_through_private_message_handler(self) -> None:
         self.bot.admin_id = self.user_id

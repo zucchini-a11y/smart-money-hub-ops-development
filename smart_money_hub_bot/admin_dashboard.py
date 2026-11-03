@@ -3084,6 +3084,15 @@ class AdminDashboard:
         )
         provider_health = self.store.coach_provider_health(days=7)
         latest_failure = provider_health["latest_failure"]
+        failure_status = ""
+        if latest_failure:
+            status_parts = []
+            if latest_failure.get("http_status") is not None:
+                status_parts.append(f"HTTP {latest_failure['http_status']}")
+            if latest_failure.get("provider_status"):
+                status_parts.append(str(latest_failure["provider_status"]))
+            if status_parts:
+                failure_status = f" ({', '.join(status_parts)})"
         lines = [
             "🧠 KNOWLEDGE IMPROVEMENT",
             "Member questions are grouped without usernames or Telegram IDs. "
@@ -3113,8 +3122,8 @@ class AdminDashboard:
             f"{provider_health['chart_image_failure']} failed",
             (
                 "• Latest failure: "
-                f"{latest_failure['feature']} / {latest_failure['failure_kind']} "
-                f"at {latest_failure['created_at']}"
+                f"{latest_failure['feature']} / {latest_failure['failure_kind']}"
+                f"{failure_status} at {latest_failure['created_at']}"
                 if latest_failure
                 else "• No provider failures recorded in this period"
             ),
