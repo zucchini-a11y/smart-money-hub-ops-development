@@ -589,22 +589,37 @@ class AdminDashboard:
         self, chat_id: int, telegram_id: int, is_private: bool, text: str
     ) -> bool:
         """Turn an explicit admin post request into a saved, review-first draft."""
-        if not re.match(r"^\s*post\b", text, flags=re.IGNORECASE):
+        request_text = text.strip()
+        for prefix in (
+            "can you please ",
+            "could you please ",
+            "please ",
+            "can you ",
+            "could you ",
+            "i want you to ",
+            "i want to ",
+            "i'd like you to ",
+            "help me ",
+        ):
+            if request_text.casefold().startswith(prefix):
+                request_text = request_text[len(prefix):].lstrip()
+                break
+        if not re.match(r"^(post|publish|send)\b", request_text, flags=re.IGNORECASE):
             return False
         if not self._authorize(chat_id, telegram_id, is_private):
             return True
         previous_request = re.match(
-            r"^\s*post\s+(?:the\s+)?(?:last|previous)\s+"
+            r"^(?:post|publish|send)\s+(?:the\s+)?(?:last|previous)\s+"
             r"(?:answer|lesson|post)\s+(?:to|in)\s+"
             r"(market analysis channel|market analysis|education group|education)\s*$",
-            text,
+            request_text,
             flags=re.IGNORECASE,
         )
         match = re.match(
-            r"^\s*post\s+(?:(?:this|it|the post|the lesson)\s+)?"
+            r"^(?:post|publish|send)\s+(?:(?:this|it|the post|the lesson)\s+)?"
             r"(?:to|in)\s+(market analysis channel|market analysis|"
             r"education group|education)\s*:\s*(.*)$",
-            text,
+            request_text,
             flags=re.IGNORECASE | re.DOTALL,
         )
         if not match and not previous_request:
