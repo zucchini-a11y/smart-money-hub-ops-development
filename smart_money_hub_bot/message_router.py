@@ -18,7 +18,7 @@ from .curriculum_retrieval import (
     episode_unavailable_reply,
     requested_episode_number,
 )
-from .knowledge_base import find_approved_answer
+from .knowledge_base import find_approved_answer, question_tokens
 from .question_detection import QuestionAssessment, detect_member_question
 
 logger = logging.getLogger(__name__)
@@ -478,7 +478,9 @@ def _relevant_conversation_context(
     if profile and isinstance(profile.get("episode_source_missing"), int):
         role_context["episode_source_missing"] = profile["episode_source_missing"]
     if profile and isinstance(profile.get("learning_goal"), str):
-        role_context["learning_goal"] = profile["learning_goal"][:300]
+        goal = profile["learning_goal"][:300]
+        if question_tokens(message) & question_tokens(goal):
+            role_context["learning_goal"] = goal
     if not history:
         return [], role_context
 
