@@ -372,6 +372,20 @@ class EducationMorningStore:
                 ).fetchall()
             }
 
+    def recent_topics(self, limit: int = 6) -> set[str]:
+        with closing(sqlite3.connect(self.database_path)) as connection:
+            rows = connection.execute(
+                """
+                SELECT topic FROM education_morning_runs
+                WHERE topic IS NOT NULL
+                    AND status IN ('queued', 'sending', 'sent', 'delivery_unknown')
+                ORDER BY schedule_date DESC
+                LIMIT ?
+                """,
+                (max(1, min(int(limit), 30)),),
+            ).fetchall()
+        return {str(row[0]).casefold() for row in rows if row[0]}
+
     def create(
         self,
         *,
@@ -653,6 +667,7 @@ class EducationMorningPublisher:
         self, scheduled_date: date
     ) -> tuple[MorningLesson, str] | None:
         used = self.store.used_hashes()
+        recent_topics = self.store.recent_topics()
         recent_text = self._recent_group_text(scheduled_date)
         total = len(MORNING_LESSONS)
         offset = scheduled_date.toordinal() % max(total, 1)
@@ -661,6 +676,8 @@ class EducationMorningPublisher:
             for step in range(total)
         ]
         for lesson in lessons:
+            if lesson.topic.casefold() in recent_topics:
+                continue
             if any(keyword.casefold() in recent_text for keyword in lesson.keywords):
                 continue
             content = render_morning_post(
@@ -671,8 +688,11 @@ class EducationMorningPublisher:
             if digest not in used:
                 return lesson, content
         # Prefer a unique post over a duplicate if every topic was recently
-        # covered; the per-run hash still prevents any exact repeated message.
+        # covered in group discussion; avoid topics used by the latest six
+        # Education lessons in either case.
         for lesson in lessons:
+            if lesson.topic.casefold() in recent_topics:
+                continue
             content = render_morning_post(
                 lesson,
                 saturday_poll_reminder=scheduled_date.weekday() == 5,

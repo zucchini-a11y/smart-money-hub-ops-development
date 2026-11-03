@@ -22,3 +22,9 @@ The daily Education-group morning post is scheduled for 08:00 WAT. If the bot re
 **Why:** the user requested a 30-minute recovery window while still avoiding stale late posts.
 
 **How to apply:** keep the scheduled time unchanged, use the 30-minute boundary consistently, prevent duplicates, and do not reset an already-skipped run to trigger a late send.
+
+Daily Education lessons should change subject, not only wording; avoid repeating a subject across recent morning lessons when another approved subject is available.
+
+**Why:** the user chose daily lesson subjects as the thing that must change.
+
+**How to apply:** rotate across distinct lesson topics and do not repeat a recent topic merely to produce different wording.

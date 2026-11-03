@@ -279,6 +279,23 @@ class EducationMorningTests(unittest.TestCase):
         self.assertIsNotNone(selected)
         self.assertNotIn("risk", selected[0].topic)
 
+    def test_recent_education_lesson_subject_is_not_reused(self):
+        previous = datetime(2026, 10, 25, 8, tzinfo=MORNING_ZONE)
+        self.publisher.store.create(
+            schedule_date="2026-10-25",
+            scheduled_at=previous,
+            topic="poi",
+            content="Previously sent POI lesson.",
+            status="sent",
+            failure_category=None,
+            now=previous.astimezone(timezone.utc),
+        )
+
+        selected = self.publisher._select_content(datetime(2026, 10, 26).date())
+
+        self.assertIsNotNone(selected)
+        self.assertNotEqual(selected[0].topic, "poi")
+
 
 if __name__ == "__main__":
     unittest.main()
