@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "-LEMKHQ8oF5ciScAJXZZm"
+uri = "file://generated-artifacts/smart-money-hub-course.zip"
+type = "unspecified"
+title = "Smart Money Hub Course ZIP"
+description = "10 built-in SMC lessons and the 10-question assessment. Includes student questions plus a separate instructor-only answer key. No learner records or credentials."
+logical_id = "35fe438c-3601-42e4-b2a0-f5a615ac7584"
+content_hash = "sha256:506cc90ad3066ed78b1440b81e119f57144c810761d73b6ddc7312602d30f36b"
+size = 6147
+mtime_ms = 1793678488020
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/35fe438c-3601-42e4-b2a0-f5a615ac7584/ee478364-8a0d-4013-961f-303162f677d1"
+storage_version_token = "1793678495299959"
+content_type = "application/octet-stream"
