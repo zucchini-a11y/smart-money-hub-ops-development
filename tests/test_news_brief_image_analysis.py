@@ -71,7 +71,20 @@ class GeminiNewsImageAnalysisTests(unittest.TestCase):
                             "not-in-the-source-records",
                             "bea:event-1",
                             "bea:event-1",
-                        ]
+                        ],
+                        "visible_date_text": "Thursday",
+                        "observed_events": [
+                            {
+                                "event_name": "Personal Income and Outlays",
+                                "currency": "USD",
+                                "time_text": "8:30 AM",
+                                "impact_label": None,
+                                "impact_marker": None,
+                                "forecast_text": None,
+                                "previous_text": None,
+                                "actual_text": None,
+                            }
+                        ],
                     }
                 )
             )
@@ -82,6 +95,12 @@ class GeminiNewsImageAnalysisTests(unittest.TestCase):
             self.evidence,
         )
         self.assertEqual(result.relevant_event_ids, ("bea:event-1",))
+        self.assertEqual(result.visible_date_text, "Thursday")
+        self.assertEqual(len(result.observed_events), 1)
+        self.assertEqual(
+            result.observed_events[0].event_name,
+            "Personal Income and Outlays",
+        )
         request = mocked_urlopen.call_args.args[0]
         self.assertIn(GEMINI_MODEL, request.full_url)
         payload = json.loads(request.data)
@@ -94,7 +113,9 @@ class GeminiNewsImageAnalysisTests(unittest.TestCase):
         prompt = parts[0]["text"]
         self.assertIn("untrusted input", prompt)
         self.assertIn("official records", prompt)
-        self.assertIn("Do not create or restate", prompt)
+        self.assertIn("transcribe", prompt)
+        self.assertIn("Do not infer an impact rating from a color or icon", prompt)
+        self.assertEqual(payload["generationConfig"]["maxOutputTokens"], 8192)
 
     @patch("smart_money_hub_bot.news_brief_image_analysis.urlopen")
     def test_rejects_unstructured_or_incomplete_model_response(self, mocked_urlopen):
@@ -110,11 +131,47 @@ class GeminiNewsImageAnalysisTests(unittest.TestCase):
                 self.service.analyze(self.image, "image/gif", self.evidence)
             mocked.assert_not_called()
 
-    def test_empty_evidence_does_not_send_image_to_gemini(self):
-        with patch("smart_money_hub_bot.news_brief_image_analysis.urlopen") as mocked:
-            result = self.service.analyze(self.image, "image/jpeg", [])
-            self.assertEqual(result.relevant_event_ids, ())
-            mocked.assert_not_called()
+    @patch("smart_money_hub_bot.news_brief_image_analysis.urlopen")
+    def test_empty_evidence_still_transcribes_image_without_verified_matches(
+        self, mocked_urlopen
+    ):
+        mocked_urlopen.return_value = FakeResponse(
+            candidate(
+                json.dumps(
+                    {
+                        "visible_date_text": None,
+                        "observed_events": [
+                            {
+                                "event_name": "ADP Non-Farm Employment Change",
+                                "currency": "USD",
+                                "time_text": "2:15pm",
+                                "impact_label": None,
+                                "impact_marker": "yellow crown icon",
+                                "forecast_text": None,
+                                "previous_text": None,
+                                "actual_text": None,
+                            }
+                        ],
+                        "relevant_event_ids": [],
+                    }
+                )
+            )
+        )
+
+        result = self.service.analyze(self.image, "image/jpeg", [])
+
+        self.assertEqual(result.relevant_event_ids, ())
+        self.assertEqual(
+            result.observed_events[0].event_name,
+            "ADP Non-Farm Employment Change",
+        )
+        self.assertEqual(result.observed_events[0].time_text, "2:15pm")
+        self.assertEqual(result.observed_events[0].impact_label, None)
+        self.assertEqual(
+            result.observed_events[0].impact_marker,
+            "yellow crown icon",
+        )
+        mocked_urlopen.assert_called_once()
 
 
 if __name__ == "__main__":

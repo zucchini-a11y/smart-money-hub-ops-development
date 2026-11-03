@@ -3195,12 +3195,58 @@ class Repository:
             connection.close()
 
     def reserve_channel_post_publish(
-        self, post_id: int, *, at: str | None = None
+        self,
+        post_id: int,
+        *,
+        at: str | None = None,
+        publish_day_start_utc: str | None = None,
+        publish_day_end_utc: str | None = None,
     ) -> int | None:
+        """Reserve a post, optionally enforcing one routine post per WAT day.
+
+        When the daily window is supplied, returns ``0`` if another post has
+        already published or has an uncertain/in-progress delivery in that
+        window. Returns ``None`` when this post is no longer publishable.
+        """
+        if (publish_day_start_utc is None) != (publish_day_end_utc is None):
+            raise ValueError("Both daily publish window bounds are required.")
         timestamp = at or utc_now()
         connection = self._connect()
         try:
             with connection:
+                if publish_day_start_utc is not None and publish_day_end_utc is not None:
+                    connection.execute("BEGIN IMMEDIATE")
+                    occupied = connection.execute(
+                        """
+                        SELECT 1
+                        FROM scheduled_channel_posts
+                        WHERE id != ?
+                          AND (
+                            (
+                              status = 'published'
+                              AND published_at >= ?
+                              AND published_at < ?
+                            )
+                            OR (
+                              status IN (
+                                'publishing', 'delivery_unknown', 'retry_wait'
+                              )
+                              AND publishing_started_at >= ?
+                              AND publishing_started_at < ?
+                            )
+                          )
+                        LIMIT 1
+                        """,
+                        (
+                            post_id,
+                            publish_day_start_utc,
+                            publish_day_end_utc,
+                            publish_day_start_utc,
+                            publish_day_end_utc,
+                        ),
+                    ).fetchone()
+                    if occupied:
+                        return 0
                 cursor = connection.execute(
                     """
                     UPDATE scheduled_channel_posts

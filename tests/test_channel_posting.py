@@ -1261,7 +1261,7 @@ class ChannelPostingTests(unittest.TestCase):
             any("will not publish early" in message["text"] for message in api.messages)
         )
 
-    def test_admin_publish_now_rejects_a_past_scheduled_date(self) -> None:
+    def test_admin_publish_now_can_publish_past_scheduled_post_today(self) -> None:
         manager, store, api = self.manager, self.store, self.api
         manager.dispatch_due(local_time(26, 9))
         post = store.get_scheduled_channel_post("2026-10-26")
@@ -1276,12 +1276,43 @@ class ChannelPostingTests(unittest.TestCase):
 
         saved = store.get_channel_post(post["id"])
         assert saved is not None
-        self.assertEqual(saved["status"], "draft")
-        self.assertEqual(saved["publish_attempts"], 0)
-        self.assertEqual(api.channel_messages, [])
+        self.assertEqual(saved["status"], "published")
+        self.assertEqual(saved["publish_attempts"], 1)
+        self.assertEqual(len(api.channel_messages), 1)
+
+    def test_past_scheduled_post_cannot_exceed_today_routine_post_limit(self) -> None:
+        manager, store, api = self.manager, self.store, self.api
+        manager.dispatch_due(local_time(26, 9))
+        old_post = store.get_scheduled_channel_post("2026-10-26")
+        assert old_post is not None
+
+        manager.dispatch_due(local_time(27, 9))
+        today_post = store.get_scheduled_channel_post("2026-10-27")
+        assert today_post is not None
+        manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:channel_posts:publish:{today_post['id']}",
+            local_time(27, 10),
+        )
+        self.assertEqual(store.get_channel_post(today_post["id"])["status"], "published")
+
+        manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:channel_posts:publish:{old_post['id']}",
+            local_time(27, 10, 1),
+        )
+
+        saved_old = store.get_channel_post(old_post["id"])
+        assert saved_old is not None
+        self.assertEqual(saved_old["status"], "failed")
+        self.assertEqual(saved_old["failure_category"], "daily_publish_limit_reached")
+        self.assertEqual(saved_old["publish_attempts"], 0)
+        self.assertEqual(len(api.channel_messages), 1)
         self.assertTrue(
             any(
-                "only on this post's scheduled WAT date" in message["text"]
+                "already been sent or is in progress today" in message["text"]
                 for message in api.messages
             )
         )

@@ -18,6 +18,7 @@ from .news_brief_image_analysis import (
     GeminiNewsImageAnalysisService,
     GeminiNewsImageError,
     MAX_IMAGE_BYTES,
+    VisibleCalendarEvent,
 )
 from .telegram_api import TelegramAPI, TelegramAPIError
 
@@ -245,6 +246,7 @@ class NewsBriefPhotoPrompts:
                     verified_evidence_json TEXT,
                     matched_event_ids_json TEXT,
                     image_analysis_status TEXT,
+                    observed_events_json TEXT,
                     PRIMARY KEY (brief_type, brief_date)
                 )
                 """
@@ -261,6 +263,7 @@ class NewsBriefPhotoPrompts:
                 ("verified_evidence_json", "TEXT"),
                 ("matched_event_ids_json", "TEXT"),
                 ("image_analysis_status", "TEXT"),
+                ("observed_events_json", "TEXT"),
             ):
                 if column not in columns:
                     connection.execute(
@@ -359,11 +362,11 @@ class NewsBriefPhotoPrompts:
         prompt = (
             "This review arrives 30 minutes before publication. Would you like to "
             "add a picture? Tap “Add picture”, then send one image privately to "
-            "this bot. Gemini will only match it to currently "
-            "verified official calendar records; it cannot supply or change "
-            "figures. If you do not reply or add a picture, the brief will still "
-            "publish text-only at the scheduled time if final source and destination "
-            "checks pass."
+            "this bot. I’ll try to match it to fresh calendar records. If I can’t, "
+            "your picture will still be attached as supplied, but it will not change "
+            "the verified news text. If you do not reply or add a picture, the brief "
+            "will still publish text-only at the scheduled time if final source and "
+            "destination checks pass."
         )
         try:
             self.api.send_message(int(self.admin_id), heading)
@@ -547,81 +550,58 @@ class NewsBriefPhotoPrompts:
             except json.JSONDecodeError:
                 evidence = []
             preview = str(review[1] or "")
-        if not evidence or self.image_analyzer is None:
-            self._record_image_rejection(
-                brief_type, brief_date, "unavailable", current
-            )
-            self.api.send_message(
-                chat_id,
-                "I couldn't verify this picture against fresh official calendar "
-                "records, so I won't use it to change or accompany the news. The "
-                "text brief remains on schedule.",
-            )
-            return True
+        matched_ids: list[str] = []
+        observed_events: tuple[VisibleCalendarEvent, ...] = ()
+        visible_date_text: str | None = None
+        analysis_status = "unavailable"
+        image_check_started: float | None = None
+        if self.image_analyzer is not None:
+            image_check_started = time.monotonic()
+            try:
+                file_info = self.api.get_file(file_id)
+                file_path = file_info.get("file_path")
+                if not isinstance(file_path, str):
+                    raise TelegramAPIError("Telegram file path is unavailable.")
+                image_bytes, mime_type = self.api.download_file(
+                    file_path,
+                    max_bytes=MAX_IMAGE_BYTES,
+                )
+                analysis = self.image_analyzer.analyze(
+                    image_bytes,
+                    mime_type,
+                    evidence,
+                )
+                allowed = {
+                    str(item.get("external_id"))
+                    for item in evidence
+                    if isinstance(item, dict) and item.get("external_id")
+                }
+                matched_ids = [
+                    event_id
+                    for event_id in analysis.relevant_event_ids
+                    if event_id in allowed
+                ][:3]
+                observed_events = analysis.observed_events[:20]
+                visible_date_text = analysis.visible_date_text
+                analysis_status = (
+                    "matched"
+                    if matched_ids
+                    else "observed_unmatched"
+                    if observed_events
+                    else "unread"
+                )
+            except (TelegramAPIError, GeminiNewsImageError, OSError, ValueError):
+                analysis_status = "failed"
+                logger.warning("Optional USD/gold brief image review failed.")
+            except Exception:
+                analysis_status = "failed"
+                logger.warning("Unexpected failure while checking a brief image.")
 
-        image_check_started = time.monotonic()
-        try:
-            file_info = self.api.get_file(file_id)
-            file_path = file_info.get("file_path")
-            if not isinstance(file_path, str):
-                raise TelegramAPIError("Telegram file path is unavailable.")
-            image_bytes, mime_type = self.api.download_file(
-                file_path,
-                max_bytes=MAX_IMAGE_BYTES,
+        completed_at = current
+        if image_check_started is not None:
+            completed_at += timedelta(
+                seconds=max(0.0, time.monotonic() - image_check_started)
             )
-            analysis = self.image_analyzer.analyze(
-                image_bytes,
-                mime_type,
-                evidence,
-            )
-            allowed = {
-                str(item.get("external_id"))
-                for item in evidence
-                if isinstance(item, dict) and item.get("external_id")
-            }
-            matched_ids = [
-                event_id
-                for event_id in analysis.relevant_event_ids
-                if event_id in allowed
-            ][:3]
-        except (TelegramAPIError, GeminiNewsImageError, OSError, ValueError):
-            self._record_image_rejection(
-                brief_type, brief_date, "failed", current
-            )
-            self.api.send_message(
-                chat_id,
-                "I couldn't safely read and check that picture this time. It won't "
-                "change the news or be posted; the text brief remains on schedule.",
-            )
-            logger.warning("Optional USD/gold brief image review failed.")
-            return True
-        except Exception:
-            self._record_image_rejection(
-                brief_type, brief_date, "failed", current
-            )
-            self.api.send_message(
-                chat_id,
-                "I couldn't safely read and check that picture this time. It won't "
-                "change the news or be posted; the text brief remains on schedule.",
-            )
-            logger.warning("Unexpected failure while checking a brief image.")
-            return True
-
-        if not matched_ids:
-            self._record_image_rejection(
-                brief_type, brief_date, "unmatched", current
-            )
-            self.api.send_message(
-                chat_id,
-                "The picture did not clearly match a currently verified official "
-                "calendar record. I won't use it or add its claims to the brief. "
-                "The text brief remains on schedule.",
-            )
-            return True
-
-        completed_at = current + timedelta(
-            seconds=max(0.0, time.monotonic() - image_check_started)
-        )
         if (
             not self._before_publication(brief_type, brief_date, completed_at)
             or self._status(brief_type, brief_date)
@@ -635,18 +615,18 @@ class NewsBriefPhotoPrompts:
             )
             return True
 
-        updated_preview = append_verified_image_highlights(
-            preview,
-            evidence,
-            matched_ids,
+        updated_preview = (
+            append_verified_image_highlights(preview, evidence, matched_ids)
+            if matched_ids
+            else preview
         )
         with closing(sqlite3.connect(self.database_path)) as connection, connection:
             update_result = connection.execute(
                 """
                 UPDATE news_brief_photo_reviews
                 SET status='photo_attached', photo_file_id=?, updated_at_utc=?,
-                    matched_event_ids_json=?, image_analysis_status='matched',
-                    preview_content=?
+                    matched_event_ids_json=?, image_analysis_status=?,
+                    observed_events_json=?, preview_content=?
                 WHERE brief_type=? AND brief_date=?
                     AND status IN ('awaiting_photo', 'photo_attached')
                 """,
@@ -654,6 +634,24 @@ class NewsBriefPhotoPrompts:
                     file_id,
                     _timestamp(current),
                     json.dumps(matched_ids, separators=(",", ":")),
+                    analysis_status,
+                    json.dumps(
+                        [
+                            {
+                                "event_name": item.event_name,
+                                "currency": item.currency,
+                                "time_text": item.time_text,
+                                "impact_label": item.impact_label,
+                                "impact_marker": item.impact_marker,
+                                "forecast_text": item.forecast_text,
+                                "previous_text": item.previous_text,
+                                "actual_text": item.actual_text,
+                            }
+                            for item in observed_events
+                        ],
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    ),
                     updated_preview,
                     brief_type,
                     brief_date.isoformat(),
@@ -671,14 +669,90 @@ class NewsBriefPhotoPrompts:
                 "was not attached, and the scheduled post was not delayed.",
             )
             return True
-        self.api.send_message(
-            chat_id,
-            "The picture was matched to calendar events. The revised preview "
-            "follows; its event details remain limited to verified calendar data.",
-        )
-        self.api.send_message(chat_id, "UPDATED PREVIEW — NOT PUBLISHED")
+        if matched_ids:
+            self.api.send_message(
+                chat_id,
+                f"The picture was attached. {len(matched_ids)} event(s) matched "
+                "the verified records supplied with the brief. Only verified "
+                "matches were added to the preview.",
+            )
+            matched_titles = [
+                str(item.get("title") or "U.S. release")
+                for item in evidence
+                if isinstance(item, dict)
+                and item.get("external_id") in matched_ids
+            ][:3]
+            if matched_titles:
+                self.api.send_message(
+                    chat_id,
+                    "Matched verified record(s):\n"
+                    + "\n".join(f"• {title}" for title in matched_titles),
+                )
+            if observed_events:
+                self.api.send_message(
+                    chat_id,
+                    self._format_observed_events(visible_date_text, observed_events),
+                )
+            self.api.send_message(chat_id, "UPDATED PREVIEW — NOT PUBLISHED")
+        else:
+            if observed_events:
+                self.api.send_message(
+                    chat_id,
+                    f"Your picture was attached. Gemini read "
+                    f"{len(observed_events)} visible calendar row(s), but none "
+                    "matched current verified records. The verified news text "
+                    "was left unchanged.",
+                )
+                self.api.send_message(
+                    chat_id,
+                    self._format_observed_events(visible_date_text, observed_events),
+                )
+            else:
+                self.api.send_message(
+                    chat_id,
+                    "Your picture was attached as supplied, but I couldn't read "
+                    "clear calendar rows from it. The verified news text was left "
+                    "unchanged.",
+                )
+            self.api.send_message(chat_id, "PREVIEW — NOT PUBLISHED")
         self.api.send_message(chat_id, updated_preview, parse_mode="HTML")
         return True
+
+    @staticmethod
+    def _format_observed_events(
+        visible_date_text: str | None,
+        events: tuple[VisibleCalendarEvent, ...],
+    ) -> str:
+        """Show a bounded, private transcription without presenting it as verified."""
+        lines = ["READ FROM THE PICTURE — image transcription, not a source record"]
+        if visible_date_text:
+            lines.append(f"Date text shown: {visible_date_text}")
+        for index, event in enumerate(events[:12], start=1):
+            title = " ".join(
+                part for part in (event.currency, event.event_name) if part
+            )
+            details = [f"{index}. {title}"]
+            for label, value in (
+                ("Time shown", event.time_text),
+                ("Impact text shown", event.impact_label),
+                ("Icon/marker shown", event.impact_marker),
+                ("Forecast shown", event.forecast_text),
+                ("Previous shown", event.previous_text),
+                ("Actual shown", event.actual_text),
+            ):
+                if value:
+                    details.append(f"{label}: {value}")
+            lines.append(" · ".join(details))
+        if len(events) > 12:
+            lines.append(f"Showing 12 of {len(events)} legible rows.")
+        lines.append(
+            "Times, labels, and values above are copied from the picture. "
+            "Only events matched to fresh official records may change the brief."
+        )
+        rendered = "\n".join(lines)
+        if len(rendered.encode("utf-16-le")) // 2 > 2800:
+            rendered = rendered[:2500].rstrip() + "\n[Transcription shortened.]"
+        return rendered
 
     def photo_file_id(self, brief_type: str, brief_date: date) -> str | None:
         with closing(sqlite3.connect(self.database_path)) as connection:
@@ -703,7 +777,7 @@ class NewsBriefPhotoPrompts:
         *,
         now: datetime,
     ) -> tuple[str, str | None]:
-        """Revalidate image-matched IDs against current official records."""
+        """Revalidate text highlights while retaining the admin-supplied image."""
         with closing(sqlite3.connect(self.database_path)) as connection:
             row = connection.execute(
                 """
@@ -721,6 +795,9 @@ class NewsBriefPhotoPrompts:
             matched = []
         if not isinstance(matched, list):
             matched = []
+        photo = row[1] if isinstance(row[1], str) and row[1] else None
+        if not matched:
+            return report, photo
         current_evidence = build_verified_image_evidence(
             brief_type,
             brief_date,
@@ -739,14 +816,18 @@ class NewsBriefPhotoPrompts:
             if isinstance(item, str) and item in current_ids
         ]
         if not valid_ids:
-            self._exclude_unverified_photo(brief_type, brief_date, now)
-            return report, None
+            self._clear_unverified_image_matches(
+                brief_type,
+                brief_date,
+                "source_no_longer_verified",
+                now,
+            )
+            return report, photo
         updated_report = append_verified_image_highlights(
             report,
             current_evidence,
             valid_ids,
         )
-        photo = row[1] if isinstance(row[1], str) and row[1] else None
         return updated_report, photo
 
     def mark_published(
@@ -801,7 +882,7 @@ class NewsBriefPhotoPrompts:
         scheduled = _parse_timestamp(row[0]) if row else None
         return scheduled is not None and current.astimezone(timezone.utc) < scheduled
 
-    def _record_image_rejection(
+    def _clear_unverified_image_matches(
         self,
         brief_type: str,
         brief_date: date,
@@ -812,10 +893,9 @@ class NewsBriefPhotoPrompts:
             connection.execute(
                 """
                 UPDATE news_brief_photo_reviews
-                SET status='awaiting_photo', photo_file_id=NULL,
-                    matched_event_ids_json='[]', image_analysis_status=?,
+                SET matched_event_ids_json='[]', image_analysis_status=?,
                     updated_at_utc=?
-                WHERE brief_type=? AND brief_date=?
+                WHERE brief_type=? AND brief_date=? AND status='photo_attached'
                 """,
                 (
                     reason,
@@ -824,41 +904,6 @@ class NewsBriefPhotoPrompts:
                     brief_date.isoformat(),
                 ),
             )
-            connection.execute(
-                "DELETE FROM news_brief_photo_selection WHERE admin_id=?",
-                (self.admin_id,),
-            )
-
-    def _exclude_unverified_photo(
-        self,
-        brief_type: str,
-        brief_date: date,
-        now: datetime,
-    ) -> None:
-        with closing(sqlite3.connect(self.database_path)) as connection, connection:
-            changed = connection.execute(
-                """
-                UPDATE news_brief_photo_reviews
-                SET status='photo_unverified', photo_file_id=NULL,
-                    image_analysis_status='source_no_longer_verified',
-                    updated_at_utc=?
-                WHERE brief_type=? AND brief_date=? AND status='photo_attached'
-                """,
-                (_timestamp(now), brief_type, brief_date.isoformat()),
-            ).rowcount
-        if changed and self.admin_id is not None:
-            try:
-                self.api.send_message(
-                    int(self.admin_id),
-                    "I left the picture out because its official calendar record "
-                    "was no longer fresh and verified at publication time. The "
-                    "text brief continues through its normal source and "
-                    "destination checks.",
-                )
-            except Exception:
-                logger.warning(
-                    "Could not notify admin that a brief image was excluded."
-                )
 
     def _set_status(
         self,

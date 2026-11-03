@@ -1851,13 +1851,6 @@ class ChannelPostManager:
                 "This post has already been published. No duplicate was sent.",
             )
             return
-        if not automatic and post["schedule_date"] != local_now.date().isoformat():
-            self.api.send_message(
-                self.admin_id,
-                "To keep the one-post-per-day limit, Publish now is available "
-                "only on this post's scheduled WAT date.",
-            )
-            return
         if not automatic and local_now < scheduled_at:
             self.api.send_message(
                 self.admin_id,
@@ -1879,7 +1872,6 @@ class ChannelPostManager:
             and admin_id == self.admin_id
             and post.get("status") in {"draft", "failed"}
             and int(post.get("publish_attempts") or 0) == 0
-            and post["schedule_date"] == local_now.date().isoformat()
             and local_now >= scheduled_at
         )
         if (
@@ -1930,20 +1922,6 @@ class ChannelPostManager:
                     "Weekend publishing is waiting for template approval. "
                     "No channel post was sent.",
                 )
-            return
-        if post["schedule_date"] != local_now.date().isoformat():
-            if not automatic:
-                self.api.send_message(
-                    self.admin_id,
-                    "To keep the one-post-per-day limit, Publish now is available "
-                    "only on this post's scheduled WAT date.",
-                )
-            return
-        if not automatic and local_now < scheduled_at:
-            self.api.send_message(
-                self.admin_id,
-                "This post is approved for its scheduled time. It will not publish early.",
-            )
             return
         if int(post["destination_chat_id"]) != int(self.destination_chat_id):
             self._fail_before_send(post, "destination_mismatch", admin_id)
@@ -2000,7 +1978,40 @@ class ChannelPostManager:
             )
             return
 
-        attempts = self.store.reserve_channel_post_publish(int(post["id"]))
+        publish_day_start = datetime.combine(
+            local_now.date(), wall_time.min, tzinfo=self.timezone
+        )
+        publish_day_end = datetime.combine(
+            local_now.date() + timedelta(days=1),
+            wall_time.min,
+            tzinfo=self.timezone,
+        )
+        attempts = self.store.reserve_channel_post_publish(
+            int(post["id"]),
+            at=now_utc.isoformat(),
+            publish_day_start_utc=publish_day_start.astimezone(timezone.utc).isoformat(),
+            publish_day_end_utc=publish_day_end.astimezone(timezone.utc).isoformat(),
+        )
+        if attempts == 0:
+            self.store.set_channel_post_status(
+                int(post["id"]),
+                "failed",
+                action="daily_publish_limit_reached",
+                admin_id=admin_id,
+                details=(
+                    "Another routine Market Analysis post has already been sent "
+                    "or is in progress on this WAT date."
+                ),
+                failure_category="daily_publish_limit_reached",
+                at=now_utc.isoformat(),
+            )
+            self.api.send_message(
+                self.admin_id,
+                "A routine Market Analysis post has already been sent or is in "
+                "progress today. This post remains held to keep the one-post-per-day "
+                "limit. You can try Publish Now on a later WAT date.",
+            )
+            return
         if attempts is None:
             self.api.send_message(
                 self.admin_id,

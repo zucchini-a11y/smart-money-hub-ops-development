@@ -23,11 +23,11 @@ The weekly official USD/gold calendar is for the Education Suite Announcements t
 
 **How to apply:** preserve the daily schedule and destination; run the weekly calendar independently at Monday 00:00 WAT in the configured Education group’s verified Announcements topic, with separate idempotency and delivery records.
 
-Thirty minutes before each daily or weekly brief, privately send the administrator the complete unpublished preview, destination, WAT publication time, and picture/no-picture actions. A picture may be read by Gemini only to match it to a currently verified official calendar record. The image is not a source of publishable facts; unsupported or conflicting claims are excluded. No reply or no picture must never delay the scheduled text brief; a verified picture is a separate companion post.
+Thirty minutes before each daily or weekly brief, privately send the administrator the complete unpublished preview, destination, WAT publication time, and picture/no-picture actions. When the administrator selects “Add picture” and sends an image, attach it as supplied even if Gemini cannot match it to a currently verified official calendar record. Only verified matches may add event details to the text; never use image-only claims to alter the brief. No reply or no picture must never delay the scheduled text brief; an attached picture is a separate companion post.
 
-**Why:** the user wants the full news preview and an optional picture decision 30 minutes before publication, while keeping the scheduled text post on time.
+**Why:** the user expects an explicitly submitted picture to accompany the brief; failed matching must not discard it or silently change verified news, and the scheduled text must remain on time.
 
-**How to apply:** keep preview and image handling private/admin-only; use Gemini only to identify image-relevant official records, re-check those records before publication, and publish the complete verified text on schedule even if no picture is added or the image check fails.
+**How to apply:** keep preview, image transcription, and matching results private/admin-only. Gemini should transcribe legible event rows from an admin-uploaded image even when no official records are available, clearly label those details as image observations, and never infer impact from icons. Only matches to fresh official records may change the public brief; re-check those matches before publication and retain the admin-approved image independently. Publish the verified text on schedule even if no picture is added or image analysis fails.
 
 The calendar review screen is private-admin-only and read-only. It must not trigger source fetches, scheduler work, or publishing, and Gemini must never fill missing source fields.
 

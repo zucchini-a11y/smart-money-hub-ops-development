@@ -14,7 +14,10 @@ from smart_money_hub_bot.brief_photo_review import (
     build_verified_image_evidence,
     send_brief_with_optional_photo,
 )
-from smart_money_hub_bot.news_brief_image_analysis import NewsImageAnalysis
+from smart_money_hub_bot.news_brief_image_analysis import (
+    NewsImageAnalysis,
+    VisibleCalendarEvent,
+)
 
 WAT = ZoneInfo("Africa/Lagos")
 
@@ -49,10 +52,21 @@ class FakeImageAnalyzer:
     def __init__(self, ids=("bea:event-1",)):
         self.ids = ids
         self.calls = []
+        self.events = (
+            VisibleCalendarEvent(
+                event_name="Personal Income and Outlays",
+                currency="USD",
+                time_text="8:30 AM",
+            ),
+        )
 
     def analyze(self, image_bytes, mime_type, verified_evidence):
         self.calls.append((image_bytes, mime_type, verified_evidence))
-        return NewsImageAnalysis(tuple(self.ids))
+        return NewsImageAnalysis(
+            tuple(self.ids),
+            self.events,
+            "Thursday, October 29",
+        )
 
 
 class NewsBriefPhotoPromptTests(unittest.TestCase):
@@ -151,6 +165,14 @@ class NewsBriefPhotoPromptTests(unittest.TestCase):
             "bea:event-1",
         )
         self.assertIn("RELATED EVENTS", self.api.admin_messages[-1]["text"])
+        self.assertIn(
+            "Personal Income and Outlays",
+            self.api.admin_messages[-3]["text"],
+        )
+        self.assertIn(
+            "image transcription, not a source record",
+            self.api.admin_messages[-3]["text"],
+        )
 
         restarted = NewsBriefPhotoPrompts(
             self.api,
@@ -207,9 +229,17 @@ class NewsBriefPhotoPromptTests(unittest.TestCase):
         )
         self.assertIsNone(self.prompts.photo_file_id("daily", self.target_date))
 
-    def test_unmatched_image_is_not_saved_or_published(self) -> None:
+    def test_unmatched_image_is_attached_without_changing_verified_brief(self) -> None:
         self._send_prompt()
         self.image_analyzer.ids = ("not-an-official-record",)
+        self.image_analyzer.events = (
+            VisibleCalendarEvent(
+                event_name="ADP Non-Farm Employment Change",
+                currency="USD",
+                time_text="2:15pm",
+                impact_marker="yellow crown icon",
+            ),
+        )
         self.prompts.handle_callback(
             "newsbrief:photo:daily:2026-10-29",
             actor_id=444,
@@ -224,8 +254,31 @@ class NewsBriefPhotoPromptTests(unittest.TestCase):
             is_private=True,
             now=datetime(2026, 10, 28, 22, 32, tzinfo=timezone.utc),
         )
-        self.assertIsNone(self.prompts.photo_file_id("daily", self.target_date))
-        self.assertIn("did not clearly match", self.api.admin_messages[-1]["text"])
+        self.assertEqual(
+            self.prompts.photo_file_id("daily", self.target_date),
+            "telegram-photo-file-id",
+        )
+        self.assertIn("none matched", self.api.admin_messages[-4]["text"])
+        self.assertIn(
+            "ADP Non-Farm Employment Change",
+            self.api.admin_messages[-3]["text"],
+        )
+        report, photo_id = self.prompts.publication_media(
+            "daily",
+            self.target_date,
+            self.preview,
+            self.evidence,
+            [
+                {
+                    "source_name": "BEA",
+                    "status": "verified_schedule",
+                    "checked_at_utc": "2026-10-28T22:32:00+00:00",
+                }
+            ],
+            now=datetime(2026, 10, 28, 22, 33, tzinfo=timezone.utc),
+        )
+        self.assertEqual(report, self.preview)
+        self.assertEqual(photo_id, "telegram-photo-file-id")
 
     def test_image_check_finishing_at_publication_time_is_not_attached(self) -> None:
         self._send_prompt()
@@ -251,7 +304,7 @@ class NewsBriefPhotoPromptTests(unittest.TestCase):
         self.assertIsNone(self.prompts.photo_file_id("daily", self.target_date))
         self.assertIn("scheduled time arrived", self.api.admin_messages[-1]["text"])
 
-    def test_missing_image_analyzer_holds_photo_but_not_text(self) -> None:
+    def test_missing_image_analyzer_still_attaches_photo_without_changing_text(self) -> None:
         self._send_prompt()
         without_analyzer = NewsBriefPhotoPrompts(
             self.api,
@@ -265,17 +318,31 @@ class NewsBriefPhotoPromptTests(unittest.TestCase):
             is_private=True,
             now=datetime(2026, 10, 28, 22, 31, tzinfo=timezone.utc),
         )
-        without_analyzer.handle_admin_photo(
+        handled = without_analyzer.handle_admin_photo(
             444,
             444,
             [{"file_id": "telegram-photo-file-id"}],
             is_private=True,
             now=datetime(2026, 10, 28, 22, 32, tzinfo=timezone.utc),
         )
-        self.assertIsNone(without_analyzer.photo_file_id("daily", self.target_date))
-        self.assertIn("text brief remains on schedule", self.api.admin_messages[-1]["text"])
+        self.assertTrue(handled)
+        self.assertEqual(
+            without_analyzer.photo_file_id("daily", self.target_date),
+            "telegram-photo-file-id",
+        )
+        self.assertIn("attached as supplied", self.api.admin_messages[-3]["text"])
+        report, photo_id = without_analyzer.publication_media(
+            "daily",
+            self.target_date,
+            self.preview,
+            self.evidence,
+            [],
+            now=datetime(2026, 10, 28, 22, 33, tzinfo=timezone.utc),
+        )
+        self.assertEqual(report, self.preview)
+        self.assertEqual(photo_id, "telegram-photo-file-id")
 
-    def test_current_source_failure_removes_matched_photo_before_publication(self) -> None:
+    def test_current_source_failure_keeps_admin_photo_but_drops_event_highlights(self) -> None:
         self._send_prompt()
         self.prompts.handle_callback(
             "newsbrief:photo:daily:2026-10-29",
@@ -306,7 +373,7 @@ class NewsBriefPhotoPromptTests(unittest.TestCase):
             now=datetime(2026, 10, 28, 22, 33, tzinfo=timezone.utc),
         )
         self.assertEqual(report, self.preview)
-        self.assertIsNone(photo_id)
+        self.assertEqual(photo_id, "telegram-photo-file-id")
 
     def test_no_photo_still_sends_the_scheduled_text_brief(self) -> None:
         message_id, photo_status = send_brief_with_optional_photo(
