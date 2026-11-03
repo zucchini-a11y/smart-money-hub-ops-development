@@ -199,7 +199,7 @@ class GeminiCoachTests(unittest.TestCase):
             },
         )
         self.assertIn("Analyze only details clearly visible", payload["systemInstruction"]["parts"][0]["text"])
-        self.assertIn("not assign them to a numbered episode", "\n".join(
+        self.assertIn("will not assign them to an episode", "\n".join(
             part.get("text", "")
             for content in payload["contents"]
             for part in content.get("parts", [])
