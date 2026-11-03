@@ -376,6 +376,25 @@ class CommunityContentTests(unittest.TestCase):
         )
         self.assertIn("configured Market Analysis", api.messages[-1][1])
 
+    def test_admin_natural_post_request_gets_preview_instructions_not_coach_fallthrough(self):
+        api = FakeAPI()
+        dashboard = AdminDashboard(
+            api,
+            Repository(self.database),
+            ADMIN_ID,
+            main_channel_id=-100111,
+            education_group_id=GROUP_ID,
+        )
+        self.assertTrue(
+            dashboard.handle_admin_post_text(
+                ADMIN_ID, ADMIN_ID, True, "Can you post it now?"
+            )
+        )
+        self.assertIn("private preview", api.messages[-1][1])
+        self.assertEqual(
+            dashboard.community_content.repository.list_drafts(limit=5), []
+        )
+
     def test_admin_text_post_is_restricted_to_private_admin_chat(self):
         api = FakeAPI()
         dashboard = AdminDashboard(
