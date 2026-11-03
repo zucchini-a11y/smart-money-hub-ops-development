@@ -70,3 +70,45 @@ mtime_ms = 1793711842453
 storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/b126d8da-fc81-4f54-b7cc-1d61de66dbd8/d7351a2a-73e2-42bc-afce-25d97fcb95a8"
 storage_version_token = "1793711858418742"
 content_type = "image/png"
+
+[[outputs]]
+id = "BC96nA_DuM4dzNzR8DtzN"
+uri = "file://smart_money_hub_bot/assets/session-open-tokyo.jpg"
+type = "image"
+title = "Tokyo Session Open — active default"
+description = "16:9 black-and-gold Tokyo session image, now used when no custom photo is attached."
+logical_id = "f04da989-65d4-4e7c-bce1-ef646879813b"
+content_hash = "sha256:2029fc799db905dd129e4b48568ab0b938761177f3ceee389ef3a0a259b3b9f2"
+size = 301878
+mtime_ms = 1793722757659
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/f04da989-65d4-4e7c-bce1-ef646879813b/dbb0c289-e3f9-4b95-b0ca-85965a1efadc"
+storage_version_token = "1793724481018269"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "Sh_zlLCXUE6Cp9s8Soeh6"
+uri = "file://smart_money_hub_bot/assets/session-open-london.jpg"
+type = "image"
+title = "London Session Open — active default"
+description = "16:9 black-and-gold London session image, now used when no custom photo is attached."
+logical_id = "ff19358f-ab4d-4025-a12d-2c260acdda8c"
+content_hash = "sha256:c9af39b5f9211da26af9869f09f4fc000fb82bc4c93ad5327354924236fcdd04"
+size = 336671
+mtime_ms = 1793722758299
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/ff19358f-ab4d-4025-a12d-2c260acdda8c/24777f3a-0338-48a4-989d-5e10d87d3b59"
+storage_version_token = "1793724481628868"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "rOCeENvJk-GO4972cnKEv"
+uri = "file://smart_money_hub_bot/assets/session-open-new-york.jpg"
+type = "image"
+title = "New York Session Open — active default"
+description = "16:9 black-and-gold New York session image, now used when no custom photo is attached."
+logical_id = "c8023aef-db1e-4453-a597-f4d4feb89196"
+content_hash = "sha256:348f31de8bf04a37fb4a04e9219a0548c2b2b1c4205b0bb133296475e5ed1c5d"
+size = 305893
+mtime_ms = 1793722758943
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/c8023aef-db1e-4453-a597-f4d4feb89196/f8ec9403-77af-4e17-9a12-c19c59cacc62"
+storage_version_token = "1793724482230126"
+content_type = "image/jpeg"
