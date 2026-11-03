@@ -2967,11 +2967,13 @@ class SmartMoneyHubBot:
                 profile=profile,
                 request_id=request_id,
             )
-        except CoachProviderError:
+        except CoachProviderError as error:
             self._record_coach_provider_event(
                 feature="chart_image",
                 outcome="failure",
-                failure_kind="provider",
+                failure_kind=error.failure_kind,
+                http_status=error.status_code,
+                provider_status=error.provider_status or "",
             )
             logger.warning("Coach chart image analysis failed. request_id=%s.", request_id)
             self.api.send_message(
