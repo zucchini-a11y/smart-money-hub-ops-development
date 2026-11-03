@@ -2672,7 +2672,9 @@ class AdminDashboard:
         )
         self._preview_content_draft(chat_id, [draft_id])
 
-    def _preview_content_draft(self, chat_id: int, positional: list[str]) -> None:
+    def _preview_content_draft(
+        self, chat_id: int, positional: list[str], *, show_actions: bool = False
+    ) -> None:
         if not positional:
             drafts = self.community_content.repository.list_drafts(limit=1)
             if not drafts:
@@ -2684,13 +2686,30 @@ class AdminDashboard:
             raise CommunityContentError("Draft not found.")
         self.api.send_message(
             chat_id,
-            f"<b>Draft {html.escape(draft['draft_id'])}</b> · "
-            f"{html.escape(draft['status'])} · not published",
+            (
+                "<b>Private preview</b> · not published"
+                if show_actions
+                else f"<b>Draft {html.escape(draft['draft_id'])}</b> · "
+                f"{html.escape(draft['status'])} · not published"
+            ),
             parse_mode="HTML",
         )
+        keyboard = None
+        if show_actions:
+            keyboard = {
+                "inline_keyboard": [[
+                    {
+                        "text": "Approve preview",
+                        "callback_data": (
+                            f"admin:content_draft:approve:{draft['draft_id']}"
+                        ),
+                    }
+                ]]
+            }
         self.api.send_message(
             chat_id,
             render_telegram_html(draft["content"]),
+            keyboard,
             parse_mode="HTML",
         )
 

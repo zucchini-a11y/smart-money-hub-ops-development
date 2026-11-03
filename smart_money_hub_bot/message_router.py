@@ -345,9 +345,9 @@ class CoachMessageRouter:
                 response=(
                     "That earlier limitation was incorrect. I can prepare a private "
                     "preview for the configured Market Analysis channel or Education "
-                    "group. Send “Post to Market Analysis channel: [complete post]” "
-                    "or “Post the last lesson to Education group.” Nothing is sent "
-                    "until you use /approve ID and /publishcontent ID."
+                    "group. Send the complete post and destination, or ask me to use "
+                    "your latest lesson. You’ll receive a real preview with buttons. "
+                    "Nothing is posted until you tap Approve and then Publish."
                 ),
             )
         if is_admin and response_path == "fallback" and not reply.requires_review:
