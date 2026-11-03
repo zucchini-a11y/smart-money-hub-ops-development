@@ -28,3 +28,9 @@ Daily Education lessons should change subject, not only wording; avoid repeating
 **Why:** the user chose daily lesson subjects as the thing that must change.
 
 **How to apply:** rotate across distinct lesson topics and do not repeat a recent topic merely to produce different wording.
+
+Weekend cleanup is limited to the bot's tracked Saturday and Sunday morning lessons and Saturday Education-group poll, scheduled for Sunday at 11:00 PM WAT. Leave earlier-week lessons, member messages, and unrelated bot posts untouched.
+
+**Why:** the user explicitly selected this cleanup scope and time after the Telegram 48-hour deletion limit was explained.
+
+**How to apply:** delete only those tracked group messages; do not expand cleanup to other destinations or content types.

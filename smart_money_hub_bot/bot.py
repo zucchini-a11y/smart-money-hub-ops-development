@@ -36,6 +36,7 @@ from .weekly_calendar_brief import WeeklyCalendarBriefPublisher
 from .brief_photo_review import NewsBriefPhotoPrompts
 from .education_polls import EducationPollPublisher, is_on_demand_poll_request
 from .education_morning import EducationMorningPublisher
+from .education_weekend_cleanup import EducationWeekendCleanup
 from .message_router import CoachMessageRouter
 from .personal_reply_assistant import (
     BUSINESS_REPLY_INFO_NOTICE,
@@ -463,6 +464,14 @@ class SmartMoneyHubBot:
             admin_id=admin_id,
             education_group_id=education_group_id,
             group_history_store=self.store,
+        )
+        self.education_weekend_cleanup = EducationWeekendCleanup(
+            api,
+            database_path,
+            admin_id=admin_id,
+            education_group_id=education_group_id,
+            morning_store=self.education_morning.store,
+            poll_store=self.store,
         )
         self.daily_calendar_brief = daily_calendar_brief
         self.weekly_calendar_brief = weekly_calendar_brief
@@ -4290,6 +4299,10 @@ class SmartMoneyHubBot:
             self.education_morning.dispatch_due(current)
         except Exception:
             logger.exception("Could not dispatch the daily Education-group morning post.")
+        try:
+            self.education_weekend_cleanup.dispatch_due(current)
+        except Exception:
+            logger.exception("Could not run the scheduled Education-group cleanup.")
         try:
             self.admin_dashboard.community_content.dispatch_due(
                 now=current,

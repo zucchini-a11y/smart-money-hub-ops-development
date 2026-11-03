@@ -19,6 +19,17 @@ class _Response:
 
 
 class TelegramUpdateSubscriptionTests(unittest.TestCase):
+    def test_delete_message_uses_telegram_delete_method(self) -> None:
+        api = TelegramAPI("synthetic-test-token")
+        with patch.object(api, "_request", return_value=True) as request:
+            deleted = api.delete_message(123, 456)
+
+        self.assertTrue(deleted)
+        request.assert_called_once_with(
+            "deleteMessage",
+            {"chat_id": 123, "message_id": 456},
+        )
+
     def test_send_message_with_result_can_use_telegram_html_parse_mode(self) -> None:
         api = TelegramAPI("synthetic-test-token")
         with patch.object(

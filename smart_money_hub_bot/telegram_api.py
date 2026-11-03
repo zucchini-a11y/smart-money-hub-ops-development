@@ -242,6 +242,14 @@ class TelegramAPI:
         result = self._request("sendMessage", payload)
         return result if isinstance(result, dict) else {}
 
+    def delete_message(self, chat_id: int, message_id: int) -> bool:
+        """Delete one Telegram message and return Telegram's confirmation."""
+        result = self._request(
+            "deleteMessage",
+            {"chat_id": chat_id, "message_id": message_id},
+        )
+        return result is True
+
     def send_photo_with_result(
         self,
         chat_id: int,
