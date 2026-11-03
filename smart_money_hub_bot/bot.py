@@ -27,6 +27,7 @@ from .group_features import (
 from .group_knowledge import (
     addressed_group_question,
     archived_group_post,
+    education_resource_from_message,
     format_group_context,
     topic_update_from_message,
 )
@@ -1076,6 +1077,34 @@ class SmartMoneyHubBot:
             self.store.record_education_group_topic(
                 chat_id, topic["thread_id"], topic["topic_name"]
             )
+
+        resource = education_resource_from_message(
+            message, configured_admin_id=self.admin_id
+        )
+        if resource:
+            thread_id = resource["thread_id"]
+            topic_name = (
+                self.store.education_group_topic_name(chat_id, thread_id)
+                if thread_id is not None
+                else ""
+            )
+            try:
+                self.store.record_education_group_resource(
+                    chat_id=chat_id,
+                    message_id=resource["message_id"],
+                    thread_id=thread_id,
+                    topic_name=topic_name,
+                    resource_type=resource["resource_type"],
+                    title=resource["title"],
+                    description=resource["description"],
+                    message_link=resource["message_link"],
+                    source_status=resource["source_status"],
+                    posted_at=resource["posted_at"],
+                )
+            except Exception:
+                logger.exception(
+                    "Could not index an Education-group course resource."
+                )
 
         record = archived_group_post(
             message,
@@ -2829,6 +2858,18 @@ class SmartMoneyHubBot:
         group_id: int | None,
     ) -> None:
         profile["curriculum_context"] = retrieve_curriculum_context(question)
+        profile["education_resources_context"] = []
+        if group_id is not None:
+            try:
+                profile["education_resources_context"] = (
+                    self.store.search_education_group_resources(
+                        group_id, question, limit=3
+                    )
+                )
+            except Exception:
+                logger.warning(
+                    "Could not retrieve Education-group resource links."
+                )
         episode_number = requested_episode_number(question)
         if episode_number is None:
             return

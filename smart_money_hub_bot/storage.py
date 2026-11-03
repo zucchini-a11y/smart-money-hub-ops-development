@@ -7,10 +7,11 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from .group_knowledge import fts_query_terms, question_fingerprint
 from .knowledge_approval import can_approve, rejection_status
-from .knowledge_base import find_similar_item
+from .knowledge_base import find_similar_item, question_tokens
 from .knowledge_versions import next_version_number
 from .scoring import AssessmentResult
 
@@ -360,6 +361,63 @@ class Repository:
                         VALUES (new.id, new.content, new.topic_name);
                     END;
 
+                    CREATE TABLE IF NOT EXISTS education_group_resources (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        chat_id INTEGER NOT NULL,
+                        message_id INTEGER NOT NULL,
+                        thread_id INTEGER,
+                        topic_name TEXT NOT NULL DEFAULT '',
+                        resource_type TEXT NOT NULL
+                            CHECK (resource_type IN ('pdf', 'video')),
+                        title TEXT NOT NULL,
+                        description TEXT NOT NULL DEFAULT '',
+                        message_link TEXT NOT NULL,
+                        source_status TEXT NOT NULL
+                            CHECK (source_status = 'configured_admin'),
+                        provenance TEXT NOT NULL DEFAULT 'configured_admin_post',
+                        posted_at TEXT NOT NULL,
+                        indexed_at TEXT NOT NULL,
+                        UNIQUE (chat_id, message_id)
+                    );
+
+                    CREATE INDEX IF NOT EXISTS education_group_resources_recent
+                    ON education_group_resources
+                        (chat_id, resource_type, posted_at DESC);
+
+                    CREATE VIRTUAL TABLE IF NOT EXISTS education_group_resources_fts
+                    USING fts5(title, description, topic_name, resource_type,
+                        content='education_group_resources', content_rowid='id');
+
+                    CREATE TRIGGER IF NOT EXISTS education_group_resources_fts_insert
+                    AFTER INSERT ON education_group_resources BEGIN
+                        INSERT INTO education_group_resources_fts
+                            (rowid, title, description, topic_name, resource_type)
+                        VALUES (new.id, new.title, new.description,
+                            new.topic_name, new.resource_type);
+                    END;
+
+                    CREATE TRIGGER IF NOT EXISTS education_group_resources_fts_delete
+                    AFTER DELETE ON education_group_resources BEGIN
+                        INSERT INTO education_group_resources_fts
+                            (education_group_resources_fts, rowid, title,
+                             description, topic_name, resource_type)
+                        VALUES ('delete', old.id, old.title, old.description,
+                            old.topic_name, old.resource_type);
+                    END;
+
+                    CREATE TRIGGER IF NOT EXISTS education_group_resources_fts_update
+                    AFTER UPDATE ON education_group_resources BEGIN
+                        INSERT INTO education_group_resources_fts
+                            (education_group_resources_fts, rowid, title,
+                             description, topic_name, resource_type)
+                        VALUES ('delete', old.id, old.title, old.description,
+                            old.topic_name, old.resource_type);
+                        INSERT INTO education_group_resources_fts
+                            (rowid, title, description, topic_name, resource_type)
+                        VALUES (new.id, new.title, new.description,
+                            new.topic_name, new.resource_type);
+                    END;
+
                     CREATE TABLE IF NOT EXISTS education_group_questions (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         chat_id INTEGER NOT NULL,
@@ -634,6 +692,12 @@ class Repository:
                     str(row["name"])
                     for row in connection.execute("PRAGMA table_info(users)").fetchall()
                 }
+                self._ensure_table_column(
+                    connection,
+                    "education_group_resources",
+                    "provenance",
+                    "TEXT NOT NULL DEFAULT 'configured_admin_post'",
+                )
                 self._ensure_user_column(
                     connection,
                     "zoom_class_reminders_enabled",
@@ -1720,6 +1784,217 @@ class Repository:
                     ),
                 )
                 return bool(cursor.rowcount)
+        finally:
+            connection.close()
+
+    def record_education_group_resource(
+        self,
+        *,
+        chat_id: int,
+        message_id: int,
+        thread_id: int | None,
+        topic_name: str,
+        resource_type: str,
+        title: str,
+        description: str,
+        message_link: str,
+        source_status: str,
+        posted_at: str,
+        provenance: str = "configured_admin_post",
+        at: str | None = None,
+    ) -> bool:
+        """Persist a link to an admin-shared Education-group PDF or video."""
+        title = " ".join(title.split())[:180]
+        description = " ".join(description.split())[:1800]
+        message_link = message_link.strip()
+        if resource_type not in {"pdf", "video"}:
+            raise ValueError("Unsupported Education-group resource type.")
+        if source_status != "configured_admin":
+            raise ValueError("Only configured-admin resources can be indexed.")
+        if provenance not in {"configured_admin_post", "owner_supplied_link"}:
+            raise ValueError("Unsupported Education-group resource provenance.")
+        if not title or len(message_link) > 400 or not message_link.startswith(
+            "https://t.me/"
+        ):
+            raise ValueError("Education-group resource metadata is incomplete.")
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO education_group_resources
+                        (chat_id, message_id, thread_id, topic_name, resource_type,
+                         title, description, message_link, source_status, provenance,
+                         posted_at, indexed_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(chat_id, message_id) DO UPDATE SET
+                        thread_id = excluded.thread_id,
+                        topic_name = excluded.topic_name,
+                        resource_type = excluded.resource_type,
+                        title = excluded.title,
+                        description = excluded.description,
+                        message_link = excluded.message_link,
+                        source_status = excluded.source_status,
+                        provenance = excluded.provenance,
+                        posted_at = excluded.posted_at,
+                        indexed_at = excluded.indexed_at
+                    """,
+                    (
+                        chat_id,
+                        message_id,
+                        thread_id,
+                        " ".join(topic_name.split())[:120],
+                        resource_type,
+                        title,
+                        description,
+                        message_link,
+                        source_status,
+                        provenance,
+                        posted_at,
+                        at or utc_now(),
+                    ),
+                )
+                return bool(cursor.rowcount)
+        finally:
+            connection.close()
+
+    def register_education_group_resource_link(
+        self,
+        *,
+        chat_id: int,
+        message_link: str,
+        resource_type: str,
+        title: str,
+        at: str | None = None,
+    ) -> bool:
+        """Register a Telegram link supplied by the configured administrator."""
+        parsed = urlsplit(message_link.strip())
+        parts = [part for part in parsed.path.split("/") if part]
+        group_text = str(chat_id)
+        if (
+            parsed.scheme != "https"
+            or parsed.netloc.casefold() != "t.me"
+            or parsed.query
+            or parsed.fragment
+            or not group_text.startswith("-100")
+            or not group_text[4:].isdigit()
+            or len(parts) not in {3, 4}
+            or parts[0] != "c"
+            or parts[1] != group_text[4:]
+            or any(not part.isdigit() for part in parts[2:])
+        ):
+            raise ValueError("Telegram message link does not match the Education group.")
+        if len(parts) == 4:
+            thread_id, message_id = int(parts[2]), int(parts[3])
+        else:
+            thread_id, message_id = None, int(parts[2])
+        if message_id <= 0 or (thread_id is not None and thread_id <= 0):
+            raise ValueError("Telegram message link has an invalid message ID.")
+        normalized_link = "https://t.me/" + "/".join(parts)
+        return self.record_education_group_resource(
+            chat_id=chat_id,
+            message_id=message_id,
+            thread_id=thread_id,
+            topic_name="",
+            resource_type=resource_type,
+            title=title,
+            description=title,
+            message_link=normalized_link,
+            source_status="configured_admin",
+            provenance="owner_supplied_link",
+            posted_at="",
+            at=at,
+        )
+
+    def search_education_group_resources(
+        self,
+        chat_id: int,
+        query: str,
+        *,
+        limit: int = 3,
+    ) -> list[dict[str, Any]]:
+        """Find relevant admin-posted PDFs/videos without exposing Telegram file IDs."""
+        safe_limit = max(1, min(int(limit), 5))
+        query_tokens = question_tokens(query)
+        generic_tokens = {
+            "pdf", "video", "videos", "link", "links", "file", "files",
+            "resource", "resources", "course", "group", "education", "send",
+            "share", "show", "find", "give", "get", "please", "material",
+            "materials", "recording", "recordings",
+        }
+        topic_tokens = query_tokens - generic_tokens
+        requested_types: list[str] = []
+        normalized = query.casefold()
+        if re.search(r"\bpdfs?\b", normalized):
+            requested_types.append("pdf")
+        if re.search(r"\bvideos?|recordings?\b", normalized):
+            requested_types.append("video")
+
+        connection = self._connect()
+        try:
+            if topic_tokens:
+                match_query = fts_query_terms(query)
+                if not match_query:
+                    return []
+                cursor = connection.execute(
+                    """
+                    SELECT r.message_id, r.thread_id, r.topic_name, r.resource_type,
+                           r.title, r.description, r.message_link, r.provenance,
+                           r.posted_at
+                    FROM education_group_resources_fts
+                    JOIN education_group_resources AS r
+                      ON r.id = education_group_resources_fts.rowid
+                    WHERE education_group_resources_fts MATCH ?
+                      AND r.chat_id = ?
+                      AND r.source_status = 'configured_admin'
+                    ORDER BY bm25(education_group_resources_fts, 1.2, 1.0, 0.8, 0.4),
+                             r.posted_at DESC, r.id DESC
+                    LIMIT 25
+                    """,
+                    (match_query, chat_id),
+                )
+                candidates = [dict(row) for row in cursor.fetchall()]
+                ranked: list[tuple[float, dict[str, Any]]] = []
+                for item in candidates:
+                    if requested_types and item["resource_type"] not in requested_types:
+                        continue
+                    resource_tokens = question_tokens(
+                        " ".join(
+                            str(item.get(key) or "")
+                            for key in ("title", "description", "topic_name")
+                        )
+                    )
+                    overlap = topic_tokens & resource_tokens
+                    if not overlap:
+                        continue
+                    score = len(overlap) / max(1, len(topic_tokens))
+                    ranked.append((score, item))
+                ranked.sort(
+                    key=lambda pair: (
+                        -pair[0],
+                        -int(pair[1].get("message_id") or 0),
+                    ),
+                    reverse=False,
+                )
+                return [item for _, item in ranked[:safe_limit]]
+
+            if not requested_types:
+                return []
+            placeholders = ", ".join("?" for _ in requested_types)
+            rows = connection.execute(
+                f"""
+                SELECT message_id, thread_id, topic_name, resource_type,
+                       title, description, message_link, provenance, posted_at
+                FROM education_group_resources
+                WHERE chat_id = ?
+                  AND source_status = 'configured_admin'
+                  AND resource_type IN ({placeholders})
+                ORDER BY posted_at DESC, id DESC
+                LIMIT ?
+                """,
+                (chat_id, *requested_types, safe_limit),
+            ).fetchall()
+            return [dict(row) for row in rows]
         finally:
             connection.close()
 

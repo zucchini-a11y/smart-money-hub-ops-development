@@ -95,6 +95,107 @@ def archived_group_post(
     }
 
 
+def education_resource_from_message(
+    message: dict[str, Any], *, configured_admin_id: int | None
+) -> dict[str, Any] | None:
+    """Index only admin-posted PDF/video metadata and a safe Telegram message link."""
+    sender = message.get("from")
+    sender = sender if isinstance(sender, dict) else {}
+    if (
+        configured_admin_id is None
+        or sender.get("is_bot") is True
+        or sender.get("id") != configured_admin_id
+    ):
+        return None
+
+    chat = message.get("chat")
+    if not isinstance(chat, dict) or chat.get("type") not in {"group", "supergroup"}:
+        return None
+    chat_id = chat.get("id")
+    message_id = message.get("message_id")
+    if (
+        not isinstance(chat_id, int)
+        or isinstance(chat_id, bool)
+        or not isinstance(message_id, int)
+        or isinstance(message_id, bool)
+        or message_id <= 0
+    ):
+        return None
+
+    document = message.get("document")
+    video = message.get("video")
+    if not isinstance(document, dict):
+        document = None
+    if not isinstance(video, dict):
+        video = None
+
+    file_data = document or video
+    if file_data is None:
+        return None
+    filename = " ".join(str(file_data.get("file_name") or "").split())[:200]
+    mime_type = str(file_data.get("mime_type") or "").casefold()
+    suffix = filename.rsplit(".", 1)[-1].casefold() if "." in filename else ""
+    if video is not None or mime_type.startswith("video/") or suffix in {
+        "mp4",
+        "mov",
+        "m4v",
+        "webm",
+        "mkv",
+    }:
+        resource_type = "video"
+    elif mime_type == "application/pdf" or suffix == "pdf":
+        resource_type = "pdf"
+    else:
+        return None
+
+    caption = message.get("caption")
+    caption = sanitize_archive_content(caption)[:1200] if isinstance(caption, str) else ""
+    safe_filename = sanitize_archive_content(filename)[:200]
+    title = (caption.splitlines()[0].strip() if caption else "") or safe_filename
+    if not title:
+        title = f"Education group {resource_type.upper()}"
+    title = " ".join(title.split())[:180]
+    description_parts = [safe_filename, caption]
+    description = " ".join(part for part in description_parts if part).strip()[:1800]
+
+    thread_id = message.get("message_thread_id")
+    if not isinstance(thread_id, int) or isinstance(thread_id, bool) or thread_id <= 0:
+        thread_id = None
+    username = chat.get("username")
+    if isinstance(username, str) and re.fullmatch(r"[A-Za-z0-9_]{5,32}", username):
+        base_link = f"https://t.me/{username}"
+    else:
+        chat_text = str(chat_id)
+        if not chat_text.startswith("-100") or not chat_text[4:].isdigit():
+            return None
+        base_link = f"https://t.me/c/{chat_text[4:]}"
+    message_link = (
+        f"{base_link}/{thread_id}/{message_id}"
+        if thread_id is not None
+        else f"{base_link}/{message_id}"
+    )
+
+    timestamp = message.get("date")
+    try:
+        posted_at = datetime.fromtimestamp(int(timestamp), tz=timezone.utc).isoformat(
+            timespec="seconds"
+        )
+    except (TypeError, ValueError, OSError, OverflowError):
+        posted_at = ""
+
+    return {
+        "chat_id": chat_id,
+        "message_id": message_id,
+        "thread_id": thread_id,
+        "resource_type": resource_type,
+        "title": title,
+        "description": description,
+        "message_link": message_link,
+        "posted_at": posted_at,
+        "source_status": "configured_admin",
+    }
+
+
 def format_group_context(
     records: list[dict[str, Any]], *, max_items: int = 4, max_chars: int = 900
 ) -> list[dict[str, str]]:

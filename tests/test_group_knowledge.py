@@ -5,6 +5,7 @@ from pathlib import Path
 from smart_money_hub_bot.group_knowledge import (
     addressed_group_question,
     archived_group_post,
+    education_resource_from_message,
     fts_query_terms,
     format_group_context,
     topic_update_from_message,
@@ -126,6 +127,67 @@ class GroupKnowledgeHelperTests(unittest.TestCase):
         )
         self.assertLessEqual(len(context), 4)
         self.assertLessEqual(sum(len(item["content"]) for item in context), 3200)
+
+    def test_resource_extractor_keeps_only_configured_admin_pdfs_and_videos(self) -> None:
+        message = {
+            "message_id": 120,
+            "message_thread_id": 5,
+            "date": 1_797_000_000,
+            "chat": {"id": -1003916437804, "type": "supergroup"},
+            "from": {"id": 100},
+            "caption": "Market structure: BOS and MSS guide",
+            "document": {
+                "file_id": "must-not-be-stored",
+                "file_name": "market_structure.pdf",
+                "mime_type": "application/pdf",
+            },
+        }
+        resource = education_resource_from_message(
+            message, configured_admin_id=100
+        )
+
+        self.assertEqual(resource["resource_type"], "pdf")
+        self.assertEqual(
+            resource["message_link"],
+            "https://t.me/c/3916437804/5/120",
+        )
+        self.assertIn("BOS and MSS", resource["description"])
+        self.assertNotIn("file_id", resource)
+        self.assertNotIn("must-not-be-stored", str(resource))
+
+        message["from"] = {"id": 101}
+        self.assertIsNone(
+            education_resource_from_message(
+                message, configured_admin_id=100
+            )
+        )
+
+    def test_resource_extractor_supports_videos_and_rejects_other_files(self) -> None:
+        message = {
+            "message_id": 121,
+            "chat": {"id": -1003916437804, "type": "supergroup"},
+            "from": {"id": 100},
+            "caption": "Liquidity sweep lesson recording",
+            "video": {"file_id": "private-file-id", "mime_type": "video/mp4"},
+        }
+        resource = education_resource_from_message(
+            message, configured_admin_id=100
+        )
+        self.assertEqual(resource["resource_type"], "video")
+        self.assertIn("/121", resource["message_link"])
+        self.assertNotIn("private-file-id", str(resource))
+
+        message["video"] = None
+        message["document"] = {
+            "file_id": "other-file",
+            "file_name": "notes.docx",
+            "mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        }
+        self.assertIsNone(
+            education_resource_from_message(
+                message, configured_admin_id=100
+            )
+        )
 
 
 class GroupKnowledgeStorageTests(unittest.TestCase):
@@ -250,6 +312,104 @@ class GroupKnowledgeStorageTests(unittest.TestCase):
         insights = self.store.education_group_insights(-1001)
         self.assertEqual(insights["poll_count"], 1)
         self.assertEqual(insights["votes_seen"], 6)
+
+    def test_resource_index_deduplicates_and_matches_topic_and_type(self) -> None:
+        resource = {
+            "chat_id": -1003916437804,
+            "message_id": 120,
+            "thread_id": 5,
+            "topic_name": "Market Analysis",
+            "resource_type": "pdf",
+            "title": "Market structure BOS and MSS guide",
+            "description": "BOS swing highs, MSS and candle close lesson PDF",
+            "message_link": "https://t.me/c/3916437804/5/120",
+            "source_status": "configured_admin",
+            "posted_at": "2026-11-03T12:00:00+00:00",
+        }
+        self.store.record_education_group_resource(**resource)
+
+        matches = self.store.search_education_group_resources(
+            -1003916437804, "Explain a BOS and MSS"
+        )
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(matches[0]["message_link"], resource["message_link"])
+        self.assertEqual(matches[0]["resource_type"], "pdf")
+
+        updated = dict(resource, title="Updated BOS and MSS guide")
+        self.store.record_education_group_resource(**updated)
+        broad = self.store.search_education_group_resources(
+            -1003916437804, "Show PDF links"
+        )
+        self.assertEqual(len(broad), 1)
+        self.assertEqual(broad[0]["title"], "Updated BOS and MSS guide")
+
+        connection = self.store._connect()
+        try:
+            count = connection.execute(
+                "SELECT COUNT(*) FROM education_group_resources"
+            ).fetchone()[0]
+        finally:
+            connection.close()
+        self.assertEqual(count, 1)
+
+    def test_resource_index_rejects_unverified_and_non_telegram_links(self) -> None:
+        record = {
+            "chat_id": -1003916437804,
+            "message_id": 121,
+            "thread_id": None,
+            "topic_name": "",
+            "resource_type": "video",
+            "title": "Liquidity lesson",
+            "description": "Liquidity sweep video",
+            "message_link": "https://t.me/c/3916437804/121",
+            "source_status": "unverified",
+            "posted_at": "2026-11-03T12:00:00+00:00",
+        }
+        with self.assertRaises(ValueError):
+            self.store.record_education_group_resource(**record)
+        record["source_status"] = "configured_admin"
+        record["message_link"] = "https://example.com/video"
+        with self.assertRaises(ValueError):
+            self.store.record_education_group_resource(**record)
+
+    def test_owner_supplied_old_resource_links_are_group_scoped_and_marked(self) -> None:
+        self.store.register_education_group_resource_link(
+            chat_id=-1003916437804,
+            message_link="https://t.me/c/3916437804/8/125",
+            resource_type="video",
+            title="Understanding market analysis video link",
+        )
+        self.store.register_education_group_resource_link(
+            chat_id=-1003916437804,
+            message_link="https://t.me/c/3916437804/7/35",
+            resource_type="pdf",
+            title="Understanding market analysis PDF link",
+        )
+
+        videos = self.store.search_education_group_resources(
+            -1003916437804, "market analysis video link"
+        )
+        pdfs = self.store.search_education_group_resources(
+            -1003916437804, "market analysis PDF link"
+        )
+        self.assertEqual(
+            videos[0]["message_link"],
+            "https://t.me/c/3916437804/8/125",
+        )
+        self.assertEqual(videos[0]["provenance"], "owner_supplied_link")
+        self.assertEqual(
+            pdfs[0]["message_link"],
+            "https://t.me/c/3916437804/7/35",
+        )
+        self.assertEqual(pdfs[0]["provenance"], "owner_supplied_link")
+
+        with self.assertRaises(ValueError):
+            self.store.register_education_group_resource_link(
+                chat_id=-1000000000000,
+                message_link="https://t.me/c/3916437804/8/125",
+                resource_type="video",
+                title="Wrong group",
+            )
 
 
 if __name__ == "__main__":

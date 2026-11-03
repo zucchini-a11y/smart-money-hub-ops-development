@@ -281,6 +281,11 @@ class GeminiCoachService:
                 if isinstance(profile, dict)
                 else []
             ),
+            education_resources_context=(
+                profile.get("education_resources_context", [])
+                if isinstance(profile, dict)
+                else []
+            ),
             episode_context=(
                 profile.get("episode_context", [])
                 if isinstance(profile, dict)
@@ -464,6 +469,7 @@ class GeminiCoachService:
         *,
         group_context: list[dict[str, Any]] | None = None,
         curriculum_context: list[dict[str, Any]] | None = None,
+        education_resources_context: list[dict[str, Any]] | None = None,
         episode_context: list[dict[str, Any]] | None = None,
         image_part: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
@@ -584,6 +590,71 @@ class GeminiCoachService:
                     },
                 ]
             )
+        resource_blocks: list[str] = []
+        for item in (education_resources_context or [])[:3]:
+            if not isinstance(item, dict):
+                continue
+            resource_type = str(item.get("resource_type") or "").casefold()
+            title = " ".join(str(item.get("title") or "").split())[:160]
+            description = " ".join(
+                str(item.get("description") or "").split()
+            )[:500]
+            topic = " ".join(str(item.get("topic_name") or "").split())[:100]
+            provenance = str(
+                item.get("provenance") or "configured_admin_post"
+            )
+            link = str(item.get("message_link") or "").strip()
+            if (
+                resource_type not in {"pdf", "video"}
+                or not title
+                or not link.startswith("https://t.me/")
+                or len(link) > 400
+                or provenance
+                not in {"configured_admin_post", "owner_supplied_link"}
+            ):
+                continue
+            resource_blocks.append(
+                f"[type={resource_type}; provenance={provenance}; "
+                f"topic={topic or 'Education group'}; title={title}; "
+                f"link={link}] {description}"
+            )
+        if resource_blocks:
+            contents.extend(
+                [
+                    {
+                        "role": "user",
+                        "parts": [
+                            {
+                                "text": (
+                                    "These exact Telegram message links are in the "
+                                    "admin-managed Education-group resource catalog. "
+                                    "provenance=configured_admin_post means the bot "
+                                    "observed the configured admin post the media; "
+                                    "provenance=owner_supplied_link means the admin "
+                                    "supplied the title and URL for an older post, "
+                                    "which the bot did not fetch or independently "
+                                    "inspect. Suggest a link only when requested or "
+                                    "clearly relevant. Use the exact URL; never invent "
+                                    "or alter it, and do not claim to have opened the "
+                                    "media:\n"
+                                    + "\n".join(resource_blocks)
+                                )
+                            }
+                        ],
+                    },
+                    {
+                        "role": "model",
+                        "parts": [
+                            {
+                                "text": (
+                                    "I will suggest only a relevant supplied link "
+                                    "and keep its URL unchanged."
+                                )
+                            }
+                        ],
+                    },
+                ]
+            )
         episode_blocks: list[str] = []
         for item in (episode_context or [])[:3]:
             if not isinstance(item, dict):
@@ -691,6 +762,16 @@ class GeminiCoachService:
             )
             else ""
         )
+        education_resource_guidance = (
+            " If relevant admin-managed Education-group PDF/video links are supplied, "
+            "offer the exact indexed Telegram message link when the learner asks for "
+            "one or asks a clearly related question. Distinguish a bot-observed admin "
+            "post from an owner-supplied link; do not claim owner-supplied media was "
+            "independently checked. Do not invent links, imply that you watched/read "
+            "the media, or suggest an unrelated resource."
+            if profile and profile.get("education_resources_context")
+            else ""
+        )
         learning_goal = (
             " The learner's saved learning focus is: "
             + " ".join(str(profile.get("learning_goal") or "").split())[:300]
@@ -796,6 +877,7 @@ class GeminiCoachService:
             + admin_guidance
             + image_guidance
             + curriculum_guidance
+            + education_resource_guidance
             + learning_goal
         )
 

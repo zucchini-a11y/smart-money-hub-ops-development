@@ -934,6 +934,55 @@ class BotFlowTests(unittest.TestCase):
         self.assertEqual(len(archived), 1)
         self.assertEqual(archived[0]["content"], "Good morning everyone")
 
+    def test_configured_admin_pdf_is_indexed_with_a_group_message_link(self) -> None:
+        group_id = -1003916437804
+        self.bot.admin_id = self.user_id
+        message = {
+            "message_id": 9003,
+            "message_thread_id": 7654,
+            "date": int(datetime(2026, 11, 3, 12, tzinfo=timezone.utc).timestamp()),
+            "caption": "Market structure: BOS and MSS guide",
+            "chat": {"id": group_id, "type": "supergroup"},
+            "from": {"id": self.user_id},
+            "document": {
+                "file_id": "not-to-be-retained",
+                "file_name": "market_structure.pdf",
+                "mime_type": "application/pdf",
+            },
+        }
+
+        self.bot.handle_update({"message": message})
+        resources = self.bot.store.search_education_group_resources(
+            group_id, "Explain BOS and MSS"
+        )
+
+        self.assertEqual(len(resources), 1)
+        self.assertEqual(
+            resources[0]["message_link"],
+            "https://t.me/c/3916437804/7654/9003",
+        )
+        self.assertNotIn("not-to-be-retained", str(resources))
+        self.bot._process_coach_message(
+            self.chat_id,
+            self.user_id,
+            self.username,
+            "Can you send me the PDF link for BOS?",
+        )
+        self.assertIn(
+            "https://t.me/c/3916437804/7654/9003",
+            self.api.messages[-1]["text"],
+        )
+
+        message["message_id"] = 9004
+        message["from"] = {"id": 999999}
+        self.bot.handle_update({"message": message})
+        self.assertEqual(
+            self.bot.store.search_education_group_resources(
+                group_id, "Explain BOS and MSS"
+            ),
+            resources,
+        )
+
     def test_edited_group_post_updates_the_archive_in_place(self) -> None:
         group_id = -1003916437804
         self.bot.handle_update(

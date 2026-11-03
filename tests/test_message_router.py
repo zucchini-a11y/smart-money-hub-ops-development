@@ -111,6 +111,65 @@ class MessageRouterTests(unittest.TestCase):
 
         self.assertEqual(provider.evaluate.call_args.kwargs["profile"]["curriculum_context"], context)
 
+    def test_related_education_questions_include_matching_group_resource_links(self) -> None:
+        provider = Mock()
+        provider.diagnostic_response_path = "gemini_success"
+        provider.evaluate.return_value = CoachReply(
+            "BOS is a break of meaningful market structure.", "BOS", (), ""
+        )
+        router = CoachMessageRouter(provider, _EmptyKnowledgeStore())
+        resource = {
+            "resource_type": "pdf",
+            "title": "Market Structure BOS Guide",
+            "description": "Explains BOS and MSS.",
+            "message_link": "https://t.me/c/3916437804/5/120",
+            "source_status": "configured_admin",
+        }
+
+        result = router.route(
+            214,
+            "Explain BOS",
+            profile={"education_resources_context": [resource]},
+        )
+
+        self.assertIn(resource["message_link"], result.reply.response)
+        self.assertEqual(
+            provider.evaluate.call_args.kwargs["profile"][
+                "education_resources_context"
+            ],
+            [resource],
+        )
+
+    def test_direct_resource_request_returns_only_indexed_links(self) -> None:
+        provider = Mock()
+        router = CoachMessageRouter(provider, _EmptyKnowledgeStore())
+        resource = {
+            "resource_type": "video",
+            "title": "Liquidity Sweep Lesson",
+            "message_link": "https://t.me/c/3916437804/5/121",
+            "source_status": "configured_admin",
+        }
+
+        result = router.route(
+            215,
+            "Can you share the video about liquidity sweeps?",
+            profile={"education_resources_context": [resource]},
+        )
+
+        self.assertEqual(result.intent, "education_resources")
+        self.assertIn(resource["message_link"], result.reply.response)
+        provider.evaluate.assert_not_called()
+
+    def test_missing_resource_link_is_reported_without_model_guessing(self) -> None:
+        provider = Mock()
+        result = CoachMessageRouter(provider, _EmptyKnowledgeStore()).route(
+            216, "Can you send me the PDF link?"
+        )
+
+        self.assertEqual(result.intent, "education_resource_not_indexed")
+        self.assertIn("don’t have a matching", result.reply.response)
+        provider.evaluate.assert_not_called()
+
     def test_missing_episode_is_reported_without_calling_model(self) -> None:
         provider = Mock()
         router = CoachMessageRouter(provider, _EmptyKnowledgeStore())

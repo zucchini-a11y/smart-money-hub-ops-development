@@ -230,6 +230,35 @@ class GeminiCoachTests(unittest.TestCase):
         self.assertIn("pages=1–2", joined)
         self.assertIn("not live-market evidence", joined)
 
+    def test_education_group_resource_context_keeps_exact_link_and_no_file_id(self) -> None:
+        resource_link = "https://t.me/c/3916437804/5/120"
+        contents = GeminiCoachService._contents(
+            "Explain BOS and suggest a related PDF.",
+            [],
+            education_resources_context=[
+                {
+                    "resource_type": "pdf",
+                    "provenance": "owner_supplied_link",
+                    "title": "Market Structure BOS Guide",
+                    "description": "Explains BOS and MSS.",
+                    "topic_name": "Market Analysis",
+                    "message_link": resource_link,
+                    "file_id": "must-not-be-sent",
+                }
+            ],
+        )
+        joined = "\n".join(
+            part.get("text", "")
+            for item in contents
+            for part in item.get("parts", [])
+        )
+
+        self.assertIn(resource_link, joined)
+        self.assertIn("owner_supplied_link means", joined)
+        self.assertIn("did not fetch or independently inspect", joined)
+        self.assertIn("never invent or alter it", joined)
+        self.assertNotIn("must-not-be-sent", joined)
+
     def test_unsupported_or_oversized_chart_image_is_rejected_before_network(self) -> None:
         service = GeminiCoachService("test-key")
         with patch("smart_money_hub_bot.gemini_coach.urlopen") as mocked_urlopen:

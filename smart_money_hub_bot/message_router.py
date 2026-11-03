@@ -38,6 +38,67 @@ _BRIEF_FOLLOW_UP_QUESTION = re.compile(
     r"^(?:why|how|which one|what next|what then|and why)[?! .]*$",
     re.I,
 )
+_EDUCATION_RESOURCE_REQUEST = re.compile(
+    r"\b(?:pdfs?|videos?|recordings?|course resources?)\b"
+    r".{0,60}\b(?:link|send|share|provide|find|where|show|get|give|need|want|have)\b"
+    r"|\b(?:link|send|share|provide|find|where|show|get|give|need|want|have|"
+    r"looking for|recommend)\b"
+    r".{0,60}\b(?:pdfs?|videos?|recordings?|course resources?)\b",
+    re.I,
+)
+
+
+def _education_resources(profile: dict[str, Any] | None) -> list[dict[str, str]]:
+    if not profile or not isinstance(profile.get("education_resources_context"), list):
+        return []
+    resources: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in profile["education_resources_context"][:3]:
+        if not isinstance(item, dict):
+            continue
+        resource_type = str(item.get("resource_type") or "").casefold()
+        title = " ".join(str(item.get("title") or "").split())[:160]
+        link = str(item.get("message_link") or "").strip()
+        if (
+            resource_type not in {"pdf", "video"}
+            or not title
+            or not link.startswith("https://t.me/")
+            or len(link) > 400
+            or link in seen
+        ):
+            continue
+        seen.add(link)
+        resources.append(
+            {"resource_type": resource_type, "title": title, "message_link": link}
+        )
+    return resources
+
+
+def _education_resource_text(resources: list[dict[str, str]]) -> str:
+    if not resources:
+        return ""
+    lines = [
+        "Matching Education-group resources:",
+        *[
+            f"• {item['resource_type'].upper()}: {item['title']}\n"
+            f"  {item['message_link']}"
+            for item in resources[:3]
+        ],
+    ]
+    return "\n".join(lines)
+
+
+def _append_education_resources(
+    response: str, resources: list[dict[str, str]]
+) -> str:
+    missing = [
+        item
+        for item in resources
+        if item["message_link"] not in response
+    ]
+    if not missing:
+        return response
+    return f"{response.rstrip()}\n\n{_education_resource_text(missing)}"
 
 
 @dataclass(frozen=True)
@@ -76,6 +137,32 @@ class CoachMessageRouter:
         if not isinstance(request_id, str) or not re.fullmatch(r"[0-9a-f]{32}", request_id):
             request_id = uuid.uuid4().hex
         is_admin = bool(profile and profile.get("is_admin") is True)
+        resources = _education_resources(profile)
+        if _EDUCATION_RESOURCE_REQUEST.search(message):
+            if not resources:
+                response = (
+                    "I don’t have a matching Education-group PDF or video link "
+                    "indexed yet. If the admin posts it in the group with a clear "
+                    "caption, I can suggest it when someone asks a related question."
+                )
+                return self._routed(
+                    "education_resource_not_indexed",
+                    CoachReply(response, "Education group resources", (), ""),
+                    None,
+                    "local_response",
+                    request_id=request_id,
+                )
+            response = _education_resource_text(resources)
+            if is_admin:
+                response = f"Certainly, CEO —\n{response}"
+            return self._routed(
+                "education_resources",
+                CoachReply(response, "Education group resources", (), ""),
+                None,
+                "local_response",
+                request_id=request_id,
+            )
+
         simple_intent, greeting = _simple_intent(message)
         if simple_intent:
             response = self._varied_reply(
@@ -98,7 +185,11 @@ class CoachMessageRouter:
             related_lessons = profile.get("curriculum_context", [])
             if not isinstance(related_lessons, list):
                 related_lessons = []
-            response = episode_unavailable_reply(requested_episode, related_lessons)
+            resources = _education_resources(profile)
+            response = _append_education_resources(
+                episode_unavailable_reply(requested_episode, related_lessons),
+                resources,
+            )
             return self._routed(
                 "episode_source_unavailable",
                 CoachReply(
@@ -135,6 +226,9 @@ class CoachMessageRouter:
                 approved_item = None
         if approved_item:
             approved_answer = str(approved_item["approved_answer"])
+            approved_answer = _append_education_resources(
+                approved_answer, resources
+            )
             if is_admin:
                 approved_answer = f"Certainly, CEO — {approved_answer}"
             return self._routed(
@@ -236,6 +330,10 @@ class CoachMessageRouter:
                     profile=context_profile,
                     request_id=request_id,
                 )
+        reply = replace(
+            reply,
+            response=_append_education_resources(reply.response, resources),
+        )
         if is_admin and response_path == "fallback" and not reply.requires_review:
             reply = replace(reply, response=f"Certainly, CEO — {reply.response}")
         return self._routed(
@@ -473,6 +571,10 @@ def _relevant_conversation_context(
         role_context["group_knowledge_context"] = profile["group_knowledge_context"]
     if profile and isinstance(profile.get("curriculum_context"), list):
         role_context["curriculum_context"] = profile["curriculum_context"]
+    if profile and isinstance(profile.get("education_resources_context"), list):
+        role_context["education_resources_context"] = profile[
+            "education_resources_context"
+        ]
     if profile and isinstance(profile.get("episode_context"), list):
         role_context["episode_context"] = profile["episode_context"]
     if profile and isinstance(profile.get("episode_source_missing"), int):
