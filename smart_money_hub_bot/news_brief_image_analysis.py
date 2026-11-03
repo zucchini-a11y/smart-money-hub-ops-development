@@ -29,10 +29,15 @@ _API_ENDPOINT = (
 MAX_IMAGE_BYTES = 4_000_000
 _ALLOWED_MIME_TYPES = frozenset({"image/jpeg", "image/png", "image/webp"})
 _ID_PATTERN = re.compile(r"^[a-zA-Z0-9_.:-]{1,160}$")
+_RETRYABLE_HTTP_STATUS = frozenset({429, 500, 502, 503, 504})
 
 
 class GeminiNewsImageError(RuntimeError):
     """Sanitized failure from the optional image-review request."""
+
+    def __init__(self, category: str) -> None:
+        self.category = category
+        super().__init__(category)
 
 
 @dataclass(frozen=True)
@@ -59,7 +64,7 @@ class GeminiNewsImageAnalysisService:
 
     model = GEMINI_MODEL
 
-    def __init__(self, api_key: str, timeout_seconds: float = 12) -> None:
+    def __init__(self, api_key: str, timeout_seconds: float = 30) -> None:
         self._api_key = api_key.strip()
         self._timeout_seconds = timeout_seconds
 
@@ -159,35 +164,7 @@ class GeminiNewsImageAnalysisService:
             method="POST",
         )
         started = time.monotonic()
-        try:
-            with urlopen(request, timeout=self._timeout_seconds) as response:
-                data = json.loads(response.read().decode("utf-8"))
-        except HTTPError as error:
-            logger.warning(
-                "Gemini brief-image check failed http_status=%s request_id=%s.",
-                error.code,
-                request_id,
-            )
-            raise GeminiNewsImageError("gemini_provider_error") from None
-        except (TimeoutError, socket.timeout):
-            logger.warning("Gemini brief-image check timed out request_id=%s.", request_id)
-            raise GeminiNewsImageError("gemini_timeout") from None
-        except URLError as error:
-            category = (
-                "gemini_timeout"
-                if isinstance(error.reason, (TimeoutError, socket.timeout))
-                else "gemini_network_error"
-            )
-            logger.warning(
-                "Gemini brief-image check failed category=%s request_id=%s.",
-                category,
-                request_id,
-            )
-            raise GeminiNewsImageError(category) from None
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError, TypeError):
-            logger.warning("Gemini brief-image response failed request_id=%s.", request_id)
-            raise GeminiNewsImageError("gemini_invalid_response") from None
-
+        data = self._request_json(request, request_id)
         text, finish_reason = self._extract_text(data)
         if finish_reason != "STOP" or not text:
             raise GeminiNewsImageError("gemini_invalid_response")
@@ -195,48 +172,41 @@ class GeminiNewsImageAnalysisService:
             parsed = json.loads(text)
         except json.JSONDecodeError:
             raise GeminiNewsImageError("gemini_invalid_response") from None
-        if not isinstance(parsed, dict) or set(parsed) != {
-            "visible_date_text",
-            "observed_events",
-            "relevant_event_ids",
-        }:
+        if not isinstance(parsed, dict):
             raise GeminiNewsImageError("gemini_invalid_response")
-        visible_date_text = _visible_text(parsed.get("visible_date_text"), 80)
-        raw_events = parsed.get("observed_events")
+        try:
+            visible_date_text = _visible_text(parsed.get("visible_date_text"), 80)
+        except GeminiNewsImageError:
+            visible_date_text = None
+        raw_events = parsed.get("observed_events", [])
         if not isinstance(raw_events, list):
             raise GeminiNewsImageError("gemini_invalid_response")
         observed_events: list[VisibleCalendarEvent] = []
-        event_fields = {
-            "event_name",
-            "currency",
-            "time_text",
-            "impact_label",
-            "impact_marker",
-            "forecast_text",
-            "previous_text",
-            "actual_text",
-        }
         for raw_event in raw_events[:20]:
-            if not isinstance(raw_event, dict) or set(raw_event) != event_fields:
-                raise GeminiNewsImageError("gemini_invalid_response")
-            event_name = _visible_text(raw_event.get("event_name"), 160)
-            if not event_name:
+            if not isinstance(raw_event, dict):
                 continue
-            observed_events.append(
-                VisibleCalendarEvent(
-                    event_name=event_name,
-                    currency=_visible_text(raw_event.get("currency"), 12),
-                    time_text=_visible_text(raw_event.get("time_text"), 40),
-                    impact_label=_visible_text(raw_event.get("impact_label"), 32),
-                    impact_marker=_visible_text(raw_event.get("impact_marker"), 48),
-                    forecast_text=_visible_text(raw_event.get("forecast_text"), 48),
-                    previous_text=_visible_text(raw_event.get("previous_text"), 48),
-                    actual_text=_visible_text(raw_event.get("actual_text"), 48),
+            try:
+                event_name = _visible_text(raw_event.get("event_name"), 160)
+                if not event_name:
+                    continue
+                observed_events.append(
+                    VisibleCalendarEvent(
+                        event_name=event_name,
+                        currency=_visible_text(raw_event.get("currency"), 12),
+                        time_text=_visible_text(raw_event.get("time_text"), 40),
+                        impact_label=_visible_text(raw_event.get("impact_label"), 32),
+                        impact_marker=_visible_text(raw_event.get("impact_marker"), 48),
+                        forecast_text=_visible_text(raw_event.get("forecast_text"), 48),
+                        previous_text=_visible_text(raw_event.get("previous_text"), 48),
+                        actual_text=_visible_text(raw_event.get("actual_text"), 48),
+                    )
                 )
-            )
-        raw_ids = parsed.get("relevant_event_ids")
+            except GeminiNewsImageError:
+                # Discard one malformed row without losing other legible rows.
+                continue
+        raw_ids = parsed.get("relevant_event_ids", [])
         if not isinstance(raw_ids, list):
-            raise GeminiNewsImageError("gemini_invalid_response")
+            raw_ids = []
 
         allowed_ids = {item["external_id"] for item in evidence}
         selected: list[str] = []
@@ -263,6 +233,75 @@ class GeminiNewsImageAnalysisService:
             tuple(observed_events),
             visible_date_text,
         )
+
+    def _request_json(self, request: Request, request_id: str) -> dict[str, Any]:
+        for attempt in range(2):
+            try:
+                with urlopen(request, timeout=self._timeout_seconds) as response:
+                    data = json.loads(response.read().decode("utf-8"))
+                if not isinstance(data, dict):
+                    raise GeminiNewsImageError("gemini_invalid_response")
+                return data
+            except HTTPError as error:
+                if attempt == 0 and error.code in _RETRYABLE_HTTP_STATUS:
+                    logger.info(
+                        "Retrying transient Gemini brief-image failure "
+                        "http_status=%s request_id=%s.",
+                        error.code,
+                        request_id,
+                    )
+                    time.sleep(0.5)
+                    continue
+                logger.warning(
+                    "Gemini brief-image check failed http_status=%s request_id=%s.",
+                    error.code,
+                    request_id,
+                )
+                raise GeminiNewsImageError(
+                    f"gemini_http_{error.code}"
+                ) from None
+            except (TimeoutError, socket.timeout):
+                if attempt == 0:
+                    logger.info(
+                        "Retrying timed-out Gemini brief-image check "
+                        "request_id=%s.",
+                        request_id,
+                    )
+                    time.sleep(0.5)
+                    continue
+                logger.warning(
+                    "Gemini brief-image check timed out request_id=%s.",
+                    request_id,
+                )
+                raise GeminiNewsImageError("gemini_timeout") from None
+            except URLError as error:
+                reason = error.reason
+                category = (
+                    "gemini_timeout"
+                    if isinstance(reason, (TimeoutError, socket.timeout))
+                    else "gemini_network_error"
+                )
+                if attempt == 0:
+                    logger.info(
+                        "Retrying transient Gemini brief-image network failure "
+                        "request_id=%s.",
+                        request_id,
+                    )
+                    time.sleep(0.5)
+                    continue
+                logger.warning(
+                    "Gemini brief-image check failed category=%s request_id=%s.",
+                    category,
+                    request_id,
+                )
+                raise GeminiNewsImageError(category) from None
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError, TypeError):
+                logger.warning(
+                    "Gemini brief-image response failed request_id=%s.",
+                    request_id,
+                )
+                raise GeminiNewsImageError("gemini_invalid_response") from None
+        raise GeminiNewsImageError("gemini_provider_error")
 
     @staticmethod
     def _extract_text(data: Any) -> tuple[str, str | None]:
