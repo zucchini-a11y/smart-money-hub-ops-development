@@ -10,6 +10,7 @@ from smart_money_hub_bot.channel_content import normalize_weekend_brand_header
 from smart_money_hub_bot.channel_gemini import ChannelDraft, GeminiChannelGenerationError
 from smart_money_hub_bot.channel_posting import ChannelPostManager
 from smart_money_hub_bot.session_open_posts import (
+    DEFAULT_NEW_YORK_SESSION_IMAGE,
     SessionOpenPostManager,
     SessionOpenPostStore,
     session_occurrences,
@@ -36,6 +37,14 @@ SESSION_POST = (
     "⚠️ REMEMBER\n"
     "NO CONFIRMATION, NO ENTRY.\n\n"
     "— VAYDA | Smart Money Hub"
+)
+
+NEW_YORK_SESSION_POST = SESSION_POST.replace(
+    "🇬🇧 LONDON SESSION OPEN",
+    "🇺🇸 NEW YORK SESSION OPEN",
+).replace(
+    "The London open is 08:00 Europe/London (09:00 WAT). Before the session,",
+    "As the New York session gets underway,",
 )
 
 LATE_SESSION_POST = (
@@ -318,6 +327,7 @@ class SessionOpenPostTests(unittest.TestCase):
         self.assertIn("09:00 WAT", self.api.admin_messages[-1][1])
         self.assertIn("Add a photo", self.api.admin_messages[-1][1])
         self.assertEqual(self.api.channel_messages, [])
+        self.assertEqual(self.api.photo_messages, [])
 
         self.manager.dispatch_due(occurrence.utc_at)
         self.manager.dispatch_due(occurrence.utc_at + timedelta(seconds=1))
@@ -399,14 +409,18 @@ class SessionOpenPostTests(unittest.TestCase):
         )
         self.assertEqual(len(self.writer.calls), 1)
 
-        self.assertTrue(
-            self.manager.handle_callback(
-                ADMIN_ID,
-                ADMIN_ID,
-                f"admin:session_open:retry_generation:{original_id}",
-                now=occurrence.utc_at - timedelta(minutes=10),
+        with patch(
+            "smart_money_hub_bot.session_open_posts._utc_now",
+            return_value=(occurrence.utc_at - timedelta(minutes=10)).isoformat(),
+        ):
+            self.assertTrue(
+                self.manager.handle_callback(
+                    ADMIN_ID,
+                    ADMIN_ID,
+                    f"admin:session_open:retry_generation:{original_id}",
+                    now=occurrence.utc_at - timedelta(minutes=10),
+                )
             )
-        )
         retried = self.manager.store.get_by_key(occurrence)
         self.assertEqual(retried["id"], original_id)
         self.assertEqual(retried["status"], "draft")
@@ -956,7 +970,8 @@ class SessionOpenPostTests(unittest.TestCase):
         self.assertEqual(self.api.channel_messages, [])
 
     def test_photo_is_attached_and_used_only_after_the_open(self):
-        occurrence = self._occurrence("london")
+        occurrence = self._occurrence("new_york")
+        self.writer.content = NEW_YORK_SESSION_POST
         self.manager.dispatch_due(occurrence.utc_at - timedelta(minutes=15))
         self.manager.dispatch_due(occurrence.utc_at - timedelta(minutes=5))
         post = self.manager.store.get_by_key(occurrence)
@@ -977,6 +992,41 @@ class SessionOpenPostTests(unittest.TestCase):
         self.manager.dispatch_due(occurrence.utc_at)
         self.assertEqual(len(self.api.photo_messages), 1)
         self.assertEqual(self.api.photo_messages[0][1], "synthetic-photo-file-id")
+        self.assertEqual(self.api.channel_messages, [])
+
+    def test_new_york_default_image_is_used_when_no_photo_is_attached(self):
+        occurrence = self._occurrence("new_york")
+        self.writer.content = NEW_YORK_SESSION_POST
+        self.manager.dispatch_due(occurrence.utc_at - timedelta(minutes=15))
+        self.manager.dispatch_due(occurrence.utc_at - timedelta(minutes=5))
+        self.assertIn(
+            "fixed New York session image",
+            self.api.admin_messages[-1][1],
+        )
+
+        self.manager.dispatch_due(occurrence.utc_at)
+
+        self.assertEqual(len(self.api.photo_messages), 1)
+        self.assertEqual(self.api.photo_messages[0][1], DEFAULT_NEW_YORK_SESSION_IMAGE)
+        self.assertEqual(self.api.channel_messages, [])
+        self.assertTrue(DEFAULT_NEW_YORK_SESSION_IMAGE.is_file())
+
+    def test_missing_new_york_default_image_holds_without_sending(self):
+        occurrence = self._occurrence("new_york")
+        self.writer.content = NEW_YORK_SESSION_POST
+        missing_image = DEFAULT_NEW_YORK_SESSION_IMAGE.parent / "missing.png"
+        with patch(
+            "smart_money_hub_bot.session_open_posts.DEFAULT_NEW_YORK_SESSION_IMAGE",
+            missing_image,
+        ):
+            self.manager.dispatch_due(occurrence.utc_at - timedelta(minutes=15))
+            self.manager.dispatch_due(occurrence.utc_at - timedelta(minutes=5))
+            self.manager.dispatch_due(occurrence.utc_at)
+
+        saved = self.manager.store.get_by_key(occurrence)
+        self.assertEqual(saved["status"], "failed")
+        self.assertEqual(saved["failure_category"], "default_session_image_missing")
+        self.assertEqual(self.api.photo_messages, [])
         self.assertEqual(self.api.channel_messages, [])
 
     def test_interrupted_send_is_marked_uncertain_and_never_retried(self):

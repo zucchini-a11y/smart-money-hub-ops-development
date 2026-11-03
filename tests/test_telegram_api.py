@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from smart_money_hub_bot.telegram_api import TelegramAPI
@@ -99,6 +101,32 @@ class TelegramUpdateSubscriptionTests(unittest.TestCase):
                 "parse_mode": "HTML",
             },
         )
+
+    def test_send_photo_with_result_uploads_a_local_image_as_multipart(self) -> None:
+        api = TelegramAPI("synthetic-test-token")
+        with TemporaryDirectory() as directory:
+            image_path = Path(directory) / "session.png"
+            image_path.write_bytes(b"\x89PNG\r\nsynthetic-image")
+            with patch("smart_money_hub_bot.telegram_api.urlopen") as urlopen_mock:
+                response = urlopen_mock.return_value.__enter__.return_value
+                response.read.return_value = (
+                    b'{"ok":true,"result":{"message_id":20}}'
+                )
+                result = api.send_photo_with_result(
+                    -100123,
+                    image_path,
+                    caption="<b>New York</b>",
+                    parse_mode="HTML",
+                )
+
+        self.assertEqual(result, {"message_id": 20})
+        request = urlopen_mock.call_args.args[0]
+        self.assertIn("sendPhoto", request.full_url)
+        self.assertIn(b'name="chat_id"\r\n\r\n-100123', request.data)
+        self.assertIn(b'name="caption"\r\n\r\n<b>New York</b>', request.data)
+        self.assertIn(b'filename="session.png"', request.data)
+        self.assertIn(b"image/png", request.data)
+        self.assertIn(b"\x89PNG\r\nsynthetic-image", request.data)
 
     def test_edit_message_text_preserves_inline_button_and_html(self) -> None:
         api = TelegramAPI("synthetic-test-token")

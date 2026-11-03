@@ -28,3 +28,45 @@ mtime_ms = 1793679980195
 storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/d5a78f8e-c6ab-4f61-9999-c03ea02fcedf/39812f58-9b80-4c90-9f36-689ac8f375a4"
 storage_version_token = "1793680020482315"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "YcUcjVTFVxsHdNPJzuBjW"
+uri = "file://attached_assets/generated_images/smh-session-tokyo-option.png"
+type = "image"
+title = "Tokyo session image option"
+description = "Preview only — cinematic black-and-gold Tokyo session backdrop; not applied to the bot."
+logical_id = "9ce13e91-0bf0-4f5d-bc56-8071b518a795"
+content_hash = "sha256:6139f173de6bbbabe1349fa020ad66cffd0a6d34cd154d8b6eac0648b5c8c405"
+size = 862773
+mtime_ms = 1793711842941
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/9ce13e91-0bf0-4f5d-bc56-8071b518a795/1dd04394-61c3-47e6-8aa7-3cde6e76ee6c"
+storage_version_token = "1793711857423401"
+content_type = "image/png"
+
+[[outputs]]
+id = "ju0ZI9R4uQJeyDcyS51vk"
+uri = "file://attached_assets/generated_images/smh-session-london-option.png"
+type = "image"
+title = "London session image option"
+description = "Preview only — cinematic black-and-gold London session backdrop; not applied to the bot."
+logical_id = "8f464d5c-a853-4093-99e7-fa89cadee0d2"
+content_hash = "sha256:d05f4136ea428b6d814838aee61fc01d272c0dd160c7de7cdc436c308ac9504d"
+size = 1121696
+mtime_ms = 1793711842573
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/8f464d5c-a853-4093-99e7-fa89cadee0d2/f3e29141-fca1-4523-9726-76f9bd2b1181"
+storage_version_token = "1793711857892195"
+content_type = "image/png"
+
+[[outputs]]
+id = "gSQMQ3t_7xcDFXtjGKPTl"
+uri = "file://attached_assets/generated_images/smh-session-new-york-option.png"
+type = "image"
+title = "New York session image option"
+description = "Preview only — cinematic black-and-gold New York session backdrop; not applied to the bot."
+logical_id = "b126d8da-fc81-4f54-b7cc-1d61de66dbd8"
+content_hash = "sha256:1d6a63bed13b785a5becaabc08c414b4ff086af5298f94baa84dcb275c806e6c"
+size = 1057319
+mtime_ms = 1793711842453
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/b126d8da-fc81-4f54-b7cc-1d61de66dbd8/d7351a2a-73e2-42bc-afce-25d97fcb95a8"
+storage_version_token = "1793711858418742"
+content_type = "image/png"

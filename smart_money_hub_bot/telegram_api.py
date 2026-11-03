@@ -2,6 +2,7 @@
 
 import json
 import uuid
+from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
@@ -253,17 +254,16 @@ class TelegramAPI:
     def send_photo_with_result(
         self,
         chat_id: int,
-        photo_file_id: str,
+        photo_file_id: str | Path,
         *,
         caption: str,
         reply_markup: dict[str, Any] | None = None,
         parse_mode: str | None = None,
         message_thread_id: int | None = None,
     ) -> dict[str, Any]:
-        """Send a Telegram-hosted photo by file_id with a formatted caption."""
+        """Send a Telegram-hosted photo ID or a local image with a caption."""
         payload: dict[str, Any] = {
             "chat_id": chat_id,
-            "photo": photo_file_id,
             "caption": caption,
         }
         if reply_markup is not None:
@@ -272,8 +272,147 @@ class TelegramAPI:
             payload["parse_mode"] = parse_mode
         if message_thread_id is not None:
             payload["message_thread_id"] = message_thread_id
+
+        if isinstance(photo_file_id, Path):
+            mime_types = {
+                ".jpg": "image/jpeg",
+                ".jpeg": "image/jpeg",
+                ".png": "image/png",
+                ".webp": "image/webp",
+            }
+            content_type = mime_types.get(photo_file_id.suffix.lower())
+            if content_type is None:
+                raise TelegramAPIError("The configured photo format is not supported.")
+            try:
+                size = photo_file_id.stat().st_size
+                if size < 1 or size > 10_000_000:
+                    raise TelegramAPIError("The configured photo is outside Telegram's size limit.")
+                image = photo_file_id.read_bytes()
+            except TelegramAPIError:
+                raise
+            except OSError:
+                raise TelegramAPIError("The configured photo asset is unavailable.") from None
+            fields = {
+                key: (
+                    json.dumps(value, ensure_ascii=False)
+                    if key == "reply_markup"
+                    else str(value)
+                )
+                for key, value in payload.items()
+            }
+            result = self._multipart_request(
+                "sendPhoto",
+                fields,
+                file_field="photo",
+                filename=photo_file_id.name,
+                content_type=content_type,
+                content=image,
+            )
+            return result if isinstance(result, dict) else {}
+
+        payload["photo"] = photo_file_id
         result = self._request("sendPhoto", payload)
         return result if isinstance(result, dict) else {}
+
+    def _multipart_request(
+        self,
+        method: str,
+        fields: dict[str, str],
+        *,
+        file_field: str,
+        filename: str,
+        content_type: str,
+        content: bytes,
+    ) -> Any:
+        boundary = "----smh-" + uuid.uuid4().hex
+        parts: list[bytes] = []
+        for name, value in fields.items():
+            parts.append(
+                (
+                    f"--{boundary}\r\n"
+                    f'Content-Disposition: form-data; name="{name}"\r\n\r\n'
+                    f"{value}\r\n"
+                ).encode("utf-8")
+            )
+        safe_name = Path(filename).name.replace('"', "").replace("\r", "").replace("\n", "")[:120]
+        parts.append(
+            (
+                f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="{file_field}"; filename="{safe_name}"\r\n'
+                f"Content-Type: {content_type}\r\n\r\n"
+            ).encode("utf-8")
+            + content
+            + b"\r\n"
+        )
+        parts.append(f"--{boundary}--\r\n".encode("ascii"))
+        request = Request(
+            self._base_url + method,
+            data=b"".join(parts),
+            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+            method="POST",
+        )
+        try:
+            with urlopen(request, timeout=20) as response:
+                raw_response = response.read()
+        except HTTPError as error:
+            parsed: dict[str, Any] = {}
+            try:
+                body = json.loads(error.read().decode("utf-8"))
+                if isinstance(body, dict):
+                    parsed = body
+            except (UnicodeDecodeError, json.JSONDecodeError, AttributeError):
+                pass
+            parameters = parsed.get("parameters")
+            retry_after = (
+                parameters.get("retry_after")
+                if isinstance(parameters, dict)
+                else None
+            )
+            raise TelegramAPIError(
+                str(parsed.get("description", f"HTTP {error.code}")),
+                http_status=error.code,
+                error_code=parsed.get("error_code"),
+                retry_after=retry_after if isinstance(retry_after, int) else None,
+            ) from None
+        except (URLError, TimeoutError, OSError):
+            raise TelegramAPIError(
+                "Telegram photo request failed.",
+                delivery_unknown=True,
+            ) from None
+
+        try:
+            parsed_response = json.loads(raw_response.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            raise TelegramAPIError(
+                "Telegram returned an unreadable photo response.",
+                delivery_unknown=True,
+            ) from None
+        if not isinstance(parsed_response, dict) or not parsed_response.get("ok"):
+            description = (
+                parsed_response.get("description", "Telegram photo request was not successful.")
+                if isinstance(parsed_response, dict)
+                else "Telegram returned an unexpected photo response."
+            )
+            parameters = (
+                parsed_response.get("parameters")
+                if isinstance(parsed_response, dict)
+                else None
+            )
+            retry_after = (
+                parameters.get("retry_after")
+                if isinstance(parameters, dict)
+                else None
+            )
+            raise TelegramAPIError(
+                str(description),
+                error_code=(
+                    parsed_response.get("error_code")
+                    if isinstance(parsed_response, dict)
+                    else None
+                ),
+                retry_after=retry_after if isinstance(retry_after, int) else None,
+            )
+        return parsed_response.get("result")
 
     def send_document(
         self,

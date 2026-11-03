@@ -30,6 +30,9 @@ GENERATION_LEAD = timedelta(minutes=15)
 FINAL_REVIEW_LEAD = timedelta(minutes=5)
 MAX_RATE_LIMIT_RETRIES = 1
 PAGE_SIZE = 12
+DEFAULT_NEW_YORK_SESSION_IMAGE = (
+    Path(__file__).resolve().parent / "assets" / "new-york-session-open.png"
+)
 
 
 @dataclass(frozen=True)
@@ -971,6 +974,17 @@ class SessionOpenPostManager:
             )
             return
         late_recovery = current >= self._scheduled_at(post)
+        if (
+            not late_recovery
+            and not has_content
+            and self._scheduled_at(post) - current < FINAL_REVIEW_LEAD
+        ):
+            self.api.send_message(
+                chat_id,
+                "AI retry is too close to the session opening to leave time for the "
+                "private review. The post remains held and will not publish.",
+            )
+            return
         if late_recovery:
             if current >= _session_close_utc(occurrence):
                 self.api.send_message(
@@ -1375,6 +1389,12 @@ class SessionOpenPostManager:
             at=current.isoformat(),
         ):
             return
+        photo_instruction = (
+            "The fixed New York session image will be used unless you add a "
+            "different photo."
+            if post["session_code"] == "new_york"
+            else "Add a photo if you want; otherwise this post will be text-only."
+        )
         text = (
             "SESSION-OPEN POST REVIEW\n"
             f"Session: {occurrence.definition.label} "
@@ -1385,7 +1405,7 @@ class SessionOpenPostManager:
             f"{occurrence.wat_at.strftime('%H:%M')} WAT\n"
             "Review window: until the scheduled session opening.\n\n"
             f"{post['content']}\n\n"
-            "Add a photo if you want; otherwise the post will be text-only. "
+            f"{photo_instruction} "
             "Approve, edit, or cancel. If you do not respond, an eligible post "
             "publishes automatically at the session open."
         )
@@ -1425,6 +1445,16 @@ class SessionOpenPostManager:
     def _publish(self, post: dict[str, Any], current: datetime) -> None:
         if self.admin_id is None or self.destination_chat_id is None:
             return
+        photo = post.get("photo_file_id")
+        if not photo and post.get("session_code") == "new_york":
+            photo = DEFAULT_NEW_YORK_SESSION_IMAGE
+        if isinstance(photo, Path) and not photo.is_file():
+            self._hold(
+                post,
+                "default_session_image_missing",
+                "The default New York session image is unavailable. Nothing was sent.",
+            )
+            return
         settings = self.history_store.get_channel_posting_settings()
         if settings.get("paused"):
             self._hold(post, "channel_publishing_paused", "Publishing is paused; no session post was sent.")
@@ -1443,7 +1473,7 @@ class SessionOpenPostManager:
             return
         try:
             rendered = render_weekend_post_html(content)
-            if post.get("photo_file_id") and len(content.encode("utf-16-le")) // 2 > 1024:
+            if photo and len(content.encode("utf-16-le")) // 2 > 1024:
                 raise ValueError("photo_caption_too_long")
             self.channel_post_manager.verify_destination(
                 {
@@ -1483,10 +1513,10 @@ class SessionOpenPostManager:
         if attempts is None:
             return
         try:
-            if post.get("photo_file_id"):
+            if photo:
                 result = self.api.send_photo_with_result(
                     int(self.destination_chat_id),
-                    str(post["photo_file_id"]),
+                    photo if isinstance(photo, Path) else str(photo),
                     caption=rendered,
                     parse_mode="HTML",
                 )
