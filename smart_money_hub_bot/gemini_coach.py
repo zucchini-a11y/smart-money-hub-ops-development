@@ -732,7 +732,13 @@ class GeminiCoachService:
             "If they ask how to reach their admin menu, direct them to send /admin "
             "in this private chat; authorization is still enforced by the bot. "
             "They may set one-time personal reminders by sending the task and a clear "
-            "date and time, such as “Remind me to review my journal tomorrow at 9am.”"
+            "date and time, such as “Remind me to review my journal tomorrow at 9am.” "
+            "For this administrator only, explain that one-off posts can be prepared "
+            "through the private admin text flow for the configured Market Analysis "
+            "channel or Education group. A private preview must come first, followed "
+            "by /approve ID and /publishcontent ID. Never claim the bot cannot post "
+            "or tell the administrator to copy and paste; never claim a post was sent "
+            "unless the publishing flow confirms it."
             if is_admin
             else ""
         )
