@@ -528,7 +528,8 @@ class BotFlowTests(unittest.TestCase):
         message = self.api.messages[-1]["text"]
         self.assertIn("Built-in lesson cards: 10", message)
         self.assertIn("Assessment questions: 10", message)
-        self.assertIn("External curriculum files/transcripts: not configured", message)
+        self.assertIn("Uploaded course documents: 1", message)
+        self.assertIn("Episode transcripts: not configured", message)
         self.assertIn("Separate Bot 1 progress interface: not connected", message)
         self.assertIn("chart_image / http_timeout", message)
         self.assertIn("(HTTP 504)", message)

@@ -3112,7 +3112,8 @@ class AdminDashboard:
             "• Episode-tagged archived posts: "
             f"{len(archive_status['episode_numbers'])} "
             "(archive records, not verified transcripts)",
-            "• External curriculum files/transcripts: not configured",
+            f"• Uploaded course documents: {sources['uploaded_course_documents']}",
+            "• Episode transcripts: not configured",
             "• Separate Bot 1 progress interface: not connected",
             "",
             "Coach provider events (last 7 days; no message text stored here):",

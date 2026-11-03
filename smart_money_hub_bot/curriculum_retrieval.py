@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from .course_materials import COURSE_DOCUMENTS
 from .education import EDUCATION
 from .knowledge_base import question_similarity, question_tokens
 
@@ -19,8 +20,8 @@ def requested_episode_number(question: str) -> int | None:
 
 def retrieve_curriculum_context(
     question: str, *, limit: int = 3
-) -> list[dict[str, str]]:
-    """Retrieve relevant built-in lesson cards without assigning episode numbers."""
+) -> list[dict[str, Any]]:
+    """Retrieve relevant in-app lessons and source-labeled uploaded course material."""
     query_tokens = question_tokens(question)
     if not query_tokens:
         return []
@@ -49,6 +50,21 @@ def retrieve_curriculum_context(
             )
         )
 
+    for document in COURSE_DOCUMENTS:
+        resource_text = (
+            f"{document['title']} {document['search_terms']} {document['content']}"
+        )
+        resource_tokens = question_tokens(resource_text)
+        shared = query_tokens & resource_tokens
+        if not shared:
+            continue
+
+        coverage = len(shared) / len(query_tokens)
+        similarity = question_similarity(question, resource_text)
+        title_similarity = question_similarity(question, document["title"])
+        score = coverage * 0.65 + similarity * 0.2 + title_similarity * 0.15
+        candidates.append((score, dict(document)))
+
     candidates.sort(key=lambda item: item[0], reverse=True)
     return [
         resource
@@ -71,8 +87,13 @@ def episode_unavailable_reply(
         title = " ".join(str(lesson.get("title") or "").split())[:100]
         content = " ".join(str(lesson.get("content") or "").split())[:900]
         if title and content:
+            source = " ".join(str(lesson.get("source") or "").split())[:100]
+            pages = " ".join(str(lesson.get("pages") or "").split())[:30]
+            provenance = f" from {source}" if source else ""
+            if pages:
+                provenance += f", pages {pages}"
             response += (
-                f"I can offer the related general lesson, “{title}” "
+                f"I can offer related course material, “{title}”{provenance} "
                 f"(not a summary of Episode {number}): {content} "
             )
     response += (
@@ -85,6 +106,7 @@ def curriculum_source_summary() -> dict[str, int]:
     """Return counts for real in-app lesson cards, with no inferred episodes."""
     return {
         "lesson_cards": len(EDUCATION),
+        "uploaded_course_documents": len(COURSE_DOCUMENTS),
         "episode_records": 0,
         "external_documents": 0,
     }

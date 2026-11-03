@@ -538,10 +538,19 @@ class GeminiCoachService:
             title = " ".join(str(item.get("title") or "").split())[:100]
             content = " ".join(str(item.get("content") or "").split())[:900]
             source = " ".join(str(item.get("source") or "").split())[:100]
+            source_type = " ".join(
+                str(item.get("source_type") or "built_in_lesson_card").split()
+            )[:50]
+            pages = " ".join(str(item.get("pages") or "").split())[:30]
             if title and content:
+                provenance = (
+                    f"source={source or 'built-in lesson card'}; "
+                    f"type={source_type}"
+                )
+                if pages:
+                    provenance += f"; pages={pages}"
                 curriculum_blocks.append(
-                    f"[source={source or 'built-in lesson card'}; "
-                    f"title={title}] {content}"
+                    f"[{provenance}; title={title}] {content}"
                 )
         if curriculum_blocks:
             contents.extend(
@@ -551,9 +560,12 @@ class GeminiCoachService:
                         "parts": [
                             {
                                 "text": (
-                                    "Relevant built-in Smart Money Hub lesson cards "
-                                    "follow. They are actual in-app lesson content, "
-                                    "not numbered episode transcripts:\n"
+                                    "Relevant source-labeled Smart Money Hub curriculum "
+                                    "material follows. It may include built-in lesson "
+                                    "cards or owner-provided course documents. Use each "
+                                    "source label and page range accurately; this is "
+                                    "course material, not live-market evidence or a "
+                                    "numbered episode transcript:\n"
                                     + "\n".join(curriculum_blocks)
                                 )
                             }
@@ -564,8 +576,8 @@ class GeminiCoachService:
                         "parts": [
                             {
                                 "text": (
-                                    "I will use these as the in-app lesson cards and "
-                                    "will not assign them to an episode."
+                                    "I will answer from the source-labeled course "
+                                    "material and will not assign it to an episode."
                                 )
                             }
                         ],
@@ -664,10 +676,14 @@ class GeminiCoachService:
             else ""
         )
         curriculum_guidance = (
-            " Use relevant supplied built-in curriculum cards as the verified in-app "
-            "lesson text, but do not assign them to a numbered episode. If episode "
+            " Use relevant supplied curriculum material according to its source "
+            "label and page range. Treat owner-provided course documents as lesson "
+            "references, not as independently verified live-market evidence or proof "
+            "of institutional activity. When useful, briefly cite the document title "
+            "and page range without adding a long source block. Do not assign any material to an episode "
+            "unless that episode is explicitly identified by its source. If episode "
             "context is supplied, identify it as an archived group post unless it is "
-            "explicitly verified as an official lesson transcript. "
+            "explicitly verified as a lesson transcript. "
             if profile
             and (
                 profile.get("curriculum_context")

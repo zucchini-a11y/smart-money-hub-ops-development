@@ -20,6 +20,28 @@ class CurriculumRetrievalTests(unittest.TestCase):
         self.assertEqual(results[0]["source_type"], "built_in_lesson_card")
         self.assertIn("not", results[0]["content"].casefold())
 
+    def test_retrieves_uploaded_market_structure_pdf_with_page_provenance(self) -> None:
+        results = retrieve_curriculum_context(
+            "Compare buy-side and sell-side market structure, BOS and wicks."
+        )
+
+        pdf_source = next(
+            item for item in results if item["source_type"] == "uploaded_course_pdf"
+        )
+        self.assertEqual(
+            pdf_source["title"],
+            "Mastering Market Structure: Buy Side & Sell Side",
+        )
+        self.assertEqual(pdf_source["pages"], "1–2")
+        self.assertIn("candle-body close", pdf_source["content"])
+        self.assertIn("not live-market observations", pdf_source["content"])
+
+    def test_course_pdf_can_be_found_from_a_general_document_question(self) -> None:
+        results = retrieve_curriculum_context("What is in my course PDF?")
+
+        self.assertTrue(results)
+        self.assertEqual(results[0]["source_type"], "uploaded_course_pdf")
+
     def test_episode_parser_handles_zero_padding_and_ignores_longer_number(self) -> None:
         self.assertEqual(requested_episode_number("Explain Episode 01"), 1)
         self.assertEqual(requested_episode_number("Episode #12, please"), 12)
@@ -38,6 +60,7 @@ class CurriculumRetrievalTests(unittest.TestCase):
             curriculum_source_summary(),
             {
                 "lesson_cards": 10,
+                "uploaded_course_documents": 1,
                 "episode_records": 0,
                 "external_documents": 0,
             },

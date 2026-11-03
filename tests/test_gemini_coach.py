@@ -199,12 +199,36 @@ class GeminiCoachTests(unittest.TestCase):
             },
         )
         self.assertIn("Analyze only details clearly visible", payload["systemInstruction"]["parts"][0]["text"])
-        self.assertIn("will not assign them to an episode", "\n".join(
+        self.assertIn("will not assign it to an episode", "\n".join(
             part.get("text", "")
             for content in payload["contents"]
             for part in content.get("parts", [])
         ))
         self.assertIn("no entry is confirmed", reply.response)
+
+    def test_uploaded_course_context_includes_document_source_and_pages(self) -> None:
+        contents = GeminiCoachService._contents(
+            "Explain the market-structure diagram.",
+            [],
+            curriculum_context=[
+                {
+                    "source": "Vayda Smart Money Hub — Dual Market Structure Guide",
+                    "source_type": "uploaded_course_pdf",
+                    "pages": "1–2",
+                    "title": "Mastering Market Structure: Buy Side & Sell Side",
+                    "content": "The PDF compares HH/HL and LH/LL with BOS.",
+                }
+            ],
+        )
+
+        joined = "\n".join(
+            part.get("text", "")
+            for item in contents
+            for part in item.get("parts", [])
+        )
+        self.assertIn("type=uploaded_course_pdf", joined)
+        self.assertIn("pages=1–2", joined)
+        self.assertIn("not live-market evidence", joined)
 
     def test_unsupported_or_oversized_chart_image_is_rejected_before_network(self) -> None:
         service = GeminiCoachService("test-key")
