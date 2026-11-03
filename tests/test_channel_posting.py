@@ -1201,6 +1201,91 @@ class ChannelPostingTests(unittest.TestCase):
         manager.dispatch_due(local_time(24, 10, 5))
         self.assertEqual(api.channel_messages, [])
 
+        manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:channel_posts:publish:{post['id']}",
+            local_time(24, 10, 6),
+        )
+        published = store.get_channel_post(post["id"])
+        assert published is not None
+        self.assertEqual(published["status"], "published")
+        self.assertEqual(len(api.channel_messages), 1)
+
+    def test_admin_publish_now_recovers_draft_when_review_was_never_sent(self) -> None:
+        manager, store, api = self.manager, self.store, self.api
+        manager.dispatch_due(local_time(26, 9))
+        post = store.get_scheduled_channel_post("2026-10-26")
+        assert post is not None
+        self.assertEqual(post["status"], "draft")
+        self.assertEqual(post["review_status"], "not_requested")
+
+        manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:channel_posts:publish:{post['id']}",
+            local_time(26, 10),
+        )
+
+        published = store.get_channel_post(post["id"])
+        assert published is not None
+        self.assertEqual(published["status"], "published")
+        self.assertEqual(published["publish_attempts"], 1)
+        self.assertEqual(len(api.channel_messages), 1)
+        self.assertFalse(
+            any(
+                "not approved for publication" in message["text"]
+                for message in api.messages
+            )
+        )
+
+    def test_admin_publish_now_does_not_publish_unreviewed_draft_early(self) -> None:
+        manager, store, api = self.manager, self.store, self.api
+        manager.dispatch_due(local_time(26, 9))
+        post = store.get_scheduled_channel_post("2026-10-26")
+        assert post is not None
+
+        manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:channel_posts:publish:{post['id']}",
+            local_time(26, 9, 59),
+        )
+
+        saved = store.get_channel_post(post["id"])
+        assert saved is not None
+        self.assertEqual(saved["status"], "draft")
+        self.assertEqual(saved["publish_attempts"], 0)
+        self.assertEqual(api.channel_messages, [])
+        self.assertTrue(
+            any("will not publish early" in message["text"] for message in api.messages)
+        )
+
+    def test_admin_publish_now_rejects_a_past_scheduled_date(self) -> None:
+        manager, store, api = self.manager, self.store, self.api
+        manager.dispatch_due(local_time(26, 9))
+        post = store.get_scheduled_channel_post("2026-10-26")
+        assert post is not None
+
+        manager.handle_callback(
+            ADMIN_ID,
+            ADMIN_ID,
+            f"admin:channel_posts:publish:{post['id']}",
+            local_time(27, 10),
+        )
+
+        saved = store.get_channel_post(post["id"])
+        assert saved is not None
+        self.assertEqual(saved["status"], "draft")
+        self.assertEqual(saved["publish_attempts"], 0)
+        self.assertEqual(api.channel_messages, [])
+        self.assertTrue(
+            any(
+                "only on this post's scheduled WAT date" in message["text"]
+                for message in api.messages
+            )
+        )
+
     def test_failed_review_delivery_auto_publishes_at_schedule_if_checks_pass(self) -> None:
         manager, store, api = self.manager, self.store, self.api
         manager.dispatch_due(local_time(26, 9))

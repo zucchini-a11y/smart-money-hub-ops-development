@@ -1839,6 +1839,32 @@ class ChannelPostManager:
     ) -> None:
         if self.admin_id is None or self.destination_chat_id is None:
             return
+        scheduled_date = date.fromisoformat(str(post["schedule_date"]))
+        scheduled_time = wall_time.fromisoformat(str(post["schedule_time"]))
+        scheduled_at = datetime.combine(
+            scheduled_date, scheduled_time, tzinfo=self.timezone
+        )
+        local_now = now_utc.astimezone(self.timezone)
+        if not automatic and post.get("status") == "published":
+            self.api.send_message(
+                self.admin_id,
+                "This post has already been published. No duplicate was sent.",
+            )
+            return
+        if not automatic and post["schedule_date"] != local_now.date().isoformat():
+            self.api.send_message(
+                self.admin_id,
+                "To keep the one-post-per-day limit, Publish now is available "
+                "only on this post's scheduled WAT date.",
+            )
+            return
+        if not automatic and local_now < scheduled_at:
+            self.api.send_message(
+                self.admin_id,
+                "This post is approved for its scheduled time. It will not publish early.",
+            )
+            return
+
         review_status = str(post.get("review_status") or "not_requested")
         auto_publish_after_missed_review = (
             automatic
@@ -1848,16 +1874,16 @@ class ChannelPostManager:
             and int(post.get("publish_attempts") or 0) == 0
             and self._missed_review_publish_window_open(post, now_utc)
         )
-        explicit_publish_after_missed_review = (
+        admin_publish_now_override = (
             not automatic
-            and admin_id is not None
-            and post.get("status") == "draft"
-            and review_status == "missed"
-            and post.get("failure_category") == "scheduled_review_missed"
+            and admin_id == self.admin_id
+            and post.get("status") in {"draft", "failed"}
             and int(post.get("publish_attempts") or 0) == 0
+            and post["schedule_date"] == local_now.date().isoformat()
+            and local_now >= scheduled_at
         )
         if (
-            not explicit_publish_after_missed_review
+            not admin_publish_now_override
             and not auto_publish_after_missed_review
             and (
                 review_status not in {"approved", "edited", "timed_out"}
@@ -1873,11 +1899,6 @@ class ChannelPostManager:
                     "Publish Now on the scheduled WAT date.",
                 )
             return
-        scheduled_date = date.fromisoformat(str(post["schedule_date"]))
-        scheduled_time = wall_time.fromisoformat(str(post["schedule_time"]))
-        scheduled_at = datetime.combine(
-            scheduled_date, scheduled_time, tzinfo=self.timezone
-        )
         if (
             post.get("generation_source") == "local"
             and not post.get("admin_edit_approved")
@@ -1910,7 +1931,6 @@ class ChannelPostManager:
                     "No channel post was sent.",
                 )
             return
-        local_now = now_utc.astimezone(self.timezone)
         if post["schedule_date"] != local_now.date().isoformat():
             if not automatic:
                 self.api.send_message(
