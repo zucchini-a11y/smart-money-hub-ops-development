@@ -4,7 +4,7 @@ import hashlib
 import json
 import re
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -586,6 +586,21 @@ class Repository:
 
                     CREATE INDEX IF NOT EXISTS knowledge_feedback_item
                     ON knowledge_feedback (item_id, reaction);
+
+                    CREATE TABLE IF NOT EXISTS coach_provider_events (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        feature TEXT NOT NULL
+                            CHECK (feature IN ('coach_text', 'chart_image')),
+                        outcome TEXT NOT NULL
+                            CHECK (outcome IN ('success', 'failure')),
+                        failure_kind TEXT NOT NULL DEFAULT '',
+                        http_status INTEGER,
+                        provider_status TEXT NOT NULL DEFAULT '',
+                        created_at TEXT NOT NULL
+                    );
+
+                    CREATE INDEX IF NOT EXISTS coach_provider_events_recent
+                    ON coach_provider_events (created_at DESC, feature, outcome);
 
                     CREATE TABLE IF NOT EXISTS coach_challenge_history (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1751,6 +1766,89 @@ class Repository:
                 ),
             ).fetchall()
             return [dict(row) for row in rows]
+        finally:
+            connection.close()
+
+    def education_episode_posts(
+        self,
+        chat_id: int,
+        episode_number: int,
+        *,
+        limit: int = 4,
+    ) -> list[dict[str, Any]]:
+        """Find exact episode-numbered archived posts in one configured group."""
+        if (
+            isinstance(episode_number, bool)
+            or not isinstance(episode_number, int)
+            or not 1 <= episode_number <= 999
+        ):
+            return []
+        safe_limit = max(1, min(int(limit), 8))
+        pattern = re.compile(
+            rf"\bepisode(?:\s*[:#-]?\s*)0*{episode_number}\b",
+            re.IGNORECASE,
+        )
+        connection = self._connect()
+        try:
+            cursor = connection.execute(
+                """
+                SELECT id, message_id, thread_id, topic_name, message_kind,
+                       content, source_status, posted_at
+                FROM education_group_posts
+                WHERE chat_id = ?
+                  AND source_status IN ('configured_admin', 'bot_authored')
+                  AND instr(lower(content), 'episode') > 0
+                ORDER BY posted_at DESC, id DESC
+                """,
+                (chat_id,),
+            )
+            matches: list[dict[str, Any]] = []
+            for row in cursor:
+                item = dict(row)
+                if pattern.search(str(item.get("content") or "")):
+                    matches.append(item)
+                    if len(matches) >= safe_limit:
+                        break
+            return matches
+        finally:
+            connection.close()
+
+    def education_group_archive_summary(self, chat_id: int) -> dict[str, Any]:
+        """Return counts and episode labels only; never return learner messages."""
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                """
+                SELECT COUNT(*) AS post_count, MAX(posted_at) AS latest_posted_at
+                FROM education_group_posts
+                WHERE chat_id = ?
+                """,
+                (chat_id,),
+            ).fetchone()
+            episode_numbers: set[int] = set()
+            cursor = connection.execute(
+                """
+                SELECT content FROM education_group_posts
+                WHERE chat_id = ?
+                  AND source_status IN ('configured_admin', 'bot_authored')
+                  AND instr(lower(content), 'episode') > 0
+                """,
+                (chat_id,),
+            )
+            for item in cursor:
+                episode_numbers.update(
+                    int(match)
+                    for match in re.findall(
+                        r"\bepisode(?:\s*[:#-]?\s*)0*(\d{1,3})\b",
+                        str(item["content"] or ""),
+                        flags=re.IGNORECASE,
+                    )
+                )
+            return {
+                "post_count": int(row["post_count"]) if row else 0,
+                "latest_posted_at": row["latest_posted_at"] if row else None,
+                "episode_numbers": sorted(episode_numbers),
+            }
         finally:
             connection.close()
 
@@ -4056,6 +4154,115 @@ class Repository:
                 )},
                 "unhelpful": int(unhelpful),
                 "repeated": int(repeated),
+            }
+        finally:
+            connection.close()
+
+    def record_coach_provider_event(
+        self,
+        *,
+        feature: str,
+        outcome: str,
+        failure_kind: str = "",
+        http_status: int | None = None,
+        provider_status: str = "",
+        at: str | None = None,
+    ) -> None:
+        """Store privacy-minimal provider telemetry without prompt or member data."""
+        if feature not in {"coach_text", "chart_image"}:
+            raise ValueError("Unsupported Coach provider feature.")
+        if outcome not in {"success", "failure"}:
+            raise ValueError("Unsupported Coach provider outcome.")
+        if not re.fullmatch(r"[a-z0-9_]{0,40}", failure_kind):
+            failure_kind = "other"
+        if not re.fullmatch(r"[A-Z0-9_]{0,40}", provider_status):
+            provider_status = ""
+        if (
+            http_status is not None
+            and (
+                isinstance(http_status, bool)
+                or not isinstance(http_status, int)
+                or not 100 <= http_status <= 599
+            )
+        ):
+            http_status = None
+        created_at = at or utc_now()
+        retention_cutoff = (
+            datetime.now(timezone.utc) - timedelta(days=90)
+        ).isoformat(timespec="seconds")
+        connection = self._connect()
+        try:
+            with connection:
+                connection.execute(
+                    """
+                    INSERT INTO coach_provider_events
+                        (feature, outcome, failure_kind, http_status,
+                         provider_status, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        feature,
+                        outcome,
+                        failure_kind if outcome == "failure" else "",
+                        http_status if outcome == "failure" else None,
+                        provider_status if outcome == "failure" else "",
+                        created_at,
+                    ),
+                )
+                connection.execute(
+                    "DELETE FROM coach_provider_events WHERE created_at < ?",
+                    (retention_cutoff,),
+                )
+                connection.execute(
+                    """
+                    DELETE FROM coach_provider_events
+                    WHERE id IN (
+                        SELECT id FROM coach_provider_events
+                        ORDER BY created_at DESC, id DESC
+                        LIMIT -1 OFFSET 2000
+                    )
+                    """
+                )
+        finally:
+            connection.close()
+
+    def coach_provider_health(self, *, days: int = 7) -> dict[str, Any]:
+        """Summarize recent provider outcomes without exposing chat content."""
+        safe_days = max(1, min(int(days), 90))
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(days=safe_days)
+        ).isoformat(timespec="seconds")
+        connection = self._connect()
+        try:
+            counts = {
+                (row["feature"], row["outcome"]): int(row["count"])
+                for row in connection.execute(
+                    """
+                    SELECT feature, outcome, COUNT(*) AS count
+                    FROM coach_provider_events
+                    WHERE created_at >= ?
+                    GROUP BY feature, outcome
+                    """,
+                    (cutoff,),
+                ).fetchall()
+            }
+            latest = connection.execute(
+                """
+                SELECT feature, failure_kind, http_status, provider_status, created_at
+                FROM coach_provider_events
+                WHERE outcome = 'failure' AND created_at >= ?
+                ORDER BY created_at DESC, id DESC
+                LIMIT 1
+                """,
+                (cutoff,),
+            ).fetchone()
+            return {
+                "days": safe_days,
+                "coach_text_success": counts.get(("coach_text", "success"), 0),
+                "coach_text_failure": counts.get(("coach_text", "failure"), 0),
+                "chart_image_success": counts.get(("chart_image", "success"), 0),
+                "chart_image_failure": counts.get(("chart_image", "failure"), 0),
+                "latest_failure": dict(latest) if latest else None,
             }
         finally:
             connection.close()

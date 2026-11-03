@@ -91,6 +91,50 @@ class MessageRouterTests(unittest.TestCase):
             group_context,
         )
 
+    def test_curriculum_context_reaches_provider_for_a_fresh_question(self) -> None:
+        provider = Mock()
+        provider.diagnostic_response_path = "gemini_success"
+        provider.evaluate.return_value = CoachReply(
+            "A POI is an area to monitor.", "POI", (), ""
+        )
+        router = CoachMessageRouter(provider, _EmptyKnowledgeStore())
+        context = [
+            {
+                "source": "Smart Money Hub Learn menu",
+                "source_type": "built_in_lesson_card",
+                "title": "Points of Interest",
+                "content": "A POI needs a reason and is not an entry.",
+            }
+        ]
+
+        router.route(212, "Explain a POI", profile={"curriculum_context": context})
+
+        self.assertEqual(provider.evaluate.call_args.kwargs["profile"]["curriculum_context"], context)
+
+    def test_missing_episode_is_reported_without_calling_model(self) -> None:
+        provider = Mock()
+        router = CoachMessageRouter(provider, _EmptyKnowledgeStore())
+        related = [
+            {
+                "title": "Points of Interest",
+                "content": "A POI is an area for attention, not an entry.",
+            }
+        ]
+
+        result = router.route(
+            213,
+            "What does Episode 01 say about POIs?",
+            profile={
+                "episode_source_missing": 1,
+                "curriculum_context": related,
+            },
+        )
+
+        self.assertEqual(result.response_path, "curriculum_source_gap")
+        self.assertIn("actual Episode 01 lesson indexed", result.reply.response)
+        self.assertIn("not a summary of Episode 01", result.reply.response)
+        provider.evaluate.assert_not_called()
+
     def test_admin_local_fallback_keeps_a_professional_tone(self) -> None:
         provider = Mock()
         provider.evaluate.side_effect = CoachProviderError("client_timeout")

@@ -20,7 +20,7 @@ from smart_money_hub_bot.admin_dashboard import (
     CHANNEL_PROMO_URL,
     AdminDashboard,
 )
-from smart_money_hub_bot.coach import RuleBasedCoachService
+from smart_money_hub_bot.coach import CoachReply, RuleBasedCoachService
 from smart_money_hub_bot.economic_calendar_phase1 import (
     OfficialCalendarRepository,
     parse_bea_release_dates,
@@ -456,6 +456,80 @@ class BotFlowTests(unittest.TestCase):
         self.assertTrue(handled)
         self.assertIn("ADMIN TEXT SHORTCUTS", self.api.messages[-1]["text"])
         self.assertIn("Try: all members; statistics;", self.api.messages[-1]["text"])
+
+    def test_private_chart_image_is_analyzed_without_storing_image(self) -> None:
+        service = Mock()
+        service.evaluate_image.return_value = CoachReply(
+            "I can see a marked high, but that alone does not confirm an entry.",
+            "Chart review",
+            (),
+            "",
+        )
+        self.bot.coach_service = service
+        self.api.get_file = Mock(
+            return_value={"file_path": "photos/chart.png", "file_size": 20}
+        )
+        self.api.download_file = Mock(return_value=(b"synthetic image", "image/png"))
+
+        self.bot.handle_update(
+            {
+                "message": {
+                    "message_id": 88,
+                    "photo": [{"file_id": "test-file", "width": 100, "height": 100}],
+                    "chat": {"id": self.chat_id, "type": "private"},
+                    "from": {"id": self.user_id, "username": self.username},
+                }
+            }
+        )
+
+        service.evaluate_image.assert_called_once()
+        self.assertEqual(
+            service.evaluate_image.call_args.args[1:],
+            (b"synthetic image", "image/png"),
+        )
+        self.assertIn("does not confirm", self.api.messages[-1]["text"])
+        self.assertEqual(self.bot.store.recent_dm_coaching_interactions(self.user_id), [])
+
+    def test_private_chart_image_download_failure_is_visible_to_admin(self) -> None:
+        service = Mock()
+        self.bot.coach_service = service
+        self.api.get_file = Mock(
+            side_effect=TelegramAPIError("Telegram file download failed.")
+        )
+
+        self.bot.handle_update(
+            {
+                "message": {
+                    "message_id": 89,
+                    "photo": [{"file_id": "test-file", "width": 100, "height": 100}],
+                    "chat": {"id": self.chat_id, "type": "private"},
+                    "from": {"id": self.user_id, "username": self.username},
+                }
+            }
+        )
+
+        service.evaluate_image.assert_not_called()
+        self.assertIn("couldn’t retrieve", self.api.messages[-1]["text"])
+        health = self.bot.store.coach_provider_health()
+        self.assertEqual(health["chart_image_failure"], 1)
+        self.assertEqual(health["latest_failure"]["failure_kind"], "telegram_download")
+
+    def test_knowledge_dashboard_shows_source_coverage_and_provider_health(self) -> None:
+        self.bot.store.record_coach_provider_event(
+            feature="chart_image",
+            outcome="failure",
+            failure_kind="http_timeout",
+            at="2026-11-02T10:00:00+00:00",
+        )
+
+        self.bot.admin_dashboard._show_knowledge_home(self.user_id)
+
+        message = self.api.messages[-1]["text"]
+        self.assertIn("Built-in lesson cards: 10", message)
+        self.assertIn("Assessment questions: 10", message)
+        self.assertIn("External curriculum files/transcripts: not configured", message)
+        self.assertIn("Separate Bot 1 progress interface: not connected", message)
+        self.assertIn("chart_image / http_timeout", message)
 
     def test_admin_text_menu_request_routes_through_private_message_handler(self) -> None:
         self.bot.admin_id = self.user_id

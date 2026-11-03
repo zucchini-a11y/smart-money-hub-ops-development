@@ -13,7 +13,11 @@ from zoneinfo import ZoneInfo
 
 from .admin_dashboard import AdminDashboard
 from .channel_gemini import GeminiChannelContentService
-from .coach import CoachService, RuleBasedCoachService
+from .coach import CoachProviderError, CoachService, RuleBasedCoachService
+from .curriculum_retrieval import (
+    requested_episode_number,
+    retrieve_curriculum_context,
+)
 from .education import EDUCATION
 from .flows import SUNDAY_FIELDS, TRADE_FIELDS, WEEKLY_FIELDS
 from .group_features import (
@@ -55,6 +59,7 @@ logger = logging.getLogger(__name__)
 POLLING_HEARTBEAT_INTERVAL_SECONDS = 30
 POLLING_STALE_AFTER_SECONDS = 60
 TYPING_ACTION_REFRESH_SECONDS = 4
+MAX_COACH_CHART_IMAGE_BYTES = 5_000_000
 BOT_RECOVERY_NOTICE_AFTER_SECONDS = 30 * 60
 BOT_RECOVERY_NOTICES = (
     "Sorry for the delay. I was tied up with a few things, but I’m back now "
@@ -1419,13 +1424,18 @@ class SmartMoneyHubBot:
         text = message.get("text")
         sender = message.get("from") or {}
         chat = message.get("chat") or {}
-        if (
+        is_private_photo = (
             isinstance(message.get("photo"), list)
             and isinstance(sender, dict)
             and isinstance(chat, dict)
             and isinstance(sender.get("id"), int)
+            and not isinstance(sender.get("id"), bool)
             and isinstance(chat.get("id"), int)
+            and not isinstance(chat.get("id"), bool)
             and chat.get("type") == "private"
+        )
+        if (
+            is_private_photo
         ):
             if self.news_brief_photo_prompts is not None and self.news_brief_photo_prompts.handle_admin_photo(
                 int(chat["id"]),
@@ -1462,8 +1472,15 @@ class SmartMoneyHubBot:
         ):
             text = message.get("caption")
         if not isinstance(text, str):
-            return
-        command = text.strip().split(maxsplit=1)[0].split("@", maxsplit=1)[0].lower()
+            if is_private_photo:
+                text = str(message.get("caption") or "")
+            else:
+                return
+        command = (
+            text.strip().split(maxsplit=1)[0].split("@", maxsplit=1)[0].lower()
+            if text.strip()
+            else ""
+        )
         if command in {"/replystyle", "/replydraft"}:
             sender_id = sender.get("id")
             reply_chat_id = chat.get("id")
@@ -1605,6 +1622,22 @@ class SmartMoneyHubBot:
                 and self.admin_dashboard.content_edit_is_pending(telegram_id)
             )
         )
+        if is_private_photo:
+            if session is not None or has_pending_admin_action:
+                self.api.send_message(
+                    chat_id,
+                    "Finish or cancel your current bot activity first, then send "
+                    "the chart screenshot in a private chat.",
+                    self._nav_keyboard(),
+                )
+                return
+            self._answer_coach_image_message(
+                chat_id,
+                telegram_id,
+                message.get("photo") or [],
+                caption=text,
+            )
+            return
         if (
             requested_action
             and session
@@ -2789,6 +2822,35 @@ class SmartMoneyHubBot:
             self._coach_menu_keyboard(),
         )
 
+    def _attach_curriculum_context(
+        self,
+        profile: dict[str, Any],
+        question: str,
+        group_id: int | None,
+    ) -> None:
+        profile["curriculum_context"] = retrieve_curriculum_context(question)
+        episode_number = requested_episode_number(question)
+        if episode_number is None:
+            return
+        episode_posts: list[dict[str, Any]] = []
+        if group_id is not None:
+            try:
+                episode_posts = self.store.education_episode_posts(
+                    group_id, episode_number, limit=3
+                )
+            except Exception:
+                logger.warning("Could not retrieve archived episode context.")
+        if episode_posts:
+            profile["episode_context"] = episode_posts
+        else:
+            profile["episode_source_missing"] = episode_number
+
+    def _record_coach_provider_event(self, **event: Any) -> None:
+        try:
+            self.store.record_coach_provider_event(**event)
+        except Exception:
+            logger.warning("Could not record Coach provider health metadata.")
+
     def _answer_coach_message(
         self,
         chat_id: int,
@@ -2810,6 +2872,142 @@ class SmartMoneyHubBot:
         finally:
             stop_typing.set()
             typing_thread.join(timeout=1)
+
+    def _answer_coach_image_message(
+        self,
+        chat_id: int,
+        telegram_id: int,
+        photos: list[dict[str, Any]],
+        *,
+        caption: str,
+    ) -> None:
+        request_id = uuid.uuid4().hex
+        evaluate_image = getattr(self.coach_service, "evaluate_image", None)
+        if not callable(evaluate_image):
+            self.api.send_message(
+                chat_id,
+                "Chart-image analysis isn’t available in the current Coach setup. "
+                "You can describe the chart or ask a general concept question instead.",
+                self._coach_keyboard(),
+            )
+            return
+        valid_sizes = [
+            item for item in photos
+            if isinstance(item, dict) and isinstance(item.get("file_id"), str)
+        ]
+        if not valid_sizes:
+            self.api.send_message(chat_id, "I couldn’t read that image. Please resend it.")
+            return
+        largest = max(
+            valid_sizes,
+            key=lambda item: (
+                int(item.get("width") or 0) * int(item.get("height") or 0),
+                int(item.get("file_size") or 0),
+            ),
+        )
+        try:
+            file_info = self.api.get_file(str(largest["file_id"]))
+            declared_size = file_info.get("file_size")
+            if (
+                isinstance(declared_size, int)
+                and not isinstance(declared_size, bool)
+                and declared_size > MAX_COACH_CHART_IMAGE_BYTES
+            ):
+                self.api.send_message(
+                    chat_id,
+                    "That image is too large for safe chart analysis. Please resend "
+                    "a smaller screenshot (5 MB or less).",
+                    self._coach_keyboard(),
+                )
+                return
+            file_path = file_info.get("file_path")
+            if not isinstance(file_path, str) or not file_path:
+                raise TelegramAPIError("Telegram image reference is incomplete.")
+            image_bytes, mime_type = self.api.download_file(
+                file_path,
+                max_bytes=MAX_COACH_CHART_IMAGE_BYTES,
+            )
+        except TelegramAPIError:
+            self._record_coach_provider_event(
+                feature="chart_image",
+                outcome="failure",
+                failure_kind="telegram_download",
+            )
+            logger.warning("Coach chart image download failed. request_id=%s.", request_id)
+            self.api.send_message(
+                chat_id,
+                "I couldn’t retrieve that screenshot from Telegram. Please try sending "
+                "it again as a smaller image.",
+                self._coach_keyboard(),
+            )
+            return
+
+        question = caption.strip()[:1000] or (
+            "Please explain what is clearly visible in this chart screenshot for "
+            "educational purposes."
+        )
+        profile: dict[str, Any] = {
+            "is_admin": self.admin_id is not None and telegram_id == self.admin_id,
+        }
+        self._attach_curriculum_context(profile, question, self.education_group_id)
+        stop_typing = threading.Event()
+        typing_thread = threading.Thread(
+            target=self._refresh_typing_action,
+            args=(chat_id, stop_typing),
+            name="telegram-coach-image-typing",
+            daemon=True,
+        )
+        typing_thread.start()
+        try:
+            reply = evaluate_image(
+                question,
+                image_bytes,
+                mime_type,
+                history=[],
+                profile=profile,
+                request_id=request_id,
+            )
+        except CoachProviderError:
+            self._record_coach_provider_event(
+                feature="chart_image",
+                outcome="failure",
+                failure_kind="provider",
+            )
+            logger.warning("Coach chart image analysis failed. request_id=%s.", request_id)
+            self.api.send_message(
+                chat_id,
+                "I couldn’t analyze that screenshot right now. Nothing was inferred "
+                "or saved; please try again later or ask about a general concept.",
+                self._coach_keyboard(),
+            )
+            return
+        except Exception:
+            self._record_coach_provider_event(
+                feature="chart_image",
+                outcome="failure",
+                failure_kind="other",
+            )
+            logger.exception("Unexpected Coach chart image failure. request_id=%s.", request_id)
+            self.api.send_message(
+                chat_id,
+                "Chart analysis is temporarily unavailable. Please try again later.",
+                self._coach_keyboard(),
+            )
+            return
+        finally:
+            stop_typing.set()
+            typing_thread.join(timeout=1)
+
+        self._record_coach_provider_event(
+            feature="chart_image",
+            outcome="success",
+        )
+        self.api.send_message(
+            chat_id,
+            reply.response,
+            self._coach_keyboard(),
+        )
+        logger.info("Coach chart image reply sent. request_id=%s.", request_id)
 
     def _answer_group_question(
         self,
@@ -2849,6 +3047,7 @@ class SmartMoneyHubBot:
             profile: dict[str, Any] = {
                 "group_knowledge_context": group_context,
             }
+            self._attach_curriculum_context(profile, question, chat_id)
             if self.admin_id is not None and telegram_id == self.admin_id:
                 profile["is_admin"] = True
             routed = self.message_router.route(
@@ -2993,17 +3192,21 @@ class SmartMoneyHubBot:
             history = []
             profile = {}
         profile["is_admin"] = self.admin_id is not None and telegram_id == self.admin_id
+        self._attach_curriculum_context(
+            profile, question, self.education_group_id
+        )
         if self.education_group_id is not None:
-            try:
-                profile["group_knowledge_context"] = format_group_context(
-                    self.store.search_education_group_posts(
-                        self.education_group_id,
-                        question,
-                        limit=4,
+            if not profile.get("episode_context"):
+                try:
+                    profile["group_knowledge_context"] = format_group_context(
+                        self.store.search_education_group_posts(
+                            self.education_group_id,
+                            question,
+                            limit=4,
+                        )
                     )
-                )
-            except Exception:
-                logger.warning("Could not retrieve educational group context for Coach.")
+                except Exception:
+                    logger.warning("Could not retrieve educational group context for Coach.")
         routed = self.message_router.route(
             telegram_id,
             question,

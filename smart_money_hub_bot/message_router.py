@@ -14,6 +14,10 @@ from .coach import (
     RuleBasedCoachService,
     ai_evaluate_answer,
 )
+from .curriculum_retrieval import (
+    episode_unavailable_reply,
+    requested_episode_number,
+)
 from .knowledge_base import find_approved_answer
 from .question_detection import QuestionAssessment, detect_member_question
 
@@ -85,6 +89,30 @@ class CoachMessageRouter:
                 request_id=request_id,
             )
 
+        requested_episode = requested_episode_number(message)
+        if (
+            requested_episode is not None
+            and profile
+            and profile.get("episode_source_missing") == requested_episode
+        ):
+            related_lessons = profile.get("curriculum_context", [])
+            if not isinstance(related_lessons, list):
+                related_lessons = []
+            response = episode_unavailable_reply(requested_episode, related_lessons)
+            return self._routed(
+                "episode_source_unavailable",
+                CoachReply(
+                    response,
+                    "Smart Money Hub curriculum",
+                    (),
+                    "The requested episode is not present in indexed sources.",
+                    requires_review=True,
+                ),
+                None,
+                "curriculum_source_gap",
+                request_id=request_id,
+            )
+
         context_history, context_profile = _relevant_conversation_context(
             message, history, profile
         )
@@ -137,7 +165,18 @@ class CoachMessageRouter:
                 == "gemini_success"
             ):
                 response_path = "gemini_success"
+                self._record_provider_event(
+                    feature="coach_text",
+                    outcome="success",
+                )
         except CoachProviderError as error:
+            self._record_provider_event(
+                feature="coach_text",
+                outcome="failure",
+                failure_kind=error.failure_kind,
+                http_status=error.status_code,
+                provider_status=error.provider_status or "",
+            )
             logger.warning(
                 "Coach provider failed (kind=%s, http_status=%s, elapsed_ms=%s, "
                 "google_code=%s, google_status=%s, google_message=%s, headers=%s, "
@@ -206,6 +245,15 @@ class CoachMessageRouter:
             response_path,
             request_id=request_id,
         )
+
+    def _record_provider_event(self, **event: Any) -> None:
+        recorder = getattr(self.store, "record_coach_provider_event", None)
+        if not callable(recorder):
+            return
+        try:
+            recorder(**event)
+        except Exception:
+            logger.warning("Could not record Coach provider health metadata.")
 
     @staticmethod
     def _routed(
@@ -423,6 +471,14 @@ def _relevant_conversation_context(
         role_context["is_admin"] = True
     if profile and isinstance(profile.get("group_knowledge_context"), list):
         role_context["group_knowledge_context"] = profile["group_knowledge_context"]
+    if profile and isinstance(profile.get("curriculum_context"), list):
+        role_context["curriculum_context"] = profile["curriculum_context"]
+    if profile and isinstance(profile.get("episode_context"), list):
+        role_context["episode_context"] = profile["episode_context"]
+    if profile and isinstance(profile.get("episode_source_missing"), int):
+        role_context["episode_source_missing"] = profile["episode_source_missing"]
+    if profile and isinstance(profile.get("learning_goal"), str):
+        role_context["learning_goal"] = profile["learning_goal"][:300]
     if not history:
         return [], role_context
 

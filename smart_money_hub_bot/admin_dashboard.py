@@ -30,10 +30,12 @@ from .economic_calendar_admin import (
 )
 from .education_morning import EducationMorningStore
 from .education_topic_promotions import EducationTopicPromotionManager
+from .curriculum_retrieval import curriculum_source_summary
 from .trade_ledger import TradeLedger, TradeLedgerError
 from .knowledge_approval import can_approve
 from .knowledge_drafting import parse_research_material, validate_answer_draft
 from .knowledge_research import UnavailableResearchProvider
+from .questions import QUESTIONS
 from .storage import Repository
 from .telegram_api import TelegramAPI, TelegramAPIError
 
@@ -3074,6 +3076,14 @@ class AdminDashboard:
 
     def _show_knowledge_home(self, chat_id: int) -> None:
         counts = self.store.knowledge_admin_summary()
+        sources = curriculum_source_summary()
+        archive_status = (
+            self.store.education_group_archive_summary(self.education_group_id)
+            if self.education_group_id is not None
+            else {"post_count": 0, "latest_posted_at": None, "episode_numbers": []}
+        )
+        provider_health = self.store.coach_provider_health(days=7)
+        latest_failure = provider_health["latest_failure"]
         lines = [
             "🧠 KNOWLEDGE IMPROVEMENT",
             "Member questions are grouped without usernames or Telegram IDs. "
@@ -3085,6 +3095,29 @@ class AdminDashboard:
             f"Repeated questions: {counts['repeated']}",
             f"Resolved or covered: {counts['covered'] + counts['approved'] + counts['retired']}",
             f"Rejected drafts: {counts['rejected']}",
+            "",
+            "Indexed learning sources:",
+            f"• Built-in lesson cards: {sources['lesson_cards']}",
+            f"• Assessment questions: {len(QUESTIONS)}",
+            f"• Archived Education-group posts: {archive_status['post_count']}",
+            "• Episode-tagged archived posts: "
+            f"{len(archive_status['episode_numbers'])} "
+            "(archive records, not verified transcripts)",
+            "• External curriculum files/transcripts: not configured",
+            "• Separate Bot 1 progress interface: not connected",
+            "",
+            "Coach provider events (last 7 days; no message text stored here):",
+            f"• Text: {provider_health['coach_text_success']} successful, "
+            f"{provider_health['coach_text_failure']} failed",
+            f"• Chart images: {provider_health['chart_image_success']} successful, "
+            f"{provider_health['chart_image_failure']} failed",
+            (
+                "• Latest failure: "
+                f"{latest_failure['feature']} / {latest_failure['failure_kind']} "
+                f"at {latest_failure['created_at']}"
+                if latest_failure
+                else "• No provider failures recorded in this period"
+            ),
             "",
             "Research provider: unavailable in the bot runtime. Research manually, "
             "then add HTTPS source links and an answer for approval.",

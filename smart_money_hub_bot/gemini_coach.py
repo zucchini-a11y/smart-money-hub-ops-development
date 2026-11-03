@@ -1,5 +1,6 @@
 """Direct, free-tier Gemini provider for the Smart Money Hub Coach."""
 
+import base64
 import json
 import logging
 import re
@@ -32,6 +33,8 @@ _MAX_HISTORY_TURNS = 6
 _MAX_TURN_CHARACTERS = 1200
 _MAX_RESPONSE_CHARACTERS = 3500
 _MAX_OUTPUT_TOKENS = 1024
+_MAX_CHART_IMAGE_BYTES = 5_000_000
+_SUPPORTED_CHART_IMAGE_MIME_TYPES = {"image/jpeg", "image/png", "image/webp"}
 _RETRY_BACKOFF_SECONDS = 0.25
 _MAX_RETRY_AFTER_SECONDS = 1.0
 _MIN_RETRY_WINDOW_SECONDS = 0.5
@@ -86,6 +89,56 @@ class GeminiCoachService:
         profile: dict[str, Any] | None = None,
         request_id: str | None = None,
     ) -> CoachReply:
+        return self._evaluate_request(
+            message,
+            history=history,
+            profile=profile,
+            request_id=request_id,
+            image_part=None,
+        )
+
+    def evaluate_image(
+        self,
+        message: str,
+        image_bytes: bytes,
+        mime_type: str,
+        *,
+        history: list[dict[str, Any]] | None = None,
+        profile: dict[str, Any] | None = None,
+        request_id: str | None = None,
+    ) -> CoachReply:
+        """Analyze one private chart image without writing the image to storage."""
+        if (
+            not isinstance(image_bytes, bytes)
+            or not image_bytes
+            or len(image_bytes) > _MAX_CHART_IMAGE_BYTES
+            or mime_type not in _SUPPORTED_CHART_IMAGE_MIME_TYPES
+        ):
+            raise CoachProviderError("unsupported_image")
+        image_profile = dict(profile or {})
+        image_profile["chart_image_analysis"] = True
+        return self._evaluate_request(
+            message,
+            history=history,
+            profile=image_profile,
+            request_id=request_id,
+            image_part={
+                "inlineData": {
+                    "mimeType": mime_type,
+                    "data": base64.b64encode(image_bytes).decode("ascii"),
+                }
+            },
+        )
+
+    def _evaluate_request(
+        self,
+        message: str,
+        *,
+        history: list[dict[str, Any]] | None,
+        profile: dict[str, Any] | None,
+        request_id: str | None,
+        image_part: dict[str, Any] | None,
+    ) -> CoachReply:
         if not isinstance(request_id, str) or not re.fullmatch(
             r"[0-9a-f]{32}", request_id
         ):
@@ -121,14 +174,19 @@ class GeminiCoachService:
                 request_id,
             )
             try:
+                model_kwargs: dict[str, Any] = {
+                    "history": history,
+                    "profile": profile,
+                    "request_id": request_id,
+                    "model": model,
+                    "timeout_seconds": attempt_timeout,
+                    "retry_503": model_index == 0,
+                }
+                if image_part is not None:
+                    model_kwargs["image_part"] = image_part
                 reply = self._evaluate_for_model(
                     message,
-                    history=history,
-                    profile=profile,
-                    request_id=request_id,
-                    model=model,
-                    timeout_seconds=attempt_timeout,
-                    retry_503=model_index == 0,
+                    **model_kwargs,
                 )
             except CoachProviderError as error:
                 last_error = error
@@ -202,6 +260,7 @@ class GeminiCoachService:
         model: str,
         timeout_seconds: float,
         retry_503: bool,
+        image_part: dict[str, Any] | None,
     ) -> CoachReply:
         local_reply = self._local_coach.evaluate(
             message, history=history, profile=profile
@@ -217,12 +276,24 @@ class GeminiCoachService:
             message,
             history or [],
             group_context=group_context,
+            curriculum_context=(
+                profile.get("curriculum_context", [])
+                if isinstance(profile, dict)
+                else []
+            ),
+            episode_context=(
+                profile.get("episode_context", [])
+                if isinstance(profile, dict)
+                else []
+            ),
+            image_part=image_part,
         )
         request_mode = self._local_coach.classify_request_context(message)
         instructions = self._system_instruction(
             local_reply,
             request_mode,
             is_admin=bool(profile and profile.get("is_admin") is True),
+            profile=profile,
         )
         payload = {
             "systemInstruction": {"parts": [{"text": instructions}]},
@@ -392,6 +463,9 @@ class GeminiCoachService:
         history: list[dict[str, Any]],
         *,
         group_context: list[dict[str, Any]] | None = None,
+        curriculum_context: list[dict[str, Any]] | None = None,
+        episode_context: list[dict[str, Any]] | None = None,
+        image_part: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         contents: list[dict[str, Any]] = []
         # Repository history is newest-first; send only this member's recent
@@ -457,17 +531,104 @@ class GeminiCoachService:
                     },
                 ]
             )
-        contents.append(
-            {
-                "role": "user",
-                "parts": [{"text": message}],
-            }
-        )
+        curriculum_blocks: list[str] = []
+        for item in (curriculum_context or [])[:3]:
+            if not isinstance(item, dict):
+                continue
+            title = " ".join(str(item.get("title") or "").split())[:100]
+            content = " ".join(str(item.get("content") or "").split())[:900]
+            source = " ".join(str(item.get("source") or "").split())[:100]
+            if title and content:
+                curriculum_blocks.append(
+                    f"[source={source or 'built-in lesson card'}; "
+                    f"title={title}] {content}"
+                )
+        if curriculum_blocks:
+            contents.extend(
+                [
+                    {
+                        "role": "user",
+                        "parts": [
+                            {
+                                "text": (
+                                    "Relevant built-in Smart Money Hub lesson cards "
+                                    "follow. They are actual in-app lesson content, "
+                                    "not numbered episode transcripts:\n"
+                                    + "\n".join(curriculum_blocks)
+                                )
+                            }
+                        ],
+                    },
+                    {
+                        "role": "model",
+                        "parts": [
+                            {
+                                "text": (
+                                    "I will use these as the in-app lesson cards and "
+                                    "will not assign them to an episode."
+                                )
+                            }
+                        ],
+                    },
+                ]
+            )
+        episode_blocks: list[str] = []
+        for item in (episode_context or [])[:3]:
+            if not isinstance(item, dict):
+                continue
+            excerpt = " ".join(str(item.get("content") or "").split())[:900]
+            if not excerpt or total_context_chars + len(excerpt) > 3200:
+                continue
+            topic = " ".join(str(item.get("topic_name") or "Unknown topic").split())[:100]
+            source_status = str(item.get("source_status") or "unverified")[:40]
+            posted_at = str(item.get("posted_at") or "")[:40]
+            episode_blocks.append(
+                f"[archived_topic={topic}; source_status={source_status}; "
+                f"posted_at={posted_at}] {excerpt}"
+            )
+            total_context_chars += len(excerpt)
+        if episode_blocks:
+            contents.extend(
+                [
+                    {
+                        "role": "user",
+                        "parts": [
+                            {
+                                "text": (
+                                    "These archived education-group messages matched "
+                                    "the requested episode number. They are historical "
+                                    "archive records, not independently verified "
+                                    "transcripts:\n" + "\n".join(episode_blocks)
+                                )
+                            }
+                        ],
+                    },
+                    {
+                        "role": "model",
+                        "parts": [
+                            {
+                                "text": (
+                                    "I will identify archived material as such and "
+                                    "will not claim it is an official transcript."
+                                )
+                            }
+                        ],
+                    },
+                ]
+            )
+        user_parts: list[dict[str, Any]] = [{"text": message}]
+        if image_part is not None:
+            user_parts.append(image_part)
+        contents.append({"role": "user", "parts": user_parts})
         return contents
 
     @staticmethod
     def _system_instruction(
-        local_reply: CoachReply, request_mode: str, *, is_admin: bool = False
+        local_reply: CoachReply,
+        request_mode: str,
+        *,
+        is_admin: bool = False,
+        profile: dict[str, Any] | None = None,
     ) -> str:
         verified_note = ""
         if local_reply.detected_topic not in {
@@ -490,6 +651,35 @@ class GeminiCoachService:
             "They may set one-time personal reminders by sending the task and a clear "
             "date and time, such as “Remind me to review my journal tomorrow at 9am.”"
             if is_admin
+            else ""
+        )
+        image_guidance = (
+            " The user supplied a chart screenshot for educational discussion. "
+            "Analyze only details clearly visible in the image. Separate visible "
+            "facts from interpretations; do not invent prices, levels, timeframes, "
+            "liquidity sweeps, displacement, or confirmation. If text or structure "
+            "is unclear, say so and ask for a clearer image or the missing timeframe. "
+            "Do not issue a BUY/SELL instruction or claim an entry is confirmed. "
+            if profile and profile.get("chart_image_analysis") is True
+            else ""
+        )
+        curriculum_guidance = (
+            " Use relevant supplied built-in curriculum cards as the verified in-app "
+            "lesson text, but do not assign them to a numbered episode. If episode "
+            "context is supplied, identify it as an archived group post unless it is "
+            "explicitly verified as an official lesson transcript. "
+            if profile
+            and (
+                profile.get("curriculum_context")
+                or profile.get("episode_context")
+            )
+            else ""
+        )
+        learning_goal = (
+            " The learner's saved learning focus is: "
+            + " ".join(str(profile.get("learning_goal") or "").split())[:300]
+            + ". Use it only when relevant; it is not proof of lesson completion."
+            if profile and profile.get("learning_goal")
             else ""
         )
         return (
@@ -588,6 +778,9 @@ class GeminiCoachService:
             "conditions."
             + verified_note
             + admin_guidance
+            + image_guidance
+            + curriculum_guidance
+            + learning_goal
         )
 
 

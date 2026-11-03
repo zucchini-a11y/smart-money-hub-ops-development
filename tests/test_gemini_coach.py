@@ -1,3 +1,4 @@
+import base64
 import json
 import re
 import tempfile
@@ -164,6 +165,59 @@ class GeminiCoachTests(unittest.TestCase):
         self.assertEqual(payload["generationConfig"]["maxOutputTokens"], 1024)
         self.assertLessEqual(mocked_urlopen.call_args.kwargs["timeout"], 8)
         self.assertEqual(mocked_urlopen.call_count, 1)
+
+    def test_chart_image_is_sent_inline_with_educational_safety_instructions(self) -> None:
+        service = GeminiCoachService("test-key")
+        image_bytes = b"\x89PNG\r\n\x1a\nsynthetic-chart"
+        with patch(
+            "smart_money_hub_bot.gemini_coach.urlopen",
+            return_value=_response("I can see a marked swing high, but no entry is confirmed."),
+        ) as mocked_urlopen:
+            reply = service.evaluate_image(
+                "Please explain this chart.",
+                image_bytes,
+                "image/png",
+                profile={
+                    "curriculum_context": [
+                        {
+                            "source": "Smart Money Hub Learn menu",
+                            "title": "Points of Interest",
+                            "content": "A POI is not an automatic entry.",
+                        }
+                    ]
+                },
+            )
+
+        payload = json.loads(mocked_urlopen.call_args.args[0].data.decode("utf-8"))
+        parts = payload["contents"][-1]["parts"]
+        self.assertEqual(parts[0]["text"], "Please explain this chart.")
+        self.assertEqual(
+            parts[1]["inlineData"],
+            {
+                "mimeType": "image/png",
+                "data": base64.b64encode(image_bytes).decode("ascii"),
+            },
+        )
+        self.assertIn("Analyze only details clearly visible", payload["systemInstruction"]["parts"][0]["text"])
+        self.assertIn("not assign them to a numbered episode", "\n".join(
+            part.get("text", "")
+            for content in payload["contents"]
+            for part in content.get("parts", [])
+        ))
+        self.assertIn("no entry is confirmed", reply.response)
+
+    def test_unsupported_or_oversized_chart_image_is_rejected_before_network(self) -> None:
+        service = GeminiCoachService("test-key")
+        with patch("smart_money_hub_bot.gemini_coach.urlopen") as mocked_urlopen:
+            for image, mime_type in (
+                (b"not-an-image", "text/plain"),
+                (b"x" * 5_000_001, "image/png"),
+            ):
+                with self.subTest(mime_type=mime_type, size=len(image)):
+                    with self.assertRaises(CoachProviderError) as caught:
+                        service.evaluate_image("Explain this", image, mime_type)
+                    self.assertEqual(caught.exception.failure_kind, "unsupported_image")
+        mocked_urlopen.assert_not_called()
 
     def test_rate_limit_fails_over_with_same_member_context(self) -> None:
         service = GeminiCoachService("test-key")
