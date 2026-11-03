@@ -1853,6 +1853,10 @@ class SmartMoneyHubBot:
             self.admin_dashboard.cancel_calendar_action(telegram_id)
             self.admin_dashboard.open(chat_id, telegram_id, is_private)
             return
+        if self.admin_dashboard.handle_admin_post_text(
+            chat_id, telegram_id, is_private, text
+        ):
+            return
         if self.admin_dashboard.handle_single_member_dm_command(
             chat_id, telegram_id, is_private, text
         ):

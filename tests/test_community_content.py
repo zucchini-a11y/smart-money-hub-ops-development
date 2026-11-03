@@ -329,6 +329,98 @@ class CommunityContentTests(unittest.TestCase):
         )
         self.assertIn("Automatic publishing: DISABLED", api.messages[-1][1])
 
+    def test_admin_text_post_creates_private_preview_without_sending(self):
+        api = FakeAPI()
+        dashboard = AdminDashboard(
+            api,
+            Repository(self.database),
+            ADMIN_ID,
+            main_channel_id=-100111,
+            education_group_id=GROUP_ID,
+        )
+        self.assertTrue(
+            dashboard.handle_admin_post_text(
+                ADMIN_ID,
+                ADMIN_ID,
+                True,
+                "Post to Market Analysis channel: "
+                "SMART MONEY HUB\n\nA reviewed educational note.",
+            )
+        )
+        drafts = dashboard.community_content.repository.list_drafts(limit=1)
+        self.assertEqual(len(drafts), 1)
+        self.assertEqual(drafts[0]["status"], "draft")
+        self.assertEqual(drafts[0]["destination_chat_id"], -100111)
+        self.assertEqual(api.send_count, 0)
+        self.assertIn("not been sent", api.messages[-1][1])
+
+    def test_admin_text_post_never_accepts_arbitrary_destination(self):
+        api = FakeAPI()
+        dashboard = AdminDashboard(
+            api,
+            Repository(self.database),
+            ADMIN_ID,
+            main_channel_id=-100111,
+            education_group_id=GROUP_ID,
+        )
+        self.assertTrue(
+            dashboard.handle_admin_post_text(
+                ADMIN_ID,
+                ADMIN_ID,
+                True,
+                "post to random channel: SMART MONEY HUB\n\nTest",
+            )
+        )
+        self.assertEqual(
+            dashboard.community_content.repository.list_drafts(limit=5), []
+        )
+        self.assertIn("configured Market Analysis", api.messages[-1][1])
+
+    def test_admin_text_post_is_restricted_to_private_admin_chat(self):
+        api = FakeAPI()
+        dashboard = AdminDashboard(
+            api,
+            Repository(self.database),
+            ADMIN_ID,
+            main_channel_id=-100111,
+            education_group_id=GROUP_ID,
+        )
+        self.assertTrue(
+            dashboard.handle_admin_post_text(
+                99,
+                99,
+                True,
+                "post to Market Analysis channel: SMART MONEY HUB\n\nTest",
+            )
+        )
+        self.assertEqual(
+            dashboard.community_content.repository.list_drafts(limit=5), []
+        )
+        self.assertIn("Admin access is restricted", api.messages[-1][1])
+
+    def test_admin_can_preview_latest_coach_answer_for_configured_destination(self):
+        api = FakeAPI()
+        store = Repository(self.database)
+        store.recent_dm_coaching_interactions = lambda _admin, limit=1: [
+            {"coach_response": "A prepared lesson about market structure."}
+        ]
+        dashboard = AdminDashboard(
+            api,
+            store,
+            ADMIN_ID,
+            main_channel_id=-100111,
+            education_group_id=GROUP_ID,
+        )
+        self.assertTrue(
+            dashboard.handle_admin_post_text(
+                ADMIN_ID, ADMIN_ID, True, "post the last lesson to Education group"
+            )
+        )
+        draft = dashboard.community_content.repository.list_drafts(limit=1)[0]
+        self.assertEqual(draft["destination_chat_id"], GROUP_ID)
+        self.assertIn("A prepared lesson", draft["content"])
+        self.assertEqual(api.send_count, 0)
+
     def test_resume_enables_draft_creation_but_not_automatic_publication(self):
         api = FakeAPI()
         dashboard = AdminDashboard(

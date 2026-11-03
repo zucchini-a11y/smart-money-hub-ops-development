@@ -585,6 +585,103 @@ class AdminDashboard:
             return True
         return False
 
+    def handle_admin_post_text(
+        self, chat_id: int, telegram_id: int, is_private: bool, text: str
+    ) -> bool:
+        """Turn an explicit admin post request into a saved, review-first draft."""
+        if not re.match(r"^\s*post\b", text, flags=re.IGNORECASE):
+            return False
+        if not self._authorize(chat_id, telegram_id, is_private):
+            return True
+        previous_request = re.match(
+            r"^\s*post\s+(?:the\s+)?(?:last|previous)\s+"
+            r"(?:answer|lesson|post)\s+(?:to|in)\s+"
+            r"(market analysis channel|market analysis|education group|education)\s*$",
+            text,
+            flags=re.IGNORECASE,
+        )
+        match = re.match(
+            r"^\s*post\s+(?:(?:this|it|the post|the lesson)\s+)?"
+            r"(?:to|in)\s+(market analysis channel|market analysis|"
+            r"education group|education)\s*:\s*(.*)$",
+            text,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        if not match and not previous_request:
+            self.api.send_message(
+                chat_id,
+                "I can prepare a private preview for the configured Market Analysis "
+                "channel or Education group. Use: "
+                "post to Market Analysis channel: [complete post] "
+                "or post the last lesson to Education group.",
+            )
+            return True
+
+        if previous_request:
+            destination_name = previous_request.group(1)
+            history = self.store.recent_dm_coaching_interactions(telegram_id, limit=1)
+            content = str(history[0].get("coach_response") or "") if history else ""
+            if not content:
+                self.api.send_message(
+                    chat_id, "I couldn't find a recent Coach answer to preview. Nothing was sent."
+                )
+                return True
+        else:
+            destination_name, content = match.groups()
+        if destination_name.casefold() == "market analysis":
+            self.api.send_message(
+                chat_id,
+                "Please specify “Market Analysis channel” or another configured "
+                "destination. The Market Analysis topic inside Education is not "
+                "supported by this shortcut.",
+            )
+            return True
+        destination_key = (
+            "market"
+            if destination_name.casefold().startswith("market")
+            else "education"
+        )
+        if destination_key == "market" and not self.main_channel_id:
+            self.api.send_message(chat_id, "Market Analysis is not configured as a posting destination.")
+            return True
+        if destination_key == "education" and not self.education_group_id:
+            self.api.send_message(chat_id, "The Education group is not configured as a posting destination.")
+            return True
+
+        body = content.strip()
+        if not body:
+            self.api.send_message(
+                chat_id,
+                "Include the complete post after the colon. Nothing was saved or sent.",
+            )
+            return True
+        if not re.match(
+            r"^(?:[\U0001f000-\U0001faff]\ufe0f?\s*)?SMART MONEY HUB\b",
+            body,
+            flags=re.IGNORECASE,
+        ):
+            body = f"📊 SMART MONEY HUB\n\n{body}"
+        try:
+            destination = self._destination_id(destination_key)
+            draft_id = self.community_content.repository.create_draft(
+                category="educational_reminder",
+                content=body,
+                destination_chat_id=destination,
+                content_source="admin_text_request",
+            )
+            self._preview_content_draft(chat_id, [draft_id])
+            self.api.send_message(
+                chat_id,
+                f"Preview ready for {destination_name}. It has not been sent. "
+                f"Review it, then use /approve {draft_id} and "
+                f"/publishcontent {draft_id} to publish. "
+                "Only the configured channel and Education group are available "
+                "through this shortcut; topic-specific posting is not supported here.",
+            )
+        except CommunityContentError as error:
+            self.api.send_message(chat_id, f"Post held; nothing was sent. {error}")
+        return True
+
     def handle_search_message(
         self, chat_id: int, telegram_id: int, is_private: bool, query: str
     ) -> None:
@@ -2050,6 +2147,8 @@ class AdminDashboard:
             "/weeklyreport destination=education|market",
             "/preview ID · /editdraft ID · /approve ID · /reject ID reason=...",
             "/publishcontent ID (explicit send after destination checks)",
+            "For a one-off post, send: post to Market Analysis channel: [complete post] "
+            "or post to Education group: [complete post]. A private preview comes first.",
             "/contenthistory · /contentfeedback · /draftversions ID",
             "/contentautopublish enable|disable (off by default; routine posts only)",
             "/schedule to view; use id=... category=... destination=... time=HH:MM "
