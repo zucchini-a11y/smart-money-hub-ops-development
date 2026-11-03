@@ -729,6 +729,21 @@ class NewsBriefPhotoPrompts:
                     chat_id,
                     self._format_observed_events(visible_date_text, observed_events),
                 )
+            elif analysis_status == "failed":
+                self.api.send_message(
+                    chat_id,
+                    "Your picture was attached, but image reading failed to "
+                    "complete this time. That does not mean the rows were unclear. "
+                    "The verified news text was left unchanged. If the private "
+                    "picture-review window is still open, tap Add picture and "
+                    "resend it to retry.",
+                )
+            elif analysis_status == "unavailable":
+                self.api.send_message(
+                    chat_id,
+                    "Your picture was attached, but image reading is unavailable "
+                    "right now. The verified news text was left unchanged.",
+                )
             else:
                 self.api.send_message(
                     chat_id,

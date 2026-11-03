@@ -15,6 +15,7 @@ from smart_money_hub_bot.brief_photo_review import (
     send_brief_with_optional_photo,
 )
 from smart_money_hub_bot.news_brief_image_analysis import (
+    GeminiNewsImageError,
     NewsImageAnalysis,
     VisibleCalendarEvent,
 )
@@ -52,6 +53,7 @@ class FakeImageAnalyzer:
     def __init__(self, ids=("bea:event-1",)):
         self.ids = ids
         self.calls = []
+        self.error = None
         self.events = (
             VisibleCalendarEvent(
                 event_name="Personal Income and Outlays",
@@ -62,6 +64,8 @@ class FakeImageAnalyzer:
 
     def analyze(self, image_bytes, mime_type, verified_evidence):
         self.calls.append((image_bytes, mime_type, verified_evidence))
+        if self.error is not None:
+            raise self.error
         return NewsImageAnalysis(
             tuple(self.ids),
             self.events,
@@ -330,6 +334,32 @@ class NewsBriefPhotoPromptTests(unittest.TestCase):
             without_analyzer.photo_file_id("daily", self.target_date),
             "telegram-photo-file-id",
         )
+
+    def test_analysis_failure_is_not_reported_as_an_unreadable_picture(self) -> None:
+        self._send_prompt()
+        self.image_analyzer.error = GeminiNewsImageError("gemini_timeout")
+        self.prompts.handle_callback(
+            "newsbrief:photo:daily:2026-10-29",
+            actor_id=444,
+            chat_id=444,
+            is_private=True,
+            now=datetime(2026, 10, 28, 22, 31, tzinfo=timezone.utc),
+        )
+
+        self.prompts.handle_admin_photo(
+            444,
+            444,
+            [{"file_id": "telegram-photo-file-id"}],
+            is_private=True,
+            now=datetime(2026, 10, 28, 22, 32, tzinfo=timezone.utc),
+        )
+
+        messages = [item["text"] for item in self.api.admin_messages]
+        failure_message = next(
+            message for message in messages if "image reading failed" in message
+        )
+        self.assertIn("does not mean the rows were unclear", failure_message)
+        self.assertNotIn("couldn't read clear calendar rows", failure_message)
         self.assertIn("attached as supplied", self.api.admin_messages[-3]["text"])
         report, photo_id = without_analyzer.publication_media(
             "daily",

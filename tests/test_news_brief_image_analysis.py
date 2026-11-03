@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import unittest
+from urllib.error import HTTPError
 from unittest.mock import patch
 
 from smart_money_hub_bot.gemini_coach import GEMINI_MODEL
@@ -122,6 +123,30 @@ class GeminiNewsImageAnalysisTests(unittest.TestCase):
         mocked_urlopen.return_value = FakeResponse(candidate("not json"))
         with self.assertRaises(GeminiNewsImageError):
             self.service.analyze(self.image, "image/jpeg", self.evidence)
+
+    @patch("smart_money_hub_bot.news_brief_image_analysis.time.sleep")
+    @patch("smart_money_hub_bot.news_brief_image_analysis.urlopen")
+    def test_retries_one_transient_provider_failure(self, mocked_urlopen, mocked_sleep):
+        mocked_urlopen.side_effect = [
+            HTTPError("https://example.test", 503, "temporary", {}, None),
+            FakeResponse(
+                candidate(
+                    json.dumps(
+                        {
+                            "visible_date_text": None,
+                            "observed_events": [],
+                            "relevant_event_ids": [],
+                        }
+                    )
+                )
+            ),
+        ]
+
+        result = self.service.analyze(self.image, "image/jpeg", self.evidence)
+
+        self.assertEqual(result.observed_events, ())
+        self.assertEqual(mocked_urlopen.call_count, 2)
+        mocked_sleep.assert_called_once_with(0.5)
 
     def test_rejects_oversized_and_unsupported_images_without_request(self):
         with patch("smart_money_hub_bot.news_brief_image_analysis.urlopen") as mocked:
