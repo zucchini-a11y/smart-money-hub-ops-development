@@ -260,7 +260,7 @@ class GeminiCoachService:
         model: str,
         timeout_seconds: float,
         retry_503: bool,
-        image_part: dict[str, Any] | None,
+        image_part: dict[str, Any] | None = None,
     ) -> CoachReply:
         local_reply = self._local_coach.evaluate(
             message, history=history, profile=profile
