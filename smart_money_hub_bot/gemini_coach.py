@@ -137,7 +137,7 @@ class GeminiCoachService:
         history: list[dict[str, Any]] | None,
         profile: dict[str, Any] | None,
         request_id: str | None,
-        image_part: dict[str, Any] | None,
+        image_part: dict[str, Any] | None = None,
     ) -> CoachReply:
         if not isinstance(request_id, str) or not re.fullmatch(
             r"[0-9a-f]{32}", request_id
