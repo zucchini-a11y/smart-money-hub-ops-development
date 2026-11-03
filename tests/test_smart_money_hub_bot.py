@@ -1100,7 +1100,13 @@ class BotFlowTests(unittest.TestCase):
         args, kwargs = route.call_args
         self.assertEqual(args, (self.user_id, "What is liquidity?"))
         self.assertEqual(kwargs["history"], [])
-        self.assertEqual(kwargs["profile"], {"group_knowledge_context": []})
+        self.assertEqual(kwargs["profile"]["group_knowledge_context"], [])
+        self.assertTrue(
+            any(
+                item["title"] == "Liquidity"
+                for item in kwargs["profile"]["curriculum_context"]
+            )
+        )
         self.assertRegex(kwargs["request_id"], r"^[0-9a-f]{32}$")
         self.assertEqual(len(self.api.messages), 1)
         self.assertEqual(
