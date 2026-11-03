@@ -603,6 +603,7 @@ def _relevant_conversation_context(
         and current_topic.casefold() != previous_topic.casefold()
     )
     is_explicit_follow_up = bool(_EXPLICIT_FOLLOW_UP_START.match(normalized))
+    is_brief_follow_up = bool(_BRIEF_FOLLOW_UP_QUESTION.fullmatch(normalized))
     shared_terms = question_tokens(normalized) & question_tokens(previous_message)
     meaningful_shared_terms = shared_terms - {
         "post",
@@ -631,19 +632,13 @@ def _relevant_conversation_context(
         return [], role_context
     if (
         is_explicit_follow_up
+        or is_brief_follow_up
         or refers_to_prior_point
         or len(meaningful_shared_terms) >= 2
         or (
             len(normalized.split()) <= 4
             and len(meaningful_shared_terms) == 1
         )
-    ):
-        return _connected_conversation_thread(history), {
-            **(profile or {}),
-            **role_context,
-        }
-    if previous_response.endswith("?") and _BRIEF_FOLLOW_UP_QUESTION.fullmatch(
-        normalized
     ):
         return _connected_conversation_thread(history), {
             **(profile or {}),

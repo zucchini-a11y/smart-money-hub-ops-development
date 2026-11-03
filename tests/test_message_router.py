@@ -147,6 +147,39 @@ class MessageRouterTests(unittest.TestCase):
 
         self.assertEqual(provider.evaluate.call_args.kwargs["history"], history)
 
+    def test_bare_why_keeps_immediately_previous_admin_answer_context(self) -> None:
+        provider = Mock()
+        provider.diagnostic_response_path = "gemini_success"
+        provider.evaluate.return_value = CoachReply(
+            "The earlier answer was wrong because it did not address your post request.",
+            "Admin workflow",
+            (),
+            "",
+        )
+        router = CoachMessageRouter(provider, _EmptyKnowledgeStore())
+        history = [
+            {
+                "question": "You said you could not publish the lesson. Why?",
+                "coach_response": (
+                    "I cannot directly push posts from this chat. You can copy "
+                    "the draft into your channel."
+                ),
+                "detected_topic": "Admin workflow",
+            },
+            {
+                "question": "Explain a retest.",
+                "coach_response": "A retest is a return to a broken level.",
+                "detected_topic": "Retest",
+            },
+        ]
+
+        router.route(209, "why", history=history)
+
+        self.assertEqual(
+            provider.evaluate.call_args.kwargs["history"],
+            [history[0]],
+        )
+
     def test_group_archive_context_reaches_provider_without_private_history(self) -> None:
         provider = Mock()
         provider.diagnostic_response_path = "gemini_success"
