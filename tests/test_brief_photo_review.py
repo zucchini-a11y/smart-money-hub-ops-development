@@ -334,6 +334,20 @@ class NewsBriefPhotoPromptTests(unittest.TestCase):
             without_analyzer.photo_file_id("daily", self.target_date),
             "telegram-photo-file-id",
         )
+        self.assertIn(
+            "image reading is unavailable",
+            self.api.admin_messages[-3]["text"],
+        )
+        report, photo_id = without_analyzer.publication_media(
+            "daily",
+            self.target_date,
+            self.preview,
+            self.evidence,
+            [],
+            now=datetime(2026, 10, 28, 22, 33, tzinfo=timezone.utc),
+        )
+        self.assertEqual(report, self.preview)
+        self.assertEqual(photo_id, "telegram-photo-file-id")
 
     def test_analysis_failure_is_not_reported_as_an_unreadable_picture(self) -> None:
         self._send_prompt()
@@ -360,17 +374,6 @@ class NewsBriefPhotoPromptTests(unittest.TestCase):
         )
         self.assertIn("does not mean the rows were unclear", failure_message)
         self.assertNotIn("couldn't read clear calendar rows", failure_message)
-        self.assertIn("attached as supplied", self.api.admin_messages[-3]["text"])
-        report, photo_id = without_analyzer.publication_media(
-            "daily",
-            self.target_date,
-            self.preview,
-            self.evidence,
-            [],
-            now=datetime(2026, 10, 28, 22, 33, tzinfo=timezone.utc),
-        )
-        self.assertEqual(report, self.preview)
-        self.assertEqual(photo_id, "telegram-photo-file-id")
 
     def test_current_source_failure_keeps_admin_photo_but_drops_event_highlights(self) -> None:
         self._send_prompt()
