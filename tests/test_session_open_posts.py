@@ -11,6 +11,7 @@ from smart_money_hub_bot.channel_gemini import ChannelDraft, GeminiChannelGenera
 from smart_money_hub_bot.channel_posting import ChannelPostManager
 from smart_money_hub_bot.session_open_posts import (
     DEFAULT_NEW_YORK_SESSION_IMAGE,
+    DEFAULT_SESSION_IMAGES,
     SessionOpenPostManager,
     SessionOpenPostStore,
     session_occurrences,
@@ -45,6 +46,16 @@ NEW_YORK_SESSION_POST = SESSION_POST.replace(
 ).replace(
     "The London open is 08:00 Europe/London (09:00 WAT). Before the session,",
     "As the New York session gets underway,",
+)
+TOKYO_SESSION_POST = SESSION_POST.replace(
+    "🇬🇧 LONDON SESSION OPEN",
+    "🇯🇵 ASIA (TOKYO) SESSION OPEN",
+).replace(
+    "The London open is 08:00 Europe/London (09:00 WAT). Before the session, "
+    "review your higher-timeframe context and mark only "
+    "levels from your own verified chart.",
+    "As the Tokyo session opens, review your higher-timeframe context and mark "
+    "only levels from your own verified chart.",
 )
 
 LATE_SESSION_POST = (
@@ -1016,8 +1027,8 @@ class SessionOpenPostTests(unittest.TestCase):
         self.writer.content = NEW_YORK_SESSION_POST
         missing_image = DEFAULT_NEW_YORK_SESSION_IMAGE.parent / "missing.png"
         with patch(
-            "smart_money_hub_bot.session_open_posts.DEFAULT_NEW_YORK_SESSION_IMAGE",
-            missing_image,
+            "smart_money_hub_bot.session_open_posts.DEFAULT_SESSION_IMAGES",
+            {**DEFAULT_SESSION_IMAGES, "new_york": missing_image},
         ):
             self.manager.dispatch_due(occurrence.utc_at - timedelta(minutes=15))
             self.manager.dispatch_due(occurrence.utc_at - timedelta(minutes=5))
@@ -1027,6 +1038,32 @@ class SessionOpenPostTests(unittest.TestCase):
         self.assertEqual(saved["status"], "failed")
         self.assertEqual(saved["failure_category"], "default_session_image_missing")
         self.assertEqual(self.api.photo_messages, [])
+        self.assertEqual(self.api.channel_messages, [])
+
+    def test_each_session_uses_its_matching_default_image(self):
+        session_content = {
+            "asia": ("Tokyo", TOKYO_SESSION_POST),
+            "london": ("London", FRESH_LONDON_SESSION_POST),
+            "new_york": ("New York", NEW_YORK_SESSION_POST),
+        }
+        for session_code, (session_name, content) in session_content.items():
+            with self.subTest(session=session_code):
+                occurrence = self._occurrence(session_code)
+                self.writer.content = content
+                self.manager.dispatch_due(occurrence.utc_at - timedelta(minutes=15))
+                self.manager.dispatch_due(occurrence.utc_at - timedelta(minutes=5))
+                self.assertIn(
+                    f"fixed {session_name} session image",
+                    self.api.admin_messages[-1][1],
+                )
+
+                self.manager.dispatch_due(occurrence.utc_at)
+
+                self.assertEqual(
+                    self.api.photo_messages[-1][1],
+                    DEFAULT_SESSION_IMAGES[session_code],
+                )
+                self.assertTrue(DEFAULT_SESSION_IMAGES[session_code].is_file())
         self.assertEqual(self.api.channel_messages, [])
 
     def test_interrupted_send_is_marked_uncertain_and_never_retried(self):

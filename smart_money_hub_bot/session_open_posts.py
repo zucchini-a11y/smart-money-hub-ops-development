@@ -30,9 +30,19 @@ GENERATION_LEAD = timedelta(minutes=15)
 FINAL_REVIEW_LEAD = timedelta(minutes=5)
 MAX_RATE_LIMIT_RETRIES = 1
 PAGE_SIZE = 12
-DEFAULT_NEW_YORK_SESSION_IMAGE = (
-    Path(__file__).resolve().parent / "assets" / "new-york-session-open.png"
-)
+_SESSION_ASSET_DIR = Path(__file__).resolve().parent / "assets"
+DEFAULT_SESSION_IMAGES = {
+    "asia": _SESSION_ASSET_DIR / "session-open-tokyo.jpg",
+    "london": _SESSION_ASSET_DIR / "session-open-london.jpg",
+    "new_york": _SESSION_ASSET_DIR / "session-open-new-york.jpg",
+}
+DEFAULT_SESSION_IMAGE_LABELS = {
+    "asia": "Tokyo",
+    "london": "London",
+    "new_york": "New York",
+}
+# Retained as a named alias for older tests and callers that refer to New York.
+DEFAULT_NEW_YORK_SESSION_IMAGE = DEFAULT_SESSION_IMAGES["new_york"]
 
 
 @dataclass(frozen=True)
@@ -1389,10 +1399,13 @@ class SessionOpenPostManager:
             at=current.isoformat(),
         ):
             return
+        session_image_name = DEFAULT_SESSION_IMAGE_LABELS.get(
+            str(post["session_code"]), occurrence.definition.label
+        )
         photo_instruction = (
-            "The fixed New York session image will be used unless you add a "
-            "different photo."
-            if post["session_code"] == "new_york"
+            f"The fixed {session_image_name} session image will be used unless you "
+            "add a different photo."
+            if post["session_code"] in DEFAULT_SESSION_IMAGES
             else "Add a photo if you want; otherwise this post will be text-only."
         )
         text = (
@@ -1446,13 +1459,16 @@ class SessionOpenPostManager:
         if self.admin_id is None or self.destination_chat_id is None:
             return
         photo = post.get("photo_file_id")
-        if not photo and post.get("session_code") == "new_york":
-            photo = DEFAULT_NEW_YORK_SESSION_IMAGE
+        session_code = str(post.get("session_code") or "")
+        session_image_name = DEFAULT_SESSION_IMAGE_LABELS.get(session_code, "session")
+        if not photo:
+            photo = DEFAULT_SESSION_IMAGES.get(session_code)
         if isinstance(photo, Path) and not photo.is_file():
             self._hold(
                 post,
                 "default_session_image_missing",
-                "The default New York session image is unavailable. Nothing was sent.",
+                f"The default {session_image_name} session image is unavailable. "
+                "Nothing was sent.",
             )
             return
         settings = self.history_store.get_channel_posting_settings()

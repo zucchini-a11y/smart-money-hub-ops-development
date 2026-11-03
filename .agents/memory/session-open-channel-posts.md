@@ -11,8 +11,8 @@ description: Product scope and safety rules for the Smart Money Hub Market Analy
 
 **Why:** The first failed-generation record exposed that ordinary recent-history views can omit empty drafts, leaving an active-session retry without an admin entry point.
 
-**Rule:** Use the owner-provided New York Session Open image only as the New York post’s fallback. A photo attached to an individual post overrides it; Tokyo and London remain text-only unless their own matching images are configured.
+**Rule:** Use the generated matching Tokyo, London, and New York session graphics as the respective session-post fallbacks. A photo attached to an individual post overrides that session’s default.
 
-**Why:** The supplied fallback graphic explicitly names New York, so using it for another session would mislabel the post.
+**Why:** The owner approved using the three distinct generated session graphics so the image matches the session being announced.
 
-**How to apply:** Keep the image bundled with the bot code, select it only when a New York post has no admin-attached Telegram photo ID, and hold rather than silently omit it if the configured image is missing.
+**How to apply:** Keep the three 16:9 graphics bundled with the bot code; select by session only when no admin-attached Telegram photo ID exists, and hold rather than silently omit a missing default image.
