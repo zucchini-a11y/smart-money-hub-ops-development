@@ -590,12 +590,34 @@ class NewsBriefPhotoPrompts:
                     if observed_events
                     else "unread"
                 )
-            except (TelegramAPIError, GeminiNewsImageError, OSError, ValueError):
+            except GeminiNewsImageError as error:
                 analysis_status = "failed"
-                logger.warning("Optional USD/gold brief image review failed.")
-            except Exception:
+                logger.warning(
+                    "Optional USD/gold brief image review failed stage=gemini "
+                    "category=%s.",
+                    error.category,
+                )
+            except TelegramAPIError as error:
                 analysis_status = "failed"
-                logger.warning("Unexpected failure while checking a brief image.")
+                logger.warning(
+                    "Optional USD/gold brief image review failed stage=telegram_file "
+                    "http_status=%s error_code=%s.",
+                    error.http_status,
+                    error.error_code,
+                )
+            except (OSError, ValueError) as error:
+                analysis_status = "failed"
+                logger.warning(
+                    "Optional USD/gold brief image review failed stage=local "
+                    "category=%s.",
+                    type(error).__name__,
+                )
+            except Exception as error:
+                analysis_status = "failed"
+                logger.warning(
+                    "Unexpected USD/gold brief image review failure type=%s.",
+                    type(error).__name__,
+                )
 
         completed_at = current
         if image_check_started is not None:
