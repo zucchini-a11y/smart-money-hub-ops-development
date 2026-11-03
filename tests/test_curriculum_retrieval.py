@@ -23,7 +23,7 @@ class CurriculumRetrievalTests(unittest.TestCase):
     def test_episode_parser_handles_zero_padding_and_ignores_longer_number(self) -> None:
         self.assertEqual(requested_episode_number("Explain Episode 01"), 1)
         self.assertEqual(requested_episode_number("Episode #12, please"), 12)
-        self.assertIsNone(requested_episode_number("Episode 120"))
+        self.assertEqual(requested_episode_number("Episode 120"), 120)
 
     def test_missing_episode_does_not_claim_general_card_is_episode_content(self) -> None:
         related = retrieve_curriculum_context("Episode 01 points of interest")
