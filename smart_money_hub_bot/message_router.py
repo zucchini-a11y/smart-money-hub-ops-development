@@ -339,6 +339,17 @@ class CoachMessageRouter:
             reply,
             response=_append_education_resources(reply.response, resources),
         )
+        if is_admin and _claims_admin_posting_is_unavailable(message, reply.response):
+            reply = replace(
+                reply,
+                response=(
+                    "That earlier limitation was incorrect. I can prepare a private "
+                    "preview for the configured Market Analysis channel or Education "
+                    "group. Send “Post to Market Analysis channel: [complete post]” "
+                    "or “Post the last lesson to Education group.” Nothing is sent "
+                    "until you use /approve ID and /publishcontent ID."
+                ),
+            )
         if is_admin and response_path == "fallback" and not reply.requires_review:
             reply = replace(reply, response=f"Certainly, CEO — {reply.response}")
         return self._routed(
@@ -687,3 +698,21 @@ def _connected_conversation_thread(
         else:
             break
     return selected
+
+
+def _claims_admin_posting_is_unavailable(message: str, response: str) -> bool:
+    """Detect the stale Coach refusal that contradicts admin posting controls."""
+    asks_about_posting = bool(
+        re.search(r"\b(?:post|publish|send)\b", message, flags=re.IGNORECASE)
+    )
+    denies_posting = bool(
+        re.search(
+            r"\b(?:cannot|can't|unable|not able to|do not have the ability to)\b"
+            r".{0,80}\b(?:post|publish|send)\b"
+            r"|\b(?:copy and paste|copy/paste)\b"
+            r".{0,80}\b(?:channel|post|publish)\b",
+            response,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+    )
+    return asks_about_posting and denies_posting

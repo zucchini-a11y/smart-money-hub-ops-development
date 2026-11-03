@@ -180,6 +180,29 @@ class MessageRouterTests(unittest.TestCase):
             [history[0]],
         )
 
+    def test_admin_posting_refusal_is_replaced_with_actual_preview_flow(self) -> None:
+        provider = Mock()
+        provider.diagnostic_response_path = "gemini_success"
+        provider.evaluate.return_value = CoachReply(
+            "I cannot post directly to external channels. Copy and paste your draft.",
+            "Admin workflow",
+            (),
+            "",
+        )
+        router = CoachMessageRouter(provider, _EmptyKnowledgeStore())
+
+        response = router.route(
+            210,
+            "Can you post it now?",
+            profile={"is_admin": True},
+        ).reply.response
+
+        self.assertIn("private preview", response)
+        self.assertIn("/approve ID", response)
+        self.assertIn("/publishcontent ID", response)
+        self.assertNotIn("cannot post directly", response)
+        self.assertNotIn("copy and paste", response)
+
     def test_group_archive_context_reaches_provider_without_private_history(self) -> None:
         provider = Mock()
         provider.diagnostic_response_path = "gemini_success"
