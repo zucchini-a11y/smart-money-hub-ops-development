@@ -63,6 +63,90 @@ class MessageRouterTests(unittest.TestCase):
 
         self.assertIs(provider.evaluate.call_args.kwargs["profile"]["is_admin"], True)
 
+    def test_natural_next_step_follow_up_keeps_the_connected_thread(self) -> None:
+        provider = Mock()
+        provider.diagnostic_response_path = "gemini_success"
+        provider.evaluate.return_value = CoachReply(
+            "First, complete the review, then use the scheduled publish action.",
+            "Admin workflow",
+            (),
+            "",
+        )
+        router = CoachMessageRouter(provider, _EmptyKnowledgeStore())
+        history = [
+            {
+                "question": "The weekly brief should go to the Education announcements.",
+                "coach_response": "It is set for Monday at midnight WAT.",
+                "detected_topic": "Weekly brief",
+            },
+            {
+                "question": "I want the weekly news sent in the announcements.",
+                "coach_response": "Which destination should receive it?",
+                "detected_topic": "Weekly brief",
+            },
+            {
+                "question": "I felt FOMO in yesterday's trade.",
+                "coach_response": "What rule will help you wait for confirmation?",
+                "detected_topic": "FOMO",
+            },
+        ]
+
+        router.route(205, "What should I do now?", history=history)
+
+        supplied_history = provider.evaluate.call_args.kwargs["history"]
+        supplied_questions = [item["question"] for item in supplied_history]
+        self.assertEqual(
+            supplied_questions,
+            [
+                "The weekly brief should go to the Education announcements.",
+                "I want the weekly news sent in the announcements.",
+            ],
+        )
+
+    def test_clear_new_question_still_resets_old_conversation_context(self) -> None:
+        provider = Mock()
+        provider.diagnostic_response_path = "gemini_success"
+        provider.evaluate.return_value = CoachReply(
+            "A POI is an area to monitor, not an entry by itself.",
+            "POI",
+            (),
+            "",
+        )
+        router = CoachMessageRouter(provider, _EmptyKnowledgeStore())
+        history = [
+            {
+                "question": "Where is the weekly brief going?",
+                "coach_response": "It is for the Education announcements.",
+                "detected_topic": "Weekly brief",
+            }
+        ]
+
+        router.route(206, "What is a POI?", history=history)
+
+        self.assertEqual(provider.evaluate.call_args.kwargs["history"], [])
+
+    def test_explain_it_follow_up_is_not_mistaken_for_a_new_lesson(self) -> None:
+        provider = Mock()
+        provider.diagnostic_response_path = "gemini_success"
+        provider.evaluate.return_value = CoachReply(
+            "That level is the structure point you were asking about.",
+            "Market structure",
+            (),
+            "",
+        )
+        router = CoachMessageRouter(provider, _EmptyKnowledgeStore())
+        history = [
+            {
+                "question": "Price broke the previous swing high.",
+                "coach_response": "That may indicate a bullish structure shift.",
+                "detected_topic": "Market structure",
+            }
+        ]
+
+        router.route(207, "Explain it more", history=history)
+
+        self.assertEqual(provider.evaluate.call_args.kwargs["history"], history)
+
     def test_group_archive_context_reaches_provider_without_private_history(self) -> None:
         provider = Mock()
         provider.diagnostic_response_path = "gemini_success"

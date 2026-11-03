@@ -28,8 +28,13 @@ _DIRECT_EDUCATION_START = re.compile(
     re.I,
 )
 _EXPLICIT_FOLLOW_UP_START = re.compile(
-    r"^(?:what about|how about|and then|then|so|in that case|"
+    r"^(?:what about|how about|and then|and what|then|so|in that case|"
     r"does that|would that|is that|what does that mean|why did you|"
+    r"what should i do(?: now| next)?|what do i do(?: now| next)?|"
+    r"what happens(?: now| next| to it| to that)?|"
+    r"when will (?:it|that|this|they|the bot|the post)\b|"
+    r"will (?:it|that|this|they|the bot|the post)\b|"
+    r"should i (?:do|send|post|use|choose) (?:that|it|this|now|next)\b|"
     r"explain (?:that|it|this)|say more about (?:that|it|this)|"
     r"based on that)\b",
     re.I,
@@ -563,7 +568,7 @@ def _relevant_conversation_context(
     history: list[dict[str, Any]] | None,
     profile: dict[str, Any] | None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Keep prior turns for clear follow-ups, not self-contained questions."""
+    """Keep a short, connected thread for follow-ups, not new questions."""
     role_context: dict[str, Any] = {}
     if profile and profile.get("is_admin") is True:
         role_context["is_admin"] = True
@@ -587,22 +592,103 @@ def _relevant_conversation_context(
         return [], role_context
 
     normalized = " ".join(message.split()).strip()
-    if _EXPLICIT_FOLLOW_UP_START.match(normalized):
-        return history[:1], {**(profile or {}), **role_context}
-    if _DIRECT_EDUCATION_START.match(normalized):
-        return [], role_context
-
     previous_response = str(history[0].get("coach_response") or "").rstrip()
+    previous_question = str(history[0].get("question") or "").rstrip()
+    previous_message = f"{previous_question} {previous_response}".strip()
+    current_topic = RuleBasedCoachService.detect_topic(normalized)
+    previous_topic = str(history[0].get("detected_topic") or "").strip()
+    topic_changed = bool(
+        current_topic != "General SMC"
+        and previous_topic
+        and current_topic.casefold() != previous_topic.casefold()
+    )
+    is_explicit_follow_up = bool(_EXPLICIT_FOLLOW_UP_START.match(normalized))
+    shared_terms = question_tokens(normalized) & question_tokens(previous_message)
+    meaningful_shared_terms = shared_terms - {
+        "post",
+        "bot",
+        "message",
+        "thing",
+        "today",
+        "tomorrow",
+        "time",
+        "help",
+        "send",
+        "now",
+        "next",
+    }
+    refers_to_prior_point = bool(
+        re.search(
+            r"\b(?:it|that|this|they|them|there|those|these|one)\b",
+            normalized.casefold(),
+        )
+        and len(normalized.split()) <= 18
+    )
+    if _DIRECT_EDUCATION_START.match(normalized) and (
+        topic_changed
+        or (not is_explicit_follow_up and not refers_to_prior_point)
+    ):
+        return [], role_context
+    if (
+        is_explicit_follow_up
+        or refers_to_prior_point
+        or len(meaningful_shared_terms) >= 2
+        or (
+            len(normalized.split()) <= 4
+            and len(meaningful_shared_terms) == 1
+        )
+    ):
+        return _connected_conversation_thread(history), {
+            **(profile or {}),
+            **role_context,
+        }
     if previous_response.endswith("?") and _BRIEF_FOLLOW_UP_QUESTION.fullmatch(
         normalized
     ):
-        return history[:1], {**(profile or {}), **role_context}
+        return _connected_conversation_thread(history), {
+            **(profile or {}),
+            **role_context,
+        }
     is_short_answer_to_coach = (
         previous_response.endswith("?")
         and len(normalized.split()) <= 12
         and not normalized.endswith("?")
     )
     if is_short_answer_to_coach:
-        return history[:1], {**(profile or {}), **role_context}
+        return _connected_conversation_thread(history), {
+            **(profile or {}),
+            **role_context,
+        }
 
     return [], role_context
+
+
+def _connected_conversation_thread(
+    history: list[dict[str, Any]], *, limit: int = 3
+) -> list[dict[str, Any]]:
+    """Return recent exchanges linked by topic or by the neighboring turn."""
+    if not history:
+        return []
+    selected = [history[0]]
+    for candidate in history[1:limit]:
+        newer = selected[-1]
+        newer_topic = str(newer.get("detected_topic") or "").strip().casefold()
+        candidate_topic = str(candidate.get("detected_topic") or "").strip().casefold()
+        same_topic = bool(
+            newer_topic
+            and candidate_topic
+            and newer_topic == candidate_topic
+            and newer_topic not in {"conversation", "general"}
+        )
+        newer_text = " ".join(
+            str(newer.get(key) or "") for key in ("question", "coach_response")
+        )
+        candidate_text = " ".join(
+            str(candidate.get(key) or "") for key in ("question", "coach_response")
+        )
+        shared_terms = question_tokens(newer_text) & question_tokens(candidate_text)
+        if same_topic or len(shared_terms) >= 2:
+            selected.append(candidate)
+        else:
+            break
+    return selected
