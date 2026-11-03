@@ -336,14 +336,17 @@ class SessionOpenPostTests(unittest.TestCase):
         self.assertEqual(saved["status"], "review_pending")
         self.assertIn("SESSION-OPEN POST REVIEW", self.api.admin_messages[-1][1])
         self.assertIn("09:00 WAT", self.api.admin_messages[-1][1])
-        self.assertIn("Add a photo", self.api.admin_messages[-1][1])
+        self.assertIn("fixed London session image", self.api.admin_messages[-1][1])
         self.assertEqual(self.api.channel_messages, [])
         self.assertEqual(self.api.photo_messages, [])
 
         self.manager.dispatch_due(occurrence.utc_at)
         self.manager.dispatch_due(occurrence.utc_at + timedelta(seconds=1))
-        self.assertEqual(len(self.api.channel_messages), 1)
-        self.assertEqual(self.api.channel_messages[0][0], CHANNEL_ID)
+        self.assertEqual(len(self.api.photo_messages), 1)
+        self.assertEqual(self.api.photo_messages[0][0], CHANNEL_ID)
+        self.assertEqual(
+            self.api.photo_messages[0][1], DEFAULT_SESSION_IMAGES["london"]
+        )
         self.assertEqual(self.manager.store.get_by_key(occurrence)["status"], "published")
 
     def test_admin_can_cancel_before_open_and_no_message_is_sent(self):
@@ -446,7 +449,7 @@ class SessionOpenPostTests(unittest.TestCase):
         self.assertEqual(self.api.channel_messages, [])
         self.manager.dispatch_due(occurrence.utc_at)
         self.manager.dispatch_due(occurrence.utc_at + timedelta(seconds=1))
-        self.assertEqual(len(self.api.channel_messages), 1)
+        self.assertEqual(len(self.api.photo_messages), 1)
         self.assertEqual(
             self.manager.store.get_by_key(occurrence)["status"], "published"
         )
@@ -492,11 +495,12 @@ class SessionOpenPostTests(unittest.TestCase):
         self.assertEqual(recovered["late_recovery"], 1)
         self.assertEqual(len(self.writer.calls), 2)
         self.assertTrue(self.writer.calls[-1]["session_context"]["late_recovery"])
-        self.assertEqual(len(self.api.channel_messages), 1)
-        self.assertEqual(self.api.channel_messages[0][0], CHANNEL_ID)
-        self.assertIn("TOKYO SESSION CHECK-IN", self.api.channel_messages[0][1])
-        self.assertNotIn("09:00", self.api.channel_messages[0][1])
-        self.assertNotIn("WAT", self.api.channel_messages[0][1])
+        self.assertEqual(len(self.api.photo_messages), 1)
+        self.assertEqual(self.api.photo_messages[0][0], CHANNEL_ID)
+        self.assertEqual(self.api.photo_messages[0][1], DEFAULT_SESSION_IMAGES["asia"])
+        self.assertIn("TOKYO SESSION CHECK-IN", self.api.photo_messages[0][2])
+        self.assertNotIn("09:00", self.api.photo_messages[0][2])
+        self.assertNotIn("WAT", self.api.photo_messages[0][2])
         self.assertIsNone(validate_session_open_post(recovered["content"], recovered))
         self.manager.handle_callback(
             ADMIN_ID,
@@ -504,7 +508,7 @@ class SessionOpenPostTests(unittest.TestCase):
             f"admin:session_open:retry_generation:{original_id}",
             now=occurrence.utc_at + timedelta(minutes=11),
         )
-        self.assertEqual(len(self.api.channel_messages), 1)
+        self.assertEqual(len(self.api.photo_messages), 1)
 
     def test_admin_cannot_recover_session_post_after_session_close(self):
         occurrence = self._occurrence("asia")
@@ -613,8 +617,8 @@ class SessionOpenPostTests(unittest.TestCase):
         self.assertEqual(saved["publish_attempts"], 1)
         self.assertEqual(len(self.writer.calls), 1)
         self.assertTrue(self.writer.calls[0]["session_context"]["late_recovery"])
-        self.assertEqual(len(self.api.channel_messages), 1)
-        sent_text = self.api.channel_messages[0][1]
+        self.assertEqual(len(self.api.photo_messages), 1)
+        sent_text = self.api.photo_messages[0][2]
         for forbidden in ("09:00", "01:00", "WAT", "JST", "Asia/Tokyo"):
             self.assertNotIn(forbidden, sent_text)
         notices = [
@@ -785,7 +789,7 @@ class SessionOpenPostTests(unittest.TestCase):
         self.assertEqual(published["status"], "published")
         self.assertEqual(published["publish_attempts"], 1)
         self.assertEqual(len(self.writer.calls), 1)
-        self.assertEqual(len(self.api.channel_messages), 1)
+        self.assertEqual(len(self.api.photo_messages), 1)
 
     def test_late_recovery_rejects_public_schedule_times(self):
         occurrence = self._occurrence("asia")
@@ -1365,7 +1369,7 @@ class SessionOpenPostTests(unittest.TestCase):
         published = self.manager.store.get(int(post["id"]))
         self.assertEqual(published["status"], "published")
         self.assertEqual(published["published_at"], occurrence.utc_at.isoformat())
-        self.assertEqual(len(self.api.channel_messages), 1)
+        self.assertEqual(len(self.api.photo_messages), 1)
 
     def test_admin_can_retry_missing_late_headline_while_session_is_active(self):
         occurrence = self._occurrence("london")
@@ -1397,9 +1401,9 @@ class SessionOpenPostTests(unittest.TestCase):
             self.writer.calls[-1]["session_context"]["content_retry_reason"],
             "session_headline_missing",
         )
-        self.assertEqual(len(self.api.channel_messages), 1)
-        self.assertIn("LONDON SESSION CHECK-IN", self.api.channel_messages[0][1])
-        self.assertNotIn("WAT", self.api.channel_messages[0][1])
+        self.assertEqual(len(self.api.photo_messages), 1)
+        self.assertIn("LONDON SESSION CHECK-IN", self.api.photo_messages[0][2])
+        self.assertNotIn("WAT", self.api.photo_messages[0][2])
         self.assertIsNone(validate_session_open_post(saved["content"], saved))
 
 
