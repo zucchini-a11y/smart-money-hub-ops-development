@@ -21,7 +21,7 @@ _CONCEPT_ALIASES = (
     (("inversion fair value gap", "ifvg"), "ifvg"),
     (("buy side liquidity", "buy-side liquidity", "bsl"), "bsl"),
     (("sell side liquidity", "sell-side liquidity", "ssl"), "ssl"),
-    (("order block", "order blocks"), "orderblock"),
+    (("order block", "order blocks", "ob"), "orderblock"),
     (("point of interest", "points of interest", "poi", "pois"), "poi"),
     (("higher timeframe", "higher time frame", "htf"), "htf"),
     (("lower timeframe", "lower time frame", "ltf"), "ltf"),

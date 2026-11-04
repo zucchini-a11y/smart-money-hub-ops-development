@@ -64,6 +64,14 @@ class EducationDiagramManager:
                 "zone highlighted.",
                 (),
             ),
+            (
+                "Order Block (OB)",
+                "JPEG_image-4A0F-A337-5F-0_1793769937813.jpeg",
+                "OB, order block, order blocks",
+                "Owner-provided candlestick example with an order-block zone "
+                "highlighted.",
+                (),
+            ),
         )
         existing = self.store.education_diagrams(active_only=False)
         added = 0
