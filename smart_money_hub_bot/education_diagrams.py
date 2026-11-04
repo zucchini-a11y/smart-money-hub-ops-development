@@ -80,6 +80,15 @@ class EducationDiagramManager:
                 "gap zone highlighted.",
                 (),
             ),
+            (
+                "Liquidity and Sweep (BSL/SSL)",
+                "JPEG_image-4506-BBAA-CA-0_1793770748577_labeled.png",
+                "liquidity, liquidity sweep, liquidity pool, BSL, buy-side "
+                "liquidity, SSL, sell-side liquidity, sweep, stop run, stop hunt",
+                "Owner-provided annotated chart labeling the buy-side liquidity "
+                "level and the wick sweep above prior highs.",
+                (),
+            ),
         )
         existing = self.store.education_diagrams(active_only=False)
         added = 0

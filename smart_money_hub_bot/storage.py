@@ -1949,6 +1949,7 @@ class Repository:
             canonical_matches = shared & {
                 "bos", "choch", "lowerhigh", "lowerlow", "higherhigh",
                 "mss", "fvg", "ifvg", "bsl", "ssl",
+                "liquidity", "liquiditysweep",
                 "orderblock", "poi", "htf", "ltf", "riskreward",
                 "stoploss", "takeprofit", "fomo", "revengetrading",
             }
