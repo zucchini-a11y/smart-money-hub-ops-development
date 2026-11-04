@@ -72,6 +72,14 @@ class EducationDiagramManager:
                 "highlighted.",
                 (),
             ),
+            (
+                "Inverse Fair Value Gap (IFVG)",
+                "JPEG_image-4E60-8589-87-0_1793770118816.jpeg",
+                "IFVG, inverse fair value gap, inverse FVG, FVG invalidation",
+                "Owner-provided candlestick example with an inverse fair value "
+                "gap zone highlighted.",
+                (),
+            ),
         )
         existing = self.store.education_diagrams(active_only=False)
         added = 0
