@@ -205,6 +205,12 @@ class WeeklyCalendarBriefTests(unittest.TestCase):
             self.api.admin_messages[2]["reply_markup"]["inline_keyboard"][0][0][
                 "callback_data"
             ],
+            "newsbrief:edit:weekly:2026-11-02",
+        )
+        self.assertEqual(
+            self.api.admin_messages[2]["reply_markup"]["inline_keyboard"][0][1][
+                "callback_data"
+            ],
             "newsbrief:photo:weekly:2026-11-02",
         )
 

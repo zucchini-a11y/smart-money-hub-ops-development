@@ -1589,6 +1589,31 @@ class SmartMoneyHubBot:
         )
         if (
             is_private
+            and self.news_brief_photo_prompts is not None
+            and self.news_brief_photo_prompts.has_text_edit_pending(telegram_id)
+        ):
+            if command == "/cancel":
+                self.news_brief_photo_prompts.cancel_text_edit(telegram_id)
+                self.api.send_message(
+                    chat_id,
+                    "News edit cancelled. The existing preview remains unchanged.",
+                )
+                return
+            if command.startswith("/"):
+                self.news_brief_photo_prompts.cancel_text_edit(telegram_id)
+                self.api.send_message(
+                    chat_id,
+                    "News edit cancelled. The existing preview remains unchanged.",
+                )
+            elif self.news_brief_photo_prompts.handle_admin_text_edit(
+                chat_id,
+                telegram_id,
+                text,
+                is_private=True,
+            ):
+                return
+        if (
+            is_private
             and self.admin_dashboard.education_topic_promotions.has_input_pending(
                 telegram_id
             )

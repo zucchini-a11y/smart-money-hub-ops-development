@@ -555,6 +555,34 @@ class BotFlowTests(unittest.TestCase):
             self.user_id, self.user_id, True, "admin:weak_topics"
         )
 
+    def test_news_brief_replacement_text_routes_to_private_edit_flow(self) -> None:
+        self.bot.admin_id = self.user_id
+        edit_flow = Mock()
+        edit_flow.has_text_edit_pending.return_value = True
+        edit_flow.handle_admin_text_edit.return_value = True
+        self.bot.news_brief_photo_prompts = edit_flow
+
+        self.bot.handle_update(
+            {
+                "message": {
+                    "from": {
+                        "id": self.user_id,
+                        "is_bot": False,
+                        "first_name": self.first_name,
+                    },
+                    "chat": {"id": self.user_id, "type": "private"},
+                    "text": "Complete replacement news text",
+                }
+            }
+        )
+
+        edit_flow.handle_admin_text_edit.assert_called_once_with(
+            self.user_id,
+            self.user_id,
+            "Complete replacement news text",
+            is_private=True,
+        )
+
     def test_admin_text_understands_natural_requests_and_clarifies_ambiguous_ones(self) -> None:
         self.bot.admin_id = self.user_id
         self.bot.admin_dashboard.admin_id = self.user_id

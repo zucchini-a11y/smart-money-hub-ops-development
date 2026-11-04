@@ -124,11 +124,18 @@ class NewsBriefPhotoPromptTests(unittest.TestCase):
         message = self.api.admin_messages[0]
         self.assertEqual(message["chat_id"], 444)
         self.assertIn("PREVIEW — NOT PUBLISHED", message["text"])
-        self.assertIn("30", self.api.admin_messages[2]["text"])
+        self.assertIn("30 minutes", self.api.admin_messages[2]["text"])
         self.assertEqual(self.api.admin_messages[1]["text"], self.preview)
+        self.assertIn("edit the news", self.api.admin_messages[2]["text"])
         keyboard = self.api.admin_messages[2]["reply_markup"]["inline_keyboard"][0]
-        self.assertEqual(keyboard[0]["callback_data"], "newsbrief:photo:daily:2026-10-29")
-        self.assertEqual(keyboard[1]["callback_data"], "newsbrief:none:daily:2026-10-29")
+        self.assertEqual(keyboard[0]["callback_data"], "newsbrief:edit:daily:2026-10-29")
+        self.assertEqual(keyboard[1]["callback_data"], "newsbrief:photo:daily:2026-10-29")
+        self.assertEqual(
+            self.api.admin_messages[2]["reply_markup"]["inline_keyboard"][1][0][
+                "callback_data"
+            ],
+            "newsbrief:none:daily:2026-10-29",
+        )
 
     def test_prompt_is_not_sent_before_the_thirty_minute_window(self) -> None:
         self.assertFalse(
@@ -143,6 +150,48 @@ class NewsBriefPhotoPromptTests(unittest.TestCase):
             )
         )
         self.assertFalse(self.api.admin_messages)
+
+    def test_admin_can_replace_private_preview_and_scheduled_text_uses_it(self) -> None:
+        self._send_prompt()
+        self.assertTrue(
+            self.prompts.handle_callback(
+                "newsbrief:edit:daily:2026-10-29",
+                actor_id=444,
+                chat_id=444,
+                is_private=True,
+                now=datetime(2026, 10, 28, 22, 31, tzinfo=timezone.utc),
+            )
+        )
+        self.assertTrue(self.prompts.has_text_edit_pending(444))
+        replacement = "📊 Updated news & notes <for the admin>"
+        self.assertTrue(
+            self.prompts.handle_admin_text_edit(
+                444,
+                444,
+                replacement,
+                is_private=True,
+                now=datetime(2026, 10, 28, 22, 32, tzinfo=timezone.utc),
+            )
+        )
+        self.assertFalse(self.prompts.has_text_edit_pending(444))
+        self.assertEqual(
+            self.api.admin_messages[-1]["text"],
+            "📊 Updated news &amp; notes &lt;for the admin&gt;",
+        )
+
+        scheduled_report, photo_id = self.prompts.publication_media(
+            "daily",
+            self.target_date,
+            "Fresh generated text",
+            self.evidence,
+            [],
+            now=datetime(2026, 10, 28, 22, 33, tzinfo=timezone.utc),
+        )
+        self.assertEqual(
+            scheduled_report,
+            "📊 Updated news &amp; notes &lt;for the admin&gt;",
+        )
+        self.assertIsNone(photo_id)
 
     def test_photo_is_read_and_verified_before_updated_preview_and_persistence(self) -> None:
         self._send_prompt()

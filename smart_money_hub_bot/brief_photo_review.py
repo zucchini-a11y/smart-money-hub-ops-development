@@ -44,7 +44,7 @@ _SOURCE_STATUS_KEYS = {
     "U.S. Department of Labor": "DOL",
 }
 _PHOTO_CALLBACK = re.compile(
-    r"newsbrief:(photo|none):(daily|weekly):(\d{4}-\d{2}-\d{2})"
+    r"newsbrief:(edit|photo|none):(daily|weekly):(\d{4}-\d{2}-\d{2})"
 )
 
 
@@ -169,6 +169,7 @@ def append_verified_image_highlights(
 ) -> str:
     """Add a short source-backed highlight, never a claim from the image."""
     selected = set(event_ids)
+    existing_text = html.unescape(re.sub(r"<[^>]*>", " ", report)).casefold()
     rows = [
         item
         for item in evidence
@@ -176,6 +177,8 @@ def append_verified_image_highlights(
         and isinstance(item.get("external_id"), str)
         and item["external_id"] in selected
         and _source_url_is_allowed(item.get("source_url"))
+        and str(item.get("title") or "U.S. release").casefold()
+        not in existing_text
     ][:3]
     if not rows:
         return report
@@ -247,6 +250,7 @@ class NewsBriefPhotoPrompts:
                     matched_event_ids_json TEXT,
                     image_analysis_status TEXT,
                     observed_events_json TEXT,
+                    admin_edited_content TEXT,
                     PRIMARY KEY (brief_type, brief_date)
                 )
                 """
@@ -264,6 +268,7 @@ class NewsBriefPhotoPrompts:
                 ("matched_event_ids_json", "TEXT"),
                 ("image_analysis_status", "TEXT"),
                 ("observed_events_json", "TEXT"),
+                ("admin_edited_content", "TEXT"),
             ):
                 if column not in columns:
                     connection.execute(
@@ -273,6 +278,16 @@ class NewsBriefPhotoPrompts:
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS news_brief_photo_selection (
+                    admin_id INTEGER PRIMARY KEY,
+                    brief_type TEXT NOT NULL,
+                    brief_date TEXT NOT NULL,
+                    selected_at_utc TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS news_brief_text_edit_selection (
                     admin_id INTEGER PRIMARY KEY,
                     brief_type TEXT NOT NULL,
                     brief_date TEXT NOT NULL,
@@ -338,11 +353,19 @@ class NewsBriefPhotoPrompts:
             "inline_keyboard": [
                 [
                     {
+                        "text": "✏️ Edit news",
+                        "callback_data": (
+                            f"newsbrief:edit:{brief_type}:{brief_date.isoformat()}"
+                        ),
+                    },
+                    {
                         "text": "📷 Add picture",
                         "callback_data": (
                             f"newsbrief:photo:{brief_type}:{brief_date.isoformat()}"
                         ),
                     },
+                ],
+                [
                     {
                         "text": "No picture",
                         "callback_data": (
@@ -360,13 +383,13 @@ class NewsBriefPhotoPrompts:
             f"Scheduled: {local_schedule.strftime('%H:%M WAT')}"
         )
         prompt = (
-            "This review arrives 30 minutes before publication. Would you like to "
-            "add a picture? Tap “Add picture”, then send one image privately to "
-            "this bot. I’ll try to match it to fresh calendar records. If I can’t, "
-            "your picture will still be attached as supplied, but it will not change "
-            "the verified news text. If you do not reply or add a picture, the brief "
-            "will still publish text-only at the scheduled time if final source and "
-            "destination checks pass."
+            "This preview arrives 30 minutes before publication. Would you like "
+            "to edit the news or add a picture? Tap “Edit news” "
+            "and send the complete replacement text, or tap “Add picture” and "
+            "send one image privately. A picture will be attached as supplied; "
+            "only matches to fresh verified calendar records can change the "
+            "news text. If you make no changes, the brief follows its scheduled "
+            "publication path after final source and destination checks."
         )
         try:
             self.api.send_message(int(self.admin_id), heading)
@@ -413,22 +436,53 @@ class NewsBriefPhotoPrompts:
         current = now or datetime.now(timezone.utc)
         if not self._before_publication(brief_type, brief_date, current):
             self._clear_selection()
+            self._clear_text_edit_selection()
             self.api.send_message(
                 chat_id,
-                "The photo window has ended. The brief will continue without a "
-                "picture if its scheduled checks pass.",
+                "The private review window has ended. The scheduled brief will "
+                "continue with its saved text if the final checks pass.",
             )
             return True
 
         status = self._status(brief_type, brief_date)
-        if status != "awaiting_photo" and status != "photo_attached":
+        if status not in {"awaiting_photo", "photo_attached", "no_photo"}:
             self.api.send_message(
                 chat_id,
-                "This brief is no longer waiting for a picture. It will publish "
-                "text-only at the scheduled time if checks pass.",
+                "This brief is no longer open for edits or pictures. It will "
+                "continue through its scheduled checks.",
             )
             return True
 
+        if action == "edit":
+            self._clear_selection()
+            with closing(sqlite3.connect(self.database_path)) as connection, connection:
+                connection.execute(
+                    """
+                    INSERT INTO news_brief_text_edit_selection
+                        (admin_id, brief_type, brief_date, selected_at_utc)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(admin_id) DO UPDATE SET
+                        brief_type=excluded.brief_type,
+                        brief_date=excluded.brief_date,
+                        selected_at_utc=excluded.selected_at_utc
+                    """,
+                    (
+                        self.admin_id,
+                        brief_type,
+                        brief_date.isoformat(),
+                        _timestamp(current),
+                    ),
+                )
+            self.api.send_message(
+                chat_id,
+                "Send the complete replacement news text now. It replaces the "
+                "current private preview. The scheduled post still follows its "
+                "existing publication time and final source/destination checks. "
+                "Send /cancel to keep the current text.",
+            )
+            return True
+
+        self._clear_text_edit_selection()
         if action == "none":
             with closing(sqlite3.connect(self.database_path)) as connection, connection:
                 connection.execute(
@@ -476,6 +530,148 @@ class NewsBriefPhotoPrompts:
             f"Send one picture now for the {brief_type} brief. If you want a "
             "picture on the other brief too, choose its “Add picture” button "
             "separately. The schedule will not be delayed.",
+        )
+        return True
+
+    def has_text_edit_pending(self, admin_id: int) -> bool:
+        if self.admin_id is None or admin_id != self.admin_id:
+            return False
+        with closing(sqlite3.connect(self.database_path)) as connection:
+            row = connection.execute(
+                """
+                SELECT 1 FROM news_brief_text_edit_selection WHERE admin_id=?
+                """,
+                (self.admin_id,),
+            ).fetchone()
+        return row is not None
+
+    def cancel_text_edit(self, admin_id: int) -> bool:
+        if self.admin_id is None or admin_id != self.admin_id:
+            return False
+        with closing(sqlite3.connect(self.database_path)) as connection, connection:
+            deleted = connection.execute(
+                "DELETE FROM news_brief_text_edit_selection WHERE admin_id=?",
+                (self.admin_id,),
+            ).rowcount
+        return deleted > 0
+
+    def handle_admin_text_edit(
+        self,
+        chat_id: int,
+        sender_id: int,
+        text: str,
+        *,
+        is_private: bool,
+        now: datetime | None = None,
+    ) -> bool:
+        if (
+            not is_private
+            or self.admin_id is None
+            or chat_id != self.admin_id
+            or sender_id != self.admin_id
+        ):
+            return False
+        with closing(sqlite3.connect(self.database_path)) as connection:
+            selected = connection.execute(
+                """
+                SELECT brief_type, brief_date
+                FROM news_brief_text_edit_selection WHERE admin_id=?
+                """,
+                (self.admin_id,),
+            ).fetchone()
+        if selected is None:
+            return False
+        brief_type = str(selected[0])
+        try:
+            brief_date = date.fromisoformat(str(selected[1]))
+        except ValueError:
+            self.cancel_text_edit(sender_id)
+            self.api.send_message(chat_id, "That news edit has expired.")
+            return True
+
+        current = now or datetime.now(timezone.utc)
+        if not self._before_publication(brief_type, brief_date, current):
+            self.cancel_text_edit(sender_id)
+            self.api.send_message(
+                chat_id,
+                "The private review window has ended. The saved preview was not "
+                "changed, and the scheduled brief will continue through its checks.",
+            )
+            return True
+        if self._status(brief_type, brief_date) not in {
+            "awaiting_photo",
+            "photo_attached",
+            "no_photo",
+        }:
+            self.cancel_text_edit(sender_id)
+            self.api.send_message(
+                chat_id,
+                "This brief is no longer open for edits. Its saved text was not changed.",
+            )
+            return True
+
+        replacement = text.strip()
+        if not replacement or replacement.startswith("/"):
+            return False
+        if _utf16_length(replacement) > _MAX_TELEGRAM_MESSAGE_UTF16:
+            self.api.send_message(
+                chat_id,
+                "That replacement is too long for one Telegram post. Send a shorter "
+                "complete version or /cancel.",
+            )
+            return True
+
+        safe_replacement = html.escape(replacement, quote=False)
+        with closing(sqlite3.connect(self.database_path)) as connection, connection:
+            connection.execute(
+                """
+                UPDATE news_brief_photo_reviews
+                SET preview_content=?, admin_edited_content=?, updated_at_utc=?
+                WHERE brief_type=? AND brief_date=?
+                """,
+                (
+                    safe_replacement,
+                    safe_replacement,
+                    _timestamp(current),
+                    brief_type,
+                    brief_date.isoformat(),
+                ),
+            )
+            connection.execute(
+                "DELETE FROM news_brief_text_edit_selection WHERE admin_id=?",
+                (self.admin_id,),
+            )
+        self.api.send_message(chat_id, "UPDATED PREVIEW — NOT PUBLISHED")
+        self.api.send_message(
+            chat_id,
+            safe_replacement,
+            {
+                "inline_keyboard": [
+                    [
+                        {
+                            "text": "✏️ Edit news",
+                            "callback_data": (
+                                f"newsbrief:edit:{brief_type}:{brief_date.isoformat()}"
+                            ),
+                        },
+                        {
+                            "text": "📷 Add picture",
+                            "callback_data": (
+                                f"newsbrief:photo:{brief_type}:{brief_date.isoformat()}"
+                            ),
+                        },
+                    ],
+                    [
+                        {
+                            "text": "No picture",
+                            "callback_data": (
+                                f"newsbrief:none:{brief_type}:{brief_date.isoformat()}"
+                            ),
+                        }
+                    ],
+                ]
+            },
+            parse_mode="HTML",
         )
         return True
 
@@ -627,7 +823,7 @@ class NewsBriefPhotoPrompts:
         if (
             not self._before_publication(brief_type, brief_date, completed_at)
             or self._status(brief_type, brief_date)
-            not in {"awaiting_photo", "photo_attached"}
+            not in {"awaiting_photo", "photo_attached", "no_photo"}
         ):
             self._clear_selection()
             self.api.send_message(
@@ -650,7 +846,7 @@ class NewsBriefPhotoPrompts:
                     matched_event_ids_json=?, image_analysis_status=?,
                     observed_events_json=?, preview_content=?
                 WHERE brief_type=? AND brief_date=?
-                    AND status IN ('awaiting_photo', 'photo_attached')
+                    AND status IN ('awaiting_photo', 'photo_attached', 'no_photo')
                 """,
                 (
                     file_id,
@@ -818,14 +1014,18 @@ class NewsBriefPhotoPrompts:
         with closing(sqlite3.connect(self.database_path)) as connection:
             row = connection.execute(
                 """
-                SELECT status, photo_file_id, matched_event_ids_json
+                SELECT status, photo_file_id, matched_event_ids_json,
+                       admin_edited_content
                 FROM news_brief_photo_reviews
                 WHERE brief_type=? AND brief_date=?
                 """,
                 (brief_type, brief_date.isoformat()),
             ).fetchone()
         if not row or row[0] != "photo_attached":
-            return report, None
+            edited = row[3] if row and isinstance(row[3], str) and row[3] else None
+            return edited or report, None
+        edited = row[3] if isinstance(row[3], str) and row[3] else None
+        base_report = edited or report
         try:
             matched = json.loads(str(row[2] or "[]"))
         except json.JSONDecodeError:
@@ -834,7 +1034,7 @@ class NewsBriefPhotoPrompts:
             matched = []
         photo = row[1] if isinstance(row[1], str) and row[1] else None
         if not matched:
-            return report, photo
+            return base_report, photo
         current_evidence = build_verified_image_evidence(
             brief_type,
             brief_date,
@@ -859,9 +1059,9 @@ class NewsBriefPhotoPrompts:
                 "source_no_longer_verified",
                 now,
             )
-            return report, photo
+            return base_report, photo
         updated_report = append_verified_image_highlights(
-            report,
+            base_report,
             current_evidence,
             valid_ids,
         )
@@ -883,6 +1083,10 @@ class NewsBriefPhotoPrompts:
             with closing(sqlite3.connect(self.database_path)) as connection, connection:
                 connection.execute(
                     "DELETE FROM news_brief_photo_selection WHERE admin_id=?",
+                    (self.admin_id,),
+                )
+                connection.execute(
+                    "DELETE FROM news_brief_text_edit_selection WHERE admin_id=?",
                     (self.admin_id,),
                 )
 
@@ -965,6 +1169,14 @@ class NewsBriefPhotoPrompts:
             with closing(sqlite3.connect(self.database_path)) as connection, connection:
                 connection.execute(
                     "DELETE FROM news_brief_photo_selection WHERE admin_id=?",
+                    (self.admin_id,),
+                )
+
+    def _clear_text_edit_selection(self) -> None:
+        if self.admin_id is not None:
+            with closing(sqlite3.connect(self.database_path)) as connection, connection:
+                connection.execute(
+                    "DELETE FROM news_brief_text_edit_selection WHERE admin_id=?",
                     (self.admin_id,),
                 )
 
