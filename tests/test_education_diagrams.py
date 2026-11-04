@@ -86,16 +86,28 @@ class EducationDiagramManagerTests(unittest.TestCase):
         self.assertIn("Saved “BOS”", self.api.messages[-1][1])
 
     def test_bundled_bos_and_choch_images_are_seeded_once(self) -> None:
-        self.assertEqual(self.manager.seed_bundled_diagrams(), 2)
+        self.assertEqual(self.manager.seed_bundled_diagrams(), 3)
         self.assertEqual(self.manager.seed_bundled_diagrams(), 0)
         diagrams = self.store.education_diagrams()
-        self.assertEqual(len(diagrams), 2)
+        self.assertEqual(len(diagrams), 3)
         self.assertIsNotNone(
             self.manager.diagram_for_question("Explain BOS.")
         )
         self.assertIsNotNone(
             self.manager.diagram_for_question("What does CHoCH mean?")
         )
+        for question in (
+            "What is a bullish FVG?",
+            "Explain a bullish fair value gap.",
+        ):
+            match = self.manager.diagram_for_question(question)
+            self.assertIsNotNone(match, question)
+            assert match is not None
+            self.assertEqual(
+                match["photo_file_id"],
+                "local:attached_assets/"
+                "JPEG_image-482E-8233-E8-0_1793768823172.jpeg",
+            )
         for question in (
             "What does LH mean?",
             "Explain LL.",
@@ -136,9 +148,9 @@ class EducationDiagramManagerTests(unittest.TestCase):
             admin_telegram_id=self.admin_id,
         )
 
-        self.assertEqual(self.manager.seed_bundled_diagrams(), 2)
+        self.assertEqual(self.manager.seed_bundled_diagrams(), 3)
         diagrams = self.store.education_diagrams()
-        self.assertEqual(len(diagrams), 2)
+        self.assertEqual(len(diagrams), 3)
         swing_diagram = next(
             item for item in diagrams if "swing structure" in item["title"].casefold()
         )

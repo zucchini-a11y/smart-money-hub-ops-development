@@ -2160,6 +2160,32 @@ class Repository:
         finally:
             connection.close()
 
+    def education_group_resource_by_link(
+        self,
+        chat_id: int,
+        message_link: str,
+    ) -> dict[str, Any] | None:
+        """Return trusted media metadata for one configured admin resource link."""
+        normalized_link = message_link.strip().rstrip(".,!?;:")
+        if not normalized_link or len(normalized_link) > 400:
+            return None
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                """
+                SELECT resource_type, title, message_link
+                FROM education_group_resources
+                WHERE chat_id = ?
+                  AND message_link = ?
+                  AND source_status = 'configured_admin'
+                LIMIT 1
+                """,
+                (chat_id, normalized_link),
+            ).fetchone()
+            return dict(row) if row else None
+        finally:
+            connection.close()
+
     def search_education_group_posts(
         self,
         chat_id: int,

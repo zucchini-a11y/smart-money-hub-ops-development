@@ -3356,7 +3356,38 @@ class SmartMoneyHubBot:
             if question_recorded and interaction_id is not None
             else self._coach_keyboard()
         )
-        response, markup = self._coach_response_with_link_buttons(response, markup)
+        resource_context = [
+            item
+            for item in profile.get("education_resources_context", [])
+            if isinstance(item, dict)
+        ]
+        known_resource_links = {
+            str(item.get("message_link") or "").strip() for item in resource_context
+        }
+        if self.education_group_id is not None:
+            for match in COACH_URL_PATTERN.finditer(response):
+                link = match.group(0).rstrip(".,!?;:")
+                if not link or link in known_resource_links:
+                    continue
+                try:
+                    resource = self.store.education_group_resource_by_link(
+                        self.education_group_id,
+                        link,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Could not validate a Coach resource link against the "
+                        "Education-group resource index."
+                    )
+                    break
+                if resource:
+                    resource_context.append(resource)
+                    known_resource_links.add(link)
+        response, markup = self._coach_response_with_link_buttons(
+            response,
+            markup,
+            resource_context,
+        )
         try:
             self.api.send_message(chat_id, response, markup)
         except TelegramAPIError:
@@ -3538,12 +3569,78 @@ class SmartMoneyHubBot:
     def _coach_response_with_link_buttons(
         response: str,
         reply_markup: dict[str, Any],
+        resources: list[dict[str, Any]] | None = None,
     ) -> tuple[str, dict[str, Any]]:
         """Keep Coach URLs out of visible text and expose them as URL buttons."""
+        trusted_resources: dict[str, dict[str, str]] = {}
+        for item in resources or []:
+            if not isinstance(item, dict):
+                continue
+            url = str(item.get("message_link") or "").strip().rstrip(".,!?;:")
+            resource_type = str(item.get("resource_type") or "").casefold()
+            if (
+                url.startswith("https://t.me/")
+                and resource_type in {"pdf", "video"}
+            ):
+                trusted_resources[url] = {
+                    "resource_type": resource_type,
+                    "title": " ".join(str(item.get("title") or "").split())[:120],
+                }
+
+        # A model can pair a valid Telegram resource link with the wrong media
+        # noun. Correct the nearby wording using the indexed admin resource type.
+        for match in reversed(list(COACH_URL_PATTERN.finditer(response))):
+            url = match.group(0).rstrip(".,!?;:")
+            resource = trusted_resources.get(url)
+            if not resource:
+                continue
+            newline = response.rfind("\n", 0, match.start())
+            start_candidates = [newline + 1 if newline >= 0 else 0]
+            for boundary in (". ", "? ", "! "):
+                boundary_index = response.rfind(boundary, 0, match.start())
+                if boundary_index >= 0:
+                    start_candidates.append(boundary_index + len(boundary))
+            start = max(start_candidates)
+            wording = response[start : match.start()]
+            if resource["resource_type"] == "pdf":
+                wording = re.sub(
+                    r"\bvideo(?:\s+guide)?\b",
+                    "PDF guide",
+                    wording,
+                    flags=re.IGNORECASE,
+                )
+                wording = re.sub(
+                    r"\brecording\b", "PDF", wording, flags=re.IGNORECASE
+                )
+                wording = re.sub(
+                    r"\bwatch(?:ing)?\b", "read", wording, flags=re.IGNORECASE
+                )
+            else:
+                wording = re.sub(
+                    r"\bPDF(?:\s+guide)?\b",
+                    "video guide",
+                    wording,
+                    flags=re.IGNORECASE,
+                )
+                wording = re.sub(
+                    r"\bdocument\b", "video", wording, flags=re.IGNORECASE
+                )
+                wording = re.sub(
+                    r"\bread\b", "watch", wording, flags=re.IGNORECASE
+                )
+            response = response[:start] + wording + response[match.start() :]
+
         links: list[tuple[str, str]] = []
         seen_urls: set[str] = set()
 
-        def button_label(context: str) -> str:
+        def button_label(context: str, url: str) -> str:
+            trusted_resource = trusted_resources.get(url)
+            if trusted_resource:
+                return (
+                    "Open PDF"
+                    if trusted_resource["resource_type"] == "pdf"
+                    else "Watch video"
+                )
             lines = [line.strip() for line in context.splitlines() if line.strip()]
             resource_line = next(
                 (
@@ -3580,7 +3677,7 @@ class SmartMoneyHubBot:
                 return ""
             seen_urls.add(url)
             context = response[max(0, match.start() - 300) : match.start()]
-            links.append((url, button_label(context)))
+            links.append((url, button_label(context, url)))
             trailing_punctuation = match.group(0)[len(url) :]
             return trailing_punctuation
 
@@ -3595,6 +3692,7 @@ class SmartMoneyHubBot:
         )
         visible_text = re.sub(r"[ \t]+([,.;!?])", r"\1", visible_text)
         visible_text = re.sub(r"\n[ \t]*\n(?:[ \t]*\n)+", "\n\n", visible_text)
+        visible_text = re.sub(r":(?=[ \t]*[.!?]?$)", "", visible_text)
         visible_text = visible_text.strip()
         if not links:
             return visible_text, reply_markup

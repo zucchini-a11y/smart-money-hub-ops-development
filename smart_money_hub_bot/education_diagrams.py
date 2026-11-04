@@ -23,7 +23,7 @@ class EducationDiagramManager:
         self._upload_pending: set[int] = set()
 
     def seed_bundled_diagrams(self) -> int:
-        """Register the owner-provided BOS and CHoCH examples once."""
+        """Register bundled owner-provided SMC examples once."""
         if self.admin_id is None:
             return 0
         asset_dir = Path(__file__).resolve().parents[1] / "attached_assets"
@@ -45,6 +45,15 @@ class EducationDiagramManager:
                 "The same XAUUSD chart with the swing path marked: LL (lower lows) "
                 "and LH (lower highs) first, followed by HH (higher highs).",
                 ("JPEG_image-40CF-B1F0-CB-0_1793767156288.jpeg",),
+            ),
+            (
+                "Bullish Fair Value Gap (FVG)",
+                "JPEG_image-482E-8233-E8-0_1793768823172.jpeg",
+                "FVG, fair value gap, bullish FVG, bullish fair value gap, "
+                "bullish imbalance",
+                "Owner-provided bullish FVG candlestick example with the gap "
+                "zone highlighted.",
+                (),
             ),
         )
         existing = self.store.education_diagrams(active_only=False)

@@ -37,7 +37,13 @@ def question_tokens(question: str) -> set[str]:
     normalized = " ".join(question.casefold().split())
     tokens = {word for word in _WORD.findall(normalized) if word not in _STOP_WORDS}
     for aliases, canonical in _CONCEPT_ALIASES:
-        if any(alias in normalized for alias in aliases):
+        if any(
+            re.search(
+                rf"(?<![a-z0-9]){re.escape(alias)}(?![a-z0-9])",
+                normalized,
+            )
+            for alias in aliases
+        ):
             tokens.add(canonical)
     return tokens
 

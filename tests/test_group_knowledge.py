@@ -402,6 +402,13 @@ class GroupKnowledgeStorageTests(unittest.TestCase):
             "https://t.me/c/3916437804/7/35",
         )
         self.assertEqual(pdfs[0]["provenance"], "owner_supplied_link")
+        verified_pdf = self.store.education_group_resource_by_link(
+            -1003916437804,
+            "https://t.me/c/3916437804/7/35.",
+        )
+        self.assertIsNotNone(verified_pdf)
+        assert verified_pdf is not None
+        self.assertEqual(verified_pdf["resource_type"], "pdf")
 
         with self.assertRaises(ValueError):
             self.store.register_education_group_resource_link(
@@ -410,6 +417,35 @@ class GroupKnowledgeStorageTests(unittest.TestCase):
                 resource_type="video",
                 title="Wrong group",
             )
+
+    def test_corrected_fvg_resource_is_reindexed_as_a_pdf(self) -> None:
+        link = "https://t.me/c/3916437804/7/37"
+        self.store.register_education_group_resource_link(
+            chat_id=-1003916437804,
+            message_link=link,
+            resource_type="video",
+            title="Let’s talk market structure!",
+        )
+        self.store.register_education_group_resource_link(
+            chat_id=-1003916437804,
+            message_link=link,
+            resource_type="pdf",
+            title="Fair Value Gap (FVG) PDF",
+        )
+
+        resources = self.store.search_education_group_resources(
+            -1003916437804,
+            "What is a bullish fair value gap?",
+        )
+        fvg_pdf = next(item for item in resources if item["message_link"] == link)
+        self.assertEqual(fvg_pdf["resource_type"], "pdf")
+        self.assertEqual(fvg_pdf["title"], "Fair Value Gap (FVG) PDF")
+        self.assertEqual(
+            self.store.education_group_resource_by_link(-1003916437804, link)[
+                "resource_type"
+            ],
+            "pdf",
+        )
 
 
 if __name__ == "__main__":

@@ -1014,6 +1014,37 @@ class BotFlowTests(unittest.TestCase):
             ["Watch video", "Open PDF"],
         )
 
+    def test_coach_corrects_media_wording_from_verified_resource_type(self) -> None:
+        pdf_link = "https://t.me/c/3916437804/7/35"
+        response = (
+            "You can also check out our market structure video guide "
+            f"for visual examples: {pdf_link}."
+        )
+
+        visible, markup = self.bot._coach_response_with_link_buttons(
+            response,
+            {"inline_keyboard": []},
+            [
+                {
+                    "resource_type": "pdf",
+                    "title": "Market structure PDF",
+                    "message_link": pdf_link,
+                }
+            ],
+        )
+
+        self.assertIn("market structure PDF guide", visible)
+        self.assertNotIn("video guide", visible)
+        self.assertNotIn("https://", visible)
+        button = next(
+            button
+            for row in markup["inline_keyboard"]
+            for button in row
+            if "url" in button
+        )
+        self.assertEqual(button["text"], "Open PDF")
+        self.assertEqual(button["url"], pdf_link)
+
     def test_configured_admin_pdf_is_indexed_with_a_group_message_link(self) -> None:
         group_id = -1003916437804
         self.bot.admin_id = self.user_id

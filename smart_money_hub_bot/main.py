@@ -205,6 +205,13 @@ def main() -> None:
             personal_reply_assistant=personal_reply_assistant,
             reply_draft_assistant=reply_draft_assistant,
         )
+        if education_group_id == DEFAULT_EDUCATION_GROUP_ID:
+            bot.store.register_education_group_resource_link(
+                chat_id=education_group_id,
+                message_link="https://t.me/c/3916437804/7/37",
+                resource_type="pdf",
+                title="Fair Value Gap (FVG) PDF",
+            )
         bundled_diagrams = bot.admin_dashboard.education_diagrams.seed_bundled_diagrams()
         if bundled_diagrams:
             logging.getLogger(__name__).info(
