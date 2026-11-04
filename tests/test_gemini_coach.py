@@ -358,6 +358,11 @@ class GeminiCoachTests(unittest.TestCase):
         self.assertIn("briefly connect your answer to that point", instruction)
         self.assertIn("ask one short clarifying question", instruction)
         self.assertIn("explain it in order instead of listing unexplained acronyms", instruction)
+        self.assertIn("one short heading and five numbered steps", instruction)
+        self.assertIn(
+            "do not add a metaphor, a long introduction",
+            instruction.casefold(),
+        )
         self.assertIn("maximum 3% daily loss", instruction)
         self.assertIn(
             "the 3% daily cap overrides the 2% per-trade amount",

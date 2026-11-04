@@ -249,15 +249,24 @@ class CoachTests(unittest.TestCase):
         reply = self.coach.evaluate("What is our trading plan?")
 
         self.assertEqual(reply.detected_topic, "Trading Plan")
+        self.assertTrue(reply.response.startswith("📊 SMART MONEY HUB | OUR TRADING PLAN"))
+        self.assertIn("\n1. Direction —", reply.response)
+        self.assertIn("\n5. Management —", reply.response)
+        self.assertNotIn("Think of it this way", reply.response)
+        self.assertNotIn("Which part would you like", reply.response)
         self.assertIn("H1 (the 1-hour chart)", reply.response)
-        self.assertIn("POI (an area to watch, not an entry)", reply.response)
+        self.assertIn(
+            "POI (point of interest): a zone to watch, not an entry",
+            reply.response,
+        )
         self.assertIn("M5 (the 5-minute chart)", reply.response)
         self.assertIn("BOS (Break of Structure)", reply.response)
         self.assertIn("CHOCH (Change of Character)", reply.response)
         self.assertIn("2% risk per trade", reply.response)
-        self.assertIn("3% maximum daily loss", reply.response)
-        self.assertIn("at most 1% of the same account baseline remains", reply.response)
-        self.assertIn("do not guarantee an outcome", reply.response)
+        self.assertIn("maximum 3% daily loss", reply.response)
+        self.assertIn("at most 1% remains under the daily cap", reply.response)
+        self.assertIn("same balance baseline", reply.response)
+        self.assertIn("NO CONFIRMATION, NO ENTRY.", reply.response)
 
     def test_fvg_entry_without_waiting_for_context_flags_possible_mistake(self) -> None:
         reply = self.coach.evaluate("I saw an FVG and entered immediately.")

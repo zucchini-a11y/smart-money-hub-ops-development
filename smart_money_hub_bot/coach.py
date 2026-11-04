@@ -166,8 +166,21 @@ class RuleBasedCoachService:
             "Which rule will you check before your next entry?",
         ),
         "Trading Plan": (
-            "Use H1 (the 1-hour chart) for market context, mark a POI (an area to watch, not an entry), then use M5 (the 5-minute chart) to wait for a liquidity sweep and confirmation such as strong displacement with a valid BOS (Break of Structure) or CHOCH (Change of Character). A retest is preferred when suitable, but not required by every model. The plan sets 2% risk per trade, a minimum 1:3 planned reward-to-risk, a 3% maximum daily loss, and moving the stop to entry at 1:1. The daily cap takes priority: after a full 2% loss, at most 1% of the same account baseline remains for that day. A POI or sweep alone is not an entry, and these rules do not guarantee an outcome.",
-            "Which part would you like me to explain more simply?",
+            "📊 SMART MONEY HUB | OUR TRADING PLAN\n\n"
+            "1. Direction — H1 (the 1-hour chart): use it for market context.\n"
+            "2. Area — Mark a POI (point of interest): a zone to watch, not an entry. "
+            "It may be an FVG (Fair Value Gap) or OB (Order Block).\n"
+            "3. Confirmation — On M5 (the 5-minute chart), wait for a liquidity sweep "
+            "and a strong move with a valid BOS (Break of Structure) or CHOCH "
+            "(Change of Character). Prefer a retest when suitable.\n"
+            "4. Risk — The plan sets 2% risk per trade, minimum planned 1:3 "
+            "reward-to-risk, and maximum 3% daily loss. If a full 2% is lost, at "
+            "most 1% remains under the daily cap (using the same balance baseline). "
+            "A 1:3 target means 3 units of planned reward for each unit risked.\n"
+            "5. Management — Set the stop at the setup’s invalidation point. At "
+            "1:1 (planned reward equals initial risk), move the stop to entry.\n\n"
+            "NO CONFIRMATION, NO ENTRY.",
+            "",
         ),
         "Market Structure": (
             "Market structure describes the sequence of meaningful swing highs and lows. Higher highs and higher lows suggest upward structure; lower highs and lower lows suggest downward structure. A range can be unclear.",
@@ -345,6 +358,13 @@ class RuleBasedCoachService:
 
         if topic in self._topic_guides:
             explanation, check_question = self._topic_guides[topic]
+            if topic == "Trading Plan":
+                return CoachReply(
+                    explanation,
+                    topic,
+                    (),
+                    "Use the supplied Smart Money Hub plan; keep its explanation compact.",
+                )
             response = f"Think of it this way: {explanation}\n\n{check_question}"
             if profile.get("latest_assessment_score") is not None and int(
                 profile["latest_assessment_score"]
