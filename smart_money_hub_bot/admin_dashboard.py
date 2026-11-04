@@ -403,6 +403,87 @@ class AdminDashboard:
         if self._authorize(chat_id, telegram_id, is_private):
             self._show_dashboard(chat_id)
 
+    def handle_admin_post_status_question(
+        self, chat_id: int, telegram_id: int, is_private: bool, text: str
+    ) -> bool:
+        """Answer owner-only posting-status questions from saved admin state."""
+        if (
+            not is_private
+            or self.admin_id is None
+            or telegram_id != self.admin_id
+            or chat_id != telegram_id
+        ):
+            return False
+
+        normalized = " ".join(text.casefold().replace("&", "and").split())
+        if normalized.startswith("/"):
+            return False
+
+        request_text = normalized
+        for prefix in (
+            "can you please ",
+            "could you please ",
+            "would you please ",
+            "please ",
+            "can you ",
+            "could you ",
+            "would you ",
+            "tell me ",
+            "show me ",
+            "i want to know ",
+            "i need to know ",
+        ):
+            if request_text.startswith(prefix):
+                request_text = request_text[len(prefix):].strip()
+                break
+
+        explicit_action = bool(
+            re.match(
+                r"^(?:create|write|draft|generate|make|edit|cancel|send|"
+                r"publish now|post now|post\s+(?:a|this|the)\b|"
+                r"schedule a post)\b",
+                request_text,
+            )
+        )
+        if explicit_action:
+            return False
+
+        mentions_posting = bool(
+            re.search(
+                r"\b(posts?|posted|posting|publish(?:ed|ing)?|auto[\s-]?post)\b",
+                request_text,
+            )
+        )
+        status_cue = bool(
+            re.search(
+                r"\b(auto(?:matic(?:ally)?)?|queue(?:d)?|schedul(?:e|ed|ing)|"
+                r"upcoming|next|status|when|coming|today|tonight|tomorrow|"
+                r"going on|happening|update|details|posted)\b",
+                request_text,
+            )
+        )
+        time_cue = bool(
+            re.search(
+                r"\b\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?|wat)\b|"
+                r"\b\d{1,2}:\d{2}\b",
+                request_text,
+            )
+        )
+        if not mentions_posting or not (status_cue or time_cue):
+            return False
+
+        broad_status = bool(
+            re.search(
+                r"\b(auto(?:matic(?:ally)?)?|everything|all|going on|happening)\b",
+                request_text,
+            )
+        )
+        if broad_status:
+            self._show_full_status(chat_id)
+        else:
+            self.channel_posts.show_controls(chat_id)
+        return True
+
     def handle_admin_menu_text(
         self, chat_id: int, telegram_id: int, is_private: bool, text: str
     ) -> bool:
@@ -414,6 +495,10 @@ class AdminDashboard:
             or chat_id != telegram_id
         ):
             return False
+        if self.handle_admin_post_status_question(
+            chat_id, telegram_id, is_private, text
+        ):
+            return True
 
         normalized = " ".join(text.casefold().replace("&", "and").split())
         normalized = normalized.strip(" \t\r\n.!?")
@@ -472,39 +557,6 @@ class AdminDashboard:
         for suffix in (" please", " for me", " right now", " now"):
             while normalized.endswith(suffix):
                 normalized = normalized[:-len(suffix)].strip()
-
-        mentions_posting = bool(
-            re.search(r"\b(posts?|posting|publish(?:ed|ing)?)\b", normalized)
-        )
-        asks_post_status = bool(
-            re.search(
-                r"\b(auto(?:matic(?:ally)?)?|queue(?:d)?|schedul(?:e|ed|ing)|"
-                r"upcoming|next|status|when|coming|today|tonight|tomorrow|"
-                r"going on|happening|update|details)\b",
-                normalized,
-            )
-        )
-        explicit_post_action = bool(
-            re.match(
-                r"^(?:create|write|draft|generate|make|edit|cancel|send|"
-                r"publish now|post now|schedule a post)\b",
-                normalized,
-            )
-        )
-        if mentions_posting and asks_post_status and not explicit_post_action:
-            broad_status = bool(
-                re.search(
-                    r"\b(auto(?:matic(?:ally)?)?|everything|all|going on|happening)\b",
-                    normalized,
-                )
-            )
-            self.handle_callback(
-                chat_id,
-                telegram_id,
-                True,
-                "admin:status:all" if broad_status else "admin:channel_posts",
-            )
-            return True
 
         if (
             original_normalized in ADMIN_MENU_HELP_ALIASES
