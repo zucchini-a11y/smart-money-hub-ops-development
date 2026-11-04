@@ -3368,14 +3368,18 @@ class SmartMoneyHubBot:
             )
             logger.warning(
                 "Coach chart image retrieval failed (stage=%s, "
-                "telegram_error_code=%s, http_status=%s). request_id=%s.",
+                "failure_kind=%s, telegram_error_code=%s, http_status=%s). "
+                "request_id=%s.",
                 download_stage,
+                error.failure_kind,
                 error.error_code,
                 error.http_status,
                 request_id,
             )
             error_text = str(error).casefold()
-            if re.search(r"\b(?:size limit|too large|too big)\b", error_text):
+            if error.failure_kind == "too_large" or re.search(
+                r"\b(?:size limit|too large|too big)\b", error_text
+            ):
                 failure_text = (
                     "That image is too large for chart analysis. Please resend a "
                     "smaller screenshot (5 MB or less)."

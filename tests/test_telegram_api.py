@@ -4,9 +4,10 @@ import json
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from urllib.error import URLError
 from unittest.mock import patch
 
-from smart_money_hub_bot.telegram_api import TelegramAPI
+from smart_money_hub_bot.telegram_api import TelegramAPI, TelegramAPIError
 
 
 class _Response:
@@ -21,6 +22,54 @@ class _Response:
 
 
 class TelegramUpdateSubscriptionTests(unittest.TestCase):
+    def test_download_file_retries_one_transient_network_failure(self) -> None:
+        class ImageResponse:
+            headers = {
+                "Content-Length": "5",
+                "Content-Type": "image/jpeg",
+            }
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return None
+
+            def read(self, _limit: int) -> bytes:
+                return b"image"
+
+        api = TelegramAPI("synthetic-test-token")
+        with (
+            patch(
+                "smart_money_hub_bot.telegram_api.urlopen",
+                side_effect=[URLError("temporary connection failure"), ImageResponse()],
+            ) as urlopen_mock,
+            patch("smart_money_hub_bot.telegram_api.time.sleep"),
+        ):
+            image, mime_type = api.download_file("photos/example.jpg")
+
+        self.assertEqual(image, b"image")
+        self.assertEqual(mime_type, "image/jpeg")
+        self.assertEqual(urlopen_mock.call_count, 2)
+
+    def test_download_file_reports_network_failure_after_one_retry(self) -> None:
+        api = TelegramAPI("synthetic-test-token")
+        with (
+            patch(
+                "smart_money_hub_bot.telegram_api.urlopen",
+                side_effect=[
+                    URLError("temporary connection failure"),
+                    URLError("temporary connection failure"),
+                ],
+            ) as urlopen_mock,
+            patch("smart_money_hub_bot.telegram_api.time.sleep"),
+        ):
+            with self.assertRaises(TelegramAPIError) as caught:
+                api.download_file("photos/example.jpg")
+
+        self.assertEqual(caught.exception.failure_kind, "network")
+        self.assertEqual(urlopen_mock.call_count, 2)
+
     def test_set_message_reaction_uses_one_standard_emoji(self) -> None:
         api = TelegramAPI("synthetic-test-token")
         with patch.object(api, "_request", return_value=True) as request:

@@ -1,6 +1,7 @@
 """Small standard-library client for the Telegram Bot HTTP API."""
 
 import json
+import time
 import uuid
 from pathlib import Path
 from typing import Any
@@ -20,12 +21,14 @@ class TelegramAPIError(RuntimeError):
         error_code: int | None = None,
         retry_after: int | None = None,
         delivery_unknown: bool = False,
+        failure_kind: str | None = None,
     ) -> None:
         super().__init__(message)
         self.http_status = http_status
         self.error_code = error_code
         self.retry_after = retry_after
         self.delivery_unknown = delivery_unknown
+        self.failure_kind = failure_kind
 
 
 class TelegramAPI:
@@ -156,7 +159,10 @@ class TelegramAPI:
             or ".." in file_path.split("/")
             or max_bytes < 1
         ):
-            raise TelegramAPIError("Telegram file reference is invalid.")
+            raise TelegramAPIError(
+                "Telegram file reference is invalid.",
+                failure_kind="invalid_file_reference",
+            )
         file_base = self._base_url.replace(
             "https://api.telegram.org/bot",
             "https://api.telegram.org/file/bot",
@@ -164,23 +170,74 @@ class TelegramAPI:
         )
         file_url = file_base + quote(file_path, safe="/")
         request = Request(file_url, method="GET")
-        try:
-            with urlopen(request, timeout=20) as response:
-                declared_size = response.headers.get("Content-Length")
-                if declared_size and int(declared_size) > max_bytes:
-                    raise TelegramAPIError("Telegram image exceeds the size limit.")
-                content = response.read(max_bytes + 1)
-                content_type = str(
-                    response.headers.get("Content-Type", "application/octet-stream")
-                ).split(";", 1)[0].strip().lower()
-        except HTTPError:
-            raise TelegramAPIError("Telegram file download was rejected.") from None
-        except (URLError, TimeoutError, OSError, ValueError):
-            raise TelegramAPIError("Telegram file download failed.") from None
+        content: bytes
+        content_type: str
+        for attempt in range(2):
+            try:
+                with urlopen(request, timeout=20) as response:
+                    declared_size = response.headers.get("Content-Length")
+                    if declared_size and int(declared_size) > max_bytes:
+                        raise TelegramAPIError(
+                            "Telegram image exceeds the size limit.",
+                            failure_kind="too_large",
+                        )
+                    content = response.read(max_bytes + 1)
+                    content_type = str(
+                        response.headers.get(
+                            "Content-Type", "application/octet-stream"
+                        )
+                    ).split(";", 1)[0].strip().lower()
+                break
+            except HTTPError as error:
+                if attempt == 0 and (error.code == 429 or error.code >= 500):
+                    time.sleep(0.25)
+                    continue
+                raise TelegramAPIError(
+                    "Telegram file download was rejected.",
+                    http_status=error.code,
+                    failure_kind="http_rejected",
+                ) from None
+            except TimeoutError:
+                raise TelegramAPIError(
+                    "Telegram file download timed out.",
+                    failure_kind="timeout",
+                ) from None
+            except URLError as error:
+                if attempt == 0 and not isinstance(error.reason, TimeoutError):
+                    time.sleep(0.25)
+                    continue
+                failure_kind = (
+                    "timeout"
+                    if isinstance(error.reason, TimeoutError)
+                    else "network"
+                )
+                raise TelegramAPIError(
+                    "Telegram file download failed.",
+                    failure_kind=failure_kind,
+                ) from None
+            except OSError:
+                if attempt == 0:
+                    time.sleep(0.25)
+                    continue
+                raise TelegramAPIError(
+                    "Telegram file download failed.",
+                    failure_kind="network",
+                ) from None
+            except ValueError:
+                raise TelegramAPIError(
+                    "Telegram file response was invalid.",
+                    failure_kind="invalid_response",
+                ) from None
         if len(content) > max_bytes:
-            raise TelegramAPIError("Telegram image exceeds the size limit.")
+            raise TelegramAPIError(
+                "Telegram image exceeds the size limit.",
+                failure_kind="too_large",
+            )
         if content_type not in {"image/jpeg", "image/png", "image/webp"}:
-            raise TelegramAPIError("Telegram file is not a supported image.")
+            raise TelegramAPIError(
+                "Telegram file is not a supported image.",
+                failure_kind="unsupported_media",
+            )
         return content, content_type
 
     def get_updates(self, offset: int | None, timeout: int = 25) -> list[dict[str, Any]]:
