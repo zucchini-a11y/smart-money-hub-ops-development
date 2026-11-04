@@ -126,3 +126,17 @@ mtime_ms = 1793767452545
 storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/6e5c31b5-ca37-4459-9337-3622ebd65823/9a2d0533-a905-4582-8739-5a54251f8d6e"
 storage_version_token = "1793767559650140"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "TFtxqCA6ngTbgRiMIU1yF"
+uri = "file://attached_assets/JPEG_image-4506-BBAA-CA-0_1793770748577_labeled.png"
+type = "image"
+title = "Liquidity and sweep labels"
+description = "Chart labeled with buy-side liquidity and the wick sweep above it."
+logical_id = "50d4185e-d0a3-4edb-a022-43d552f65238"
+content_hash = "sha256:7029e1bb055c4c19be47a91e38e0f426142faae870eb9a0eb237e4a538d6f5a0"
+size = 97050
+mtime_ms = 1793770633292
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/50d4185e-d0a3-4edb-a022-43d552f65238/e6d0585a-4e8f-4f65-912c-cfe4dde5c461"
+storage_version_token = "1793770651660723"
+content_type = "image/png"
