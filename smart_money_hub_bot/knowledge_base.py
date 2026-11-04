@@ -13,6 +13,9 @@ _STOP_WORDS = {
 _CONCEPT_ALIASES = (
     (("change of character", "choch"), "choch"),
     (("break of structure", "broken structure", "structure break", "bos"), "bos"),
+    (("lower high", "lower highs", "lh"), "lowerhigh"),
+    (("lower low", "lower lows", "ll"), "lowerlow"),
+    (("higher high", "higher highs", "hh"), "higherhigh"),
     (("market structure shift", "mss"), "mss"),
     (("fair value gap", "fvg"), "fvg"),
     (("inversion fair value gap", "ifvg"), "ifvg"),

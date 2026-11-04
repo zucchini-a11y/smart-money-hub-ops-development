@@ -32,24 +32,67 @@ class EducationDiagramManager:
                 "Break of Structure (BOS)",
                 "JPEG_image-4B87-A8C2-A4-0_1793767156288.jpeg",
                 "BOS, break of structure, market structure",
-                "Chart example with marked structure breaks and a later CHoCH.",
+                "The clean view of the same chart, showing BOS and CHoCH levels "
+                "without the added swing-path lines.",
+                (),
             ),
             (
-                "Change of Character (CHoCH)",
-                "JPEG_image-40CF-B1F0-CB-0_1793767156288.jpeg",
-                "CHoCH, change of character, market structure shift",
-                "Chart example with a marked CHoCH and the preceding BOS sequence.",
+                "Swing Structure: LL/LH to HH",
+                "SMH_BOS_CHoCH_Swing_Sequence.jpeg",
+                "CHoCH, change of character, "
+                "LH, lower high, lower highs, LL, lower low, lower lows, "
+                "HH, higher high, higher highs, swing structure",
+                "The same XAUUSD chart with the swing path marked: LL (lower lows) "
+                "and LH (lower highs) first, followed by HH (higher highs).",
+                ("JPEG_image-40CF-B1F0-CB-0_1793767156288.jpeg",),
             ),
         )
-        existing_refs = {
-            str(item.get("photo_file_id") or "")
-            for item in self.store.education_diagrams(active_only=False)
-        }
+        existing = self.store.education_diagrams(active_only=False)
         added = 0
-        for title, filename, tags, description in bundled:
+        for title, filename, tags, description, legacy_filenames in bundled:
             local_path = (asset_dir / filename).resolve()
             photo_ref = f"local:attached_assets/{filename}"
-            if photo_ref in existing_refs or not local_path.is_file():
+            prior_refs = {
+                f"local:attached_assets/{prior_filename}"
+                for prior_filename in legacy_filenames
+            }
+            saved_entry = next(
+                (
+                    item
+                    for item in existing
+                    if item.get("photo_file_id") == photo_ref
+                    or item.get("photo_file_id") in prior_refs
+                ),
+                None,
+            )
+            if not local_path.is_file():
+                continue
+            if saved_entry is not None:
+                if any(
+                    str(saved_entry.get(key) or "") != value
+                    for key, value in (
+                        ("title", title),
+                        ("tags", tags),
+                        ("description", description),
+                        ("photo_file_id", photo_ref),
+                    )
+                ):
+                    self.store.update_education_diagram(
+                        int(saved_entry["id"]),
+                        title=title,
+                        tags=tags,
+                        description=description,
+                        photo_file_id=photo_ref,
+                    )
+                    saved_entry.update(
+                        {
+                            "title": title,
+                            "tags": tags,
+                            "description": description,
+                            "photo_file_id": photo_ref,
+                        }
+                    )
+                    added += 1
                 continue
             self.store.add_education_diagram(
                 title=title,
@@ -58,7 +101,6 @@ class EducationDiagramManager:
                 photo_file_id=photo_ref,
                 admin_telegram_id=self.admin_id,
             )
-            existing_refs.add(photo_ref)
             added += 1
         return added
 

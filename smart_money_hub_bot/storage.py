@@ -1947,7 +1947,8 @@ class Repository:
                 continue
             # Prefer a single concept match over broad, generic word overlap.
             canonical_matches = shared & {
-                "bos", "choch", "mss", "fvg", "ifvg", "bsl", "ssl",
+                "bos", "choch", "lowerhigh", "lowerlow", "higherhigh",
+                "mss", "fvg", "ifvg", "bsl", "ssl",
                 "orderblock", "poi", "htf", "ltf", "riskreward",
                 "stoploss", "takeprofit", "fomo", "revengetrading",
             }
@@ -1983,6 +1984,37 @@ class Repository:
                 cursor = connection.execute(
                     "UPDATE education_diagrams SET active = 0 WHERE id = ? AND active = 1",
                     (diagram_id,),
+                )
+                return bool(cursor.rowcount)
+        finally:
+            connection.close()
+
+    def update_education_diagram(
+        self,
+        diagram_id: int,
+        *,
+        title: str,
+        tags: str,
+        description: str,
+        photo_file_id: str,
+    ) -> bool:
+        """Update one diagram record while preserving its active/hidden status."""
+        title = " ".join(title.split())[:120]
+        tags = " ".join(tags.split())[:300]
+        description = " ".join(description.split())[:500]
+        photo_file_id = photo_file_id.strip()
+        if not title or not tags or not photo_file_id or len(photo_file_id) > 1024:
+            raise ValueError("Diagram title, tags, and photo reference are required.")
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE education_diagrams
+                    SET title = ?, tags = ?, description = ?, photo_file_id = ?
+                    WHERE id = ?
+                    """,
+                    (title, tags, description, photo_file_id, diagram_id),
                 )
                 return bool(cursor.rowcount)
         finally:

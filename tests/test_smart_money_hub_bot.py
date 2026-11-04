@@ -983,6 +983,37 @@ class BotFlowTests(unittest.TestCase):
         self.assertEqual(len(archived), 1)
         self.assertEqual(archived[0]["content"], "Good morning everyone")
 
+    def test_coach_response_hides_urls_in_text_and_adds_buttons(self) -> None:
+        response = (
+            "Watch the group video here: https://t.me/c/3916437804/8/143. "
+            "The PDF guide is here: https://t.me/c/3916437804/7/35."
+        )
+
+        visible, markup = self.bot._coach_response_with_link_buttons(
+            response,
+            {"inline_keyboard": [[{"text": "Main Menu", "callback_data": "nav:home"}]]},
+        )
+
+        self.assertNotIn("https://", visible)
+        self.assertNotIn("here:", visible)
+        buttons = [
+            button
+            for row in markup["inline_keyboard"]
+            for button in row
+            if "url" in button
+        ]
+        self.assertEqual(
+            [button["url"] for button in buttons],
+            [
+                "https://t.me/c/3916437804/8/143",
+                "https://t.me/c/3916437804/7/35",
+            ],
+        )
+        self.assertEqual(
+            [button["text"] for button in buttons],
+            ["Watch video", "Open PDF"],
+        )
+
     def test_configured_admin_pdf_is_indexed_with_a_group_message_link(self) -> None:
         group_id = -1003916437804
         self.bot.admin_id = self.user_id
@@ -1017,9 +1048,17 @@ class BotFlowTests(unittest.TestCase):
             self.username,
             "Can you send me the PDF link for BOS?",
         )
-        self.assertIn(
-            "https://t.me/c/3916437804/7654/9003",
-            self.api.messages[-1]["text"],
+        sent_reply = self.api.messages[-1]
+        self.assertNotIn("https://t.me/", sent_reply["text"])
+        resource_buttons = [
+            button
+            for row in sent_reply["reply_markup"]["inline_keyboard"]
+            for button in row
+            if "url" in button
+        ]
+        self.assertEqual(
+            [button["url"] for button in resource_buttons],
+            ["https://t.me/c/3916437804/7654/9003"],
         )
 
         message["message_id"] = 9004

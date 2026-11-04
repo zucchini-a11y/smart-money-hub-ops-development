@@ -63,6 +63,7 @@ POLLING_HEARTBEAT_INTERVAL_SECONDS = 30
 POLLING_STALE_AFTER_SECONDS = 60
 TYPING_ACTION_REFRESH_SECONDS = 4
 MAX_COACH_CHART_IMAGE_BYTES = 5_000_000
+COACH_URL_PATTERN = re.compile(r"https?://[^\s<>()]+", re.IGNORECASE)
 BOT_RECOVERY_NOTICE_AFTER_SECONDS = 30 * 60
 BOT_RECOVERY_NOTICES = (
     "Sorry for the delay. I was tied up with a few things, but I’m back now "
@@ -3355,6 +3356,7 @@ class SmartMoneyHubBot:
             if question_recorded and interaction_id is not None
             else self._coach_keyboard()
         )
+        response, markup = self._coach_response_with_link_buttons(response, markup)
         try:
             self.api.send_message(chat_id, response, markup)
         except TelegramAPIError:
@@ -3531,6 +3533,88 @@ class SmartMoneyHubBot:
                 [{"text": "🏠 Main Menu", "callback_data": "nav:home"}],
             ]
         }
+
+    @staticmethod
+    def _coach_response_with_link_buttons(
+        response: str,
+        reply_markup: dict[str, Any],
+    ) -> tuple[str, dict[str, Any]]:
+        """Keep Coach URLs out of visible text and expose them as URL buttons."""
+        links: list[tuple[str, str]] = []
+        seen_urls: set[str] = set()
+
+        def button_label(context: str) -> str:
+            lines = [line.strip() for line in context.splitlines() if line.strip()]
+            resource_line = next(
+                (
+                    line
+                    for line in reversed(lines)
+                    if re.match(r"^[•*–—-]?\s*(PDF|VIDEO)\s*:", line, re.I)
+                ),
+                "",
+            )
+            resource = re.match(
+                r"^[•*–—-]?\s*(PDF|VIDEO)\s*:\s*(.*)$",
+                resource_line,
+                re.I,
+            )
+            if resource:
+                kind = resource.group(1).upper()
+                title = resource.group(2).strip().rstrip(":")
+                if title:
+                    prefix = "Open PDF" if kind == "PDF" else "Watch"
+                    return f"{prefix}: {title}"[:64]
+                return "Open PDF" if kind == "PDF" else "Watch video"
+            nearby = context.casefold()
+            if re.search(r"\b(?:pdf|document|guide)\b", nearby):
+                label = "Open PDF"
+            elif re.search(r"\b(?:video|watch|recording|walkthrough)\b", nearby):
+                label = "Watch video"
+            else:
+                label = "Open link"
+            return label
+
+        def replace_url(match: re.Match[str]) -> str:
+            url = match.group(0).rstrip(".,!?;:")
+            if not url or url in seen_urls:
+                return ""
+            seen_urls.add(url)
+            context = response[max(0, match.start() - 300) : match.start()]
+            links.append((url, button_label(context)))
+            trailing_punctuation = match.group(0)[len(url) :]
+            return trailing_punctuation
+
+        visible_text = COACH_URL_PATTERN.sub(replace_url, response)
+        visible_text = re.sub(
+            r"(?i)\b(?:here|below)\s*:\s*",
+            "",
+            visible_text,
+        )
+        visible_text = "\n".join(
+            line.rstrip() for line in visible_text.splitlines()
+        )
+        visible_text = re.sub(r"[ \t]+([,.;!?])", r"\1", visible_text)
+        visible_text = re.sub(r"\n[ \t]*\n(?:[ \t]*\n)+", "\n\n", visible_text)
+        visible_text = visible_text.strip()
+        if not links:
+            return visible_text, reply_markup
+        if not visible_text:
+            visible_text = "Open the shared resource using a button below."
+
+        existing_keyboard = reply_markup.get("inline_keyboard", [])
+        label_totals: dict[str, int] = {}
+        for _, label in links:
+            label_totals[label] = label_totals.get(label, 0) + 1
+        label_numbers: dict[str, int] = {}
+        link_rows: list[list[dict[str, str]]] = []
+        for url, label in links:
+            if label_totals[label] > 1:
+                label_numbers[label] = label_numbers.get(label, 0) + 1
+                label = f"{label} {label_numbers[label]}"
+            link_rows.append([{"text": label, "url": url}])
+        updated_markup = dict(reply_markup)
+        updated_markup["inline_keyboard"] = link_rows + list(existing_keyboard)
+        return visible_text, updated_markup
 
     @staticmethod
     def _coach_keyboard() -> dict[str, Any]:

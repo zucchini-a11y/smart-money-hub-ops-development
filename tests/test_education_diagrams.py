@@ -96,6 +96,20 @@ class EducationDiagramManagerTests(unittest.TestCase):
         self.assertIsNotNone(
             self.manager.diagram_for_question("What does CHoCH mean?")
         )
+        for question in (
+            "What does LH mean?",
+            "Explain LL.",
+            "Can you show me a lower high?",
+            "What is a lower low?",
+        ):
+            match = self.manager.diagram_for_question(question)
+            self.assertIsNotNone(match, question)
+            assert match is not None
+            self.assertEqual(
+                match["photo_file_id"],
+                "local:attached_assets/SMH_BOS_CHoCH_Swing_Sequence.jpeg",
+                question,
+            )
         bos_diagram = self.manager.diagram_for_question("Explain BOS.")
         assert bos_diagram is not None
         self.assertTrue(
@@ -109,6 +123,33 @@ class EducationDiagramManagerTests(unittest.TestCase):
                 item["photo_file_id"]
             ).removeprefix("local:")
             self.assertTrue(asset.is_file())
+
+    def test_bundled_second_image_migration_updates_the_existing_entry(self) -> None:
+        self.store.add_education_diagram(
+            title="Change of Character (CHoCH)",
+            tags="CHoCH, change of character, market structure shift",
+            description="Old generic label.",
+            photo_file_id=(
+                "local:attached_assets/"
+                "JPEG_image-40CF-B1F0-CB-0_1793767156288.jpeg"
+            ),
+            admin_telegram_id=self.admin_id,
+        )
+
+        self.assertEqual(self.manager.seed_bundled_diagrams(), 2)
+        diagrams = self.store.education_diagrams()
+        self.assertEqual(len(diagrams), 2)
+        swing_diagram = next(
+            item for item in diagrams if "swing structure" in item["title"].casefold()
+        )
+        self.assertIn(
+            "LL (lower lows) and LH (lower highs)",
+            swing_diagram["description"],
+        )
+        self.assertEqual(
+            swing_diagram["photo_file_id"],
+            "local:attached_assets/SMH_BOS_CHoCH_Swing_Sequence.jpeg",
+        )
 
     def test_unmatched_question_does_not_receive_a_diagram(self) -> None:
         self.store.add_education_diagram(
