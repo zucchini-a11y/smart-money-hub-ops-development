@@ -455,7 +455,7 @@ class BotFlowTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 
-    def test_private_coach_reply_tags_and_replies_to_the_incoming_message(self) -> None:
+    def test_private_coach_reply_does_not_mention_sender_and_replies_to_message(self) -> None:
         self.bot.store.register_user(
             telegram_id=self.user_id,
             username=self.username,
@@ -482,13 +482,11 @@ class BotFlowTests(unittest.TestCase):
 
         reply = self.api.messages[-1]
         self.assertEqual(reply["reply_to_message_id"], incoming_message_id)
-        self.assertTrue(reply["text"].startswith(f"@{self.username},\n\n"))
-        self.assertEqual(
-            reply["entities"],
-            [{"type": "mention", "offset": 0, "length": len(f"@{self.username}")}],
-        )
+        self.assertFalse(reply["text"].startswith(f"@{self.username}"))
+        self.assertNotIn(self.username, reply["text"])
+        self.assertNotIn("entities", reply)
 
-    def test_private_coach_reply_uses_text_mention_without_a_username(self) -> None:
+    def test_private_coach_reply_does_not_show_name_without_username(self) -> None:
         self.bot.store.register_user(
             telegram_id=self.user_id,
             username=None,
@@ -512,22 +510,9 @@ class BotFlowTests(unittest.TestCase):
         )
 
         reply = self.api.messages[-1]
-        self.assertTrue(reply["text"].startswith("Amara 😀,\n\n"))
-        self.assertEqual(
-            reply["entities"],
-            [
-                {
-                    "type": "text_mention",
-                    "offset": 0,
-                    "length": len("Amara 😀".encode("utf-16-le")) // 2,
-                    "user": {
-                        "id": self.user_id,
-                        "is_bot": False,
-                        "first_name": "Amara 😀",
-                    },
-                }
-            ],
-        )
+        self.assertEqual(reply["reply_to_message_id"], 4322)
+        self.assertNotIn("Amara", reply["text"])
+        self.assertNotIn("entities", reply)
 
     def test_private_message_handler_passes_reply_and_sender_to_coach(self) -> None:
         message = {
@@ -553,7 +538,7 @@ class BotFlowTests(unittest.TestCase):
             sender=message["from"],
         )
 
-    def test_private_chart_image_reply_is_tagged_and_replies_to_the_photo(self) -> None:
+    def test_private_chart_image_reply_does_not_mention_sender(self) -> None:
         self.bot.coach_service = object()
         sender = {
             "id": self.user_id,
@@ -573,10 +558,10 @@ class BotFlowTests(unittest.TestCase):
 
         reply = self.api.messages[-1]
         self.assertEqual(reply["reply_to_message_id"], 4324)
-        self.assertTrue(reply["text"].startswith(f"@{self.username},\n\n"))
-        self.assertEqual(reply["entities"][0]["type"], "mention")
+        self.assertNotIn(self.username, reply["text"])
+        self.assertNotIn("entities", reply)
 
-    def test_guided_coach_answer_replies_to_the_member_message(self) -> None:
+    def test_guided_coach_answer_replies_without_showing_member_name(self) -> None:
         self._click("coach:setup")
         sender = {
             "id": self.user_id,
@@ -594,7 +579,8 @@ class BotFlowTests(unittest.TestCase):
 
         reply = self.api.messages[-1]
         self.assertEqual(reply["reply_to_message_id"], 4325)
-        self.assertTrue(reply["text"].startswith(f"@{self.username},\n\n"))
+        self.assertNotIn(self.username, reply["text"])
+        self.assertNotIn("entities", reply)
 
     def test_every_admin_dashboard_button_has_a_text_shortcut(self) -> None:
         dashboard = AdminDashboard(

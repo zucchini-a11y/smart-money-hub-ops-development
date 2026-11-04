@@ -3970,41 +3970,6 @@ class SmartMoneyHubBot:
             request_id,
         )
 
-    @staticmethod
-    def _private_coach_mention(
-        sender: dict[str, Any],
-    ) -> tuple[str, dict[str, Any] | None]:
-        """Build a Telegram mention entity for a private Coach reply."""
-        username = sender.get("username")
-        if isinstance(username, str) and re.fullmatch(
-            r"[A-Za-z][A-Za-z0-9_]{4,31}", username
-        ):
-            mention = f"@{username}"
-            return mention, {
-                "type": "mention",
-                "offset": 0,
-                "length": len(mention),
-            }
-
-        telegram_id = sender.get("id")
-        first_name = " ".join(str(sender.get("first_name") or "").split())
-        last_name = " ".join(str(sender.get("last_name") or "").split())
-        display_name = " ".join(part for part in (first_name, last_name) if part)
-        if not isinstance(telegram_id, int) or isinstance(telegram_id, bool):
-            return "", None
-        if not display_name:
-            display_name = "there"
-        return display_name, {
-            "type": "text_mention",
-            "offset": 0,
-            "length": len(display_name.encode("utf-16-le")) // 2,
-            "user": {
-                "id": telegram_id,
-                "is_bot": sender.get("is_bot") is True,
-                "first_name": first_name or display_name,
-            },
-        }
-
     def _send_private_coach_reply(
         self,
         chat_id: int,
@@ -4014,18 +3979,11 @@ class SmartMoneyHubBot:
         reply_to_message_id: int | None = None,
         sender: dict[str, Any] | None = None,
     ) -> None:
-        entities: list[dict[str, Any]] | None = None
-        if sender and reply_to_message_id is not None:
-            mention_text, mention_entity = self._private_coach_mention(sender)
-            if mention_text and mention_entity:
-                text = f"{mention_text},\n\n{text}"
-                entities = [mention_entity]
         self.api.send_message(
             chat_id,
             text,
             reply_markup,
             reply_to_message_id=reply_to_message_id,
-            entities=entities,
         )
 
     def _handle_daily_brief_callback(
