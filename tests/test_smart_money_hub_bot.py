@@ -39,6 +39,7 @@ class FakeTelegramAPI:
         self.photos: list[dict[str, Any]] = []
         self.answered_callbacks: list[dict[str, Any]] = []
         self.chat_actions: list[dict[str, Any]] = []
+        self.message_reactions: list[dict[str, Any]] = []
         self.webhook_info: dict[str, Any] = {}
         self.callback_ack_error: TelegramAPIError | None = None
 
@@ -143,6 +144,17 @@ class FakeTelegramAPI:
                 "show_alert": show_alert,
             }
         )
+
+    def set_message_reaction(
+        self,
+        chat_id: int,
+        message_id: int,
+        emoji: str,
+    ) -> bool:
+        self.message_reactions.append(
+            {"chat_id": chat_id, "message_id": message_id, "emoji": emoji}
+        )
+        return True
 
 
 class StrictTelegramHtmlParser(HTMLParser):
@@ -510,6 +522,99 @@ class BotFlowTests(unittest.TestCase):
         )
         self.assertIn("does not confirm", self.api.messages[-1]["text"])
         self.assertEqual(self.bot.store.recent_dm_coaching_interactions(self.user_id), [])
+
+    def test_private_coach_reacts_to_reported_learning_progress(self) -> None:
+        self.bot.handle_update(
+            {
+                "message": {
+                    "message_id": 1901,
+                    "date": int(datetime.now(timezone.utc).timestamp()),
+                    "text": "I understand BOS now.",
+                    "from": {
+                        "id": self.user_id,
+                        "username": self.username,
+                        "first_name": self.first_name,
+                    },
+                    "chat": {"id": self.chat_id, "type": "private"},
+                }
+            }
+        )
+
+        self.assertEqual(
+            self.api.message_reactions,
+            [{"chat_id": self.chat_id, "message_id": 1901, "emoji": "👍"}],
+        )
+        self.assertTrue(self.api.messages)
+
+    def test_education_group_reacts_to_a_disciplined_process_share(self) -> None:
+        group_id = self.bot.education_group_id
+        self.assertIsNotNone(group_id)
+        self.bot.handle_update(
+            {
+                "message": {
+                    "message_id": 1902,
+                    "date": int(datetime.now(timezone.utc).timestamp()),
+                    "text": "I waited for confirmation and didn't chase the setup.",
+                    "from": {
+                        "id": self.user_id,
+                        "username": self.username,
+                        "first_name": self.first_name,
+                    },
+                    "chat": {"id": group_id, "type": "supergroup"},
+                }
+            }
+        )
+
+        self.assertEqual(
+            self.api.message_reactions,
+            [{"chat_id": group_id, "message_id": 1902, "emoji": "🎯"}],
+        )
+
+    def test_bot_does_not_react_to_routine_questions_or_commands(self) -> None:
+        for message_id, text in ((1903, "What is BOS?"), (1904, "/help")):
+            self.bot.handle_update(
+                {
+                    "message": {
+                        "message_id": message_id,
+                        "date": int(datetime.now(timezone.utc).timestamp()),
+                        "text": text,
+                        "from": {
+                            "id": self.user_id,
+                            "username": self.username,
+                            "first_name": self.first_name,
+                        },
+                        "chat": {"id": self.chat_id, "type": "private"},
+                    }
+                }
+            )
+
+        self.assertEqual(self.api.message_reactions, [])
+
+    def test_reaction_failure_does_not_block_private_coach_reply(self) -> None:
+        self.api.set_message_reaction = Mock(
+            side_effect=TelegramAPIError("Message reactions are not allowed.")
+        )
+
+        self.bot.handle_update(
+            {
+                "message": {
+                    "message_id": 1905,
+                    "date": int(datetime.now(timezone.utc).timestamp()),
+                    "text": "I understand BOS now.",
+                    "from": {
+                        "id": self.user_id,
+                        "username": self.username,
+                        "first_name": self.first_name,
+                    },
+                    "chat": {"id": self.chat_id, "type": "private"},
+                }
+            }
+        )
+
+        self.api.set_message_reaction.assert_called_once_with(
+            self.chat_id, 1905, "👍"
+        )
+        self.assertTrue(self.api.messages)
 
     def test_private_chart_image_download_failure_is_visible_to_admin(self) -> None:
         service = Mock()

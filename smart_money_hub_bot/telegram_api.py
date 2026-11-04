@@ -251,6 +251,23 @@ class TelegramAPI:
         )
         return result is True
 
+    def set_message_reaction(
+        self,
+        chat_id: int,
+        message_id: int,
+        emoji: str,
+    ) -> bool:
+        """Set one standard emoji reaction on a message."""
+        result = self._request(
+            "setMessageReaction",
+            {
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "reaction": [{"type": "emoji", "emoji": emoji}],
+            },
+        )
+        return result is True
+
     def send_photo_with_result(
         self,
         chat_id: int,

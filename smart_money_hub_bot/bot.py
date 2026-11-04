@@ -1291,6 +1291,65 @@ class SmartMoneyHubBot:
         )
 
     @staticmethod
+    def _member_message_reaction(text: str) -> str | None:
+        normalized = " ".join(text.casefold().split())
+        learning_progress = (
+            r"\b(?:i got it|got it now|i understand now|i understand|"
+            r"that makes sense|i learned|i have learned|i've learned|"
+            r"i finally understand|i finally got it|completed (?:the )?"
+            r"(?:lesson|course|assessment|quiz)|passed (?:the )?"
+            r"(?:assessment|quiz|test)|made progress)\b"
+        )
+        disciplined_process = (
+            r"\b(?:waited for (?:the )?(?:confirmation|retest)|"
+            r"followed (?:my|the) plan|stuck to (?:my|the) plan|"
+            r"did not chase|didn't chase|skipped (?:the )?trade|"
+            r"stayed out|respected (?:my|the) risk|journaled (?:my )?trade)\b"
+        )
+        if re.search(learning_progress, normalized):
+            return "👍"
+        if re.search(disciplined_process, normalized):
+            return "🎯"
+        return None
+
+    def _maybe_react_to_member_message(
+        self,
+        chat_id: int,
+        telegram_id: int,
+        message: dict[str, Any],
+        text: str,
+        *,
+        is_private: bool,
+    ) -> None:
+        chat = message.get("chat")
+        sender = message.get("from")
+        message_id = message.get("message_id")
+        if (
+            not isinstance(chat, dict)
+            or chat.get("id") != chat_id
+            or not isinstance(sender, dict)
+            or sender.get("id") != telegram_id
+            or sender.get("is_bot") is True
+            or not isinstance(message_id, int)
+            or isinstance(message_id, bool)
+            or not (
+                is_private
+                or self._is_education_group(chat_id, is_private)
+            )
+        ):
+            return
+        reaction = self._member_message_reaction(text)
+        set_reaction = getattr(self.api, "set_message_reaction", None)
+        if reaction is None or not callable(set_reaction):
+            return
+        try:
+            set_reaction(chat_id, message_id, reaction)
+        except TelegramAPIError:
+            # A reaction is optional; permission or chat-setting limits must
+            # never block a Coach reply or other message handling.
+            logger.debug("Telegram could not apply an optional member reaction.")
+
+    @staticmethod
     def _message_thread_id(message: dict[str, Any]) -> int | None:
         thread_id = message.get("message_thread_id")
         if isinstance(thread_id, int) and not isinstance(thread_id, bool):
@@ -1599,6 +1658,14 @@ class SmartMoneyHubBot:
             is_private,
             message_timestamp=message.get("date"),
         )
+        if self._is_education_group(chat_id, is_private) and not command.startswith("/"):
+            self._maybe_react_to_member_message(
+                chat_id,
+                telegram_id,
+                message,
+                text,
+                is_private=False,
+            )
         if (
             is_private
             and command == "/cancel"
@@ -2143,6 +2210,13 @@ class SmartMoneyHubBot:
             )
             return
         if is_private:
+            self._maybe_react_to_member_message(
+                chat_id,
+                telegram_id,
+                message,
+                text,
+                is_private=True,
+            )
             self._answer_coach_message(
                 chat_id,
                 telegram_id,

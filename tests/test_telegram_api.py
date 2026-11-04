@@ -21,6 +21,21 @@ class _Response:
 
 
 class TelegramUpdateSubscriptionTests(unittest.TestCase):
+    def test_set_message_reaction_uses_one_standard_emoji(self) -> None:
+        api = TelegramAPI("synthetic-test-token")
+        with patch.object(api, "_request", return_value=True) as request:
+            result = api.set_message_reaction(-100123, 456, "👍")
+
+        self.assertTrue(result)
+        request.assert_called_once_with(
+            "setMessageReaction",
+            {
+                "chat_id": -100123,
+                "message_id": 456,
+                "reaction": [{"type": "emoji", "emoji": "👍"}],
+            },
+        )
+
     def test_delete_message_uses_telegram_delete_method(self) -> None:
         api = TelegramAPI("synthetic-test-token")
         with patch.object(api, "_request", return_value=True) as request:
