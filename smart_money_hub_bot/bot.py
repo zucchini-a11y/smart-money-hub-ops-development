@@ -1669,6 +1669,13 @@ class SmartMoneyHubBot:
             is_private,
             message_timestamp=message.get("date"),
         )
+        if self.admin_dashboard.handle_admin_post_status_question(
+            chat_id,
+            telegram_id,
+            is_private,
+            text,
+        ):
+            return
         if self._is_education_group(chat_id, is_private) and not command.startswith("/"):
             self._maybe_react_to_member_message(
                 chat_id,

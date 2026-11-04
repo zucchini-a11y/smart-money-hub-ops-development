@@ -1152,7 +1152,7 @@ class BotFlowTests(unittest.TestCase):
                         "first_name": self.first_name,
                     },
                     "chat": {"id": self.user_id, "type": "private"},
-                    "text": "Is there a post queued for 10 PM tonight?",
+                    "text": "What's scheduled to be posted at 10 PM?",
                 }
             }
         )
