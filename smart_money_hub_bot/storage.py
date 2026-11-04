@@ -2085,7 +2085,20 @@ class Repository:
             "materials", "recording", "recordings",
         }
         topic_tokens = query_tokens - generic_tokens
-        focused_concepts = topic_tokens & {"fvg", "ifvg"}
+        focused_concepts = topic_tokens & {
+            "fvg",
+            "ifvg",
+            "liquidity",
+            "liquiditysweep",
+            "bsl",
+            "ssl",
+        }
+        liquidity_concepts = focused_concepts & {
+            "liquidity",
+            "liquiditysweep",
+            "bsl",
+            "ssl",
+        }
         requested_types: list[str] = []
         normalized = query.casefold()
         if re.search(r"\bpdfs?\b", normalized):
@@ -2131,6 +2144,10 @@ class Repository:
                         resource_tokens
                     ):
                         continue
+                    if liquidity_concepts:
+                        title_tokens = question_tokens(str(item.get("title") or ""))
+                        if not liquidity_concepts.issubset(title_tokens):
+                            continue
                     overlap = topic_tokens & resource_tokens
                     if not overlap:
                         continue

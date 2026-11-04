@@ -454,6 +454,47 @@ class GroupKnowledgeStorageTests(unittest.TestCase):
             "pdf",
         )
 
+    def test_liquidity_search_uses_the_owner_supplied_pdf_not_market_structure_video(
+        self,
+    ) -> None:
+        self.store.record_education_group_resource(
+            chat_id=-1003916437804,
+            message_id=124,
+            thread_id=8,
+            topic_name="Education",
+            resource_type="video",
+            title="Let’s talk market structure!",
+            description=(
+                "Market structure lesson covering liquidity, BSL, SSL, "
+                "and liquidity sweeps."
+            ),
+            message_link="https://t.me/c/3916437804/8/124",
+            source_status="configured_admin",
+            posted_at="2026-11-03T12:00:00+00:00",
+        )
+        link = "https://t.me/c/3916437804/6/25"
+        self.store.register_education_group_resource_link(
+            chat_id=-1003916437804,
+            message_link=link,
+            resource_type="pdf",
+            title="Liquidity Sweeps, BSL and SSL PDF",
+        )
+
+        for query in (
+            "Explain liquidity.",
+            "Explain a liquidity sweep.",
+            "Where is the BSL and SSL PDF?",
+        ):
+            resources = self.store.search_education_group_resources(
+                -1003916437804, query
+            )
+            self.assertEqual(
+                [item["message_link"] for item in resources],
+                [link],
+                query,
+            )
+            self.assertEqual(resources[0]["resource_type"], "pdf")
+
 
 if __name__ == "__main__":
     unittest.main()

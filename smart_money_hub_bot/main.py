@@ -212,6 +212,12 @@ def main() -> None:
                 resource_type="pdf",
                 title="Fair Value Gap (FVG) PDF",
             )
+            bot.store.register_education_group_resource_link(
+                chat_id=education_group_id,
+                message_link="https://t.me/c/3916437804/6/25",
+                resource_type="pdf",
+                title="Liquidity Sweeps, BSL and SSL PDF",
+            )
         bundled_diagrams = bot.admin_dashboard.education_diagrams.seed_bundled_diagrams()
         if bundled_diagrams:
             logging.getLogger(__name__).info(

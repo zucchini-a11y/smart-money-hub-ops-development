@@ -19,6 +19,7 @@ _CONCEPT_ALIASES = (
     (("market structure shift", "mss"), "mss"),
     (("fair value gap", "fvg"), "fvg"),
     (("inversion fair value gap", "ifvg"), "ifvg"),
+    (("liquidity sweep", "liquidity sweeps"), "liquiditysweep"),
     (("buy side liquidity", "buy-side liquidity", "bsl"), "bsl"),
     (("sell side liquidity", "sell-side liquidity", "ssl"), "ssl"),
     (("order block", "order blocks", "ob"), "orderblock"),
