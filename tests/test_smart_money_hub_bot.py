@@ -499,6 +499,8 @@ class BotFlowTests(unittest.TestCase):
             (),
             "",
         )
+        self.bot.admin_id = self.user_id
+        self.bot.admin_dashboard.admin_id = self.user_id
         self.bot.coach_service = service
         self.api.get_file = Mock(
             return_value={"file_path": "photos/chart.png", "file_size": 20}
@@ -523,6 +525,42 @@ class BotFlowTests(unittest.TestCase):
         )
         self.assertIn("does not confirm", self.api.messages[-1]["text"])
         self.assertEqual(self.bot.store.recent_dm_coaching_interactions(self.user_id), [])
+
+    def test_chart_image_analysis_is_owner_only_and_private(self) -> None:
+        self.bot.admin_id = self.user_id
+        self.bot.admin_dashboard.admin_id = self.user_id
+        self.api.get_file = Mock()
+        self.api.download_file = Mock()
+        service = Mock()
+        self.bot.coach_service = service
+
+        self.bot.handle_update(
+            {
+                "message": {
+                    "message_id": 91,
+                    "photo": [{"file_id": "member-file", "width": 100, "height": 100}],
+                    "chat": {"id": self.user_id + 1, "type": "private"},
+                    "from": {"id": self.user_id + 1, "username": "member"},
+                }
+            }
+        )
+        self.assertIn("only to the bot owner", self.api.messages[-1]["text"])
+
+        group_id = self.bot.education_group_id
+        self.bot.handle_update(
+            {
+                "message": {
+                    "message_id": 92,
+                    "photo": [{"file_id": "group-file", "width": 100, "height": 100}],
+                    "chat": {"id": group_id, "type": "supergroup"},
+                    "from": {"id": self.user_id, "username": self.username},
+                }
+            }
+        )
+
+        self.api.get_file.assert_not_called()
+        self.api.download_file.assert_not_called()
+        service.evaluate_image.assert_not_called()
 
     def test_private_coach_reacts_to_reported_learning_progress(self) -> None:
         self.bot.handle_update(

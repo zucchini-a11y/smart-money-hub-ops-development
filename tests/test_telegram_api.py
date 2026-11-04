@@ -70,6 +70,32 @@ class TelegramUpdateSubscriptionTests(unittest.TestCase):
         self.assertEqual(caught.exception.failure_kind, "network")
         self.assertEqual(urlopen_mock.call_count, 2)
 
+    def test_download_file_recognizes_jpeg_when_telegram_uses_generic_mime(self) -> None:
+        class ImageResponse:
+            headers = {
+                "Content-Length": "4",
+                "Content-Type": "application/octet-stream",
+            }
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return None
+
+            def read(self, _limit: int) -> bytes:
+                return b"\xff\xd8\xff\xd9"
+
+        api = TelegramAPI("synthetic-test-token")
+        with patch(
+            "smart_money_hub_bot.telegram_api.urlopen",
+            return_value=ImageResponse(),
+        ):
+            image, mime_type = api.download_file("photos/example.jpg")
+
+        self.assertEqual(image, b"\xff\xd8\xff\xd9")
+        self.assertEqual(mime_type, "image/jpeg")
+
     def test_set_message_reaction_uses_one_standard_emoji(self) -> None:
         api = TelegramAPI("synthetic-test-token")
         with patch.object(api, "_request", return_value=True) as request:

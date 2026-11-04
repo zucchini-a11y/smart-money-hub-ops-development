@@ -1775,6 +1775,14 @@ class SmartMoneyHubBot:
             )
         )
         if is_private_photo:
+            if self.admin_id is None or telegram_id != self.admin_id:
+                self.api.send_message(
+                    chat_id,
+                    "For privacy, chart-image analysis is available only to the bot "
+                    "owner in a private chat.",
+                    self._main_menu_keyboard(),
+                )
+                return
             if session is not None or has_pending_admin_action:
                 self.api.send_message(
                     chat_id,
