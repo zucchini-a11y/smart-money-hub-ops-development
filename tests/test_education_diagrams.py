@@ -144,6 +144,7 @@ class EducationDiagramManagerTests(unittest.TestCase):
         for question in (
             "What is liquidity?",
             "Show me the liquidity sweep diagram.",
+            "What does a liquidity sweep look like?",
             "Where is buy-side liquidity?",
         ):
             match = self.manager.diagram_for_question(question)

@@ -3073,28 +3073,35 @@ class SmartMoneyHubBot:
 
     @staticmethod
     def _clean_explicit_diagram_reply(
-        response: str, diagram: dict[str, Any]
+        response: str,
+        diagram: dict[str, Any],
+        *,
+        remove_offer: bool = False,
+        diagram_is_sent: bool = False,
     ) -> str:
-        """Remove fake text diagrams and false image limitations before sending."""
+        """Remove fake text diagrams and false image limitations."""
         cleaned = re.sub(r"(?s)```.*?```", "", response)
         cleaned = re.sub(
             r"(?im)^.*\b(?:cannot|can't|am unable to|is unable to)\b.*"
-            r"\b(?:render|display|show|send|attach)\b.*"
+            r"\b(?:render|display|show|send|attach|draw|sketch)\b.*"
             r"\b(?:image|diagram|picture|visual)\b.*$\n?",
             "",
             cleaned,
         )
-        cleaned = re.sub(
-            r"(?im)^\s*(?:would you like|do you want|want me to)\b.*\?\s*$",
-            "",
-            cleaned,
-        )
+        if remove_offer:
+            cleaned = re.sub(
+                r"(?im)^\s*(?:would you like|do you want|want me to)\b.*\?\s*$",
+                "",
+                cleaned,
+            )
         cleaned = "\n".join(line.rstrip() for line in cleaned.splitlines())
         cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
         if cleaned:
             return cleaned
         title = " ".join(str(diagram.get("title") or "learning").split())
-        return f"Here’s the saved {title} diagram you asked for."
+        if diagram_is_sent:
+            return f"Here’s the saved {title} diagram you asked for."
+        return f"I have a saved {title} image for this topic."
 
     @staticmethod
     def _should_offer_coach_diagram(question: str) -> bool:
@@ -3682,6 +3689,14 @@ class SmartMoneyHubBot:
                     str(diagram.get("description") or "").split()
                 )[:300],
             }
+        explicit_diagram_request = self._is_explicit_diagram_request(question)
+        send_diagram = bool(diagram and (confused or explicit_diagram_request))
+        offer_diagram = bool(
+            diagram
+            and not confused
+            and not explicit_diagram_request
+            and self._should_offer_coach_diagram(question)
+        )
         self._attach_curriculum_context(
             profile,
             question,
@@ -3711,9 +3726,12 @@ class SmartMoneyHubBot:
         reply = routed.reply
         assessment = routed.assessment
         response_text = reply.response
-        if diagram and (confused or self._is_explicit_diagram_request(question)):
+        if diagram:
             response_text = self._clean_explicit_diagram_reply(
-                response_text, diagram
+                response_text,
+                diagram,
+                remove_offer=send_diagram or offer_diagram,
+                diagram_is_sent=send_diagram,
             )
             reply = replace(reply, response=response_text)
 
@@ -3791,12 +3809,6 @@ class SmartMoneyHubBot:
             resource_context,
             allow_links=include_resources,
         )
-        offer_diagram = bool(
-            diagram
-            and not confused
-            and not self._is_explicit_diagram_request(question)
-            and self._should_offer_coach_diagram(question)
-        )
         if offer_diagram:
             title = " ".join(str(diagram.get("title") or "diagram").split())
             response = (
@@ -3810,7 +3822,7 @@ class SmartMoneyHubBot:
             logger.warning("Coach Telegram send failed. request_id=%s.", request_id)
             raise
         if diagram:
-            if confused or self._is_explicit_diagram_request(question):
+            if send_diagram:
                 self._pending_coach_diagram_offers.pop(telegram_id, None)
                 self._send_coach_diagram(chat_id, diagram)
             elif offer_diagram:

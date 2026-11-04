@@ -358,6 +358,27 @@ class GeminiCoachTests(unittest.TestCase):
         self.assertIn("briefly connect your answer to that point", instruction)
         self.assertIn("ask one short clarifying question", instruction)
 
+    def test_matching_diagram_prompt_uses_image_instead_of_text_sketch(self) -> None:
+        local_reply = RuleBasedCoachService().evaluate(
+            "What does a liquidity sweep look like?"
+        )
+        instruction = GeminiCoachService._system_instruction(
+            local_reply,
+            "educational_question",
+            profile={
+                "matching_education_diagram_context": {
+                    "title": "Liquidity and Sweep (BSL/SSL)",
+                    "description": "Annotated chart showing a sweep above a prior high.",
+                }
+            },
+        )
+
+        self.assertIn("A saved Education diagram matches this question", instruction)
+        self.assertIn("send that actual image separately", instruction)
+        self.assertIn("Never claim that you cannot render, show, or send an image", instruction)
+        self.assertIn("Do not draw ASCII art", instruction)
+        self.assertIn("Annotated chart showing a sweep above a prior high", instruction)
+
     def test_admin_prompt_is_respectful_without_exposing_identifiers(self) -> None:
         local_reply = RuleBasedCoachService().evaluate("What is liquidity?")
         admin_instruction = GeminiCoachService._system_instruction(

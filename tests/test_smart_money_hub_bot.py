@@ -1313,6 +1313,73 @@ class BotFlowTests(unittest.TestCase):
             self.api.photos[0]["caption"],
         )
 
+    def test_look_like_request_sends_saved_liquidity_diagram_without_ascii(self) -> None:
+        service = Mock()
+        service.evaluate.return_value = CoachReply(
+            "While I cannot render an image directly in our chat, I can map out "
+            "how a liquidity sweep diagram looks structurally:\n\n"
+            "```text\n"
+            "[ Buy-Side Liquidity / Previous High ]\n"
+            "          ↑ (Wick sweeps the high)\n"
+            "```\n\n"
+            "Price briefly moves above an obvious prior high, then returns below it. "
+            "That sweep is context, not an entry signal.\n\n"
+            "Would you like to explore how this ties into your setup?",
+            "Liquidity / SSL / BSL",
+            (),
+            "",
+        )
+        self.bot.coach_service = service
+        self.bot.store.register_user(
+            telegram_id=self.user_id,
+            username=self.username,
+            first_name=self.first_name,
+            chat_id=self.chat_id,
+            is_private=True,
+        )
+        self.bot.store.add_education_diagram(
+            title="Liquidity and Sweep (BSL/SSL)",
+            tags=(
+                "liquidity, liquidity sweep, BSL, buy-side liquidity, "
+                "SSL, sell-side liquidity"
+            ),
+            description=(
+                "Owner-provided annotated chart labeling liquidity and the wick "
+                "sweep above prior highs."
+            ),
+            photo_file_id=(
+                "local:attached_assets/"
+                "JPEG_image-4506-BBAA-CA-0_1793770748577_labeled.png"
+            ),
+            admin_telegram_id=self.user_id,
+        )
+
+        self.bot._process_coach_message(
+            self.chat_id,
+            self.user_id,
+            self.username,
+            "What does a liquidity sweep look like?",
+        )
+
+        self.assertEqual(len(self.api.photos), 1)
+        self.assertEqual(
+            self.api.photos[0]["photo"],
+            Path(__file__).resolve().parents[1]
+            / "attached_assets"
+            / "JPEG_image-4506-BBAA-CA-0_1793770748577_labeled.png",
+        )
+        response = self.api.messages[-1]["text"]
+        self.assertIn("Price briefly moves above", response)
+        self.assertNotIn("cannot render an image", response.casefold())
+        self.assertNotIn("Buy-Side Liquidity / Previous High", response)
+        self.assertNotIn("Would you like to explore", response)
+        self.assertEqual(
+            service.evaluate.call_args.kwargs["profile"][
+                "matching_education_diagram_context"
+            ]["title"],
+            "Liquidity and Sweep (BSL/SSL)",
+        )
+
     def test_private_coach_offers_a_matching_diagram_in_plain_text(self) -> None:
         self.bot.store.add_education_diagram(
             title="CHoCH",
