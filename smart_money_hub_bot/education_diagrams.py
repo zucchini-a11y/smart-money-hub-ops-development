@@ -55,6 +55,15 @@ class EducationDiagramManager:
                 "zone highlighted.",
                 (),
             ),
+            (
+                "Bearish Fair Value Gap (FVG)",
+                "JPEG_image-470B-89EA-27-0_1793769585029.jpeg",
+                "FVG, fair value gap, bearish FVG, bearish fair value gap, "
+                "bearish imbalance",
+                "Owner-provided bearish FVG candlestick example with the gap "
+                "zone highlighted.",
+                (),
+            ),
         )
         existing = self.store.education_diagrams(active_only=False)
         added = 0

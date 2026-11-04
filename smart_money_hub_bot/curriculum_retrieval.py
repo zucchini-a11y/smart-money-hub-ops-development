@@ -10,6 +10,7 @@ from .education import EDUCATION
 from .knowledge_base import question_similarity, question_tokens
 
 _EPISODE_QUERY = re.compile(r"\bepisode\s*#?\s*0*(\d{1,3})\b", re.IGNORECASE)
+_FOCUSED_CONCEPTS = frozenset({"fvg", "ifvg"})
 
 
 def requested_episode_number(question: str) -> int | None:
@@ -25,11 +26,14 @@ def retrieve_curriculum_context(
     query_tokens = question_tokens(question)
     if not query_tokens:
         return []
+    focused_concepts = query_tokens & _FOCUSED_CONCEPTS
 
     candidates: list[tuple[float, dict[str, str]]] = []
     for key, (title, content) in EDUCATION.items():
         resource_text = f"{key.replace('_', ' ')} {title} {content}"
         resource_tokens = question_tokens(resource_text)
+        if focused_concepts and not focused_concepts.issubset(resource_tokens):
+            continue
         shared = query_tokens & resource_tokens
         if not shared:
             continue
@@ -55,6 +59,8 @@ def retrieve_curriculum_context(
             f"{document['title']} {document['search_terms']} {document['content']}"
         )
         resource_tokens = question_tokens(resource_text)
+        if focused_concepts and not focused_concepts.issubset(resource_tokens):
+            continue
         shared = query_tokens & resource_tokens
         if not shared:
             continue

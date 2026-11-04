@@ -432,14 +432,21 @@ class GroupKnowledgeStorageTests(unittest.TestCase):
             resource_type="pdf",
             title="Fair Value Gap (FVG) PDF",
         )
+        self.store.register_education_group_resource_link(
+            chat_id=-1003916437804,
+            message_link="https://t.me/c/3916437804/8/143",
+            resource_type="video",
+            title="Let’s talk market structure!",
+        )
 
         resources = self.store.search_education_group_resources(
             -1003916437804,
-            "What is a bullish fair value gap?",
+            "I am asking about FVG, not the HH, HL, LH, and LL structure diagram.",
         )
         fvg_pdf = next(item for item in resources if item["message_link"] == link)
         self.assertEqual(fvg_pdf["resource_type"], "pdf")
         self.assertEqual(fvg_pdf["title"], "Fair Value Gap (FVG) PDF")
+        self.assertEqual([item["message_link"] for item in resources], [link])
         self.assertEqual(
             self.store.education_group_resource_by_link(-1003916437804, link)[
                 "resource_type"

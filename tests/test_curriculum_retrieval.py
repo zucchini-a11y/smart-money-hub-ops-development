@@ -36,6 +36,17 @@ class CurriculumRetrievalTests(unittest.TestCase):
         self.assertIn("candle-body close", pdf_source["content"])
         self.assertIn("not live-market observations", pdf_source["content"])
 
+    def test_fvg_question_does_not_pull_unrelated_market_structure_pdf(self) -> None:
+        results = retrieve_curriculum_context(
+            "I am asking about FVG, not the guide's HH, HL, LH, or LL diagram."
+        )
+
+        self.assertTrue(results)
+        self.assertEqual(results[0]["title"], "FVG and IFVG")
+        self.assertFalse(
+            any(item["source_type"] == "uploaded_course_pdf" for item in results)
+        )
+
     def test_course_pdf_can_be_found_from_a_general_document_question(self) -> None:
         results = retrieve_curriculum_context("What is in my course PDF?")
 

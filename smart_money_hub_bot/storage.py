@@ -2085,6 +2085,7 @@ class Repository:
             "materials", "recording", "recordings",
         }
         topic_tokens = query_tokens - generic_tokens
+        focused_concepts = topic_tokens & {"fvg", "ifvg"}
         requested_types: list[str] = []
         normalized = query.casefold()
         if re.search(r"\bpdfs?\b", normalized):
@@ -2126,6 +2127,10 @@ class Repository:
                             for key in ("title", "description", "topic_name")
                         )
                     )
+                    if focused_concepts and not focused_concepts.issubset(
+                        resource_tokens
+                    ):
+                        continue
                     overlap = topic_tokens & resource_tokens
                     if not overlap:
                         continue
