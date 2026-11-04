@@ -1237,6 +1237,29 @@ class BotFlowTests(unittest.TestCase):
         )
         self.assertIn(self.user_id, self.bot._pending_coach_diagram_offers)
 
+    def test_private_coach_does_not_offer_diagram_on_a_chart_followup(self) -> None:
+        self.bot.store.add_education_diagram(
+            title="BOS",
+            tags="BOS, break of structure, market structure",
+            description="A break of a relevant swing.",
+            photo_file_id="local:attached_assets/bos-diagram-file.jpg",
+            admin_telegram_id=self.user_id,
+        )
+
+        self.bot._process_coach_message(
+            self.chat_id,
+            self.user_id,
+            self.username,
+            "I saw a BOS on the chart. What should I watch next?",
+        )
+
+        self.assertFalse(self.api.photos)
+        self.assertNotIn(
+            "I can show you the matching BOS diagram",
+            self.api.messages[-1]["text"],
+        )
+        self.assertNotIn(self.user_id, self.bot._pending_coach_diagram_offers)
+
     def test_private_coach_sends_diagram_after_plain_text_yes(self) -> None:
         self.bot.store.register_user(
             telegram_id=self.user_id,

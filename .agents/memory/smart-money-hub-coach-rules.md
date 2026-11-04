@@ -7,6 +7,8 @@ Smart Money Hub's configured preferences are H1 higher-timeframe bias, M5 entry 
 
 A retest is not mandatory for every entry model. Only describe a missed retest as a process mistake when the member's chosen plan required one. A CHOCH can signal a possible structure shift, not guarantee a reversal.
 
-**Why:** The user specified these as the Coach's rules and explicitly asked that hypothetical scenarios not be judged as real trades or by universal retest requirements.
+Do not repeat the H1/M5 preference, retest guidance, confirmation checklist, or diagram offer in every answer. Mention those only when directly relevant to the member's current question; answer chart follow-ups about the exact point they asked.
 
-**How to apply:** In Coach prompts, local responses, and trade reviews, use these preferences when relevant, reason from facts the member supplied, and distinguish hypothetical examples from executed trades and live-market requests.
+**Why:** The user specified these as the Coach's rules and explicitly asked that hypothetical scenarios not be judged as real trades or by universal retest requirements. They also reported that repeated timeframe, retest, and diagram suggestions made replies feel repetitive and unrelated.
+
+**How to apply:** In Coach prompts, local responses, and trade reviews, use these preferences only when relevant, reason from facts the member supplied, and distinguish hypothetical examples from executed trades and live-market requests. Offer a diagram only for a concept-learning question; send it immediately when explicitly requested or when the member says they are confused.

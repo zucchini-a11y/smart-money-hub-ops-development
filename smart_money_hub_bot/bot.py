@@ -2982,7 +2982,20 @@ class SmartMoneyHubBot:
         normalized = question.casefold()
         return bool(
             re.search(
-                r"\b(?:diagram|image|picture|chart|illustration|visual)\b",
+                r"\b(?:diagram|image|picture|illustration|visual)\b",
+                normalized,
+            )
+        )
+
+    @staticmethod
+    def _should_offer_coach_diagram(question: str) -> bool:
+        """Offer a saved diagram only for an actual concept-learning question."""
+        normalized = " ".join(question.casefold().split())
+        return bool(
+            re.search(
+                r"\b(?:what\s+(?:is|are|does|do)|define|explain|teach|describe|"
+                r"compare|difference\s+between|how\s+(?:to|does|do|is|are)|"
+                r"why\s+(?:does|do|is|are))\b",
                 normalized,
             )
         )
@@ -3661,6 +3674,7 @@ class SmartMoneyHubBot:
             diagram
             and not confused
             and not self._is_explicit_diagram_request(question)
+            and self._should_offer_coach_diagram(question)
         )
         if offer_diagram:
             title = " ".join(str(diagram.get("title") or "diagram").split())
