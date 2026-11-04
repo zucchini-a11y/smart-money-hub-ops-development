@@ -6,7 +6,7 @@ import re
 import threading
 import time as time_module
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, time as ClockTime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -3336,6 +3336,7 @@ class SmartMoneyHubBot:
                 int(item.get("file_size") or 0),
             ),
         )
+        download_stage = "get_file"
         try:
             file_info = self.api.get_file(str(largest["file_id"]))
             declared_size = file_info.get("file_size")
@@ -3354,23 +3355,38 @@ class SmartMoneyHubBot:
             file_path = file_info.get("file_path")
             if not isinstance(file_path, str) or not file_path:
                 raise TelegramAPIError("Telegram image reference is incomplete.")
+            download_stage = "download"
             image_bytes, mime_type = self.api.download_file(
                 file_path,
                 max_bytes=MAX_COACH_CHART_IMAGE_BYTES,
             )
-        except TelegramAPIError:
+        except TelegramAPIError as error:
             self._record_coach_provider_event(
                 feature="chart_image",
                 outcome="failure",
                 failure_kind="telegram_download",
             )
-            logger.warning("Coach chart image download failed. request_id=%s.", request_id)
-            self.api.send_message(
-                chat_id,
-                "I couldn’t retrieve that screenshot from Telegram. Please try sending "
-                "it again as a smaller image.",
-                self._coach_keyboard(),
+            logger.warning(
+                "Coach chart image retrieval failed (stage=%s, "
+                "telegram_error_code=%s, http_status=%s). request_id=%s.",
+                download_stage,
+                error.error_code,
+                error.http_status,
+                request_id,
             )
+            error_text = str(error).casefold()
+            if re.search(r"\b(?:size limit|too large|too big)\b", error_text):
+                failure_text = (
+                    "That image is too large for chart analysis. Please resend a "
+                    "smaller screenshot (5 MB or less)."
+                )
+            else:
+                failure_text = (
+                    "Telegram couldn’t make that screenshot available for analysis. "
+                    "Please resend it as a photo. If the same error continues, try "
+                    "again later."
+                )
+            self.api.send_message(chat_id, failure_text, self._coach_keyboard())
             return
 
         question = caption.strip()[:1000] or (

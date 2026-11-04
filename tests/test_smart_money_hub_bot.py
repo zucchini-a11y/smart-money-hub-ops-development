@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 from smart_money_hub_bot.bot import (
     BOT_RECOVERY_NOTICES,
     BOT_RECOVERY_NOTICE_AFTER_SECONDS,
+    MAX_COACH_CHART_IMAGE_BYTES,
     POLLING_HEARTBEAT_INTERVAL_SECONDS,
     SmartMoneyHubBot,
 )
@@ -635,10 +636,38 @@ class BotFlowTests(unittest.TestCase):
         )
 
         service.evaluate_image.assert_not_called()
-        self.assertIn("couldn’t retrieve", self.api.messages[-1]["text"])
+        self.assertIn("resend it as a photo", self.api.messages[-1]["text"])
+        self.assertNotIn("smaller", self.api.messages[-1]["text"])
         health = self.bot.store.coach_provider_health()
         self.assertEqual(health["chart_image_failure"], 1)
         self.assertEqual(health["latest_failure"]["failure_kind"], "telegram_download")
+
+    def test_private_chart_image_download_size_error_suggests_smaller_image(self) -> None:
+        service = Mock()
+        self.bot.coach_service = service
+        self.api.get_file = Mock(
+            return_value={
+                "file_path": "photos/chart.png",
+                "file_size": MAX_COACH_CHART_IMAGE_BYTES - 1,
+            }
+        )
+        self.api.download_file = Mock(
+            side_effect=TelegramAPIError("Telegram image exceeds the size limit.")
+        )
+
+        self.bot.handle_update(
+            {
+                "message": {
+                    "message_id": 90,
+                    "photo": [{"file_id": "test-file", "width": 100, "height": 100}],
+                    "chat": {"id": self.chat_id, "type": "private"},
+                    "from": {"id": self.user_id, "username": self.username},
+                }
+            }
+        )
+
+        self.assertIn("too large", self.api.messages[-1]["text"])
+        self.assertIn("5 MB or less", self.api.messages[-1]["text"])
 
     def test_knowledge_dashboard_shows_source_coverage_and_provider_health(self) -> None:
         self.bot.store.record_coach_provider_event(
@@ -1329,7 +1358,7 @@ class BotFlowTests(unittest.TestCase):
             (),
             "",
         )
-        self.bot.coach_service = service
+        self.bot.message_router.coach_service = service
         self.bot.store.register_user(
             telegram_id=self.user_id,
             username=self.username,
@@ -1337,6 +1366,7 @@ class BotFlowTests(unittest.TestCase):
             chat_id=self.chat_id,
             is_private=True,
         )
+        self.bot.store.approved_knowledge_items = Mock(return_value=[])
         self.bot.store.add_education_diagram(
             title="Liquidity and Sweep (BSL/SSL)",
             tags=(
