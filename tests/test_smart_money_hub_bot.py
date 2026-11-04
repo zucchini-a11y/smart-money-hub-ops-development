@@ -656,6 +656,8 @@ class BotFlowTests(unittest.TestCase):
         self.assertTrue(self.api.messages)
 
     def test_private_chart_image_download_failure_is_visible_to_admin(self) -> None:
+        self.bot.admin_id = self.user_id
+        self.bot.admin_dashboard.admin_id = self.user_id
         service = Mock()
         self.bot.coach_service = service
         self.api.get_file = Mock(
@@ -681,6 +683,8 @@ class BotFlowTests(unittest.TestCase):
         self.assertEqual(health["latest_failure"]["failure_kind"], "telegram_download")
 
     def test_private_chart_image_download_size_error_suggests_smaller_image(self) -> None:
+        self.bot.admin_id = self.user_id
+        self.bot.admin_dashboard.admin_id = self.user_id
         service = Mock()
         self.bot.coach_service = service
         self.api.get_file = Mock(
