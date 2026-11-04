@@ -1122,6 +1122,69 @@ class BotFlowTests(unittest.TestCase):
         self.assertIn("Education", report)
         self.assertNotIn("I do not have access", report)
 
+    def test_admin_can_ask_if_a_post_is_queued_for_a_time(self) -> None:
+        self.bot.admin_id = self.user_id
+        dashboard = self.bot.admin_dashboard
+        dashboard.admin_id = self.user_id
+        dashboard.channel_posts.destination_chat_id = -1004481197912
+        self.bot.store.create_scheduled_channel_post(
+            schedule_date="2099-01-01",
+            schedule_time="10:00",
+            requested_category="education",
+            category="education",
+            content="Queued test post.",
+            destination_chat_id=-1004481197912,
+            is_promo=False,
+            bot_username=None,
+            next_category_index=0,
+            next_promo_feature_index=0,
+            last_promo_date=None,
+            status="draft",
+            generation_source="gemini",
+        )
+
+        self.bot.handle_update(
+            {
+                "message": {
+                    "from": {
+                        "id": self.user_id,
+                        "is_bot": False,
+                        "first_name": self.first_name,
+                    },
+                    "chat": {"id": self.user_id, "type": "private"},
+                    "text": "Is there a post queued for 10 PM tonight?",
+                }
+            }
+        )
+
+        report = self.api.messages[-1]["text"]
+        self.assertIn("CHANNEL CONTENT SCHEDULER", report)
+        self.assertIn("2099-01-01", report)
+        self.assertIn("10:00 WAT", report)
+
+    def test_admin_can_ask_about_auto_posts_and_get_read_only_status(self) -> None:
+        self.bot.admin_id = self.user_id
+        self.bot.admin_dashboard.admin_id = self.user_id
+
+        self.bot.handle_update(
+            {
+                "message": {
+                    "from": {
+                        "id": self.user_id,
+                        "is_bot": False,
+                        "first_name": self.first_name,
+                    },
+                    "chat": {"id": self.user_id, "type": "private"},
+                    "text": "What's going on with my auto posts?",
+                }
+            }
+        )
+
+        report = self.api.messages[-1]["text"]
+        self.assertIn("SMART MONEY HUB — FULL ADMIN STATUS", report)
+        self.assertIn("Routine automatic publishing:", report)
+        self.assertIn("Saved Market Analysis queue (next 5):", report)
+
     def test_full_status_text_alias_is_restricted_to_private_admin_chat(self) -> None:
         self.bot.admin_id = self.user_id
         dashboard = self.bot.admin_dashboard

@@ -473,6 +473,39 @@ class AdminDashboard:
             while normalized.endswith(suffix):
                 normalized = normalized[:-len(suffix)].strip()
 
+        mentions_posting = bool(
+            re.search(r"\b(posts?|posting|publish(?:ed|ing)?)\b", normalized)
+        )
+        asks_post_status = bool(
+            re.search(
+                r"\b(auto(?:matic(?:ally)?)?|queue(?:d)?|schedul(?:e|ed|ing)|"
+                r"upcoming|next|status|when|coming|today|tonight|tomorrow|"
+                r"going on|happening|update|details)\b",
+                normalized,
+            )
+        )
+        explicit_post_action = bool(
+            re.match(
+                r"^(?:create|write|draft|generate|make|edit|cancel|send|"
+                r"publish now|post now|schedule a post)\b",
+                normalized,
+            )
+        )
+        if mentions_posting and asks_post_status and not explicit_post_action:
+            broad_status = bool(
+                re.search(
+                    r"\b(auto(?:matic(?:ally)?)?|everything|all|going on|happening)\b",
+                    normalized,
+                )
+            )
+            self.handle_callback(
+                chat_id,
+                telegram_id,
+                True,
+                "admin:status:all" if broad_status else "admin:channel_posts",
+            )
+            return True
+
         if (
             original_normalized in ADMIN_MENU_HELP_ALIASES
             or normalized in ADMIN_MENU_HELP_ALIASES
@@ -2465,6 +2498,32 @@ class AdminDashboard:
         for draft in drafts:
             state = str(draft.get("status") or "unknown")
             draft_counts[state] = draft_counts.get(state, 0) + 1
+        next_channel_posts = sorted(
+            channel_queue,
+            key=lambda post: (
+                str(post.get("schedule_date") or ""),
+                int(post.get("id") or 0),
+            ),
+        )[:5]
+        channel_queue_lines: list[str] = []
+        for post in next_channel_posts:
+            schedule_date = str(post.get("schedule_date") or "")
+            try:
+                publish_time = self.channel_posts._publish_time(
+                    date.fromisoformat(schedule_date)
+                ).strftime("%H:%M")
+            except ValueError:
+                publish_time = "time unavailable"
+            category = self.channel_posts._category_label(
+                str(post.get("category") or "post")
+            )
+            status = self.channel_posts._status_label(post)
+            channel_queue_lines.append(
+                f"• {schedule_date or 'Date unavailable'} at {publish_time} WAT — "
+                f"{category} — {status}"
+            )
+        if not channel_queue_lines:
+            channel_queue_lines.append("• No saved channel posts in the queue.")
 
         source_statuses = self.calendar_review.list_source_status()
         if not source_statuses:
@@ -2496,6 +2555,8 @@ class AdminDashboard:
                 f"{'PAUSED' if channel_settings.get('paused') else 'ACTIVE'}; "
                 f"{len(channel_queue)} pending, {len(held_channel)} held/failed."
             ),
+            "Saved Market Analysis queue (next 5):",
+            *channel_queue_lines,
             "Routine slots: weekdays/Saturday 10:00 WAT; Sunday 18:00 WAT.",
             (
                 f"Session opens: {len(session_upcoming)} upcoming; "
