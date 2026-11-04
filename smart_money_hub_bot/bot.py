@@ -3059,7 +3059,42 @@ class SmartMoneyHubBot:
                 r"\b(?:diagram|image|picture|illustration|visual)\b",
                 normalized,
             )
+            or re.search(
+                r"\b(?:what does|what do|how does|how do)\b.{0,100}"
+                r"\b(?:look like|look on (?:the )?chart|appear|show up)\b",
+                normalized,
+            )
+            or re.search(
+                r"\b(?:show|send|draw|sketch|map out)\b.{0,60}"
+                r"\b(?:me|what|how|the|a|an|this|that|it)\b",
+                normalized,
+            )
         )
+
+    @staticmethod
+    def _clean_explicit_diagram_reply(
+        response: str, diagram: dict[str, Any]
+    ) -> str:
+        """Remove fake text diagrams and false image limitations before sending."""
+        cleaned = re.sub(r"(?s)```.*?```", "", response)
+        cleaned = re.sub(
+            r"(?im)^.*\b(?:cannot|can't|am unable to|is unable to)\b.*"
+            r"\b(?:render|display|show|send|attach)\b.*"
+            r"\b(?:image|diagram|picture|visual)\b.*$\n?",
+            "",
+            cleaned,
+        )
+        cleaned = re.sub(
+            r"(?im)^\s*(?:would you like|do you want|want me to)\b.*\?\s*$",
+            "",
+            cleaned,
+        )
+        cleaned = "\n".join(line.rstrip() for line in cleaned.splitlines())
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+        if cleaned:
+            return cleaned
+        title = " ".join(str(diagram.get("title") or "learning").split())
+        return f"Here’s the saved {title} diagram you asked for."
 
     @staticmethod
     def _should_offer_coach_diagram(question: str) -> bool:
@@ -3633,6 +3668,20 @@ class SmartMoneyHubBot:
         confused = self._is_confusion_request(question)
         include_resources = self._should_include_education_resources(question)
         resource_query = self._education_followup_query(question, history)
+        diagram: dict[str, Any] | None = None
+        try:
+            diagram = self.admin_dashboard.education_diagrams.diagram_for_question(
+                resource_query
+            )
+        except Exception:
+            logger.warning("Could not retrieve a matching Coach diagram.")
+        if diagram:
+            profile["matching_education_diagram_context"] = {
+                "title": " ".join(str(diagram.get("title") or "").split())[:120],
+                "description": " ".join(
+                    str(diagram.get("description") or "").split()
+                )[:300],
+            }
         self._attach_curriculum_context(
             profile,
             question,
@@ -3662,6 +3711,11 @@ class SmartMoneyHubBot:
         reply = routed.reply
         assessment = routed.assessment
         response_text = reply.response
+        if diagram and (confused or self._is_explicit_diagram_request(question)):
+            response_text = self._clean_explicit_diagram_reply(
+                response_text, diagram
+            )
+            reply = replace(reply, response=response_text)
 
         interaction_id: int | None = None
         question_recorded = False
@@ -3737,13 +3791,6 @@ class SmartMoneyHubBot:
             resource_context,
             allow_links=include_resources,
         )
-        diagram: dict[str, Any] | None = None
-        try:
-            diagram = self.admin_dashboard.education_diagrams.diagram_for_question(
-                resource_query
-            )
-        except Exception:
-            logger.warning("Could not retrieve a matching Coach diagram.")
         offer_diagram = bool(
             diagram
             and not confused

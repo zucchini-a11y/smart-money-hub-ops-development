@@ -782,6 +782,32 @@ class GeminiCoachService:
             if profile and profile.get("education_resources_context")
             else ""
         )
+        diagram_context = (
+            profile.get("matching_education_diagram_context")
+            if profile
+            else None
+        )
+        diagram_guidance = ""
+        if isinstance(diagram_context, dict):
+            diagram_title = " ".join(
+                str(diagram_context.get("title") or "").split()
+            )[:120]
+            diagram_description = " ".join(
+                str(diagram_context.get("description") or "").split()
+            )[:300]
+            diagram_guidance = (
+                f" A saved Education diagram matches this question: {diagram_title}. "
+                "The bot can send that actual image separately in this Telegram chat. "
+                "Never claim that you cannot render, show, or send an image. Do not "
+                "draw ASCII art, code-fenced sketches, or pretend text diagrams. "
+                "Explain the concept in plain words. The bot handles image delivery, "
+                "so do not ask whether the user wants a diagram when they already "
+                "requested one or said they are confused."
+            )
+            if diagram_description:
+                diagram_guidance += (
+                    f" Diagram description: {diagram_description}"
+                )
         learning_goal = (
             " The learner's saved learning focus is: "
             + " ".join(str(profile.get("learning_goal") or "").split())[:300]
@@ -901,6 +927,7 @@ class GeminiCoachService:
             + image_guidance
             + curriculum_guidance
             + education_resource_guidance
+            + diagram_guidance
             + learning_goal
         )
 

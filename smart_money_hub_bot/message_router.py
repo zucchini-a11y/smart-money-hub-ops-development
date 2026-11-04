@@ -591,6 +591,10 @@ def _relevant_conversation_context(
         role_context["education_resources_context"] = profile[
             "education_resources_context"
         ]
+    if profile and isinstance(profile.get("matching_education_diagram_context"), dict):
+        role_context["matching_education_diagram_context"] = profile[
+            "matching_education_diagram_context"
+        ]
     if profile and isinstance(profile.get("episode_context"), list):
         role_context["episode_context"] = profile["episode_context"]
     if profile and isinstance(profile.get("episode_source_missing"), int):
