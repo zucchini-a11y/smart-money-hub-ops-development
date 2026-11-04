@@ -145,6 +145,27 @@ class TelegramUpdateSubscriptionTests(unittest.TestCase):
             },
         )
 
+    def test_send_message_supports_reply_target_and_mention_entities(self) -> None:
+        api = TelegramAPI("synthetic-test-token")
+        entities = [{"type": "mention", "offset": 0, "length": 12}]
+        with patch.object(api, "_request", return_value=True) as request:
+            api.send_message(
+                123,
+                "@smc_member,\n\nCoach reply",
+                reply_to_message_id=456,
+                entities=entities,
+            )
+
+        request.assert_called_once_with(
+            "sendMessage",
+            {
+                "chat_id": 123,
+                "text": "@smc_member,\n\nCoach reply",
+                "reply_to_message_id": 456,
+                "entities": entities,
+            },
+        )
+
     def test_business_reply_uses_the_authorized_business_connection(self) -> None:
         api = TelegramAPI("synthetic-test-token")
         with patch.object(

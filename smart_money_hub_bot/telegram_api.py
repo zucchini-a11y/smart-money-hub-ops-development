@@ -279,16 +279,22 @@ class TelegramAPI:
         parse_mode: str | None = None,
         message_thread_id: int | None = None,
         business_connection_id: str | None = None,
+        reply_to_message_id: int | None = None,
+        entities: list[dict[str, Any]] | None = None,
     ) -> None:
         payload: dict[str, Any] = {"chat_id": chat_id, "text": text}
         if reply_markup is not None:
             payload["reply_markup"] = reply_markup
         if parse_mode is not None:
             payload["parse_mode"] = parse_mode
+        if entities is not None:
+            payload["entities"] = entities
         if message_thread_id is not None:
             payload["message_thread_id"] = message_thread_id
         if business_connection_id is not None:
             payload["business_connection_id"] = business_connection_id
+        if reply_to_message_id is not None:
+            payload["reply_to_message_id"] = reply_to_message_id
         self._request("sendMessage", payload)
 
     def send_message_with_result(
@@ -300,16 +306,22 @@ class TelegramAPI:
         parse_mode: str | None = None,
         message_thread_id: int | None = None,
         business_connection_id: str | None = None,
+        reply_to_message_id: int | None = None,
+        entities: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {"chat_id": chat_id, "text": text}
         if reply_markup is not None:
             payload["reply_markup"] = reply_markup
         if parse_mode is not None:
             payload["parse_mode"] = parse_mode
+        if entities is not None:
+            payload["entities"] = entities
         if message_thread_id is not None:
             payload["message_thread_id"] = message_thread_id
         if business_connection_id is not None:
             payload["business_connection_id"] = business_connection_id
+        if reply_to_message_id is not None:
+            payload["reply_to_message_id"] = reply_to_message_id
         result = self._request("sendMessage", payload)
         return result if isinstance(result, dict) else {}
 

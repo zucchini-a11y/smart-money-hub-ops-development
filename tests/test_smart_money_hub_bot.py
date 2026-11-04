@@ -58,12 +58,18 @@ class FakeTelegramAPI:
         *,
         parse_mode: str | None = None,
         message_thread_id: int | None = None,
+        reply_to_message_id: int | None = None,
+        entities: list[dict[str, Any]] | None = None,
     ) -> None:
         message = {"chat_id": chat_id, "text": text, "reply_markup": reply_markup}
         if parse_mode is not None:
             message["parse_mode"] = parse_mode
         if message_thread_id is not None:
             message["message_thread_id"] = message_thread_id
+        if reply_to_message_id is not None:
+            message["reply_to_message_id"] = reply_to_message_id
+        if entities is not None:
+            message["entities"] = entities
         self.messages.append(message)
 
     def send_photo_with_result(
@@ -448,6 +454,147 @@ class BotFlowTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
+
+    def test_private_coach_reply_tags_and_replies_to_the_incoming_message(self) -> None:
+        self.bot.store.register_user(
+            telegram_id=self.user_id,
+            username=self.username,
+            first_name=self.first_name,
+            chat_id=self.chat_id,
+            is_private=True,
+        )
+        sender = {
+            "id": self.user_id,
+            "is_bot": False,
+            "first_name": self.first_name,
+            "username": self.username,
+        }
+        incoming_message_id = 4321
+
+        self.bot._process_coach_message(
+            self.chat_id,
+            self.user_id,
+            self.username,
+            "What is a fair value gap?",
+            reply_to_message_id=incoming_message_id,
+            sender=sender,
+        )
+
+        reply = self.api.messages[-1]
+        self.assertEqual(reply["reply_to_message_id"], incoming_message_id)
+        self.assertTrue(reply["text"].startswith(f"@{self.username},\n\n"))
+        self.assertEqual(
+            reply["entities"],
+            [{"type": "mention", "offset": 0, "length": len(f"@{self.username}")}],
+        )
+
+    def test_private_coach_reply_uses_text_mention_without_a_username(self) -> None:
+        self.bot.store.register_user(
+            telegram_id=self.user_id,
+            username=None,
+            first_name="Amara 😀",
+            chat_id=self.chat_id,
+            is_private=True,
+        )
+        sender = {
+            "id": self.user_id,
+            "is_bot": False,
+            "first_name": "Amara 😀",
+        }
+
+        self.bot._process_coach_message(
+            self.chat_id,
+            self.user_id,
+            None,
+            "What is a fair value gap?",
+            reply_to_message_id=4322,
+            sender=sender,
+        )
+
+        reply = self.api.messages[-1]
+        self.assertTrue(reply["text"].startswith("Amara 😀,\n\n"))
+        self.assertEqual(
+            reply["entities"],
+            [
+                {
+                    "type": "text_mention",
+                    "offset": 0,
+                    "length": len("Amara 😀".encode("utf-16-le")) // 2,
+                    "user": {
+                        "id": self.user_id,
+                        "is_bot": False,
+                        "first_name": "Amara 😀",
+                    },
+                }
+            ],
+        )
+
+    def test_private_message_handler_passes_reply_and_sender_to_coach(self) -> None:
+        message = {
+            "message_id": 4323,
+            "text": "What is a fair value gap?",
+            "chat": {"id": self.chat_id, "type": "private"},
+            "from": {
+                "id": self.user_id,
+                "is_bot": False,
+                "first_name": self.first_name,
+                "username": self.username,
+            },
+        }
+        with patch.object(self.bot, "_answer_coach_message") as answer:
+            self.bot.handle_update({"message": message})
+
+        answer.assert_called_once_with(
+            self.chat_id,
+            self.user_id,
+            self.username,
+            message["text"],
+            reply_to_message_id=message["message_id"],
+            sender=message["from"],
+        )
+
+    def test_private_chart_image_reply_is_tagged_and_replies_to_the_photo(self) -> None:
+        self.bot.coach_service = object()
+        sender = {
+            "id": self.user_id,
+            "is_bot": False,
+            "first_name": self.first_name,
+            "username": self.username,
+        }
+
+        self.bot._answer_coach_image_message(
+            self.chat_id,
+            self.user_id,
+            [],
+            caption="Explain this chart",
+            reply_to_message_id=4324,
+            sender=sender,
+        )
+
+        reply = self.api.messages[-1]
+        self.assertEqual(reply["reply_to_message_id"], 4324)
+        self.assertTrue(reply["text"].startswith(f"@{self.username},\n\n"))
+        self.assertEqual(reply["entities"][0]["type"], "mention")
+
+    def test_guided_coach_answer_replies_to_the_member_message(self) -> None:
+        self._click("coach:setup")
+        sender = {
+            "id": self.user_id,
+            "is_bot": False,
+            "first_name": self.first_name,
+            "username": self.username,
+        }
+
+        self.bot._accept_guided_coach_answer(
+            self.user_id,
+            "Gold on M15",
+            reply_to_message_id=4325,
+            sender=sender,
+        )
+
+        reply = self.api.messages[-1]
+        self.assertEqual(reply["reply_to_message_id"], 4325)
+        self.assertTrue(reply["text"].startswith(f"@{self.username},\n\n"))
 
     def test_every_admin_dashboard_button_has_a_text_shortcut(self) -> None:
         dashboard = AdminDashboard(

@@ -1806,7 +1806,9 @@ class SmartMoneyHubBot:
                 chat_id,
                 telegram_id,
                 message.get("photo") or [],
-                caption=text,
+                caption=str(message.get("caption") or ""),
+                reply_to_message_id=message.get("message_id"),
+                sender=sender,
             )
             return
         if (
@@ -2112,7 +2114,12 @@ class SmartMoneyHubBot:
                     self._nav_keyboard(),
                 )
             elif session.kind in COACH_GUIDED_PROMPTS:
-                self._accept_guided_coach_answer(telegram_id, text)
+                self._accept_guided_coach_answer(
+                    telegram_id,
+                    text,
+                    reply_to_message_id=message.get("message_id"),
+                    sender=sender,
+                )
             elif session.kind in {"coach_challenge", "coach_daily"}:
                 self.api.send_message(
                     chat_id,
@@ -2241,6 +2248,8 @@ class SmartMoneyHubBot:
                 telegram_id,
                 sender.get("username"),
                 text,
+                reply_to_message_id=message.get("message_id"),
+                sender=sender,
             )
         else:
             if not self._is_education_group(chat_id, is_private):
@@ -2740,7 +2749,13 @@ class SmartMoneyHubBot:
         )
         self._ask_guided_coach_question(telegram_id)
 
-    def _ask_guided_coach_question(self, telegram_id: int) -> None:
+    def _ask_guided_coach_question(
+        self,
+        telegram_id: int,
+        *,
+        reply_to_message_id: int | None = None,
+        sender: dict[str, Any] | None = None,
+    ) -> None:
         session = self.sessions.get(telegram_id)
         if not session or session.kind not in COACH_GUIDED_PROMPTS:
             return
@@ -2749,35 +2764,64 @@ class SmartMoneyHubBot:
             self._finish_guided_coach_session(telegram_id)
             return
         title = "Setup Review" if session.kind == "coach_setup" else "Mistake Review"
-        self.api.send_message(
+        self._send_private_coach_reply(
             session.chat_id,
             f"{title} — {session.step + 1}/{len(prompts)}\n\n"
             f"{prompts[session.step]}\n\nReply with one answer. You can use Back or Main Menu.",
             self._nav_keyboard(),
+            reply_to_message_id=reply_to_message_id,
+            sender=sender,
         )
 
-    def _accept_guided_coach_answer(self, telegram_id: int, text: str) -> None:
+    def _accept_guided_coach_answer(
+        self,
+        telegram_id: int,
+        text: str,
+        *,
+        reply_to_message_id: int | None = None,
+        sender: dict[str, Any] | None = None,
+    ) -> None:
         session = self.sessions.get(telegram_id)
         if not session or session.kind not in COACH_GUIDED_PROMPTS:
             return
         value = text.strip()
         if not value:
-            self._ask_guided_coach_question(telegram_id)
+            self._ask_guided_coach_question(
+                telegram_id,
+                reply_to_message_id=reply_to_message_id,
+                sender=sender,
+            )
             return
         if len(value) > 400:
-            self.api.send_message(
+            self._send_private_coach_reply(
                 session.chat_id,
                 "Please keep each answer under 400 characters so I can review it clearly.",
                 self._nav_keyboard(),
+                reply_to_message_id=reply_to_message_id,
+                sender=sender,
             )
             return
         session.answers.append(value)
         if session.step < len(COACH_GUIDED_PROMPTS[session.kind]):
-            self._ask_guided_coach_question(telegram_id)
+            self._ask_guided_coach_question(
+                telegram_id,
+                reply_to_message_id=reply_to_message_id,
+                sender=sender,
+            )
         else:
-            self._finish_guided_coach_session(telegram_id)
+            self._finish_guided_coach_session(
+                telegram_id,
+                reply_to_message_id=reply_to_message_id,
+                sender=sender,
+            )
 
-    def _finish_guided_coach_session(self, telegram_id: int) -> None:
+    def _finish_guided_coach_session(
+        self,
+        telegram_id: int,
+        *,
+        reply_to_message_id: int | None = None,
+        sender: dict[str, Any] | None = None,
+    ) -> None:
         session = self.sessions.get(telegram_id)
         if not session or session.kind not in COACH_GUIDED_PROMPTS:
             return
@@ -2793,6 +2837,8 @@ class SmartMoneyHubBot:
             telegram_id,
             session.username,
             f"{label}:\n{prompt}",
+            reply_to_message_id=reply_to_message_id,
+            sender=sender,
         )
 
     def _start_coach_challenge(
@@ -3307,6 +3353,9 @@ class SmartMoneyHubBot:
         telegram_id: int,
         username: str | None,
         question: str,
+        *,
+        reply_to_message_id: int | None = None,
+        sender: dict[str, Any] | None = None,
     ) -> None:
         self._send_typing_action(chat_id)
         stop_typing = threading.Event()
@@ -3318,7 +3367,14 @@ class SmartMoneyHubBot:
         )
         typing_thread.start()
         try:
-            self._process_coach_message(chat_id, telegram_id, username, question)
+            self._process_coach_message(
+                chat_id,
+                telegram_id,
+                username,
+                question,
+                reply_to_message_id=reply_to_message_id,
+                sender=sender,
+            )
         finally:
             stop_typing.set()
             typing_thread.join(timeout=1)
@@ -3330,15 +3386,19 @@ class SmartMoneyHubBot:
         photos: list[dict[str, Any]],
         *,
         caption: str,
+        reply_to_message_id: int | None = None,
+        sender: dict[str, Any] | None = None,
     ) -> None:
         request_id = uuid.uuid4().hex
         evaluate_image = getattr(self.coach_service, "evaluate_image", None)
         if not callable(evaluate_image):
-            self.api.send_message(
+            self._send_private_coach_reply(
                 chat_id,
                 "Chart-image analysis isn’t available in the current Coach setup. "
                 "You can describe the chart or ask a general concept question instead.",
                 self._coach_keyboard(),
+                reply_to_message_id=reply_to_message_id,
+                sender=sender,
             )
             return
         valid_sizes = [
@@ -3346,7 +3406,12 @@ class SmartMoneyHubBot:
             if isinstance(item, dict) and isinstance(item.get("file_id"), str)
         ]
         if not valid_sizes:
-            self.api.send_message(chat_id, "I couldn’t read that image. Please resend it.")
+            self._send_private_coach_reply(
+                chat_id,
+                "I couldn’t read that image. Please resend it.",
+                reply_to_message_id=reply_to_message_id,
+                sender=sender,
+            )
             return
         largest = max(
             valid_sizes,
@@ -3364,11 +3429,13 @@ class SmartMoneyHubBot:
                 and not isinstance(declared_size, bool)
                 and declared_size > MAX_COACH_CHART_IMAGE_BYTES
             ):
-                self.api.send_message(
+                self._send_private_coach_reply(
                     chat_id,
                     "That image is too large for safe chart analysis. Please resend "
                     "a smaller screenshot (5 MB or less).",
                     self._coach_keyboard(),
+                    reply_to_message_id=reply_to_message_id,
+                    sender=sender,
                 )
                 return
             file_path = file_info.get("file_path")
@@ -3409,7 +3476,13 @@ class SmartMoneyHubBot:
                     "Please resend it as a photo. If the same error continues, try "
                     "again later."
                 )
-            self.api.send_message(chat_id, failure_text, self._coach_keyboard())
+            self._send_private_coach_reply(
+                chat_id,
+                failure_text,
+                self._coach_keyboard(),
+                reply_to_message_id=reply_to_message_id,
+                sender=sender,
+            )
             return
 
         question = caption.strip()[:1000] or (
@@ -3452,11 +3525,13 @@ class SmartMoneyHubBot:
                 provider_status=error.provider_status or "",
             )
             logger.warning("Coach chart image analysis failed. request_id=%s.", request_id)
-            self.api.send_message(
+            self._send_private_coach_reply(
                 chat_id,
                 "I couldn’t analyze that screenshot right now. Nothing was inferred "
                 "or saved; please try again later or ask about a general concept.",
                 self._coach_keyboard(),
+                reply_to_message_id=reply_to_message_id,
+                sender=sender,
             )
             return
         except Exception:
@@ -3466,10 +3541,12 @@ class SmartMoneyHubBot:
                 failure_kind="other",
             )
             logger.exception("Unexpected Coach chart image failure. request_id=%s.", request_id)
-            self.api.send_message(
+            self._send_private_coach_reply(
                 chat_id,
                 "Chart analysis is temporarily unavailable. Please try again later.",
                 self._coach_keyboard(),
+                reply_to_message_id=reply_to_message_id,
+                sender=sender,
             )
             return
         finally:
@@ -3494,10 +3571,12 @@ class SmartMoneyHubBot:
             resource_context,
             allow_links=include_resources,
         )
-        self.api.send_message(
+        self._send_private_coach_reply(
             chat_id,
             response,
             markup,
+            reply_to_message_id=reply_to_message_id,
+            sender=sender,
         )
         logger.info("Coach chart image reply sent. request_id=%s.", request_id)
 
@@ -3690,6 +3769,9 @@ class SmartMoneyHubBot:
         telegram_id: int,
         username: str | None,
         question: str,
+        *,
+        reply_to_message_id: int | None = None,
+        sender: dict[str, Any] | None = None,
     ) -> None:
         request_id = uuid.uuid4().hex
         logger.info("Coach request received. request_id=%s.", request_id)
@@ -3856,7 +3938,13 @@ class SmartMoneyHubBot:
                 "Just say yes."
             )
         try:
-            self.api.send_message(chat_id, response, markup)
+            self._send_private_coach_reply(
+                chat_id,
+                response,
+                markup,
+                reply_to_message_id=reply_to_message_id,
+                sender=sender if reply_to_message_id is not None else None,
+            )
         except TelegramAPIError:
             logger.warning("Coach Telegram send failed. request_id=%s.", request_id)
             raise
@@ -3880,6 +3968,64 @@ class SmartMoneyHubBot:
             "Coach reply sent to Telegram (path=%s). request_id=%s.",
             routed.response_path,
             request_id,
+        )
+
+    @staticmethod
+    def _private_coach_mention(
+        sender: dict[str, Any],
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Build a Telegram mention entity for a private Coach reply."""
+        username = sender.get("username")
+        if isinstance(username, str) and re.fullmatch(
+            r"[A-Za-z][A-Za-z0-9_]{4,31}", username
+        ):
+            mention = f"@{username}"
+            return mention, {
+                "type": "mention",
+                "offset": 0,
+                "length": len(mention),
+            }
+
+        telegram_id = sender.get("id")
+        first_name = " ".join(str(sender.get("first_name") or "").split())
+        last_name = " ".join(str(sender.get("last_name") or "").split())
+        display_name = " ".join(part for part in (first_name, last_name) if part)
+        if not isinstance(telegram_id, int) or isinstance(telegram_id, bool):
+            return "", None
+        if not display_name:
+            display_name = "there"
+        return display_name, {
+            "type": "text_mention",
+            "offset": 0,
+            "length": len(display_name.encode("utf-16-le")) // 2,
+            "user": {
+                "id": telegram_id,
+                "is_bot": sender.get("is_bot") is True,
+                "first_name": first_name or display_name,
+            },
+        }
+
+    def _send_private_coach_reply(
+        self,
+        chat_id: int,
+        text: str,
+        reply_markup: dict[str, Any] | None = None,
+        *,
+        reply_to_message_id: int | None = None,
+        sender: dict[str, Any] | None = None,
+    ) -> None:
+        entities: list[dict[str, Any]] | None = None
+        if sender and reply_to_message_id is not None:
+            mention_text, mention_entity = self._private_coach_mention(sender)
+            if mention_text and mention_entity:
+                text = f"{mention_text},\n\n{text}"
+                entities = [mention_entity]
+        self.api.send_message(
+            chat_id,
+            text,
+            reply_markup,
+            reply_to_message_id=reply_to_message_id,
+            entities=entities,
         )
 
     def _handle_daily_brief_callback(
