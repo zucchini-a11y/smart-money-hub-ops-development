@@ -27,6 +27,7 @@ def retrieve_curriculum_context(
     if not query_tokens:
         return []
     focused_concepts = query_tokens & _FOCUSED_CONCEPTS
+    scoring_tokens = focused_concepts or query_tokens
 
     candidates: list[tuple[float, dict[str, str]]] = []
     for key, (title, content) in EDUCATION.items():
@@ -34,11 +35,11 @@ def retrieve_curriculum_context(
         resource_tokens = question_tokens(resource_text)
         if focused_concepts and not focused_concepts.issubset(resource_tokens):
             continue
-        shared = query_tokens & resource_tokens
+        shared = scoring_tokens & resource_tokens
         if not shared:
             continue
 
-        coverage = len(shared) / len(query_tokens)
+        coverage = len(shared) / len(scoring_tokens)
         similarity = question_similarity(question, resource_text)
         title_similarity = question_similarity(question, f"{key} {title}")
         score = coverage * 0.65 + similarity * 0.2 + title_similarity * 0.15
@@ -61,11 +62,11 @@ def retrieve_curriculum_context(
         resource_tokens = question_tokens(resource_text)
         if focused_concepts and not focused_concepts.issubset(resource_tokens):
             continue
-        shared = query_tokens & resource_tokens
+        shared = scoring_tokens & resource_tokens
         if not shared:
             continue
 
-        coverage = len(shared) / len(query_tokens)
+        coverage = len(shared) / len(scoring_tokens)
         similarity = question_similarity(question, resource_text)
         title_similarity = question_similarity(question, document["title"])
         score = coverage * 0.65 + similarity * 0.2 + title_similarity * 0.15
