@@ -205,6 +205,12 @@ def main() -> None:
             personal_reply_assistant=personal_reply_assistant,
             reply_draft_assistant=reply_draft_assistant,
         )
+        bundled_diagrams = bot.admin_dashboard.education_diagrams.seed_bundled_diagrams()
+        if bundled_diagrams:
+            logging.getLogger(__name__).info(
+                "Loaded %s owner-provided SMC diagrams for private Coach replies.",
+                bundled_diagrams,
+            )
         logging.getLogger(__name__).info(
             "Education-group morning learning posts scheduled daily for 08:00 WAT; "
             "weekly Education polls remain scheduled for Saturday 21:00 WAT."

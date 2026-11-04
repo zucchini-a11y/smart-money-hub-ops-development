@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Any
 
 from .storage import Repository
@@ -20,6 +21,46 @@ class EducationDiagramManager:
         self.store = store
         self.admin_id = admin_id
         self._upload_pending: set[int] = set()
+
+    def seed_bundled_diagrams(self) -> int:
+        """Register the owner-provided BOS and CHoCH examples once."""
+        if self.admin_id is None:
+            return 0
+        asset_dir = Path(__file__).resolve().parents[1] / "attached_assets"
+        bundled = (
+            (
+                "Break of Structure (BOS)",
+                "JPEG_image-4B87-A8C2-A4-0_1793767156288.jpeg",
+                "BOS, break of structure, market structure",
+                "Chart example with marked structure breaks and a later CHoCH.",
+            ),
+            (
+                "Change of Character (CHoCH)",
+                "JPEG_image-40CF-B1F0-CB-0_1793767156288.jpeg",
+                "CHoCH, change of character, market structure shift",
+                "Chart example with a marked CHoCH and the preceding BOS sequence.",
+            ),
+        )
+        existing_refs = {
+            str(item.get("photo_file_id") or "")
+            for item in self.store.education_diagrams(active_only=False)
+        }
+        added = 0
+        for title, filename, tags, description in bundled:
+            local_path = (asset_dir / filename).resolve()
+            photo_ref = f"local:attached_assets/{filename}"
+            if photo_ref in existing_refs or not local_path.is_file():
+                continue
+            self.store.add_education_diagram(
+                title=title,
+                tags=tags,
+                description=description,
+                photo_file_id=photo_ref,
+                admin_telegram_id=self.admin_id,
+            )
+            existing_refs.add(photo_ref)
+            added += 1
+        return added
 
     def is_upload_pending(self, telegram_id: int) -> bool:
         return telegram_id in self._upload_pending

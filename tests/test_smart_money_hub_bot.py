@@ -1033,11 +1033,18 @@ class BotFlowTests(unittest.TestCase):
         )
 
     def test_private_coach_sends_matching_admin_diagram(self) -> None:
+        self.bot.store.register_user(
+            telegram_id=self.user_id,
+            username=self.username,
+            first_name=self.first_name,
+            chat_id=self.chat_id,
+            is_private=True,
+        )
         self.bot.store.add_education_diagram(
             title="CHoCH",
             tags="CHoCH, change of character",
             description="A possible shift in market structure.",
-            photo_file_id="choch-diagram-file",
+            photo_file_id="local:attached_assets/choch-diagram-file.jpg",
             admin_telegram_id=self.user_id,
         )
 
@@ -1050,7 +1057,12 @@ class BotFlowTests(unittest.TestCase):
 
         self.assertEqual(len(self.api.photos), 1)
         self.assertEqual(self.api.photos[0]["chat_id"], self.chat_id)
-        self.assertEqual(self.api.photos[0]["photo"], "choch-diagram-file")
+        self.assertEqual(
+            self.api.photos[0]["photo"],
+            Path(__file__).resolve().parents[1]
+            / "attached_assets"
+            / "choch-diagram-file.jpg",
+        )
         self.assertIn("CHoCH", self.api.photos[0]["caption"])
         self.assertIn(
             "not a live setup",

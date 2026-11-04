@@ -8,6 +8,7 @@ import time as time_module
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, time as ClockTime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -3376,9 +3377,16 @@ class SmartMoneyHubBot:
                 caption += f"\n{description}"
             caption += "\nEducational illustration—not a live setup or entry signal."
             try:
+                photo_reference = str(diagram["photo_file_id"])
+                photo: str | Path = photo_reference
+                if photo_reference.startswith("local:"):
+                    local_path = Path(photo_reference.removeprefix("local:"))
+                    if not local_path.is_absolute():
+                        local_path = Path(__file__).resolve().parents[1] / local_path
+                    photo = local_path
                 self.api.send_photo_with_result(
                     chat_id,
-                    str(diagram["photo_file_id"]),
+                    photo,
                     caption=caption[:1000],
                 )
             except TelegramAPIError:

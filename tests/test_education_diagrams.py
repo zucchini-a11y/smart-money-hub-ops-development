@@ -85,6 +85,31 @@ class EducationDiagramManagerTests(unittest.TestCase):
         self.assertEqual(match["id"], saved[0]["id"])
         self.assertIn("Saved “BOS”", self.api.messages[-1][1])
 
+    def test_bundled_bos_and_choch_images_are_seeded_once(self) -> None:
+        self.assertEqual(self.manager.seed_bundled_diagrams(), 2)
+        self.assertEqual(self.manager.seed_bundled_diagrams(), 0)
+        diagrams = self.store.education_diagrams()
+        self.assertEqual(len(diagrams), 2)
+        self.assertIsNotNone(
+            self.manager.diagram_for_question("Explain BOS.")
+        )
+        self.assertIsNotNone(
+            self.manager.diagram_for_question("What does CHoCH mean?")
+        )
+        bos_diagram = self.manager.diagram_for_question("Explain BOS.")
+        assert bos_diagram is not None
+        self.assertTrue(
+            self.store.deactivate_education_diagram(int(bos_diagram["id"]))
+        )
+        self.assertEqual(self.manager.seed_bundled_diagrams(), 0)
+        self.assertIsNone(self.manager.diagram_for_question("Explain BOS."))
+        for item in diagrams:
+            self.assertTrue(str(item["photo_file_id"]).startswith("local:attached_assets/"))
+            asset = Path(__file__).resolve().parents[1] / str(
+                item["photo_file_id"]
+            ).removeprefix("local:")
+            self.assertTrue(asset.is_file())
+
     def test_unmatched_question_does_not_receive_a_diagram(self) -> None:
         self.store.add_education_diagram(
             title="CHoCH",

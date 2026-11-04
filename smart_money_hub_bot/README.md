@@ -121,7 +121,7 @@ In-progress conversations are kept in memory and can be restarted if the workflo
 9. In **Reminder Settings**, opt in to the Sunday reminder, then send `/stop` to unsubscribe.
 10. Send `/myid`, configure `ADMIN_TELEGRAM_ID` as a Replit Secret, restart the workflow, and send `/admin`; open **DM Coach Stats**.
 11. Open **Knowledge Improvement**. Test a known concept question and an unsupported or current-information question; inspect the anonymous queue, add researched HTTPS sources, draft an answer, and approve it. Confirm that an approved matching question uses that answer, while a negative member rating creates a review candidate without changing it.
-12. Open **Learning Diagrams** from the private admin menu or send “add diagram.” Upload a photo with a caption such as `BOS | BOS, break of structure, market structure | A close beyond a relevant swing.` A matching image is sent in private Coach chats when a member asks about that topic; it is not posted to channels or groups. Use the diagram list to hide an image from future Coach replies.
+12. Open **Learning Diagrams** from the private admin menu or send “add diagram.” The supplied BOS and CHoCH examples are loaded automatically. To add another, upload a photo with a caption such as `FVG | fair value gap, FVG | An imbalance between price delivery.` A matching image is sent in private Coach chats when a member asks about that topic; it is not posted to channels or groups. Use the diagram list to hide an image from future Coach replies.
 
 ### Offline tests
 
