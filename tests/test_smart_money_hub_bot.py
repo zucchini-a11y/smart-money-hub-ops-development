@@ -1013,6 +1013,7 @@ class BotFlowTests(unittest.TestCase):
         dashboard = self.bot.admin_dashboard
         dashboard.admin_id = self.user_id
         dashboard.channel_posts.destination_chat_id = -1004481197912
+        dashboard._content_edit_pending[self.user_id] = "pending-draft"
         self.bot.store.create_scheduled_channel_post(
             schedule_date="2026-11-01",
             schedule_time="10:00",
@@ -1161,6 +1162,7 @@ class BotFlowTests(unittest.TestCase):
         self.assertIn("CHANNEL CONTENT SCHEDULER", report)
         self.assertIn("2099-01-01", report)
         self.assertIn("10:00 WAT", report)
+        self.assertTrue(dashboard.content_edit_is_pending(self.user_id))
 
     def test_admin_can_ask_about_auto_posts_and_get_read_only_status(self) -> None:
         self.bot.admin_id = self.user_id
