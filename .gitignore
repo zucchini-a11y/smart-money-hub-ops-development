@@ -56,4 +56,5 @@ __pycache__/
 # Local bot data and secrets
 data/*.sqlite3
 data/*.sqlite3-*
+artifacts/smart-money-hub-whatsapp-assistant/data/
 .env

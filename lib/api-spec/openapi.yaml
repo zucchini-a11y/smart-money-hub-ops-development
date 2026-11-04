@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: whatsapp
+    description: WhatsApp assistant administration
 paths:
   /healthz:
     get:
@@ -24,6 +26,224 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /whatsapp/health:
+    get:
+      operationId: getWhatsAppHealth
+      tags: [whatsapp]
+      summary: WhatsApp assistant health
+      responses:
+        "200":
+          description: Service health without secret values
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppHealth"
+  /whatsapp/auth/me:
+    get:
+      operationId: getWhatsAppAuthStatus
+      tags: [whatsapp]
+      summary: Current admin session
+      responses:
+        "200":
+          description: Session state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthStatus"
+  /whatsapp/auth/login:
+    post:
+      operationId: loginWhatsAppAdmin
+      tags: [whatsapp]
+      summary: Sign in to the private admin dashboard
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminLogin"
+      responses:
+        "200":
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthStatus"
+        "401":
+          description: Invalid credentials
+  /whatsapp/auth/logout:
+    post:
+      operationId: logoutWhatsAppAdmin
+      tags: [whatsapp]
+      summary: End the admin session
+      responses:
+        "204":
+          description: Session ended
+  /whatsapp/dashboard:
+    get:
+      operationId: getWhatsAppDashboard
+      tags: [whatsapp]
+      summary: Dashboard totals and recent activity
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppDashboard"
+  /whatsapp/activity:
+    get:
+      operationId: getWhatsAppActivity
+      tags: [whatsapp]
+      summary: Recent sanitized bot activity
+      responses:
+        "200":
+          description: Activity items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WhatsAppActivity"
+  /whatsapp/conversations:
+    get:
+      operationId: listWhatsAppConversations
+      tags: [whatsapp]
+      summary: List WhatsApp conversations and enquiries
+      parameters:
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: enquiriesOnly
+          in: query
+          required: false
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Conversations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WhatsAppConversation"
+  /whatsapp/conversations/{conversationId}:
+    get:
+      operationId: getWhatsAppConversation
+      tags: [whatsapp]
+      summary: View a conversation and its messages
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Conversation detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppConversationDetail"
+        "404":
+          description: Conversation not found
+  /whatsapp/conversations/{conversationId}/reply:
+    post:
+      operationId: replyToWhatsAppConversation
+      tags: [whatsapp]
+      summary: Send an admin reply to a test recipient
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminReply"
+      responses:
+        "200":
+          description: Reply sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppMessage"
+        "403":
+          description: Outside the active test or customer-service window
+  /whatsapp/education-modules:
+    get:
+      operationId: listWhatsAppEducationModules
+      tags: [whatsapp]
+      summary: List editable lesson topics
+      responses:
+        "200":
+          description: Education modules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EducationModule"
+  /whatsapp/education-modules/{slug}:
+    put:
+      operationId: updateWhatsAppEducationModule
+      tags: [whatsapp]
+      summary: Update approved educational content
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EducationModuleUpdate"
+      responses:
+        "200":
+          description: Updated education module
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EducationModule"
+        "404":
+          description: Module not found
+  /whatsapp/settings:
+    get:
+      operationId: getWhatsAppSettings
+      tags: [whatsapp]
+      summary: Safe connection and assistant settings
+      responses:
+        "200":
+          description: Settings without credential values
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppSettings"
+    patch:
+      operationId: updateWhatsAppSettings
+      tags: [whatsapp]
+      summary: Pause or resume replies and update the community link
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WhatsAppSettingsUpdate"
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppSettings"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +253,181 @@ components:
           type: string
       required:
         - status
+    WhatsAppHealth:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok]
+      required: [status]
+    AuthStatus:
+      type: object
+      properties:
+        authenticated:
+          type: boolean
+        passwordConfigured:
+          type: boolean
+      required: [authenticated, passwordConfigured]
+    AdminLogin:
+      type: object
+      properties:
+        password:
+          type: string
+          minLength: 1
+          maxLength: 256
+      required: [password]
+    WhatsAppDashboard:
+      type: object
+      properties:
+        paused:
+          type: boolean
+        testMode:
+          type: boolean
+        conversationsToday:
+          type: integer
+        messagesToday:
+          type: integer
+        openEnquiries:
+          type: integer
+        recentActivity:
+          type: array
+          items:
+            $ref: "#/components/schemas/WhatsAppActivity"
+        connection:
+          $ref: "#/components/schemas/ConnectionStatus"
+      required: [paused, testMode, conversationsToday, messagesToday, openEnquiries, recentActivity, connection]
+    ConnectionStatus:
+      type: object
+      properties:
+        credentialsConfigured:
+          type: boolean
+        webhookConfigured:
+          type: boolean
+        geminiConfigured:
+          type: boolean
+        allowedTestRecipients:
+          type: integer
+      required: [credentialsConfigured, webhookConfigured, geminiConfigured, allowedTestRecipients]
+    WhatsAppActivity:
+      type: object
+      properties:
+        id:
+          type: integer
+        kind:
+          type: string
+        summary:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, kind, summary, createdAt]
+    WhatsAppConversation:
+      type: object
+      properties:
+        id:
+          type: integer
+        waId:
+          type: string
+        displayName:
+          type: ["string", "null"]
+        lastMessagePreview:
+          type: string
+        lastMessageAt:
+          type: ["string", "null"]
+          format: date-time
+        unreadCount:
+          type: integer
+        isEnquiry:
+          type: boolean
+        testRecipientAllowed:
+          type: boolean
+        replyWindowOpen:
+          type: boolean
+      required: [id, waId, displayName, lastMessagePreview, lastMessageAt, unreadCount, isEnquiry, testRecipientAllowed, replyWindowOpen]
+    WhatsAppConversationDetail:
+      type: object
+      properties:
+        conversation:
+          $ref: "#/components/schemas/WhatsAppConversation"
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/WhatsAppMessage"
+      required: [conversation, messages]
+    WhatsAppMessage:
+      type: object
+      properties:
+        id:
+          type: integer
+        direction:
+          type: string
+          enum: [inbound, outbound]
+        text:
+          type: string
+        status:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, direction, text, status, createdAt]
+    AdminReply:
+      type: object
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 4096
+      required: [text]
+    EducationModule:
+      type: object
+      properties:
+        slug:
+          type: string
+        title:
+          type: string
+        summary:
+          type: string
+        content:
+          type: string
+        published:
+          type: boolean
+        updatedAt:
+          type: ["string", "null"]
+          format: date-time
+      required: [slug, title, summary, content, published, updatedAt]
+    EducationModuleUpdate:
+      type: object
+      properties:
+        summary:
+          type: string
+          maxLength: 2000
+        content:
+          type: string
+          maxLength: 50000
+        published:
+          type: boolean
+      required: [summary, content, published]
+    WhatsAppSettings:
+      type: object
+      properties:
+        paused:
+          type: boolean
+        testMode:
+          type: boolean
+        telegramCommunityUrl:
+          type: ["string", "null"]
+          format: uri
+        webhookUrl:
+          type: string
+        connection:
+          $ref: "#/components/schemas/ConnectionStatus"
+      required: [paused, testMode, telegramCommunityUrl, webhookUrl, connection]
+    WhatsAppSettingsUpdate:
+      type: object
+      properties:
+        paused:
+          type: boolean
+        telegramCommunityUrl:
+          type: ["string", "null"]
+          format: uri
 

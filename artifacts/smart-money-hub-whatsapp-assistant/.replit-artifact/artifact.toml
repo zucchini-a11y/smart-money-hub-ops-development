@@ -1,0 +1,41 @@
+kind = "web"
+previewPath = "/smart-money-hub-whatsapp-assistant/"
+title = "Smart Money Hub WhatsApp Assistant"
+description = "A separate, test-number-only WhatsApp education assistant for Smart Money Hub, with a private admin dashboard and no changes to the Telegram bot."
+version = "1.0.0"
+id = "artifacts/smart-money-hub-whatsapp-assistant"
+router = "path"
+
+[[services]]
+name = "web"
+paths = ["/smart-money-hub-whatsapp-assistant/"]
+localPort = 23825
+
+[services.development]
+run = "pnpm --filter @workspace/smart-money-hub-whatsapp-assistant run dev"
+
+[services.production]
+build = ["pnpm", "--filter", "@workspace/smart-money-hub-whatsapp-assistant", "run", "build"]
+serve = "static"
+publicDir = "artifacts/smart-money-hub-whatsapp-assistant/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23825"
+BASE_PATH = "/smart-money-hub-whatsapp-assistant/"
+
+[[services]]
+name = "api"
+paths = ["/smart-money-hub-whatsapp-assistant/api", "/smart-money-hub-whatsapp-assistant/webhooks"]
+localPort = 23826
+
+[services.development]
+run = "python3 -m uvicorn main:app --app-dir artifacts/smart-money-hub-whatsapp-assistant/server --host 0.0.0.0 --port 23826 --proxy-headers --forwarded-allow-ips '*'"
+
+[services.env]
+PORT = "23826"
+WHATSAPP_APP_BASE_PATH = "/smart-money-hub-whatsapp-assistant"
+WHATSAPP_GRAPH_API_VERSION = "v25.0"
