@@ -1102,7 +1102,7 @@ class BotFlowTests(unittest.TestCase):
             resources,
         )
 
-    def test_private_coach_sends_matching_admin_diagram(self) -> None:
+    def test_private_coach_sends_matching_admin_diagram_when_requested(self) -> None:
         self.bot.store.register_user(
             telegram_id=self.user_id,
             username=self.username,
@@ -1122,7 +1122,7 @@ class BotFlowTests(unittest.TestCase):
             self.chat_id,
             self.user_id,
             self.username,
-            "Can you explain a change of character?",
+            "Can you show me the change of character diagram?",
         )
 
         self.assertEqual(len(self.api.photos), 1)
@@ -1138,6 +1138,76 @@ class BotFlowTests(unittest.TestCase):
             "not a live setup",
             self.api.photos[0]["caption"],
         )
+
+    def test_private_coach_suggests_diagram_and_sends_after_button_agreement(
+        self,
+    ) -> None:
+        self.bot.store.add_education_diagram(
+            title="CHoCH",
+            tags="CHoCH, change of character",
+            description="A possible shift in market structure.",
+            photo_file_id="local:attached_assets/choch-diagram-file.jpg",
+            admin_telegram_id=self.user_id,
+        )
+
+        self.bot._process_coach_message(
+            self.chat_id,
+            self.user_id,
+            self.username,
+            "Can you explain a change of character?",
+        )
+
+        self.assertEqual(self.api.photos, [])
+        response = self.api.messages[-1]
+        self.assertIn("Would you like to see it?", response["text"])
+        buttons = response["reply_markup"]["inline_keyboard"][-1]
+        show_button = next(
+            button for button in buttons if button["text"] == "📊 Show diagram"
+        )
+        callback_data = show_button["callback_data"]
+        self.bot.handle_update(
+            {
+                "callback_query": {
+                    "id": "show-diagram-1",
+                    "from": {"id": self.user_id},
+                    "message": {
+                        "message_id": 900,
+                        "chat": {"id": self.chat_id, "type": "private"},
+                    },
+                    "data": callback_data,
+                }
+            }
+        )
+
+        self.assertEqual(len(self.api.photos), 1)
+        self.assertEqual(self.api.photos[0]["chat_id"], self.chat_id)
+
+    def test_private_coach_sends_suggested_diagram_after_text_yes(self) -> None:
+        self.bot.store.add_education_diagram(
+            title="CHoCH",
+            tags="CHoCH, change of character",
+            description="A possible shift in market structure.",
+            photo_file_id="local:attached_assets/choch-diagram-file.jpg",
+            admin_telegram_id=self.user_id,
+        )
+        self.bot._process_coach_message(
+            self.chat_id,
+            self.user_id,
+            self.username,
+            "Can you explain a change of character?",
+        )
+        self.assertEqual(self.api.photos, [])
+
+        self.bot._handle_message(
+            {
+                "text": "Yes, show me",
+                "from": {"id": self.user_id, "username": self.username},
+                "chat": {"id": self.chat_id, "type": "private"},
+            }
+        )
+
+        self.assertEqual(len(self.api.photos), 1)
+        self.assertEqual(self.api.photos[0]["chat_id"], self.chat_id)
 
     def test_edited_group_post_updates_the_archive_in_place(self) -> None:
         group_id = -1003916437804

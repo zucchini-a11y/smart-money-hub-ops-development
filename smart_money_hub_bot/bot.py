@@ -486,6 +486,7 @@ class SmartMoneyHubBot:
             raise ValueError("The reminder time must be local wall time without a UTC offset.")
         # One active conversation per member; saved records live in SQLite.
         self.sessions: dict[int, Conversation] = {}
+        self._pending_coach_diagrams: dict[int, dict[str, Any]] = {}
         self._last_successful_poll_at: float | None = None
         self.coach_service: CoachService = coach_service or RuleBasedCoachService()
         self.message_router = CoachMessageRouter(self.coach_service, self.store)
@@ -1477,6 +1478,7 @@ class SmartMoneyHubBot:
         if (
             is_private_photo
         ):
+            self._pending_coach_diagrams.pop(int(chat["id"]), None)
             if self.admin_dashboard.education_diagrams.handle_admin_photo(
                 int(chat["id"]),
                 int(sender["id"]),
@@ -1591,6 +1593,10 @@ class SmartMoneyHubBot:
                 )
             return
         telegram_id, chat_id, is_private = self._register(sender, chat)
+        if is_private and self._handle_pending_coach_diagram_reply(
+            chat_id, telegram_id, text
+        ):
+            return
         self._send_bot_recovery_notice(
             chat_id,
             telegram_id,
@@ -2312,6 +2318,14 @@ class SmartMoneyHubBot:
         ):
             self.api.answer_callback_query(callback_id, "That feedback button is invalid.")
             return
+        diagram_callback = re.fullmatch(
+            r"coach:diagram:(show|decline):(\d{1,8})", data
+        )
+        if data.startswith("coach:diagram:") and diagram_callback is None:
+            self.api.answer_callback_query(
+                callback_id, "That diagram button is invalid."
+            )
+            return
         try:
             self.api.answer_callback_query(callback_id)
         except TelegramAPIError as error:
@@ -2322,6 +2336,31 @@ class SmartMoneyHubBot:
                 "Could not acknowledge Telegram callback; continuing to process it: %s",
                 error,
             )
+
+        if diagram_callback:
+            diagram_id = int(diagram_callback.group(2))
+            pending_diagram = self._pending_coach_diagrams.get(chat_id)
+            if (
+                not is_private
+                or pending_diagram is None
+                or int(pending_diagram.get("id") or 0) != diagram_id
+            ):
+                self.api.send_message(
+                    chat_id,
+                    "That diagram request has expired. Ask Coach about the topic "
+                    "again if you want to see it.",
+                )
+                return
+            self._pending_coach_diagrams.pop(chat_id, None)
+            if diagram_callback.group(1) == "show":
+                self._send_coach_diagram(chat_id, pending_diagram)
+            else:
+                self.api.send_message(
+                    chat_id,
+                    "No problem. Ask for the diagram anytime.",
+                    self._coach_keyboard(),
+                )
+            return
 
         if data.startswith("newsbrief:") and self.news_brief_photo_prompts is not None:
             if self.news_brief_photo_prompts.handle_callback(
@@ -2950,6 +2989,128 @@ class SmartMoneyHubBot:
         except Exception:
             logger.warning("Could not record Coach provider health metadata.")
 
+    @staticmethod
+    def _is_explicit_diagram_request(question: str) -> bool:
+        normalized = question.casefold()
+        return bool(
+            re.search(
+                r"\b(?:diagram|image|picture|chart|illustration|visual)\b",
+                normalized,
+            )
+            or re.search(
+                r"\b(?:show|send|share|display|view)\b",
+                normalized,
+            )
+        )
+
+    @staticmethod
+    def _diagram_reply_choice(text: str) -> str | None:
+        normalized = " ".join(re.sub(r"[^a-z0-9 ]", " ", text.casefold()).split())
+        if normalized in {
+            "yes",
+            "yeah",
+            "yep",
+            "sure",
+            "okay",
+            "ok",
+            "yes please",
+            "yes show me",
+            "yeah show me",
+            "sure show me",
+            "okay show me",
+            "sure please",
+            "go ahead",
+            "show it",
+            "send it",
+            "please show it",
+            "please send it",
+        }:
+            return "show"
+        if normalized in {
+            "no",
+            "no thanks",
+            "no thank you",
+            "not now",
+            "maybe later",
+            "skip",
+        }:
+            return "decline"
+        return None
+
+    def _has_competing_input_flow(self, telegram_id: int) -> bool:
+        return bool(
+            self.sessions.get(telegram_id)
+            or self.admin_dashboard.search_is_pending(telegram_id)
+            or self.admin_dashboard.broadcast_is_pending(telegram_id)
+            or self.admin_dashboard.has_single_member_dm_state(telegram_id)
+            or self.admin_dashboard.knowledge_is_pending(telegram_id)
+            or self.admin_dashboard.calendar_is_pending(telegram_id)
+            or self.admin_dashboard.has_channel_promo_state(telegram_id)
+            or self.admin_dashboard.has_channel_post_edit_pending(telegram_id)
+            or self.admin_dashboard.content_edit_is_pending(telegram_id)
+            or self.admin_dashboard.session_open_posts.has_edit_pending(telegram_id)
+            or self.admin_dashboard.education_topic_promotions.has_input_pending(
+                telegram_id
+            )
+            or self.admin_dashboard.education_diagrams.is_upload_pending(telegram_id)
+            or (
+                self.news_brief_photo_prompts is not None
+                and self.news_brief_photo_prompts.has_text_edit_pending(telegram_id)
+            )
+        )
+
+    def _handle_pending_coach_diagram_reply(
+        self, chat_id: int, telegram_id: int, text: str
+    ) -> bool:
+        pending = self._pending_coach_diagrams.get(chat_id)
+        if pending is None:
+            return False
+        if self._has_competing_input_flow(telegram_id):
+            self._pending_coach_diagrams.pop(chat_id, None)
+            return False
+        choice = self._diagram_reply_choice(text)
+        if choice is None:
+            self._pending_coach_diagrams.pop(chat_id, None)
+            return False
+        self._pending_coach_diagrams.pop(chat_id, None)
+        if choice == "show":
+            self._send_coach_diagram(chat_id, pending)
+        else:
+            self.api.send_message(
+                chat_id,
+                "No problem. Ask for the diagram anytime.",
+                self._coach_keyboard(),
+            )
+        return True
+
+    def _send_coach_diagram(
+        self, chat_id: int, diagram: dict[str, Any]
+    ) -> None:
+        title = " ".join(str(diagram.get("title") or "Learning diagram").split())
+        description = " ".join(str(diagram.get("description") or "").split())
+        caption = f"📊 {title}"
+        if description:
+            caption += f"\n{description}"
+        caption += "\nEducational illustration—not a live setup or entry signal."
+        try:
+            photo_reference = str(diagram["photo_file_id"])
+            photo: str | Path = photo_reference
+            if photo_reference.startswith("local:"):
+                local_path = Path(photo_reference.removeprefix("local:"))
+                if not local_path.is_absolute():
+                    local_path = Path(__file__).resolve().parents[1] / local_path
+                photo = local_path
+            self.api.send_photo_with_result(
+                chat_id,
+                photo,
+                caption=caption[:1000],
+            )
+        except (KeyError, TelegramAPIError):
+            logger.warning(
+                "Coach diagram delivery failed (diagram_id=%s).",
+                diagram.get("id"),
+            )
+
     def _answer_coach_message(
         self,
         chat_id: int,
@@ -3388,45 +3549,46 @@ class SmartMoneyHubBot:
             markup,
             resource_context,
         )
-        try:
-            self.api.send_message(chat_id, response, markup)
-        except TelegramAPIError:
-            logger.warning("Coach Telegram send failed. request_id=%s.", request_id)
-            raise
+        diagram: dict[str, Any] | None = None
         try:
             diagram = self.admin_dashboard.education_diagrams.diagram_for_question(
                 question
             )
         except Exception:
-            diagram = None
             logger.warning("Could not retrieve a matching Coach diagram.")
-        if diagram:
-            title = " ".join(str(diagram.get("title") or "Learning diagram").split())
-            description = " ".join(
-                str(diagram.get("description") or "").split()
+        send_diagram_now = bool(
+            diagram and self._is_explicit_diagram_request(question)
+        )
+        if diagram and not send_diagram_now:
+            self._pending_coach_diagrams[chat_id] = diagram
+            title = " ".join(str(diagram.get("title") or "diagram").split())
+            response = (
+                response.rstrip()
+                + f"\n\nI have a matching {title} diagram. Would you like to see it?"
             )
-            caption = f"📊 {title}"
-            if description:
-                caption += f"\n{description}"
-            caption += "\nEducational illustration—not a live setup or entry signal."
-            try:
-                photo_reference = str(diagram["photo_file_id"])
-                photo: str | Path = photo_reference
-                if photo_reference.startswith("local:"):
-                    local_path = Path(photo_reference.removeprefix("local:"))
-                    if not local_path.is_absolute():
-                        local_path = Path(__file__).resolve().parents[1] / local_path
-                    photo = local_path
-                self.api.send_photo_with_result(
-                    chat_id,
-                    photo,
-                    caption=caption[:1000],
+            diagram_id = int(diagram.get("id") or 0)
+            if diagram_id > 0:
+                markup.setdefault("inline_keyboard", []).append(
+                    [
+                        {
+                            "text": "📊 Show diagram",
+                            "callback_data": f"coach:diagram:show:{diagram_id}",
+                        },
+                        {
+                            "text": "Not now",
+                            "callback_data": f"coach:diagram:decline:{diagram_id}",
+                        },
+                    ]
                 )
-            except TelegramAPIError:
-                logger.warning(
-                    "Coach diagram delivery failed (diagram_id=%s).",
-                    diagram.get("id"),
-                )
+        else:
+            self._pending_coach_diagrams.pop(chat_id, None)
+        try:
+            self.api.send_message(chat_id, response, markup)
+        except TelegramAPIError:
+            logger.warning("Coach Telegram send failed. request_id=%s.", request_id)
+            raise
+        if diagram and send_diagram_now:
+            self._send_coach_diagram(chat_id, diagram)
         logger.info(
             "Coach reply sent to Telegram (path=%s). request_id=%s.",
             routed.response_path,
