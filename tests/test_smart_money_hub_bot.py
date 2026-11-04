@@ -36,6 +36,7 @@ class FakeTelegramAPI:
     def __init__(self) -> None:
         self.messages: list[dict[str, Any]] = []
         self.polls: list[dict[str, Any]] = []
+        self.photos: list[dict[str, Any]] = []
         self.answered_callbacks: list[dict[str, Any]] = []
         self.chat_actions: list[dict[str, Any]] = []
         self.webhook_info: dict[str, Any] = {}
@@ -62,6 +63,26 @@ class FakeTelegramAPI:
         if message_thread_id is not None:
             message["message_thread_id"] = message_thread_id
         self.messages.append(message)
+
+    def send_photo_with_result(
+        self,
+        chat_id: int,
+        photo_file_id: str | Path,
+        *,
+        caption: str,
+        reply_markup: dict[str, Any] | None = None,
+        parse_mode: str | None = None,
+        message_thread_id: int | None = None,
+    ) -> dict[str, Any]:
+        photo = {
+            "chat_id": chat_id,
+            "photo": photo_file_id,
+            "caption": caption,
+        }
+        if message_thread_id is not None:
+            photo["message_thread_id"] = message_thread_id
+        self.photos.append(photo)
+        return {"message_id": len(self.photos)}
 
     def send_chat_action(
         self,
@@ -1009,6 +1030,31 @@ class BotFlowTests(unittest.TestCase):
                 group_id, "Explain BOS and MSS"
             ),
             resources,
+        )
+
+    def test_private_coach_sends_matching_admin_diagram(self) -> None:
+        self.bot.store.add_education_diagram(
+            title="CHoCH",
+            tags="CHoCH, change of character",
+            description="A possible shift in market structure.",
+            photo_file_id="choch-diagram-file",
+            admin_telegram_id=self.user_id,
+        )
+
+        self.bot._process_coach_message(
+            self.chat_id,
+            self.user_id,
+            self.username,
+            "Can you explain a change of character?",
+        )
+
+        self.assertEqual(len(self.api.photos), 1)
+        self.assertEqual(self.api.photos[0]["chat_id"], self.chat_id)
+        self.assertEqual(self.api.photos[0]["photo"], "choch-diagram-file")
+        self.assertIn("CHoCH", self.api.photos[0]["caption"])
+        self.assertIn(
+            "not a live setup",
+            self.api.photos[0]["caption"],
         )
 
     def test_edited_group_post_updates_the_archive_in_place(self) -> None:

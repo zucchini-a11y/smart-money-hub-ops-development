@@ -384,6 +384,21 @@ class Repository:
                     ON education_group_resources
                         (chat_id, resource_type, posted_at DESC);
 
+                    CREATE TABLE IF NOT EXISTS education_diagrams (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        title TEXT NOT NULL,
+                        tags TEXT NOT NULL,
+                        description TEXT NOT NULL DEFAULT '',
+                        photo_file_id TEXT NOT NULL,
+                        created_by INTEGER NOT NULL,
+                        created_at TEXT NOT NULL,
+                        active INTEGER NOT NULL DEFAULT 1
+                            CHECK (active IN (0, 1))
+                    );
+
+                    CREATE INDEX IF NOT EXISTS education_diagrams_active
+                    ON education_diagrams (active, id DESC);
+
                     CREATE VIRTUAL TABLE IF NOT EXISTS education_group_resources_fts
                     USING fts5(title, description, topic_name, resource_type,
                         content='education_group_resources', content_rowid='id');
@@ -1853,6 +1868,121 @@ class Repository:
                         posted_at,
                         at or utc_now(),
                     ),
+                )
+                return bool(cursor.rowcount)
+        finally:
+            connection.close()
+
+    def add_education_diagram(
+        self,
+        *,
+        title: str,
+        tags: str,
+        description: str,
+        photo_file_id: str,
+        admin_telegram_id: int,
+        at: str | None = None,
+    ) -> int:
+        """Store one admin-provided Telegram diagram for private Coach replies."""
+        title = " ".join(title.split())[:120]
+        tags = " ".join(tags.split())[:300]
+        description = " ".join(description.split())[:500]
+        photo_file_id = photo_file_id.strip()
+        if not title or not tags or not photo_file_id or len(photo_file_id) > 1024:
+            raise ValueError("Diagram title, tags, and Telegram photo are required.")
+        if (
+            isinstance(admin_telegram_id, bool)
+            or not isinstance(admin_telegram_id, int)
+            or admin_telegram_id <= 0
+        ):
+            raise ValueError("A valid administrator is required.")
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO education_diagrams
+                        (title, tags, description, photo_file_id, created_by,
+                         created_at, active)
+                    VALUES (?, ?, ?, ?, ?, ?, 1)
+                    """,
+                    (
+                        title,
+                        tags,
+                        description,
+                        photo_file_id,
+                        admin_telegram_id,
+                        at or utc_now(),
+                    ),
+                )
+                return int(cursor.lastrowid)
+        finally:
+            connection.close()
+
+    def education_diagrams(self, *, active_only: bool = True) -> list[dict[str, Any]]:
+        """Return diagram metadata and Telegram file IDs for owner controls."""
+        connection = self._connect()
+        try:
+            query = "SELECT * FROM education_diagrams"
+            if active_only:
+                query += " WHERE active = 1"
+            query += " ORDER BY id DESC LIMIT 100"
+            return [dict(row) for row in connection.execute(query).fetchall()]
+        finally:
+            connection.close()
+
+    def matching_education_diagram(self, question: str) -> dict[str, Any] | None:
+        """Find one image whose owner-labeled title or tags match the question."""
+        query_tokens = question_tokens(question)
+        if not query_tokens:
+            return None
+        diagrams = self.education_diagrams()
+        candidates: list[tuple[int, float, dict[str, Any]]] = []
+        for diagram in diagrams:
+            label_tokens = question_tokens(
+                f"{diagram.get('title', '')} {diagram.get('tags', '')}"
+            )
+            shared = query_tokens & label_tokens
+            if not shared:
+                continue
+            # Prefer a single concept match over broad, generic word overlap.
+            canonical_matches = shared & {
+                "bos", "choch", "mss", "fvg", "ifvg", "bsl", "ssl",
+                "orderblock", "poi", "htf", "ltf", "riskreward",
+                "stoploss", "takeprofit", "fomo", "revengetrading",
+            }
+            candidates.append(
+                (
+                    1 if canonical_matches else 0,
+                    len(shared) / max(len(label_tokens), 1),
+                    diagram,
+                )
+            )
+        if not candidates:
+            return None
+        candidates.sort(
+            key=lambda item: (item[0], item[1], -int(item[2]["id"])),
+            reverse=True,
+        )
+        # Generic overlap alone should not attach an image to an unrelated reply.
+        if not candidates[0][0] and candidates[0][1] < 0.5:
+            return None
+        if (
+            len(candidates) > 1
+            and candidates[0][:2] == candidates[1][:2]
+            and not candidates[0][0]
+        ):
+            return None
+        return candidates[0][2]
+
+    def deactivate_education_diagram(self, diagram_id: int) -> bool:
+        """Hide a diagram from Coach retrieval without erasing its stored record."""
+        connection = self._connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    "UPDATE education_diagrams SET active = 0 WHERE id = ? AND active = 1",
+                    (diagram_id,),
                 )
                 return bool(cursor.rowcount)
         finally:

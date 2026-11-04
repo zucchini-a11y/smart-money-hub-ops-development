@@ -29,6 +29,7 @@ from .economic_calendar_admin import (
     build_weekly_calendar_preview,
 )
 from .education_morning import EducationMorningStore
+from .education_diagrams import EducationDiagramManager
 from .education_topic_promotions import EducationTopicPromotionManager
 from .curriculum_retrieval import curriculum_source_summary
 from .trade_ledger import TradeLedger, TradeLedgerError
@@ -181,6 +182,12 @@ ADMIN_MENU_TEXT_ACTIONS = {
     "create education poll": "admin:education_polls",
     "next poll": "admin:education_polls",
     "polls": "admin:education_polls",
+    "learning diagrams": "admin:education_diagrams",
+    "education diagrams": "admin:education_diagrams",
+    "smc diagrams": "admin:education_diagrams",
+    "diagram library": "admin:education_diagrams",
+    "add learning diagram": "admin:education_diagrams:add",
+    "add diagram": "admin:education_diagrams:add",
     "content and trade records": "admin:content",
     "content records": "admin:content",
     "content history": "admin:content",
@@ -259,6 +266,7 @@ class AdminDashboard:
             store.database_path
         )
         self.education_morning_store = EducationMorningStore(store.database_path)
+        self.education_diagrams = EducationDiagramManager(api, store, admin_id)
         allowed_destinations: dict[int, str] = {}
         if main_channel_id is not None:
             allowed_destinations[int(main_channel_id)] = "channel"
@@ -476,7 +484,8 @@ class AdminDashboard:
                 "search member; member progress; DM Coach stats; knowledge "
                 "improvement; market awareness review; channel content; "
                 "Education morning posts; Education polls; content and trade "
-                "records; send one-time DM; send one-time DM to one member; "
+                "records; learning diagrams; send one-time DM; "
+                "send one-time DM to one member; "
                 "promote bot in channel; or promote in Education Market Analysis.\n\n"
                 "These open the matching admin screen. Message and promotion "
                 "flows still require their normal review and confirmation. "
@@ -1125,6 +1134,20 @@ class AdminDashboard:
                 chat_id, telegram_id, is_private, data
             )
             return
+        if data.startswith("admin:education_diagrams"):
+            self.cancel_calendar_action(telegram_id)
+            self.cancel_knowledge_action(telegram_id)
+            self.cancel_broadcast(telegram_id)
+            self.cancel_single_member_dm(telegram_id)
+            self.cancel_channel_promo(telegram_id)
+            self.cancel_channel_post_edit(telegram_id)
+            self.session_open_posts.cancel_edit(telegram_id)
+            self.cancel_search(telegram_id)
+            self.education_diagrams.handle_callback(
+                chat_id, telegram_id, is_private, data
+            )
+            return
+        self.education_diagrams.cancel_upload(telegram_id)
         if not data.startswith("admin:market_awareness"):
             self.cancel_calendar_action(telegram_id)
         self.cancel_knowledge_action(telegram_id)
@@ -1579,6 +1602,7 @@ class AdminDashboard:
                 ],
                 [{"text": "💬 DM Coach Stats", "callback_data": "admin:dm_coach"}],
                 [{"text": "🧠 Knowledge Improvement", "callback_data": "admin:knowledge"}],
+                [{"text": "📊 Learning Diagrams", "callback_data": "admin:education_diagrams"}],
                 [
                     {
                         "text": "🌍 Market Awareness Review",
@@ -3318,6 +3342,7 @@ class AdminDashboard:
             f"{len(archive_status['episode_numbers'])} "
             "(archive records, not verified transcripts)",
             f"• Uploaded course documents: {sources['uploaded_course_documents']}",
+            f"• SMC diagrams: {len(self.store.education_diagrams())}",
             "• Episode transcripts: not configured",
             "• Separate Bot 1 progress interface: not connected",
             "",

@@ -46,15 +46,3 @@ SMH_MAIN_CHANNEL_ID = "-1004481197912"
 SMH_EDUCATION_MARKET_ANALYSIS_TOPIC_LINK = "https://t.me/c/3916437804/5/16"
 SMH_DAILY_USD_GOLD_BRIEF_ENABLED = "true"
 SMH_WEEKLY_USD_GOLD_BRIEF_ENABLED = "true"
-
-[[ports]]
-localPort = 8080
-externalPort = 8080
-
-[[ports]]
-localPort = 8081
-externalPort = 8081
-
-[[ports]]
-localPort = 19849
-externalPort = 80

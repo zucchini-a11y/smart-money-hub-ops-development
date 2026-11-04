@@ -1475,6 +1475,14 @@ class SmartMoneyHubBot:
         if (
             is_private_photo
         ):
+            if self.admin_dashboard.education_diagrams.handle_admin_photo(
+                int(chat["id"]),
+                int(sender["id"]),
+                message["photo"],
+                caption=str(message.get("caption") or ""),
+                is_private=True,
+            ):
+                return
             if self.news_brief_photo_prompts is not None and self.news_brief_photo_prompts.handle_admin_photo(
                 int(chat["id"]),
                 int(sender["id"]),
@@ -1587,6 +1595,16 @@ class SmartMoneyHubBot:
             is_private,
             message_timestamp=message.get("date"),
         )
+        if (
+            is_private
+            and command == "/cancel"
+            and self.admin_dashboard.education_diagrams.is_upload_pending(
+                telegram_id
+            )
+        ):
+            self.admin_dashboard.education_diagrams.cancel_upload(telegram_id)
+            self.api.send_message(chat_id, "Diagram upload cancelled.")
+            return
         if (
             is_private
             and self.news_brief_photo_prompts is not None
@@ -3341,6 +3359,33 @@ class SmartMoneyHubBot:
         except TelegramAPIError:
             logger.warning("Coach Telegram send failed. request_id=%s.", request_id)
             raise
+        try:
+            diagram = self.admin_dashboard.education_diagrams.diagram_for_question(
+                question
+            )
+        except Exception:
+            diagram = None
+            logger.warning("Could not retrieve a matching Coach diagram.")
+        if diagram:
+            title = " ".join(str(diagram.get("title") or "Learning diagram").split())
+            description = " ".join(
+                str(diagram.get("description") or "").split()
+            )
+            caption = f"📊 {title}"
+            if description:
+                caption += f"\n{description}"
+            caption += "\nEducational illustration—not a live setup or entry signal."
+            try:
+                self.api.send_photo_with_result(
+                    chat_id,
+                    str(diagram["photo_file_id"]),
+                    caption=caption[:1000],
+                )
+            except TelegramAPIError:
+                logger.warning(
+                    "Coach diagram delivery failed (diagram_id=%s).",
+                    diagram.get("id"),
+                )
         logger.info(
             "Coach reply sent to Telegram (path=%s). request_id=%s.",
             routed.response_path,
