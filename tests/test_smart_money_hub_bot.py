@@ -1208,9 +1208,7 @@ class BotFlowTests(unittest.TestCase):
             self.api.photos[0]["caption"],
         )
 
-    def test_private_coach_does_not_suggest_diagram_for_basic_question(
-        self,
-    ) -> None:
+    def test_private_coach_offers_a_matching_diagram_in_plain_text(self) -> None:
         self.bot.store.add_education_diagram(
             title="CHoCH",
             tags="CHoCH, change of character",
@@ -1228,13 +1226,101 @@ class BotFlowTests(unittest.TestCase):
 
         self.assertEqual(self.api.photos, [])
         response = self.api.messages[-1]
-        self.assertNotIn("Would you like to see it?", response["text"])
+        self.assertIn("I can show you the matching CHoCH diagram", response["text"])
+        self.assertIn("Just say yes.", response["text"])
         self.assertFalse(
             any(
-                button["text"] == "📊 Show diagram"
+                "diagram" in button["text"].casefold()
                 for row in response["reply_markup"]["inline_keyboard"]
                 for button in row
             )
+        )
+        self.assertIn(self.user_id, self.bot._pending_coach_diagram_offers)
+
+    def test_private_coach_sends_diagram_after_plain_text_yes(self) -> None:
+        self.bot.store.register_user(
+            telegram_id=self.user_id,
+            username=self.username,
+            first_name=self.first_name,
+            chat_id=self.chat_id,
+            is_private=True,
+        )
+        self.bot.store.add_education_diagram(
+            title="CHoCH",
+            tags="CHoCH, change of character",
+            description="A possible shift in market structure.",
+            photo_file_id="local:attached_assets/choch-diagram-file.jpg",
+            admin_telegram_id=self.user_id,
+        )
+        self.bot._process_coach_message(
+            self.chat_id,
+            self.user_id,
+            self.username,
+            "Can you explain a change of character?",
+        )
+        saved_interactions = self.bot.store.recent_dm_coaching_interactions(
+            self.user_id
+        )
+
+        self.bot.handle_update(
+            {
+                "message": {
+                    "message_id": 9010,
+                    "date": int(datetime.now(timezone.utc).timestamp()),
+                    "text": "Yes, please.",
+                    "from": {
+                        "id": self.user_id,
+                        "username": self.username,
+                        "first_name": self.first_name,
+                    },
+                    "chat": {"id": self.chat_id, "type": "private"},
+                }
+            }
+        )
+
+        self.assertEqual(len(self.api.photos), 1)
+        self.assertIn("CHoCH", self.api.photos[0]["caption"])
+        self.assertEqual(
+            len(self.bot.store.recent_dm_coaching_interactions(self.user_id)),
+            len(saved_interactions),
+        )
+        self.assertNotIn(self.user_id, self.bot._pending_coach_diagram_offers)
+
+    def test_private_coach_clears_diagram_offer_after_no(self) -> None:
+        self.bot.store.add_education_diagram(
+            title="CHoCH",
+            tags="CHoCH, change of character",
+            description="A possible shift in market structure.",
+            photo_file_id="local:attached_assets/choch-diagram-file.jpg",
+            admin_telegram_id=self.user_id,
+        )
+        self.bot._process_coach_message(
+            self.chat_id,
+            self.user_id,
+            self.username,
+            "Can you explain a change of character?",
+        )
+
+        self.bot.handle_update(
+            {
+                "message": {
+                    "message_id": 9011,
+                    "date": int(datetime.now(timezone.utc).timestamp()),
+                    "text": "No thanks.",
+                    "from": {
+                        "id": self.user_id,
+                        "username": self.username,
+                        "first_name": self.first_name,
+                    },
+                    "chat": {"id": self.chat_id, "type": "private"},
+                }
+            }
+        )
+        self.assertEqual(self.api.photos, [])
+        self.assertNotIn(self.user_id, self.bot._pending_coach_diagram_offers)
+        self.assertEqual(
+            self.api.messages[-1]["text"],
+            "No problem. Ask whenever you want it.",
         )
 
     def test_private_coach_sends_diagram_when_user_does_not_understand(self) -> None:

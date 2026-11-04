@@ -65,6 +65,7 @@ TYPING_ACTION_REFRESH_SECONDS = 4
 MAX_COACH_CHART_IMAGE_BYTES = 5_000_000
 COACH_URL_PATTERN = re.compile(r"https?://[^\s<>()]+", re.IGNORECASE)
 BOT_RECOVERY_NOTICE_AFTER_SECONDS = 30 * 60
+COACH_DIAGRAM_OFFER_TTL_SECONDS = 10 * 60
 BOT_RECOVERY_NOTICES = (
     "Sorry for the delay. I was tied up with a few things, but I’m back now "
     "and available to assist. Thanks for your patience.",
@@ -486,6 +487,7 @@ class SmartMoneyHubBot:
             raise ValueError("The reminder time must be local wall time without a UTC offset.")
         # One active conversation per member; saved records live in SQLite.
         self.sessions: dict[int, Conversation] = {}
+        self._pending_coach_diagram_offers: dict[int, dict[str, Any]] = {}
         self._last_successful_poll_at: float | None = None
         self.coach_service: CoachService = coach_service or RuleBasedCoachService()
         self.message_router = CoachMessageRouter(self.coach_service, self.store)
@@ -2008,6 +2010,7 @@ class SmartMoneyHubBot:
 
         session = self.sessions.get(telegram_id)
         if session and session.chat_id == chat_id:
+            self._pending_coach_diagram_offers.pop(telegram_id, None)
             logger.info(
                 "Coach bypassed: active conversation state kind=%s.",
                 session.kind,
@@ -2033,6 +2036,12 @@ class SmartMoneyHubBot:
             else:
                 self._accept_text_answer(session, text)
             return
+
+        if is_private and self._handle_pending_coach_diagram_offer(
+            chat_id, telegram_id, text
+        ):
+            return
+
         if command in {"/ask", "/scenario"}:
             if not self._is_education_group(chat_id, is_private):
                 return
@@ -3047,6 +3056,74 @@ class SmartMoneyHubBot:
                 diagram.get("id"),
             )
 
+    def _handle_pending_coach_diagram_offer(
+        self, chat_id: int, telegram_id: int, text: str
+    ) -> bool:
+        pending = self._pending_coach_diagram_offers.get(telegram_id)
+        if pending is None:
+            return False
+        if (
+            pending.get("chat_id") != chat_id
+            or time_module.monotonic() >= float(pending.get("expires_at") or 0)
+        ):
+            self._pending_coach_diagram_offers.pop(telegram_id, None)
+            return False
+
+        answer = " ".join(
+            re.sub(r"[^a-z0-9']+", " ", text.casefold()).split()
+        )
+        affirmative = {
+            "yes",
+            "yes please",
+            "yes show me",
+            "yes show me the diagram",
+            "yes i'd like to see it",
+            "yeah",
+            "yeah please",
+            "yep",
+            "sure",
+            "sure please",
+            "please",
+            "please show me",
+            "please show me the diagram",
+            "show me",
+            "show me the diagram",
+            "send it",
+            "go ahead",
+            "do it",
+            "okay",
+            "ok",
+            "i'd like to see it",
+            "i would like to see it",
+        }
+        negative = {
+            "no",
+            "no thanks",
+            "no thank you",
+            "not now",
+            "not now thanks",
+            "maybe later",
+            "later",
+            "skip",
+            "not needed",
+            "i don't need it",
+            "i don't want it",
+        }
+        if answer in affirmative:
+            self._pending_coach_diagram_offers.pop(telegram_id, None)
+            diagram = pending.get("diagram")
+            if isinstance(diagram, dict):
+                self._send_coach_diagram(chat_id, diagram)
+            return True
+        if answer in negative:
+            self._pending_coach_diagram_offers.pop(telegram_id, None)
+            self.api.send_message(chat_id, "No problem. Ask whenever you want it.")
+            return True
+
+        # A new question, command, or other message replaces the old offer.
+        self._pending_coach_diagram_offers.pop(telegram_id, None)
+        return False
+
     @staticmethod
     def _append_education_resource_links(
         response: str,
@@ -3574,20 +3651,45 @@ class SmartMoneyHubBot:
             allow_links=include_resources,
         )
         diagram: dict[str, Any] | None = None
-        if confused or self._is_explicit_diagram_request(question):
-            try:
-                diagram = self.admin_dashboard.education_diagrams.diagram_for_question(
-                    resource_query
-                )
-            except Exception:
-                logger.warning("Could not retrieve a matching Coach diagram.")
+        try:
+            diagram = self.admin_dashboard.education_diagrams.diagram_for_question(
+                resource_query
+            )
+        except Exception:
+            logger.warning("Could not retrieve a matching Coach diagram.")
+        offer_diagram = bool(
+            diagram
+            and not confused
+            and not self._is_explicit_diagram_request(question)
+        )
+        if offer_diagram:
+            title = " ".join(str(diagram.get("title") or "diagram").split())
+            response = (
+                response.rstrip()
+                + f"\n\nI can show you the matching {title} diagram if you’d like. "
+                "Just say yes."
+            )
         try:
             self.api.send_message(chat_id, response, markup)
         except TelegramAPIError:
             logger.warning("Coach Telegram send failed. request_id=%s.", request_id)
             raise
         if diagram:
-            self._send_coach_diagram(chat_id, diagram)
+            if confused or self._is_explicit_diagram_request(question):
+                self._pending_coach_diagram_offers.pop(telegram_id, None)
+                self._send_coach_diagram(chat_id, diagram)
+            elif offer_diagram:
+                now = time_module.monotonic()
+                for pending_id, pending_offer in list(
+                    self._pending_coach_diagram_offers.items()
+                ):
+                    if float(pending_offer.get("expires_at") or 0) <= now:
+                        self._pending_coach_diagram_offers.pop(pending_id, None)
+                self._pending_coach_diagram_offers[telegram_id] = {
+                    "chat_id": chat_id,
+                    "diagram": diagram,
+                    "expires_at": now + COACH_DIAGRAM_OFFER_TTL_SECONDS,
+                }
         logger.info(
             "Coach reply sent to Telegram (path=%s). request_id=%s.",
             routed.response_path,
