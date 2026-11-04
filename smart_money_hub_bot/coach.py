@@ -75,6 +75,7 @@ class RuleBasedCoachService:
         ("FOMO", ("fear of missing out", "fomo")),
         ("Revenge Trading", ("revenge trading", "revenge trade")),
         ("Trade Psychology", ("psychology", "emotional")),
+        ("Trading Plan", ("trading plan",)),
         ("Trading Discipline", ("discipline", "trading plan", "followed my plan", "followed plan")),
         ("Market Structure", ("market structure", "higher high", "lower low", "swing high", "swing low", "structure")),
     )
@@ -163,6 +164,10 @@ class RuleBasedCoachService:
         "Trading Discipline": (
             "Discipline means following the written process, including skipping trades that lack confirmation. Review decisions by process, not just by whether they won or lost.",
             "Which rule will you check before your next entry?",
+        ),
+        "Trading Plan": (
+            "Use H1 (the 1-hour chart) for market context, mark a POI (an area to watch, not an entry), then use M5 (the 5-minute chart) to wait for a liquidity sweep and confirmation such as strong displacement with a valid BOS (Break of Structure) or CHOCH (Change of Character). A retest is preferred when suitable, but not required by every model. The plan sets 2% risk per trade, a minimum 1:3 planned reward-to-risk, a 3% maximum daily loss, and moving the stop to entry at 1:1. The daily cap takes priority: after a full 2% loss, at most 1% of the same account baseline remains for that day. A POI or sweep alone is not an entry, and these rules do not guarantee an outcome.",
+            "Which part would you like me to explain more simply?",
         ),
         "Market Structure": (
             "Market structure describes the sequence of meaningful swing highs and lows. Higher highs and higher lows suggest upward structure; lower highs and lower lows suggest downward structure. A range can be unclear.",
@@ -689,11 +694,15 @@ class RuleBasedCoachService:
             steps.append(
                 (
                     "Risk plan",
-                    "Set risk from the stop distance, then compare the planned target "
-                    "with that risk. Apply the configured preferences: H1 bias, M5 "
-                    "entry, 2% risk per trade, minimum 1:3 planned R:R, maximum 3% daily "
-                    "loss, and break-even at 1:1 R:R. These are plan limits, not proof "
-                    "that the setup is valid or will win.",
+                    "Size the position from the stop distance. The plan sets 2% risk per "
+                    "trade and a maximum 3% daily loss; the daily cap takes priority, so "
+                    "after a full 2% loss, at most the remaining 1% of the same account "
+                    "baseline is available that day. minimum 1:3 planned R:R means "
+                    "targeting three units for each unit risked; it is not a win "
+                    "probability. The plan's break-even at 1:1 R:R rule means that when "
+                    "planned reward equals initial risk, move the stop to entry. These "
+                    "rules manage risk; they are not proof that the setup is valid and "
+                    "do not guarantee an outcome.",
                 )
             )
 

@@ -245,6 +245,20 @@ class CoachTests(unittest.TestCase):
         self.assertIn("Which confirmation does your chosen entry model require", reply.response)
         self.assertLessEqual(len(reply.response), 450)
 
+    def test_trading_plan_answer_defines_terms_and_respects_daily_loss_cap(self) -> None:
+        reply = self.coach.evaluate("What is our trading plan?")
+
+        self.assertEqual(reply.detected_topic, "Trading Plan")
+        self.assertIn("H1 (the 1-hour chart)", reply.response)
+        self.assertIn("POI (an area to watch, not an entry)", reply.response)
+        self.assertIn("M5 (the 5-minute chart)", reply.response)
+        self.assertIn("BOS (Break of Structure)", reply.response)
+        self.assertIn("CHOCH (Change of Character)", reply.response)
+        self.assertIn("2% risk per trade", reply.response)
+        self.assertIn("3% maximum daily loss", reply.response)
+        self.assertIn("at most 1% of the same account baseline remains", reply.response)
+        self.assertIn("do not guarantee an outcome", reply.response)
+
     def test_fvg_entry_without_waiting_for_context_flags_possible_mistake(self) -> None:
         reply = self.coach.evaluate("I saw an FVG and entered immediately.")
 
@@ -305,6 +319,8 @@ class CoachTests(unittest.TestCase):
         self.assertIn("minimum 1:3 planned R:R", reply.response)
         self.assertIn("maximum 3% daily loss", reply.response)
         self.assertIn("break-even at 1:1 R:R", reply.response)
+        self.assertIn("remaining 1%", reply.response)
+        self.assertIn("three units for each unit risked", reply.response)
         self.assertNotIn("Which swing level broke", reply.response)
         self.assertNotIn("possible process issues", reply.response)
 

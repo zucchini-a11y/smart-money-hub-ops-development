@@ -357,6 +357,13 @@ class GeminiCoachTests(unittest.TestCase):
         self.assertIn("keep the conversation coherent", instruction)
         self.assertIn("briefly connect your answer to that point", instruction)
         self.assertIn("ask one short clarifying question", instruction)
+        self.assertIn("explain it in order instead of listing unexplained acronyms", instruction)
+        self.assertIn("maximum 3% daily loss", instruction)
+        self.assertIn(
+            "the 3% daily cap overrides the 2% per-trade amount",
+            instruction.casefold(),
+        )
+        self.assertIn("three units of planned reward for each unit risked", instruction)
 
     def test_matching_diagram_prompt_uses_image_instead_of_text_sketch(self) -> None:
         local_reply = RuleBasedCoachService().evaluate(
@@ -822,6 +829,7 @@ class GeminiCoachTests(unittest.TestCase):
         self.assertIn("do not ask for", instruction)
         self.assertIn("not by every model", instruction)
         self.assertIn("minimum 1:3 planned r:r", instruction)
+        self.assertIn("at most 1% remains for that day", instruction)
         self.assertIn("for a single-concept question, be concise", instruction)
         self.assertIn("concise numbered walkthrough", instruction)
         self.assertIn("do not merely list terms", instruction)
@@ -869,7 +877,8 @@ class GeminiCoachTests(unittest.TestCase):
         self.assertIn("8. risk plan:", answer)
         self.assertIn("2% risk per trade", answer)
         self.assertIn("minimum 1:3 planned r:r", answer)
-        self.assertIn("compare the planned target with that risk", answer)
+        self.assertIn("targeting three units for each unit risked", answer)
+        self.assertIn("after a full 2% loss", answer)
         self.assertIn("no exact chart price to calculate", answer)
         self.assertIn("not proof that the setup is valid", answer)
 
