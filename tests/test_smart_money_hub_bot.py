@@ -610,6 +610,21 @@ class BotFlowTests(unittest.TestCase):
         )
         self.assertTrue(self.api.messages)
 
+    def test_member_reaction_recognizes_natural_progress_and_process_phrases(
+        self,
+    ) -> None:
+        self.assertEqual(self.bot._member_message_reaction("I get it now."), "👍")
+        self.assertEqual(
+            self.bot._member_message_reaction("I finished the lesson."),
+            "👍",
+        )
+        self.assertEqual(
+            self.bot._member_message_reaction(
+                "I kept my risk within my plan."
+            ),
+            "🎯",
+        )
+
     def test_education_group_reacts_to_a_disciplined_process_share(self) -> None:
         group_id = self.bot.education_group_id
         self.assertIsNotNone(group_id)
@@ -659,25 +674,27 @@ class BotFlowTests(unittest.TestCase):
             side_effect=TelegramAPIError("Message reactions are not allowed.")
         )
 
-        self.bot.handle_update(
-            {
-                "message": {
-                    "message_id": 1905,
-                    "date": int(datetime.now(timezone.utc).timestamp()),
-                    "text": "I understand BOS now.",
-                    "from": {
-                        "id": self.user_id,
-                        "username": self.username,
-                        "first_name": self.first_name,
+        with self.assertLogs("smart_money_hub_bot.bot", level="WARNING") as logs:
+            self.bot.handle_update(
+                {
+                    "message": {
+                        "message_id": 1905,
+                        "date": int(datetime.now(timezone.utc).timestamp()),
+                        "text": "I understand BOS now.",
+                        "from": {
+                            "id": self.user_id,
+                            "username": self.username,
+                            "first_name": self.first_name,
+                        },
+                        "chat": {"id": self.chat_id, "type": "private"},
                     },
-                    "chat": {"id": self.chat_id, "type": "private"},
                 }
-            }
-        )
+            )
 
         self.api.set_message_reaction.assert_called_once_with(
             self.chat_id, 1905, "👍"
         )
+        self.assertIn("Message reactions are not allowed.", logs.output[0])
         self.assertTrue(self.api.messages)
 
     def test_private_chart_image_download_failure_is_visible_to_admin(self) -> None:

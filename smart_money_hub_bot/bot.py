@@ -1294,17 +1294,22 @@ class SmartMoneyHubBot:
     def _member_message_reaction(text: str) -> str | None:
         normalized = " ".join(text.casefold().split())
         learning_progress = (
-            r"\b(?:i got it|got it now|i understand now|i understand|"
-            r"that makes sense|i learned|i have learned|i've learned|"
-            r"i finally understand|i finally got it|completed (?:the )?"
-            r"(?:lesson|course|assessment|quiz)|passed (?:the )?"
-            r"(?:assessment|quiz|test)|made progress)\b"
+            r"\b(?:i got it|got it(?: now)?|i get it(?: now)?|now i get it|"
+            r"i understand(?: now)?|now i understand|i see what you mean|"
+            r"that makes sense|this makes sense|it makes sense now|"
+            r"that clicked|it clicked|now it clicks|i learned|i have learned|"
+            r"i've learned|i finally understand|i finally got it|"
+            r"completed (?:the )?(?:lesson|course|assessment|quiz)|"
+            r"finished (?:the )?(?:lesson|course|assessment|quiz)|"
+            r"passed (?:the )?(?:assessment|quiz|test)|made progress)\b"
         )
         disciplined_process = (
             r"\b(?:waited for (?:the )?(?:confirmation|retest)|"
             r"followed (?:my|the) plan|stuck to (?:my|the) plan|"
             r"did not chase|didn't chase|skipped (?:the )?trade|"
-            r"stayed out|respected (?:my|the) risk|journaled (?:my )?trade)\b"
+            r"did not enter|didn't enter|stayed out|respected (?:my|the) risk|"
+            r"kept (?:my )?risk within (?:my|the) plan|"
+            r"journaled (?:my )?trade)\b"
         )
         if re.search(learning_progress, normalized):
             return "👍"
@@ -1344,10 +1349,16 @@ class SmartMoneyHubBot:
             return
         try:
             set_reaction(chat_id, message_id, reaction)
-        except TelegramAPIError:
+        except TelegramAPIError as error:
             # A reaction is optional; permission or chat-setting limits must
             # never block a Coach reply or other message handling.
-            logger.debug("Telegram could not apply an optional member reaction.")
+            logger.warning(
+                "Telegram rejected an optional member reaction "
+                "(reason=%s, error_code=%s, http_status=%s).",
+                error,
+                error.error_code,
+                error.http_status,
+            )
 
     @staticmethod
     def _message_thread_id(message: dict[str, Any]) -> int | None:
