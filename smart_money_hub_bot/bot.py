@@ -486,7 +486,6 @@ class SmartMoneyHubBot:
             raise ValueError("The reminder time must be local wall time without a UTC offset.")
         # One active conversation per member; saved records live in SQLite.
         self.sessions: dict[int, Conversation] = {}
-        self._pending_coach_diagrams: dict[int, dict[str, Any]] = {}
         self._last_successful_poll_at: float | None = None
         self.coach_service: CoachService = coach_service or RuleBasedCoachService()
         self.message_router = CoachMessageRouter(self.coach_service, self.store)
@@ -1478,7 +1477,6 @@ class SmartMoneyHubBot:
         if (
             is_private_photo
         ):
-            self._pending_coach_diagrams.pop(int(chat["id"]), None)
             if self.admin_dashboard.education_diagrams.handle_admin_photo(
                 int(chat["id"]),
                 int(sender["id"]),
@@ -1593,10 +1591,6 @@ class SmartMoneyHubBot:
                 )
             return
         telegram_id, chat_id, is_private = self._register(sender, chat)
-        if is_private and self._handle_pending_coach_diagram_reply(
-            chat_id, telegram_id, text
-        ):
-            return
         self._send_bot_recovery_notice(
             chat_id,
             telegram_id,
@@ -2338,28 +2332,10 @@ class SmartMoneyHubBot:
             )
 
         if diagram_callback:
-            diagram_id = int(diagram_callback.group(2))
-            pending_diagram = self._pending_coach_diagrams.get(chat_id)
-            if (
-                not is_private
-                or pending_diagram is None
-                or int(pending_diagram.get("id") or 0) != diagram_id
-            ):
-                self.api.send_message(
-                    chat_id,
-                    "That diagram request has expired. Ask Coach about the topic "
-                    "again if you want to see it.",
-                )
-                return
-            self._pending_coach_diagrams.pop(chat_id, None)
-            if diagram_callback.group(1) == "show":
-                self._send_coach_diagram(chat_id, pending_diagram)
-            else:
-                self.api.send_message(
-                    chat_id,
-                    "No problem. Ask for the diagram anytime.",
-                    self._coach_keyboard(),
-                )
+            self.api.send_message(
+                chat_id,
+                "Ask me directly if you want to see the diagram.",
+            )
             return
 
         if data.startswith("newsbrief:") and self.news_brief_photo_prompts is not None:
@@ -2953,14 +2929,17 @@ class SmartMoneyHubBot:
         profile: dict[str, Any],
         question: str,
         group_id: int | None,
+        *,
+        include_education_resources: bool = False,
+        resource_query: str | None = None,
     ) -> None:
         profile["curriculum_context"] = retrieve_curriculum_context(question)
         profile["education_resources_context"] = []
-        if group_id is not None:
+        if group_id is not None and include_education_resources:
             try:
                 profile["education_resources_context"] = (
                     self.store.search_education_group_resources(
-                        group_id, question, limit=3
+                        group_id, resource_query or question, limit=3
                     )
                 )
             except Exception:
@@ -2997,91 +2976,48 @@ class SmartMoneyHubBot:
                 r"\b(?:diagram|image|picture|chart|illustration|visual)\b",
                 normalized,
             )
-            or re.search(
-                r"\b(?:show|send|share|display|view)\b",
-                normalized,
+        )
+
+    @staticmethod
+    def _is_confusion_request(question: str) -> bool:
+        normalized = " ".join(
+            re.sub(r"[^a-z0-9']+", " ", question.casefold()).split()
+        )
+        return any(
+            re.search(pattern, normalized)
+            for pattern in (
+                r"\bi (?:still )?(?:do not|don't|did not|didn't) understand\b",
+                r"\bi (?:still )?(?:do not|don't|did not|didn't) get (?:it|this|that)\b",
+                r"\bi (?:am|'m) (?:still )?confused\b",
+                r"\b(?:not clear|still unclear|not making sense|does not make sense|doesn't make sense)\b",
+                r"\b(?:help me understand|can you clarify|what do you mean)\b",
+                r"\bexplain (?:it|that|this) (?:again|more simply|more clearly)\b",
+            )
+        )
+
+    @classmethod
+    def _should_include_education_resources(cls, question: str) -> bool:
+        if cls._is_confusion_request(question):
+            return True
+        return bool(
+            re.search(
+                r"\b(?:pdf|video|link|resource|recording|walkthrough)\b",
+                question.casefold(),
             )
         )
 
     @staticmethod
-    def _diagram_reply_choice(text: str) -> str | None:
-        normalized = " ".join(re.sub(r"[^a-z0-9 ]", " ", text.casefold()).split())
-        if normalized in {
-            "yes",
-            "yeah",
-            "yep",
-            "sure",
-            "okay",
-            "ok",
-            "yes please",
-            "yes show me",
-            "yeah show me",
-            "sure show me",
-            "okay show me",
-            "sure please",
-            "go ahead",
-            "show it",
-            "send it",
-            "please show it",
-            "please send it",
-        }:
-            return "show"
-        if normalized in {
-            "no",
-            "no thanks",
-            "no thank you",
-            "not now",
-            "maybe later",
-            "skip",
-        }:
-            return "decline"
-        return None
-
-    def _has_competing_input_flow(self, telegram_id: int) -> bool:
-        return bool(
-            self.sessions.get(telegram_id)
-            or self.admin_dashboard.search_is_pending(telegram_id)
-            or self.admin_dashboard.broadcast_is_pending(telegram_id)
-            or self.admin_dashboard.has_single_member_dm_state(telegram_id)
-            or self.admin_dashboard.knowledge_is_pending(telegram_id)
-            or self.admin_dashboard.calendar_is_pending(telegram_id)
-            or self.admin_dashboard.has_channel_promo_state(telegram_id)
-            or self.admin_dashboard.has_channel_post_edit_pending(telegram_id)
-            or self.admin_dashboard.content_edit_is_pending(telegram_id)
-            or self.admin_dashboard.session_open_posts.has_edit_pending(telegram_id)
-            or self.admin_dashboard.education_topic_promotions.has_input_pending(
-                telegram_id
-            )
-            or self.admin_dashboard.education_diagrams.is_upload_pending(telegram_id)
-            or (
-                self.news_brief_photo_prompts is not None
-                and self.news_brief_photo_prompts.has_text_edit_pending(telegram_id)
-            )
-        )
-
-    def _handle_pending_coach_diagram_reply(
-        self, chat_id: int, telegram_id: int, text: str
-    ) -> bool:
-        pending = self._pending_coach_diagrams.get(chat_id)
-        if pending is None:
-            return False
-        if self._has_competing_input_flow(telegram_id):
-            self._pending_coach_diagrams.pop(chat_id, None)
-            return False
-        choice = self._diagram_reply_choice(text)
-        if choice is None:
-            self._pending_coach_diagrams.pop(chat_id, None)
-            return False
-        self._pending_coach_diagrams.pop(chat_id, None)
-        if choice == "show":
-            self._send_coach_diagram(chat_id, pending)
-        else:
-            self.api.send_message(
-                chat_id,
-                "No problem. Ask for the diagram anytime.",
-                self._coach_keyboard(),
-            )
-        return True
+    def _education_followup_query(
+        question: str, history: list[dict[str, Any]]
+    ) -> str:
+        if not SmartMoneyHubBot._is_confusion_request(question) or not history:
+            return question
+        previous = history[-1]
+        return " ".join(
+            str(previous.get(key) or "").strip()
+            for key in ("question", "detected_topic")
+            if str(previous.get(key) or "").strip()
+        ) + f" {question}"
 
     def _send_coach_diagram(
         self, chat_id: int, diagram: dict[str, Any]
@@ -3110,6 +3046,35 @@ class SmartMoneyHubBot:
                 "Coach diagram delivery failed (diagram_id=%s).",
                 diagram.get("id"),
             )
+
+    @staticmethod
+    def _append_education_resource_links(
+        response: str,
+        resources: list[dict[str, Any]],
+    ) -> str:
+        present = {
+            match.group(0).rstrip(".,!?;:")
+            for match in COACH_URL_PATTERN.finditer(response)
+        }
+        missing: list[str] = []
+        for item in resources:
+            link = str(item.get("message_link") or "").strip().rstrip(".,!?;:")
+            resource_type = str(item.get("resource_type") or "").casefold()
+            if (
+                not link.startswith("https://t.me/")
+                or resource_type not in {"pdf", "video"}
+                or link in present
+            ):
+                continue
+            label = "PDF" if resource_type == "pdf" else "VIDEO"
+            title = " ".join(str(item.get("title") or "").split()) or label.title()
+            missing.append(f"• {label}: {title} {link}")
+        if not missing:
+            return response
+        header = "Matching Education-group resources:"
+        if header.casefold() in response.casefold():
+            return response.rstrip() + "\n" + "\n".join(missing)
+        return response.rstrip() + f"\n\n{header}\n" + "\n".join(missing)
 
     def _answer_coach_message(
         self,
@@ -3209,7 +3174,13 @@ class SmartMoneyHubBot:
         profile: dict[str, Any] = {
             "is_admin": self.admin_id is not None and telegram_id == self.admin_id,
         }
-        self._attach_curriculum_context(profile, question, self.education_group_id)
+        include_resources = self._should_include_education_resources(question)
+        self._attach_curriculum_context(
+            profile,
+            question,
+            self.education_group_id,
+            include_education_resources=include_resources,
+        )
         stop_typing = threading.Event()
         typing_thread = threading.Thread(
             target=self._refresh_typing_action,
@@ -3264,10 +3235,24 @@ class SmartMoneyHubBot:
             feature="chart_image",
             outcome="success",
         )
+        resource_context = [
+            item
+            for item in profile.get("education_resources_context", [])
+            if isinstance(item, dict)
+        ]
+        response = self._append_education_resource_links(
+            reply.response, resource_context
+        )
+        response, markup = self._coach_response_with_link_buttons(
+            response,
+            self._coach_keyboard(),
+            resource_context,
+            allow_links=include_resources,
+        )
         self.api.send_message(
             chat_id,
-            reply.response,
-            self._coach_keyboard(),
+            response,
+            markup,
         )
         logger.info("Coach chart image reply sent. request_id=%s.", request_id)
 
@@ -3309,7 +3294,17 @@ class SmartMoneyHubBot:
             profile: dict[str, Any] = {
                 "group_knowledge_context": group_context,
             }
-            self._attach_curriculum_context(profile, question, chat_id)
+            include_resources = self._should_include_education_resources(question)
+            resource_query = (
+                f"{question} {group_context}" if self._is_confusion_request(question) else question
+            )
+            self._attach_curriculum_context(
+                profile,
+                question,
+                chat_id,
+                include_education_resources=include_resources,
+                resource_query=resource_query,
+            )
             if self.admin_id is not None and telegram_id == self.admin_id:
                 profile["is_admin"] = True
             routed = self.message_router.route(
@@ -3336,9 +3331,26 @@ class SmartMoneyHubBot:
                     )
                 except Exception:
                     logger.warning("Could not record an unanswered group question.")
+            resource_context = [
+                item
+                for item in profile.get("education_resources_context", [])
+                if isinstance(item, dict)
+            ]
+            response = self._append_education_resource_links(
+                routed.reply.response, resource_context
+            )
+            response, markup = self._coach_response_with_link_buttons(
+                response,
+                {"inline_keyboard": []},
+                resource_context,
+                allow_links=include_resources,
+            )
+            if not markup.get("inline_keyboard"):
+                markup = None
             self.api.send_message(
                 chat_id,
-                routed.reply.response,
+                response,
+                markup,
                 message_thread_id=message_thread_id,
             )
         finally:
@@ -3454,8 +3466,15 @@ class SmartMoneyHubBot:
             history = []
             profile = {}
         profile["is_admin"] = self.admin_id is not None and telegram_id == self.admin_id
+        confused = self._is_confusion_request(question)
+        include_resources = self._should_include_education_resources(question)
+        resource_query = self._education_followup_query(question, history)
         self._attach_curriculum_context(
-            profile, question, self.education_group_id
+            profile,
+            question,
+            self.education_group_id,
+            include_education_resources=include_resources,
+            resource_query=resource_query,
         )
         if self.education_group_id is not None:
             if not profile.get("episode_context"):
@@ -3525,7 +3544,7 @@ class SmartMoneyHubBot:
         known_resource_links = {
             str(item.get("message_link") or "").strip() for item in resource_context
         }
-        if self.education_group_id is not None:
+        if include_resources and self.education_group_id is not None:
             for match in COACH_URL_PATTERN.finditer(response):
                 link = match.group(0).rstrip(".,!?;:")
                 if not link or link in known_resource_links:
@@ -3544,50 +3563,30 @@ class SmartMoneyHubBot:
                 if resource:
                     resource_context.append(resource)
                     known_resource_links.add(link)
+        if include_resources:
+            response = self._append_education_resource_links(
+                response, resource_context
+            )
         response, markup = self._coach_response_with_link_buttons(
             response,
             markup,
             resource_context,
+            allow_links=include_resources,
         )
         diagram: dict[str, Any] | None = None
-        try:
-            diagram = self.admin_dashboard.education_diagrams.diagram_for_question(
-                question
-            )
-        except Exception:
-            logger.warning("Could not retrieve a matching Coach diagram.")
-        send_diagram_now = bool(
-            diagram and self._is_explicit_diagram_request(question)
-        )
-        if diagram and not send_diagram_now:
-            self._pending_coach_diagrams[chat_id] = diagram
-            title = " ".join(str(diagram.get("title") or "diagram").split())
-            response = (
-                response.rstrip()
-                + f"\n\nI have a matching {title} diagram. Would you like to see it?"
-            )
-            diagram_id = int(diagram.get("id") or 0)
-            if diagram_id > 0:
-                markup.setdefault("inline_keyboard", []).append(
-                    [
-                        {
-                            "text": "📊 Show diagram",
-                            "callback_data": f"coach:diagram:show:{diagram_id}",
-                        },
-                        {
-                            "text": "Not now",
-                            "callback_data": f"coach:diagram:decline:{diagram_id}",
-                        },
-                    ]
+        if confused or self._is_explicit_diagram_request(question):
+            try:
+                diagram = self.admin_dashboard.education_diagrams.diagram_for_question(
+                    resource_query
                 )
-        else:
-            self._pending_coach_diagrams.pop(chat_id, None)
+            except Exception:
+                logger.warning("Could not retrieve a matching Coach diagram.")
         try:
             self.api.send_message(chat_id, response, markup)
         except TelegramAPIError:
             logger.warning("Coach Telegram send failed. request_id=%s.", request_id)
             raise
-        if diagram and send_diagram_now:
+        if diagram:
             self._send_coach_diagram(chat_id, diagram)
         logger.info(
             "Coach reply sent to Telegram (path=%s). request_id=%s.",
@@ -3732,10 +3731,12 @@ class SmartMoneyHubBot:
         response: str,
         reply_markup: dict[str, Any],
         resources: list[dict[str, Any]] | None = None,
+        *,
+        allow_links: bool = True,
     ) -> tuple[str, dict[str, Any]]:
         """Keep Coach URLs out of visible text and expose them as URL buttons."""
         trusted_resources: dict[str, dict[str, str]] = {}
-        for item in resources or []:
+        for item in resources if allow_links else []:
             if not isinstance(item, dict):
                 continue
             url = str(item.get("message_link") or "").strip().rstrip(".,!?;:")
@@ -3748,6 +3749,18 @@ class SmartMoneyHubBot:
                     "resource_type": resource_type,
                     "title": " ".join(str(item.get("title") or "").split())[:120],
                 }
+
+        if not allow_links:
+            response = re.sub(
+                r"(?im)^\s*[•*–—-]?\s*(?:PDF|VIDEO)\s*:.*$",
+                "",
+                response,
+            )
+            response = re.sub(
+                r"(?im)^\s*Matching Education-group resources:\s*$",
+                "",
+                response,
+            )
 
         # A model can pair a valid Telegram resource link with the wrong media
         # noun. Correct the nearby wording using the indexed admin resource type.
@@ -3837,6 +3850,8 @@ class SmartMoneyHubBot:
             url = match.group(0).rstrip(".,!?;:")
             if not url or url in seen_urls:
                 return ""
+            if url not in trusted_resources:
+                return match.group(0)[len(url) :]
             seen_urls.add(url)
             context = response[max(0, match.start() - 300) : match.start()]
             links.append((url, button_label(context, url)))

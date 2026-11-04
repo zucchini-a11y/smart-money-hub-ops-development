@@ -992,6 +992,18 @@ class BotFlowTests(unittest.TestCase):
         visible, markup = self.bot._coach_response_with_link_buttons(
             response,
             {"inline_keyboard": [[{"text": "Main Menu", "callback_data": "nav:home"}]]},
+            [
+                {
+                    "resource_type": "video",
+                    "title": "Market structure video",
+                    "message_link": "https://t.me/c/3916437804/8/143",
+                },
+                {
+                    "resource_type": "pdf",
+                    "title": "Market structure PDF",
+                    "message_link": "https://t.me/c/3916437804/7/35",
+                },
+            ],
         )
 
         self.assertNotIn("https://", visible)
@@ -1012,6 +1024,30 @@ class BotFlowTests(unittest.TestCase):
         self.assertEqual(
             [button["text"] for button in buttons],
             ["Watch video", "Open PDF"],
+        )
+
+    def test_coach_suppresses_resource_links_when_not_requested(self) -> None:
+        response = (
+            "BOS is a break of meaningful structure.\n\n"
+            "Matching Education-group resources:\n"
+            "• VIDEO: Market structure "
+            "https://t.me/c/3916437804/8/143"
+        )
+        visible, markup = self.bot._coach_response_with_link_buttons(
+            response,
+            {"inline_keyboard": []},
+            allow_links=False,
+        )
+
+        self.assertNotIn("https://", visible)
+        self.assertNotIn("VIDEO:", visible)
+        self.assertNotIn("Matching Education-group resources", visible)
+        self.assertFalse(
+            any(
+                "url" in button
+                for row in markup["inline_keyboard"]
+                for button in row
+            )
         )
 
     def test_coach_corrects_media_wording_from_verified_resource_type(self) -> None:
@@ -1077,6 +1113,23 @@ class BotFlowTests(unittest.TestCase):
             self.chat_id,
             self.user_id,
             self.username,
+            "Explain BOS and MSS.",
+        )
+        normal_reply = self.api.messages[-1]
+        self.assertNotIn("https://t.me/", normal_reply["text"])
+        self.assertNotIn("Matching Education-group resources", normal_reply["text"])
+        self.assertFalse(
+            any(
+                "url" in button
+                for row in normal_reply["reply_markup"]["inline_keyboard"]
+                for button in row
+            )
+        )
+
+        self.bot._process_coach_message(
+            self.chat_id,
+            self.user_id,
+            self.username,
             "Can you send me the PDF link for BOS?",
         )
         sent_reply = self.api.messages[-1]
@@ -1090,6 +1143,22 @@ class BotFlowTests(unittest.TestCase):
         self.assertEqual(
             [button["url"] for button in resource_buttons],
             ["https://t.me/c/3916437804/7654/9003"],
+        )
+
+        self.bot._process_coach_message(
+            self.chat_id,
+            self.user_id,
+            self.username,
+            "I still don't understand.",
+        )
+        confused_reply = self.api.messages[-1]
+        self.assertNotIn("https://t.me/", confused_reply["text"])
+        self.assertTrue(
+            any(
+                button.get("url") == "https://t.me/c/3916437804/7654/9003"
+                for row in confused_reply["reply_markup"]["inline_keyboard"]
+                for button in row
+            )
         )
 
         message["message_id"] = 9004
@@ -1139,7 +1208,7 @@ class BotFlowTests(unittest.TestCase):
             self.api.photos[0]["caption"],
         )
 
-    def test_private_coach_suggests_diagram_and_sends_after_button_agreement(
+    def test_private_coach_does_not_suggest_diagram_for_basic_question(
         self,
     ) -> None:
         self.bot.store.add_education_diagram(
@@ -1159,30 +1228,23 @@ class BotFlowTests(unittest.TestCase):
 
         self.assertEqual(self.api.photos, [])
         response = self.api.messages[-1]
-        self.assertIn("Would you like to see it?", response["text"])
-        buttons = response["reply_markup"]["inline_keyboard"][-1]
-        show_button = next(
-            button for button in buttons if button["text"] == "📊 Show diagram"
-        )
-        callback_data = show_button["callback_data"]
-        self.bot.handle_update(
-            {
-                "callback_query": {
-                    "id": "show-diagram-1",
-                    "from": {"id": self.user_id},
-                    "message": {
-                        "message_id": 900,
-                        "chat": {"id": self.chat_id, "type": "private"},
-                    },
-                    "data": callback_data,
-                }
-            }
+        self.assertNotIn("Would you like to see it?", response["text"])
+        self.assertFalse(
+            any(
+                button["text"] == "📊 Show diagram"
+                for row in response["reply_markup"]["inline_keyboard"]
+                for button in row
+            )
         )
 
-        self.assertEqual(len(self.api.photos), 1)
-        self.assertEqual(self.api.photos[0]["chat_id"], self.chat_id)
-
-    def test_private_coach_sends_suggested_diagram_after_text_yes(self) -> None:
+    def test_private_coach_sends_diagram_when_user_does_not_understand(self) -> None:
+        self.bot.store.register_user(
+            telegram_id=self.user_id,
+            username=self.username,
+            first_name=self.first_name,
+            chat_id=self.chat_id,
+            is_private=True,
+        )
         self.bot.store.add_education_diagram(
             title="CHoCH",
             tags="CHoCH, change of character",
@@ -1190,20 +1252,21 @@ class BotFlowTests(unittest.TestCase):
             photo_file_id="local:attached_assets/choch-diagram-file.jpg",
             admin_telegram_id=self.user_id,
         )
+        self.bot.store.save_dm_coaching_interaction(
+            telegram_id=self.user_id,
+            username=self.username,
+            question="Can you explain a change of character?",
+            coach_response="CHoCH can signal a possible shift in structure.",
+            detected_topic="CHoCH",
+            mistakes_identified=[],
+            lesson_learned="Wait for confirmation.",
+        )
+
         self.bot._process_coach_message(
             self.chat_id,
             self.user_id,
             self.username,
-            "Can you explain a change of character?",
-        )
-        self.assertEqual(self.api.photos, [])
-
-        self.bot._handle_message(
-            {
-                "text": "Yes, show me",
-                "from": {"id": self.user_id, "username": self.username},
-                "chat": {"id": self.chat_id, "type": "private"},
-            }
+            "I still don't understand.",
         )
 
         self.assertEqual(len(self.api.photos), 1)
