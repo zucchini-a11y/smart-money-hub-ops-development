@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode, type AnchorHTMLAttributes } from '
 import { Link, useLocation } from 'wouter';
 import { ArrowDownRight, ArrowRight, ArrowUpRight, BookOpen, Compass, Mail, X } from 'lucide-react';
 import { isConfiguredPublicUrl, publicSiteLinks } from './config';
+import { PublicSupportWidget } from '../WebsiteSupport';
 import './public-site.css';
 
 const pages = [
@@ -509,5 +510,5 @@ export default function PublicSite() {
   const exactPublicPath = pages.some((page) => page.href === path);
   if (!exactPublicPath) return null;
   const page = path === '/' ? <Home /> : path === '/about' ? <About /> : path === '/education' ? <Education /> : path === '/market-analysis' ? <MarketAnalysis /> : path === '/philosophy' ? <Philosophy /> : path === '/community' ? <Community /> : <Contact />;
-  return <div className={`vayda-site${path === '/' ? ' is-home' : ' is-public'}`}><Header location={path} /><div className="vs-page-transition" key={path}>{page}</div><Footer /></div>;
+  return <div className={`vayda-site${path === '/' ? ' is-home' : ' is-public'}`}><Header location={path} /><div className="vs-page-transition" key={path}>{page}</div><Footer /><PublicSupportWidget /></div>;
 }

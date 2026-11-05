@@ -1421,6 +1421,259 @@ export interface ApplicantFollowupStatusInput {
   expectedUpdated: string;
 }
 
+export interface WebsiteSupportAvailability {
+  humanAvailable: boolean;
+}
+
+export type WebsiteConversationInputMode = typeof WebsiteConversationInputMode[keyof typeof WebsiteConversationInputMode];
+
+
+export const WebsiteConversationInputMode = {
+  assistant: 'assistant',
+  human: 'human',
+} as const;
+
+export interface WebsiteConversationInput {
+  mode: WebsiteConversationInputMode;
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  name?: string;
+  /**
+     * @minLength 3
+     * @maxLength 2000
+     */
+  initialMessage?: string;
+  /**
+     * @minLength 16
+     * @maxLength 120
+     */
+  requestId: string;
+}
+
+export interface WebsiteChatMessageInput {
+  /**
+     * @minLength 1
+     * @maxLength 2000
+     */
+  text: string;
+  /**
+     * @minLength 16
+     * @maxLength 120
+     */
+  requestId: string;
+}
+
+export interface WebsiteSupportHandoffInput {
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  name: string;
+  /**
+     * @minLength 3
+     * @maxLength 2000
+     */
+  reason: string;
+  /**
+     * @minLength 16
+     * @maxLength 120
+     */
+  requestId: string;
+}
+
+export type WebsiteConversationSummaryMode = typeof WebsiteConversationSummaryMode[keyof typeof WebsiteConversationSummaryMode];
+
+
+export const WebsiteConversationSummaryMode = {
+  assistant: 'assistant',
+  human: 'human',
+} as const;
+
+export type WebsiteConversationSummaryStatus = typeof WebsiteConversationSummaryStatus[keyof typeof WebsiteConversationSummaryStatus];
+
+
+export const WebsiteConversationSummaryStatus = {
+  ai: 'ai',
+  queued: 'queued',
+  assigned: 'assigned',
+  in_progress: 'in_progress',
+  closed: 'closed',
+} as const;
+
+export interface WebsiteConversationSummary {
+  conversationId: string;
+  mode: WebsiteConversationSummaryMode;
+  status: WebsiteConversationSummaryStatus;
+  agentJoined: boolean;
+  created: string;
+  updated: string;
+  lastMessageAt: string;
+}
+
+export type WebsiteConversationMessageSenderType = typeof WebsiteConversationMessageSenderType[keyof typeof WebsiteConversationMessageSenderType];
+
+
+export const WebsiteConversationMessageSenderType = {
+  visitor: 'visitor',
+  assistant: 'assistant',
+  staff: 'staff',
+  system: 'system',
+} as const;
+
+export interface WebsiteConversationMessage {
+  messageId: string;
+  senderType: WebsiteConversationMessageSenderType;
+  displayName: string;
+  text: string;
+  created: string;
+}
+
+export interface WebsiteConversationState {
+  conversation: WebsiteConversationSummary | null;
+  messages: WebsiteConversationMessage[];
+}
+
+export interface WebsiteConversationDetail {
+  conversation: WebsiteConversationSummary;
+  messages: WebsiteConversationMessage[];
+}
+
+export interface WebsiteMessageResult {
+  conversation: WebsiteConversationSummary;
+  visitorMessage: WebsiteConversationMessage;
+  assistantMessage: WebsiteConversationMessage | null;
+  needsHuman: boolean;
+}
+
+export type PortalWebsiteConversationSummaryMode = typeof PortalWebsiteConversationSummaryMode[keyof typeof PortalWebsiteConversationSummaryMode];
+
+
+export const PortalWebsiteConversationSummaryMode = {
+  assistant: 'assistant',
+  human: 'human',
+} as const;
+
+export type PortalWebsiteConversationSummaryStatus = typeof PortalWebsiteConversationSummaryStatus[keyof typeof PortalWebsiteConversationSummaryStatus];
+
+
+export const PortalWebsiteConversationSummaryStatus = {
+  ai: 'ai',
+  queued: 'queued',
+  assigned: 'assigned',
+  in_progress: 'in_progress',
+  closed: 'closed',
+} as const;
+
+export interface PortalWebsiteConversationSummary {
+  conversationId: string;
+  mode: PortalWebsiteConversationSummaryMode;
+  status: PortalWebsiteConversationSummaryStatus;
+  /** @nullable */
+  visitorName: string | null;
+  /** @nullable */
+  teamId: string | null;
+  /** @nullable */
+  assignedStaffId: string | null;
+  created: string;
+  updated: string;
+  lastMessageAt: string;
+}
+
+export type PortalWebsiteConversationMessageSenderType = typeof PortalWebsiteConversationMessageSenderType[keyof typeof PortalWebsiteConversationMessageSenderType];
+
+
+export const PortalWebsiteConversationMessageSenderType = {
+  visitor: 'visitor',
+  assistant: 'assistant',
+  staff: 'staff',
+  system: 'system',
+} as const;
+
+export interface PortalWebsiteConversationMessage {
+  messageId: string;
+  senderType: PortalWebsiteConversationMessageSenderType;
+  displayName: string;
+  text: string;
+  created: string;
+}
+
+export interface PortalWebsiteConversationDetail {
+  conversation: PortalWebsiteConversationSummary;
+  messages: PortalWebsiteConversationMessage[];
+}
+
+export interface PortalWebsiteConversationList {
+  conversations: PortalWebsiteConversationSummary[];
+  total: number;
+}
+
+export interface PortalWebsiteReplyInput {
+  /**
+     * @minLength 1
+     * @maxLength 2000
+     */
+  text: string;
+  /**
+     * @minLength 16
+     * @maxLength 120
+     */
+  requestId: string;
+}
+
+export interface PortalWebsiteAssignmentInput {
+  /**
+     * @maxLength 120
+     * @nullable
+     */
+  assignedStaffId: string | null;
+}
+
+export interface PortalWebsiteSupportSettingsInput {
+  /**
+     * @maxLength 120
+     * @nullable
+     */
+  supportTeamId: string | null;
+}
+
+export interface PortalWebsiteSupportEligibilityInput {
+  eligible: boolean;
+  consentConfirmed: boolean;
+}
+
+export interface PortalWebsiteSupportAvailabilityInput {
+  available: boolean;
+}
+
+export interface PortalWebsiteSupportAgent {
+  staffId: string;
+  displayName: string;
+  eligible: boolean;
+  available: boolean;
+}
+
+export interface PortalWebsiteSupportTeam {
+  teamId: string;
+  name: string;
+}
+
+export interface PortalWebsiteSupportSelf {
+  eligible: boolean;
+  available: boolean;
+}
+
+export interface PortalWebsiteSupportSettings {
+  /** @nullable */
+  supportTeamId: string | null;
+  teams: PortalWebsiteSupportTeam[];
+  agents: PortalWebsiteSupportAgent[];
+  self: PortalWebsiteSupportSelf;
+  canManage: boolean;
+  canAssign: boolean;
+}
+
 export type PortalReplyStatus = typeof PortalReplyStatus[keyof typeof PortalReplyStatus];
 
 
@@ -2076,6 +2329,26 @@ export const ListPortalCasesStatus = {
   replied: 'replied',
   closed: 'closed',
   all: 'all',
+} as const;
+
+export type ListPortalWebsiteSupportConversationsParams = {
+status?: ListPortalWebsiteSupportConversationsStatus;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+};
+
+export type ListPortalWebsiteSupportConversationsStatus = typeof ListPortalWebsiteSupportConversationsStatus[keyof typeof ListPortalWebsiteSupportConversationsStatus];
+
+
+export const ListPortalWebsiteSupportConversationsStatus = {
+  all: 'all',
+  queued: 'queued',
+  assigned: 'assigned',
+  in_progress: 'in_progress',
+  closed: 'closed',
 } as const;
 
 export type BeginBrowserLoginParams = {

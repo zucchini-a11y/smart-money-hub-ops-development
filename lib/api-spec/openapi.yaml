@@ -1785,6 +1785,478 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /public-support/availability:
+    get:
+      operationId: getWebsiteSupportAvailability
+      tags:
+        - supportPortal
+      responses:
+        "200":
+          description: Whether an eligible human support agent is currently available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebsiteSupportAvailability"
+  /public-support/session:
+    post:
+      operationId: createWebsiteSupportSession
+      tags:
+        - supportPortal
+      responses:
+        "200":
+          description: Visitor session initialized and current conversation restored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebsiteConversationState"
+        "429":
+          description: Visitor session request limit reached
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /public-support/conversation:
+    get:
+      operationId: getWebsiteSupportConversation
+      tags:
+        - supportPortal
+      responses:
+        "200":
+          description: Current visitor conversation, if one exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebsiteConversationState"
+  /public-support/conversations:
+    post:
+      operationId: createWebsiteSupportConversation
+      tags:
+        - supportPortal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebsiteConversationInput"
+      responses:
+        "200":
+          description: Existing active visitor conversation restored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebsiteConversationDetail"
+        "201":
+          description: Website support conversation created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebsiteConversationDetail"
+        "400":
+          description: Invalid conversation request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Visitor session is missing or expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Visitor request limit reached
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /public-support/conversations/{conversationId}:
+    get:
+      operationId: getWebsiteSupportConversationById
+      tags:
+        - supportPortal
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+      responses:
+        "200":
+          description: Visitor-owned website support conversation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebsiteConversationDetail"
+        "404":
+          description: Conversation not found or not owned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /public-support/conversations/{conversationId}/messages:
+    post:
+      operationId: createWebsiteSupportMessage
+      tags:
+        - supportPortal
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebsiteChatMessageInput"
+      responses:
+        "201":
+          description: Visitor message and optional AI response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebsiteMessageResult"
+        "409":
+          description: Conversation is closed or awaiting human support
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Visitor message limit reached
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: AI service is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /public-support/conversations/{conversationId}/handoff:
+    post:
+      operationId: handoffWebsiteSupportConversation
+      tags:
+        - supportPortal
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebsiteSupportHandoffInput"
+      responses:
+        "200":
+          description: Conversation queued for human support
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebsiteConversationDetail"
+        "404":
+          description: Conversation not found or not owned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/website-support/conversations:
+    get:
+      operationId: listPortalWebsiteSupportConversations
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [all, queued, assigned, in_progress, closed]
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: Website chats visible to the current staff role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalWebsiteConversationList"
+  /portal/website-support/conversations/{conversationId}:
+    get:
+      operationId: getPortalWebsiteSupportConversation
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+      responses:
+        "200":
+          description: Authorized staff conversation and message history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalWebsiteConversationDetail"
+        "404":
+          description: Conversation not found or not visible to this staff member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/website-support/conversations/{conversationId}/accept:
+    post:
+      operationId: acceptPortalWebsiteSupportConversation
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+      responses:
+        "200":
+          description: Chat atomically accepted by an eligible, available agent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalWebsiteConversationSummary"
+        "403":
+          description: Agent is not eligible or available for this queue
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Chat was accepted by another staff member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/website-support/conversations/{conversationId}/replies:
+    post:
+      operationId: replyPortalWebsiteSupportConversation
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalWebsiteReplyInput"
+      responses:
+        "201":
+          description: Human agent reply saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalWebsiteConversationMessage"
+        "404":
+          description: Conversation not found or not visible to this staff member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/website-support/conversations/{conversationId}/assignment:
+    patch:
+      operationId: assignPortalWebsiteSupportConversation
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalWebsiteAssignmentInput"
+      responses:
+        "200":
+          description: Conversation assigned or transferred
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalWebsiteConversationSummary"
+        "403":
+          description: Assignment is not authorized for this role or team
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/website-support/conversations/{conversationId}/close:
+    post:
+      operationId: closePortalWebsiteSupportConversation
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+      responses:
+        "200":
+          description: Website conversation closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalWebsiteConversationSummary"
+        "404":
+          description: Conversation not found or not visible
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/website-support/settings:
+    get:
+      operationId: getPortalWebsiteSupportSettings
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Website support team and eligibility controls visible to this role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalWebsiteSupportSettings"
+    put:
+      operationId: updatePortalWebsiteSupportSettings
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalWebsiteSupportSettingsInput"
+      responses:
+        "200":
+          description: Website support team updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalWebsiteSupportSettings"
+        "403":
+          description: Owner access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/website-support/agents/{staffId}/eligibility:
+    patch:
+      operationId: updatePortalWebsiteSupportEligibility
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      parameters:
+        - name: staffId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalWebsiteSupportEligibilityInput"
+      responses:
+        "200":
+          description: Agent eligibility updated after explicit opt-in confirmation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalWebsiteSupportSettings"
+        "403":
+          description: Owner access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/website-support/availability:
+    patch:
+      operationId: updatePortalWebsiteSupportAvailability
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalWebsiteSupportAvailabilityInput"
+      responses:
+        "200":
+          description: Current agent availability updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalWebsiteSupportSettings"
+        "403":
+          description: Agent eligibility required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /portal/staff:
     get:
       operationId: listPortalStaff
@@ -4525,6 +4997,364 @@ components:
       required:
         - status
         - expectedUpdated
+    WebsiteSupportAvailability:
+      type: object
+      properties:
+        humanAvailable:
+          type: boolean
+      required:
+        - humanAvailable
+    WebsiteConversationInput:
+      type: object
+      additionalProperties: false
+      properties:
+        mode:
+          type: string
+          enum: [assistant, human]
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        initialMessage:
+          type: string
+          minLength: 3
+          maxLength: 2000
+        requestId:
+          type: string
+          minLength: 16
+          maxLength: 120
+      required:
+        - mode
+        - requestId
+    WebsiteChatMessageInput:
+      type: object
+      additionalProperties: false
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        requestId:
+          type: string
+          minLength: 16
+          maxLength: 120
+      required:
+        - text
+        - requestId
+    WebsiteSupportHandoffInput:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        reason:
+          type: string
+          minLength: 3
+          maxLength: 2000
+        requestId:
+          type: string
+          minLength: 16
+          maxLength: 120
+      required:
+        - name
+        - reason
+        - requestId
+    WebsiteConversationSummary:
+      type: object
+      properties:
+        conversationId:
+          type: string
+        mode:
+          type: string
+          enum: [assistant, human]
+        status:
+          type: string
+          enum: [ai, queued, assigned, in_progress, closed]
+        agentJoined:
+          type: boolean
+        created:
+          type: string
+        updated:
+          type: string
+        lastMessageAt:
+          type: string
+      required:
+        - conversationId
+        - mode
+        - status
+        - agentJoined
+        - created
+        - updated
+        - lastMessageAt
+    WebsiteConversationMessage:
+      type: object
+      properties:
+        messageId:
+          type: string
+        senderType:
+          type: string
+          enum: [visitor, assistant, staff, system]
+        displayName:
+          type: string
+        text:
+          type: string
+        created:
+          type: string
+      required:
+        - messageId
+        - senderType
+        - displayName
+        - text
+        - created
+    WebsiteConversationState:
+      type: object
+      properties:
+        conversation:
+          anyOf:
+            - $ref: "#/components/schemas/WebsiteConversationSummary"
+            - type: "null"
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/WebsiteConversationMessage"
+      required:
+        - conversation
+        - messages
+    WebsiteConversationDetail:
+      type: object
+      properties:
+        conversation:
+          $ref: "#/components/schemas/WebsiteConversationSummary"
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/WebsiteConversationMessage"
+      required:
+        - conversation
+        - messages
+    WebsiteMessageResult:
+      type: object
+      properties:
+        conversation:
+          $ref: "#/components/schemas/WebsiteConversationSummary"
+        visitorMessage:
+          $ref: "#/components/schemas/WebsiteConversationMessage"
+        assistantMessage:
+          anyOf:
+            - $ref: "#/components/schemas/WebsiteConversationMessage"
+            - type: "null"
+        needsHuman:
+          type: boolean
+      required:
+        - conversation
+        - visitorMessage
+        - assistantMessage
+        - needsHuman
+    PortalWebsiteConversationSummary:
+      type: object
+      properties:
+        conversationId:
+          type: string
+        mode:
+          type: string
+          enum: [assistant, human]
+        status:
+          type: string
+          enum: [ai, queued, assigned, in_progress, closed]
+        visitorName:
+          type:
+            - string
+            - "null"
+        teamId:
+          type:
+            - string
+            - "null"
+        assignedStaffId:
+          type:
+            - string
+            - "null"
+        created:
+          type: string
+        updated:
+          type: string
+        lastMessageAt:
+          type: string
+      required:
+        - conversationId
+        - mode
+        - status
+        - visitorName
+        - teamId
+        - assignedStaffId
+        - created
+        - updated
+        - lastMessageAt
+    PortalWebsiteConversationMessage:
+      type: object
+      properties:
+        messageId:
+          type: string
+        senderType:
+          type: string
+          enum: [visitor, assistant, staff, system]
+        displayName:
+          type: string
+        text:
+          type: string
+        created:
+          type: string
+      required:
+        - messageId
+        - senderType
+        - displayName
+        - text
+        - created
+    PortalWebsiteConversationDetail:
+      type: object
+      properties:
+        conversation:
+          $ref: "#/components/schemas/PortalWebsiteConversationSummary"
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortalWebsiteConversationMessage"
+      required:
+        - conversation
+        - messages
+    PortalWebsiteConversationList:
+      type: object
+      properties:
+        conversations:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortalWebsiteConversationSummary"
+        total:
+          type: integer
+      required:
+        - conversations
+        - total
+    PortalWebsiteReplyInput:
+      type: object
+      additionalProperties: false
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        requestId:
+          type: string
+          minLength: 16
+          maxLength: 120
+      required:
+        - text
+        - requestId
+    PortalWebsiteAssignmentInput:
+      type: object
+      additionalProperties: false
+      properties:
+        assignedStaffId:
+          type:
+            - string
+            - "null"
+          maxLength: 120
+      required:
+        - assignedStaffId
+    PortalWebsiteSupportSettingsInput:
+      type: object
+      additionalProperties: false
+      properties:
+        supportTeamId:
+          type:
+            - string
+            - "null"
+          maxLength: 120
+      required:
+        - supportTeamId
+    PortalWebsiteSupportEligibilityInput:
+      type: object
+      additionalProperties: false
+      properties:
+        eligible:
+          type: boolean
+        consentConfirmed:
+          type: boolean
+      required:
+        - eligible
+        - consentConfirmed
+    PortalWebsiteSupportAvailabilityInput:
+      type: object
+      additionalProperties: false
+      properties:
+        available:
+          type: boolean
+      required:
+        - available
+    PortalWebsiteSupportAgent:
+      type: object
+      properties:
+        staffId:
+          type: string
+        displayName:
+          type: string
+        eligible:
+          type: boolean
+        available:
+          type: boolean
+      required:
+        - staffId
+        - displayName
+        - eligible
+        - available
+    PortalWebsiteSupportTeam:
+      type: object
+      properties:
+        teamId:
+          type: string
+        name:
+          type: string
+      required:
+        - teamId
+        - name
+    PortalWebsiteSupportSelf:
+      type: object
+      properties:
+        eligible:
+          type: boolean
+        available:
+          type: boolean
+      required:
+        - eligible
+        - available
+    PortalWebsiteSupportSettings:
+      type: object
+      properties:
+        supportTeamId:
+          type:
+            - string
+            - "null"
+        teams:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortalWebsiteSupportTeam"
+        agents:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortalWebsiteSupportAgent"
+        self:
+          $ref: "#/components/schemas/PortalWebsiteSupportSelf"
+        canManage:
+          type: boolean
+        canAssign:
+          type: boolean
+      required:
+        - supportTeamId
+        - teams
+        - agents
+        - self
+        - canManage
+        - canAssign
     PortalCaseSummary:
       type: object
       properties:

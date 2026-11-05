@@ -53,6 +53,7 @@ import type {
   ListMemberBotCasesParams,
   ListPortalCasesParams,
   ListPortalMemberApplicationsParams,
+  ListPortalWebsiteSupportConversationsParams,
   ListProMemberApplicationsParams,
   ListSupportCasesParams,
   ListWhatsAppConversationsParams,
@@ -89,6 +90,16 @@ import type {
   PortalTradeActionInput,
   PortalTradeDetail,
   PortalTradeManagement,
+  PortalWebsiteAssignmentInput,
+  PortalWebsiteConversationDetail,
+  PortalWebsiteConversationList,
+  PortalWebsiteConversationMessage,
+  PortalWebsiteConversationSummary,
+  PortalWebsiteReplyInput,
+  PortalWebsiteSupportAvailabilityInput,
+  PortalWebsiteSupportEligibilityInput,
+  PortalWebsiteSupportSettings,
+  PortalWebsiteSupportSettingsInput,
   ProMemberApplicationDetail,
   ProMemberApplicationList,
   ProMemberReviewCommand,
@@ -123,6 +134,13 @@ import type {
   SupportSession,
   SupportStaff,
   SupportStatusInput,
+  WebsiteChatMessageInput,
+  WebsiteConversationDetail,
+  WebsiteConversationInput,
+  WebsiteConversationState,
+  WebsiteMessageResult,
+  WebsiteSupportAvailability,
+  WebsiteSupportHandoffInput,
   WhatsAppActivity,
   WhatsAppConversation,
   WhatsAppConversationDetail,
@@ -5151,6 +5169,1304 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getClosePortalCaseMutationOptions(options));
+    }
+
+export const getGetWebsiteSupportAvailabilityUrl = () => {
+
+
+
+
+  return `/api/public-support/availability`
+}
+
+export const getWebsiteSupportAvailability = async ( options?: Parameters<typeof customFetch>[1]): Promise<WebsiteSupportAvailability> => {
+
+  return customFetch<WebsiteSupportAvailability>(getGetWebsiteSupportAvailabilityUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWebsiteSupportAvailabilityQueryKey = () => {
+    return [
+    `/api/public-support/availability`
+    ] as const;
+    }
+
+
+export const getGetWebsiteSupportAvailabilityQueryOptions = <TData = Awaited<ReturnType<typeof getWebsiteSupportAvailability>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWebsiteSupportAvailability>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWebsiteSupportAvailabilityQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWebsiteSupportAvailability>>> = ({ signal }) => getWebsiteSupportAvailability({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWebsiteSupportAvailability>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWebsiteSupportAvailabilityQueryResult = NonNullable<Awaited<ReturnType<typeof getWebsiteSupportAvailability>>>
+export type GetWebsiteSupportAvailabilityQueryError = ErrorType<unknown>
+
+
+
+export function useGetWebsiteSupportAvailability<TData = Awaited<ReturnType<typeof getWebsiteSupportAvailability>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWebsiteSupportAvailability>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWebsiteSupportAvailabilityQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateWebsiteSupportSessionUrl = () => {
+
+
+
+
+  return `/api/public-support/session`
+}
+
+export const createWebsiteSupportSession = async ( options?: Parameters<typeof customFetch>[1]): Promise<WebsiteConversationState> => {
+
+  return customFetch<WebsiteConversationState>(getCreateWebsiteSupportSessionUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCreateWebsiteSupportSessionMutationKey = () => ['createWebsiteSupportSession'] as const;
+
+export const getCreateWebsiteSupportSessionMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createWebsiteSupportSession>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createWebsiteSupportSession>>, TError,void, TContext> => {
+
+const mutationKey = getCreateWebsiteSupportSessionMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createWebsiteSupportSession>>, void> = () => {
+
+
+          return  createWebsiteSupportSession(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateWebsiteSupportSessionMutationResult = NonNullable<Awaited<ReturnType<typeof createWebsiteSupportSession>>>
+
+    export type CreateWebsiteSupportSessionMutationError = ErrorType<ErrorResponse>
+
+
+    export const useCreateWebsiteSupportSession = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createWebsiteSupportSession>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createWebsiteSupportSession>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getCreateWebsiteSupportSessionMutationOptions(options));
+    }
+
+export const getGetWebsiteSupportConversationUrl = () => {
+
+
+
+
+  return `/api/public-support/conversation`
+}
+
+export const getWebsiteSupportConversation = async ( options?: Parameters<typeof customFetch>[1]): Promise<WebsiteConversationState> => {
+
+  return customFetch<WebsiteConversationState>(getGetWebsiteSupportConversationUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWebsiteSupportConversationQueryKey = () => {
+    return [
+    `/api/public-support/conversation`
+    ] as const;
+    }
+
+
+export const getGetWebsiteSupportConversationQueryOptions = <TData = Awaited<ReturnType<typeof getWebsiteSupportConversation>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWebsiteSupportConversation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWebsiteSupportConversationQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWebsiteSupportConversation>>> = ({ signal }) => getWebsiteSupportConversation({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWebsiteSupportConversation>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWebsiteSupportConversationQueryResult = NonNullable<Awaited<ReturnType<typeof getWebsiteSupportConversation>>>
+export type GetWebsiteSupportConversationQueryError = ErrorType<unknown>
+
+
+
+export function useGetWebsiteSupportConversation<TData = Awaited<ReturnType<typeof getWebsiteSupportConversation>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWebsiteSupportConversation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWebsiteSupportConversationQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateWebsiteSupportConversationUrl = () => {
+
+
+
+
+  return `/api/public-support/conversations`
+}
+
+export const createWebsiteSupportConversation = async (websiteConversationInput: WebsiteConversationInput, options?: Parameters<typeof customFetch>[1]): Promise<WebsiteConversationDetail> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<WebsiteConversationDetail>(getCreateWebsiteSupportConversationUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(websiteConversationInput)
+  }
+);}
+
+
+
+
+
+export const getCreateWebsiteSupportConversationMutationKey = () => ['createWebsiteSupportConversation'] as const;
+
+export const getCreateWebsiteSupportConversationMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createWebsiteSupportConversation>>, TError,CreateWebsiteSupportConversationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createWebsiteSupportConversation>>, TError,CreateWebsiteSupportConversationMutationVariables, TContext> => {
+
+const mutationKey = getCreateWebsiteSupportConversationMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createWebsiteSupportConversation>>, CreateWebsiteSupportConversationMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createWebsiteSupportConversation(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateWebsiteSupportConversationMutationResult = NonNullable<Awaited<ReturnType<typeof createWebsiteSupportConversation>>>
+    export type CreateWebsiteSupportConversationMutationBody = BodyType<WebsiteConversationInput>
+    export type CreateWebsiteSupportConversationMutationError = ErrorType<ErrorResponse>
+    export type CreateWebsiteSupportConversationMutationVariables = {data: BodyType<WebsiteConversationInput>}
+
+    export const useCreateWebsiteSupportConversation = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createWebsiteSupportConversation>>, TError,CreateWebsiteSupportConversationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createWebsiteSupportConversation>>,
+        TError,
+        CreateWebsiteSupportConversationMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateWebsiteSupportConversationMutationOptions(options));
+    }
+
+export const getGetWebsiteSupportConversationByIdUrl = (conversationId: string,) => {
+
+
+
+
+  return `/api/public-support/conversations/${conversationId}`
+}
+
+export const getWebsiteSupportConversationById = async (conversationId: string, options?: Parameters<typeof customFetch>[1]): Promise<WebsiteConversationDetail> => {
+
+  return customFetch<WebsiteConversationDetail>(getGetWebsiteSupportConversationByIdUrl(conversationId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWebsiteSupportConversationByIdQueryKey = (conversationId: string,) => {
+    return [
+    `/api/public-support/conversations/${conversationId}`
+    ] as const;
+    }
+
+
+export const getGetWebsiteSupportConversationByIdQueryOptions = <TData = Awaited<ReturnType<typeof getWebsiteSupportConversationById>>, TError = ErrorType<ErrorResponse>>(conversationId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWebsiteSupportConversationById>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWebsiteSupportConversationByIdQueryKey(conversationId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWebsiteSupportConversationById>>> = ({ signal }) => getWebsiteSupportConversationById(conversationId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: conversationId !== null && conversationId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWebsiteSupportConversationById>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWebsiteSupportConversationByIdQueryResult = NonNullable<Awaited<ReturnType<typeof getWebsiteSupportConversationById>>>
+export type GetWebsiteSupportConversationByIdQueryError = ErrorType<ErrorResponse>
+
+
+
+export function useGetWebsiteSupportConversationById<TData = Awaited<ReturnType<typeof getWebsiteSupportConversationById>>, TError = ErrorType<ErrorResponse>>(
+ conversationId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWebsiteSupportConversationById>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWebsiteSupportConversationByIdQueryOptions(conversationId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateWebsiteSupportMessageUrl = (conversationId: string,) => {
+
+
+
+
+  return `/api/public-support/conversations/${conversationId}/messages`
+}
+
+export const createWebsiteSupportMessage = async (conversationId: string,
+    websiteChatMessageInput: WebsiteChatMessageInput, options?: Parameters<typeof customFetch>[1]): Promise<WebsiteMessageResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<WebsiteMessageResult>(getCreateWebsiteSupportMessageUrl(conversationId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(websiteChatMessageInput)
+  }
+);}
+
+
+
+
+
+export const getCreateWebsiteSupportMessageMutationKey = () => ['createWebsiteSupportMessage'] as const;
+
+export const getCreateWebsiteSupportMessageMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createWebsiteSupportMessage>>, TError,CreateWebsiteSupportMessageMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createWebsiteSupportMessage>>, TError,CreateWebsiteSupportMessageMutationVariables, TContext> => {
+
+const mutationKey = getCreateWebsiteSupportMessageMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createWebsiteSupportMessage>>, CreateWebsiteSupportMessageMutationVariables> = (props) => {
+          const {conversationId,data} = props ?? {};
+
+          return  createWebsiteSupportMessage(conversationId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateWebsiteSupportMessageMutationResult = NonNullable<Awaited<ReturnType<typeof createWebsiteSupportMessage>>>
+    export type CreateWebsiteSupportMessageMutationBody = BodyType<WebsiteChatMessageInput>
+    export type CreateWebsiteSupportMessageMutationError = ErrorType<ErrorResponse>
+    export type CreateWebsiteSupportMessageMutationVariables = {conversationId: string;data: BodyType<WebsiteChatMessageInput>}
+
+    export const useCreateWebsiteSupportMessage = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createWebsiteSupportMessage>>, TError,CreateWebsiteSupportMessageMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createWebsiteSupportMessage>>,
+        TError,
+        CreateWebsiteSupportMessageMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateWebsiteSupportMessageMutationOptions(options));
+    }
+
+export const getHandoffWebsiteSupportConversationUrl = (conversationId: string,) => {
+
+
+
+
+  return `/api/public-support/conversations/${conversationId}/handoff`
+}
+
+export const handoffWebsiteSupportConversation = async (conversationId: string,
+    websiteSupportHandoffInput: WebsiteSupportHandoffInput, options?: Parameters<typeof customFetch>[1]): Promise<WebsiteConversationDetail> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<WebsiteConversationDetail>(getHandoffWebsiteSupportConversationUrl(conversationId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(websiteSupportHandoffInput)
+  }
+);}
+
+
+
+
+
+export const getHandoffWebsiteSupportConversationMutationKey = () => ['handoffWebsiteSupportConversation'] as const;
+
+export const getHandoffWebsiteSupportConversationMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof handoffWebsiteSupportConversation>>, TError,HandoffWebsiteSupportConversationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof handoffWebsiteSupportConversation>>, TError,HandoffWebsiteSupportConversationMutationVariables, TContext> => {
+
+const mutationKey = getHandoffWebsiteSupportConversationMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof handoffWebsiteSupportConversation>>, HandoffWebsiteSupportConversationMutationVariables> = (props) => {
+          const {conversationId,data} = props ?? {};
+
+          return  handoffWebsiteSupportConversation(conversationId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type HandoffWebsiteSupportConversationMutationResult = NonNullable<Awaited<ReturnType<typeof handoffWebsiteSupportConversation>>>
+    export type HandoffWebsiteSupportConversationMutationBody = BodyType<WebsiteSupportHandoffInput>
+    export type HandoffWebsiteSupportConversationMutationError = ErrorType<ErrorResponse>
+    export type HandoffWebsiteSupportConversationMutationVariables = {conversationId: string;data: BodyType<WebsiteSupportHandoffInput>}
+
+    export const useHandoffWebsiteSupportConversation = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof handoffWebsiteSupportConversation>>, TError,HandoffWebsiteSupportConversationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof handoffWebsiteSupportConversation>>,
+        TError,
+        HandoffWebsiteSupportConversationMutationVariables,
+        TContext
+      > => {
+      return useMutation(getHandoffWebsiteSupportConversationMutationOptions(options));
+    }
+
+export const getListPortalWebsiteSupportConversationsUrl = (params?: ListPortalWebsiteSupportConversationsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/portal/website-support/conversations?${stringifiedParams}` : `/api/portal/website-support/conversations`
+}
+
+export const listPortalWebsiteSupportConversations = async (params?: ListPortalWebsiteSupportConversationsParams, options?: Parameters<typeof customFetch>[1]): Promise<PortalWebsiteConversationList> => {
+
+  return customFetch<PortalWebsiteConversationList>(getListPortalWebsiteSupportConversationsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListPortalWebsiteSupportConversationsQueryKey = (params?: ListPortalWebsiteSupportConversationsParams,) => {
+    return [
+    `/api/portal/website-support/conversations`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListPortalWebsiteSupportConversationsQueryOptions = <TData = Awaited<ReturnType<typeof listPortalWebsiteSupportConversations>>, TError = ErrorType<unknown>>(params?: ListPortalWebsiteSupportConversationsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPortalWebsiteSupportConversations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListPortalWebsiteSupportConversationsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listPortalWebsiteSupportConversations>>> = ({ signal }) => listPortalWebsiteSupportConversations(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listPortalWebsiteSupportConversations>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListPortalWebsiteSupportConversationsQueryResult = NonNullable<Awaited<ReturnType<typeof listPortalWebsiteSupportConversations>>>
+export type ListPortalWebsiteSupportConversationsQueryError = ErrorType<unknown>
+
+
+
+export function useListPortalWebsiteSupportConversations<TData = Awaited<ReturnType<typeof listPortalWebsiteSupportConversations>>, TError = ErrorType<unknown>>(
+ params?: ListPortalWebsiteSupportConversationsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPortalWebsiteSupportConversations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListPortalWebsiteSupportConversationsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetPortalWebsiteSupportConversationUrl = (conversationId: string,) => {
+
+
+
+
+  return `/api/portal/website-support/conversations/${conversationId}`
+}
+
+export const getPortalWebsiteSupportConversation = async (conversationId: string, options?: Parameters<typeof customFetch>[1]): Promise<PortalWebsiteConversationDetail> => {
+
+  return customFetch<PortalWebsiteConversationDetail>(getGetPortalWebsiteSupportConversationUrl(conversationId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPortalWebsiteSupportConversationQueryKey = (conversationId: string,) => {
+    return [
+    `/api/portal/website-support/conversations/${conversationId}`
+    ] as const;
+    }
+
+
+export const getGetPortalWebsiteSupportConversationQueryOptions = <TData = Awaited<ReturnType<typeof getPortalWebsiteSupportConversation>>, TError = ErrorType<ErrorResponse>>(conversationId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPortalWebsiteSupportConversation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPortalWebsiteSupportConversationQueryKey(conversationId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPortalWebsiteSupportConversation>>> = ({ signal }) => getPortalWebsiteSupportConversation(conversationId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: conversationId !== null && conversationId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPortalWebsiteSupportConversation>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPortalWebsiteSupportConversationQueryResult = NonNullable<Awaited<ReturnType<typeof getPortalWebsiteSupportConversation>>>
+export type GetPortalWebsiteSupportConversationQueryError = ErrorType<ErrorResponse>
+
+
+
+export function useGetPortalWebsiteSupportConversation<TData = Awaited<ReturnType<typeof getPortalWebsiteSupportConversation>>, TError = ErrorType<ErrorResponse>>(
+ conversationId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPortalWebsiteSupportConversation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPortalWebsiteSupportConversationQueryOptions(conversationId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getAcceptPortalWebsiteSupportConversationUrl = (conversationId: string,) => {
+
+
+
+
+  return `/api/portal/website-support/conversations/${conversationId}/accept`
+}
+
+export const acceptPortalWebsiteSupportConversation = async (conversationId: string, options?: Parameters<typeof customFetch>[1]): Promise<PortalWebsiteConversationSummary> => {
+
+  return customFetch<PortalWebsiteConversationSummary>(getAcceptPortalWebsiteSupportConversationUrl(conversationId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getAcceptPortalWebsiteSupportConversationMutationKey = () => ['acceptPortalWebsiteSupportConversation'] as const;
+
+export const getAcceptPortalWebsiteSupportConversationMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof acceptPortalWebsiteSupportConversation>>, TError,AcceptPortalWebsiteSupportConversationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof acceptPortalWebsiteSupportConversation>>, TError,AcceptPortalWebsiteSupportConversationMutationVariables, TContext> => {
+
+const mutationKey = getAcceptPortalWebsiteSupportConversationMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof acceptPortalWebsiteSupportConversation>>, AcceptPortalWebsiteSupportConversationMutationVariables> = (props) => {
+          const {conversationId} = props ?? {};
+
+          return  acceptPortalWebsiteSupportConversation(conversationId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AcceptPortalWebsiteSupportConversationMutationResult = NonNullable<Awaited<ReturnType<typeof acceptPortalWebsiteSupportConversation>>>
+
+    export type AcceptPortalWebsiteSupportConversationMutationError = ErrorType<ErrorResponse>
+    export type AcceptPortalWebsiteSupportConversationMutationVariables = {conversationId: string}
+
+    export const useAcceptPortalWebsiteSupportConversation = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof acceptPortalWebsiteSupportConversation>>, TError,AcceptPortalWebsiteSupportConversationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof acceptPortalWebsiteSupportConversation>>,
+        TError,
+        AcceptPortalWebsiteSupportConversationMutationVariables,
+        TContext
+      > => {
+      return useMutation(getAcceptPortalWebsiteSupportConversationMutationOptions(options));
+    }
+
+export const getReplyPortalWebsiteSupportConversationUrl = (conversationId: string,) => {
+
+
+
+
+  return `/api/portal/website-support/conversations/${conversationId}/replies`
+}
+
+export const replyPortalWebsiteSupportConversation = async (conversationId: string,
+    portalWebsiteReplyInput: PortalWebsiteReplyInput, options?: Parameters<typeof customFetch>[1]): Promise<PortalWebsiteConversationMessage> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<PortalWebsiteConversationMessage>(getReplyPortalWebsiteSupportConversationUrl(conversationId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(portalWebsiteReplyInput)
+  }
+);}
+
+
+
+
+
+export const getReplyPortalWebsiteSupportConversationMutationKey = () => ['replyPortalWebsiteSupportConversation'] as const;
+
+export const getReplyPortalWebsiteSupportConversationMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof replyPortalWebsiteSupportConversation>>, TError,ReplyPortalWebsiteSupportConversationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof replyPortalWebsiteSupportConversation>>, TError,ReplyPortalWebsiteSupportConversationMutationVariables, TContext> => {
+
+const mutationKey = getReplyPortalWebsiteSupportConversationMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof replyPortalWebsiteSupportConversation>>, ReplyPortalWebsiteSupportConversationMutationVariables> = (props) => {
+          const {conversationId,data} = props ?? {};
+
+          return  replyPortalWebsiteSupportConversation(conversationId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReplyPortalWebsiteSupportConversationMutationResult = NonNullable<Awaited<ReturnType<typeof replyPortalWebsiteSupportConversation>>>
+    export type ReplyPortalWebsiteSupportConversationMutationBody = BodyType<PortalWebsiteReplyInput>
+    export type ReplyPortalWebsiteSupportConversationMutationError = ErrorType<ErrorResponse>
+    export type ReplyPortalWebsiteSupportConversationMutationVariables = {conversationId: string;data: BodyType<PortalWebsiteReplyInput>}
+
+    export const useReplyPortalWebsiteSupportConversation = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof replyPortalWebsiteSupportConversation>>, TError,ReplyPortalWebsiteSupportConversationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof replyPortalWebsiteSupportConversation>>,
+        TError,
+        ReplyPortalWebsiteSupportConversationMutationVariables,
+        TContext
+      > => {
+      return useMutation(getReplyPortalWebsiteSupportConversationMutationOptions(options));
+    }
+
+export const getAssignPortalWebsiteSupportConversationUrl = (conversationId: string,) => {
+
+
+
+
+  return `/api/portal/website-support/conversations/${conversationId}/assignment`
+}
+
+export const assignPortalWebsiteSupportConversation = async (conversationId: string,
+    portalWebsiteAssignmentInput: PortalWebsiteAssignmentInput, options?: Parameters<typeof customFetch>[1]): Promise<PortalWebsiteConversationSummary> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<PortalWebsiteConversationSummary>(getAssignPortalWebsiteSupportConversationUrl(conversationId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(portalWebsiteAssignmentInput)
+  }
+);}
+
+
+
+
+
+export const getAssignPortalWebsiteSupportConversationMutationKey = () => ['assignPortalWebsiteSupportConversation'] as const;
+
+export const getAssignPortalWebsiteSupportConversationMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof assignPortalWebsiteSupportConversation>>, TError,AssignPortalWebsiteSupportConversationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof assignPortalWebsiteSupportConversation>>, TError,AssignPortalWebsiteSupportConversationMutationVariables, TContext> => {
+
+const mutationKey = getAssignPortalWebsiteSupportConversationMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof assignPortalWebsiteSupportConversation>>, AssignPortalWebsiteSupportConversationMutationVariables> = (props) => {
+          const {conversationId,data} = props ?? {};
+
+          return  assignPortalWebsiteSupportConversation(conversationId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AssignPortalWebsiteSupportConversationMutationResult = NonNullable<Awaited<ReturnType<typeof assignPortalWebsiteSupportConversation>>>
+    export type AssignPortalWebsiteSupportConversationMutationBody = BodyType<PortalWebsiteAssignmentInput>
+    export type AssignPortalWebsiteSupportConversationMutationError = ErrorType<ErrorResponse>
+    export type AssignPortalWebsiteSupportConversationMutationVariables = {conversationId: string;data: BodyType<PortalWebsiteAssignmentInput>}
+
+    export const useAssignPortalWebsiteSupportConversation = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof assignPortalWebsiteSupportConversation>>, TError,AssignPortalWebsiteSupportConversationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof assignPortalWebsiteSupportConversation>>,
+        TError,
+        AssignPortalWebsiteSupportConversationMutationVariables,
+        TContext
+      > => {
+      return useMutation(getAssignPortalWebsiteSupportConversationMutationOptions(options));
+    }
+
+export const getClosePortalWebsiteSupportConversationUrl = (conversationId: string,) => {
+
+
+
+
+  return `/api/portal/website-support/conversations/${conversationId}/close`
+}
+
+export const closePortalWebsiteSupportConversation = async (conversationId: string, options?: Parameters<typeof customFetch>[1]): Promise<PortalWebsiteConversationSummary> => {
+
+  return customFetch<PortalWebsiteConversationSummary>(getClosePortalWebsiteSupportConversationUrl(conversationId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getClosePortalWebsiteSupportConversationMutationKey = () => ['closePortalWebsiteSupportConversation'] as const;
+
+export const getClosePortalWebsiteSupportConversationMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof closePortalWebsiteSupportConversation>>, TError,ClosePortalWebsiteSupportConversationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof closePortalWebsiteSupportConversation>>, TError,ClosePortalWebsiteSupportConversationMutationVariables, TContext> => {
+
+const mutationKey = getClosePortalWebsiteSupportConversationMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof closePortalWebsiteSupportConversation>>, ClosePortalWebsiteSupportConversationMutationVariables> = (props) => {
+          const {conversationId} = props ?? {};
+
+          return  closePortalWebsiteSupportConversation(conversationId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ClosePortalWebsiteSupportConversationMutationResult = NonNullable<Awaited<ReturnType<typeof closePortalWebsiteSupportConversation>>>
+
+    export type ClosePortalWebsiteSupportConversationMutationError = ErrorType<ErrorResponse>
+    export type ClosePortalWebsiteSupportConversationMutationVariables = {conversationId: string}
+
+    export const useClosePortalWebsiteSupportConversation = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof closePortalWebsiteSupportConversation>>, TError,ClosePortalWebsiteSupportConversationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof closePortalWebsiteSupportConversation>>,
+        TError,
+        ClosePortalWebsiteSupportConversationMutationVariables,
+        TContext
+      > => {
+      return useMutation(getClosePortalWebsiteSupportConversationMutationOptions(options));
+    }
+
+export const getGetPortalWebsiteSupportSettingsUrl = () => {
+
+
+
+
+  return `/api/portal/website-support/settings`
+}
+
+export const getPortalWebsiteSupportSettings = async ( options?: Parameters<typeof customFetch>[1]): Promise<PortalWebsiteSupportSettings> => {
+
+  return customFetch<PortalWebsiteSupportSettings>(getGetPortalWebsiteSupportSettingsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPortalWebsiteSupportSettingsQueryKey = () => {
+    return [
+    `/api/portal/website-support/settings`
+    ] as const;
+    }
+
+
+export const getGetPortalWebsiteSupportSettingsQueryOptions = <TData = Awaited<ReturnType<typeof getPortalWebsiteSupportSettings>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPortalWebsiteSupportSettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPortalWebsiteSupportSettingsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPortalWebsiteSupportSettings>>> = ({ signal }) => getPortalWebsiteSupportSettings({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPortalWebsiteSupportSettings>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPortalWebsiteSupportSettingsQueryResult = NonNullable<Awaited<ReturnType<typeof getPortalWebsiteSupportSettings>>>
+export type GetPortalWebsiteSupportSettingsQueryError = ErrorType<unknown>
+
+
+
+export function useGetPortalWebsiteSupportSettings<TData = Awaited<ReturnType<typeof getPortalWebsiteSupportSettings>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPortalWebsiteSupportSettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPortalWebsiteSupportSettingsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdatePortalWebsiteSupportSettingsUrl = () => {
+
+
+
+
+  return `/api/portal/website-support/settings`
+}
+
+export const updatePortalWebsiteSupportSettings = async (portalWebsiteSupportSettingsInput: PortalWebsiteSupportSettingsInput, options?: Parameters<typeof customFetch>[1]): Promise<PortalWebsiteSupportSettings> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<PortalWebsiteSupportSettings>(getUpdatePortalWebsiteSupportSettingsUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(portalWebsiteSupportSettingsInput)
+  }
+);}
+
+
+
+
+
+export const getUpdatePortalWebsiteSupportSettingsMutationKey = () => ['updatePortalWebsiteSupportSettings'] as const;
+
+export const getUpdatePortalWebsiteSupportSettingsMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePortalWebsiteSupportSettings>>, TError,UpdatePortalWebsiteSupportSettingsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updatePortalWebsiteSupportSettings>>, TError,UpdatePortalWebsiteSupportSettingsMutationVariables, TContext> => {
+
+const mutationKey = getUpdatePortalWebsiteSupportSettingsMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updatePortalWebsiteSupportSettings>>, UpdatePortalWebsiteSupportSettingsMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  updatePortalWebsiteSupportSettings(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdatePortalWebsiteSupportSettingsMutationResult = NonNullable<Awaited<ReturnType<typeof updatePortalWebsiteSupportSettings>>>
+    export type UpdatePortalWebsiteSupportSettingsMutationBody = BodyType<PortalWebsiteSupportSettingsInput>
+    export type UpdatePortalWebsiteSupportSettingsMutationError = ErrorType<ErrorResponse>
+    export type UpdatePortalWebsiteSupportSettingsMutationVariables = {data: BodyType<PortalWebsiteSupportSettingsInput>}
+
+    export const useUpdatePortalWebsiteSupportSettings = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePortalWebsiteSupportSettings>>, TError,UpdatePortalWebsiteSupportSettingsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updatePortalWebsiteSupportSettings>>,
+        TError,
+        UpdatePortalWebsiteSupportSettingsMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdatePortalWebsiteSupportSettingsMutationOptions(options));
+    }
+
+export const getUpdatePortalWebsiteSupportEligibilityUrl = (staffId: string,) => {
+
+
+
+
+  return `/api/portal/website-support/agents/${staffId}/eligibility`
+}
+
+export const updatePortalWebsiteSupportEligibility = async (staffId: string,
+    portalWebsiteSupportEligibilityInput: PortalWebsiteSupportEligibilityInput, options?: Parameters<typeof customFetch>[1]): Promise<PortalWebsiteSupportSettings> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<PortalWebsiteSupportSettings>(getUpdatePortalWebsiteSupportEligibilityUrl(staffId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(portalWebsiteSupportEligibilityInput)
+  }
+);}
+
+
+
+
+
+export const getUpdatePortalWebsiteSupportEligibilityMutationKey = () => ['updatePortalWebsiteSupportEligibility'] as const;
+
+export const getUpdatePortalWebsiteSupportEligibilityMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePortalWebsiteSupportEligibility>>, TError,UpdatePortalWebsiteSupportEligibilityMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updatePortalWebsiteSupportEligibility>>, TError,UpdatePortalWebsiteSupportEligibilityMutationVariables, TContext> => {
+
+const mutationKey = getUpdatePortalWebsiteSupportEligibilityMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updatePortalWebsiteSupportEligibility>>, UpdatePortalWebsiteSupportEligibilityMutationVariables> = (props) => {
+          const {staffId,data} = props ?? {};
+
+          return  updatePortalWebsiteSupportEligibility(staffId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdatePortalWebsiteSupportEligibilityMutationResult = NonNullable<Awaited<ReturnType<typeof updatePortalWebsiteSupportEligibility>>>
+    export type UpdatePortalWebsiteSupportEligibilityMutationBody = BodyType<PortalWebsiteSupportEligibilityInput>
+    export type UpdatePortalWebsiteSupportEligibilityMutationError = ErrorType<ErrorResponse>
+    export type UpdatePortalWebsiteSupportEligibilityMutationVariables = {staffId: string;data: BodyType<PortalWebsiteSupportEligibilityInput>}
+
+    export const useUpdatePortalWebsiteSupportEligibility = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePortalWebsiteSupportEligibility>>, TError,UpdatePortalWebsiteSupportEligibilityMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updatePortalWebsiteSupportEligibility>>,
+        TError,
+        UpdatePortalWebsiteSupportEligibilityMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdatePortalWebsiteSupportEligibilityMutationOptions(options));
+    }
+
+export const getUpdatePortalWebsiteSupportAvailabilityUrl = () => {
+
+
+
+
+  return `/api/portal/website-support/availability`
+}
+
+export const updatePortalWebsiteSupportAvailability = async (portalWebsiteSupportAvailabilityInput: PortalWebsiteSupportAvailabilityInput, options?: Parameters<typeof customFetch>[1]): Promise<PortalWebsiteSupportSettings> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<PortalWebsiteSupportSettings>(getUpdatePortalWebsiteSupportAvailabilityUrl(),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(portalWebsiteSupportAvailabilityInput)
+  }
+);}
+
+
+
+
+
+export const getUpdatePortalWebsiteSupportAvailabilityMutationKey = () => ['updatePortalWebsiteSupportAvailability'] as const;
+
+export const getUpdatePortalWebsiteSupportAvailabilityMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePortalWebsiteSupportAvailability>>, TError,UpdatePortalWebsiteSupportAvailabilityMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updatePortalWebsiteSupportAvailability>>, TError,UpdatePortalWebsiteSupportAvailabilityMutationVariables, TContext> => {
+
+const mutationKey = getUpdatePortalWebsiteSupportAvailabilityMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updatePortalWebsiteSupportAvailability>>, UpdatePortalWebsiteSupportAvailabilityMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  updatePortalWebsiteSupportAvailability(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdatePortalWebsiteSupportAvailabilityMutationResult = NonNullable<Awaited<ReturnType<typeof updatePortalWebsiteSupportAvailability>>>
+    export type UpdatePortalWebsiteSupportAvailabilityMutationBody = BodyType<PortalWebsiteSupportAvailabilityInput>
+    export type UpdatePortalWebsiteSupportAvailabilityMutationError = ErrorType<ErrorResponse>
+    export type UpdatePortalWebsiteSupportAvailabilityMutationVariables = {data: BodyType<PortalWebsiteSupportAvailabilityInput>}
+
+    export const useUpdatePortalWebsiteSupportAvailability = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePortalWebsiteSupportAvailability>>, TError,UpdatePortalWebsiteSupportAvailabilityMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updatePortalWebsiteSupportAvailability>>,
+        TError,
+        UpdatePortalWebsiteSupportAvailabilityMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdatePortalWebsiteSupportAvailabilityMutationOptions(options));
     }
 
 export const getListPortalStaffUrl = () => {

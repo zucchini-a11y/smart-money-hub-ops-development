@@ -46,6 +46,7 @@ import Signals from '@/pages/signals';
 import BotControl from '@/pages/bot-control';
 import MemberAccessPage from '@/pages/member-access';
 import { trackEvent } from '@/lib/analytics';
+import { WebsiteChats } from './WebsiteSupport';
 const brandLogoUrl = `${import.meta.env.BASE_URL}vayda-logo.png`;
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
 const clerkPubKey = publishableKeyFromHost(
@@ -717,7 +718,7 @@ function Queue({ session }: { session: PortalSession }) {
   const cases = useListPortalCases(params, { query: { queryKey: getListPortalCasesQueryKey(params), staleTime: 15_000 } });
   const count = dashboard.data?.openCount ?? 0;
   return <main className="page">
-    <div className="page-heading"><div><div className="eyebrow">VAYDA OPERATIONS</div><h1>{session.role === 'agent' ? 'My Support Cases' : 'Support'}</h1><p className="subheading">{session.role === 'agent' ? 'View and reply to the member cases assigned to you.' : 'Review member questions and send a helpful reply.'}</p></div><span className="secure-label" style={{ fontSize: 11, color: '#6b7c71' }}><Activity size={14}/> Updates automatically</span></div>
+    <div className="page-heading"><div><div className="eyebrow">VAYDA OPERATIONS</div><h1>{session.role === 'agent' ? 'My Support Cases' : 'Support'}</h1><p className="subheading">{session.role === 'agent' ? 'View and reply to the member cases assigned to you.' : 'Review member questions and send a helpful reply.'}</p></div><div className="ws-inbox-links"><Link className="btn btn-outline" href="/staff/support/website-chats" data-testid="link-website-chats">Website Chats</Link><span className="secure-label" style={{ fontSize: 11, color: '#6b7c71' }}><Activity size={14}/> Updates automatically</span></div></div>
     {dashboard.isLoading ? <div className="stats-grid">{[0,1,2,3].map((i)=><div className="stat-card" key={i}><div style={{width:'65%'}}><div className="skeleton"/><div className="skeleton" style={{width:'45%',marginTop:12,height:26}}/></div></div>)}</div> : dashboard.isError ? <div className="notice notice-error" role="alert" data-testid="status-dashboard-error">{errMessage(dashboard.error)} <button className="btn btn-quiet" onClick={() => dashboard.refetch()}>Retry</button></div> : <div className="stats-grid" data-testid="dashboard-stats">
       <div className="stat-card"><div><div className="stat-label">Open cases</div><div className="stat-value">{count}</div></div><div className="stat-icon"><MessageSquareText size={17}/></div></div>
       <div className="stat-card warning"><div><div className="stat-label">Delivery uncertain</div><div className="stat-value">{dashboard.data?.uncertainCount ?? 0}</div></div><div className="stat-icon"><CircleHelp size={17}/></div></div>
@@ -1270,6 +1271,7 @@ function ProtectedRouter({ session }: { session: PortalSession }) {
     // Password page remains reachable for voluntary changes.
   }
   return <AppShell session={session}><Switch>
+    <Route path="/staff/support/website-chats">{() => <WebsiteChats session={session}/>}</Route>
     <Route path="/staff/support">{() => <Queue session={session}/>}</Route>
     <Route path="/bot-control">{() => session.role === 'owner' ? <BotControl/> : <AccessDenied/>}</Route>
     <Route path="/command-center/member-access">{() => session.role === 'owner' ? <MemberAccessPage/> : <AccessDenied/>}</Route>

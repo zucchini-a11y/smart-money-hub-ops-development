@@ -1677,6 +1677,473 @@ export const ClosePortalCaseResponse = zod.object({
 })
 
 
+export const GetWebsiteSupportAvailabilityResponse = zod.object({
+  "humanAvailable": zod.boolean()
+})
+
+
+export const CreateWebsiteSupportSessionResponse = zod.object({
+  "conversation": zod.union([zod.object({
+  "conversationId": zod.string(),
+  "mode": zod.enum(['assistant', 'human']),
+  "status": zod.enum(['ai', 'queued', 'assigned', 'in_progress', 'closed']),
+  "agentJoined": zod.boolean(),
+  "created": zod.string(),
+  "updated": zod.string(),
+  "lastMessageAt": zod.string()
+}),zod.null()]),
+  "messages": zod.array(zod.object({
+  "messageId": zod.string(),
+  "senderType": zod.enum(['visitor', 'assistant', 'staff', 'system']),
+  "displayName": zod.string(),
+  "text": zod.string(),
+  "created": zod.string()
+}))
+})
+
+
+export const GetWebsiteSupportConversationResponse = zod.object({
+  "conversation": zod.union([zod.object({
+  "conversationId": zod.string(),
+  "mode": zod.enum(['assistant', 'human']),
+  "status": zod.enum(['ai', 'queued', 'assigned', 'in_progress', 'closed']),
+  "agentJoined": zod.boolean(),
+  "created": zod.string(),
+  "updated": zod.string(),
+  "lastMessageAt": zod.string()
+}),zod.null()]),
+  "messages": zod.array(zod.object({
+  "messageId": zod.string(),
+  "senderType": zod.enum(['visitor', 'assistant', 'staff', 'system']),
+  "displayName": zod.string(),
+  "text": zod.string(),
+  "created": zod.string()
+}))
+})
+
+
+export const createWebsiteSupportConversationBodyNameMax = 80;
+
+export const createWebsiteSupportConversationBodyInitialMessageMin = 3;
+export const createWebsiteSupportConversationBodyInitialMessageMax = 2000;
+
+export const createWebsiteSupportConversationBodyRequestIdMin = 16;
+export const createWebsiteSupportConversationBodyRequestIdMax = 120;
+
+
+
+export const CreateWebsiteSupportConversationBody = zod.object({
+  "mode": zod.enum(['assistant', 'human']),
+  "name": zod.string().min(1).max(createWebsiteSupportConversationBodyNameMax).optional(),
+  "initialMessage": zod.string().min(createWebsiteSupportConversationBodyInitialMessageMin).max(createWebsiteSupportConversationBodyInitialMessageMax).optional(),
+  "requestId": zod.string().min(createWebsiteSupportConversationBodyRequestIdMin).max(createWebsiteSupportConversationBodyRequestIdMax)
+})
+
+export const CreateWebsiteSupportConversationResponse = zod.object({
+  "conversation": zod.object({
+  "conversationId": zod.string(),
+  "mode": zod.enum(['assistant', 'human']),
+  "status": zod.enum(['ai', 'queued', 'assigned', 'in_progress', 'closed']),
+  "agentJoined": zod.boolean(),
+  "created": zod.string(),
+  "updated": zod.string(),
+  "lastMessageAt": zod.string()
+}),
+  "messages": zod.array(zod.object({
+  "messageId": zod.string(),
+  "senderType": zod.enum(['visitor', 'assistant', 'staff', 'system']),
+  "displayName": zod.string(),
+  "text": zod.string(),
+  "created": zod.string()
+}))
+})
+
+
+export const getWebsiteSupportConversationByIdPathConversationIdMax = 120;
+
+
+
+export const GetWebsiteSupportConversationByIdParams = zod.object({
+  "conversationId": zod.coerce.string().min(1).max(getWebsiteSupportConversationByIdPathConversationIdMax)
+})
+
+export const GetWebsiteSupportConversationByIdResponse = zod.object({
+  "conversation": zod.object({
+  "conversationId": zod.string(),
+  "mode": zod.enum(['assistant', 'human']),
+  "status": zod.enum(['ai', 'queued', 'assigned', 'in_progress', 'closed']),
+  "agentJoined": zod.boolean(),
+  "created": zod.string(),
+  "updated": zod.string(),
+  "lastMessageAt": zod.string()
+}),
+  "messages": zod.array(zod.object({
+  "messageId": zod.string(),
+  "senderType": zod.enum(['visitor', 'assistant', 'staff', 'system']),
+  "displayName": zod.string(),
+  "text": zod.string(),
+  "created": zod.string()
+}))
+})
+
+
+export const createWebsiteSupportMessagePathConversationIdMax = 120;
+
+
+
+export const CreateWebsiteSupportMessageParams = zod.object({
+  "conversationId": zod.coerce.string().min(1).max(createWebsiteSupportMessagePathConversationIdMax)
+})
+
+export const createWebsiteSupportMessageBodyTextMax = 2000;
+
+export const createWebsiteSupportMessageBodyRequestIdMin = 16;
+export const createWebsiteSupportMessageBodyRequestIdMax = 120;
+
+
+
+export const CreateWebsiteSupportMessageBody = zod.object({
+  "text": zod.string().min(1).max(createWebsiteSupportMessageBodyTextMax),
+  "requestId": zod.string().min(createWebsiteSupportMessageBodyRequestIdMin).max(createWebsiteSupportMessageBodyRequestIdMax)
+})
+
+export const CreateWebsiteSupportMessageResponse = zod.object({
+  "conversation": zod.object({
+  "conversationId": zod.string(),
+  "mode": zod.enum(['assistant', 'human']),
+  "status": zod.enum(['ai', 'queued', 'assigned', 'in_progress', 'closed']),
+  "agentJoined": zod.boolean(),
+  "created": zod.string(),
+  "updated": zod.string(),
+  "lastMessageAt": zod.string()
+}),
+  "visitorMessage": zod.object({
+  "messageId": zod.string(),
+  "senderType": zod.enum(['visitor', 'assistant', 'staff', 'system']),
+  "displayName": zod.string(),
+  "text": zod.string(),
+  "created": zod.string()
+}),
+  "assistantMessage": zod.union([zod.object({
+  "messageId": zod.string(),
+  "senderType": zod.enum(['visitor', 'assistant', 'staff', 'system']),
+  "displayName": zod.string(),
+  "text": zod.string(),
+  "created": zod.string()
+}),zod.null()]),
+  "needsHuman": zod.boolean()
+})
+
+
+export const handoffWebsiteSupportConversationPathConversationIdMax = 120;
+
+
+
+export const HandoffWebsiteSupportConversationParams = zod.object({
+  "conversationId": zod.coerce.string().min(1).max(handoffWebsiteSupportConversationPathConversationIdMax)
+})
+
+export const handoffWebsiteSupportConversationBodyNameMax = 80;
+
+export const handoffWebsiteSupportConversationBodyReasonMin = 3;
+export const handoffWebsiteSupportConversationBodyReasonMax = 2000;
+
+export const handoffWebsiteSupportConversationBodyRequestIdMin = 16;
+export const handoffWebsiteSupportConversationBodyRequestIdMax = 120;
+
+
+
+export const HandoffWebsiteSupportConversationBody = zod.object({
+  "name": zod.string().min(1).max(handoffWebsiteSupportConversationBodyNameMax),
+  "reason": zod.string().min(handoffWebsiteSupportConversationBodyReasonMin).max(handoffWebsiteSupportConversationBodyReasonMax),
+  "requestId": zod.string().min(handoffWebsiteSupportConversationBodyRequestIdMin).max(handoffWebsiteSupportConversationBodyRequestIdMax)
+})
+
+export const HandoffWebsiteSupportConversationResponse = zod.object({
+  "conversation": zod.object({
+  "conversationId": zod.string(),
+  "mode": zod.enum(['assistant', 'human']),
+  "status": zod.enum(['ai', 'queued', 'assigned', 'in_progress', 'closed']),
+  "agentJoined": zod.boolean(),
+  "created": zod.string(),
+  "updated": zod.string(),
+  "lastMessageAt": zod.string()
+}),
+  "messages": zod.array(zod.object({
+  "messageId": zod.string(),
+  "senderType": zod.enum(['visitor', 'assistant', 'staff', 'system']),
+  "displayName": zod.string(),
+  "text": zod.string(),
+  "created": zod.string()
+}))
+})
+
+
+export const listPortalWebsiteSupportConversationsQueryLimitDefault = 50;
+export const listPortalWebsiteSupportConversationsQueryLimitMax = 100;
+
+
+
+export const ListPortalWebsiteSupportConversationsQueryParams = zod.object({
+  "status": zod.enum(['all', 'queued', 'assigned', 'in_progress', 'closed']).optional(),
+  "limit": zod.coerce.number().int().min(1).max(listPortalWebsiteSupportConversationsQueryLimitMax).default(listPortalWebsiteSupportConversationsQueryLimitDefault)
+})
+
+export const ListPortalWebsiteSupportConversationsResponse = zod.object({
+  "conversations": zod.array(zod.object({
+  "conversationId": zod.string(),
+  "mode": zod.enum(['assistant', 'human']),
+  "status": zod.enum(['ai', 'queued', 'assigned', 'in_progress', 'closed']),
+  "visitorName": zod.string().nullable(),
+  "teamId": zod.string().nullable(),
+  "assignedStaffId": zod.string().nullable(),
+  "created": zod.string(),
+  "updated": zod.string(),
+  "lastMessageAt": zod.string()
+})),
+  "total": zod.number().int()
+})
+
+
+export const getPortalWebsiteSupportConversationPathConversationIdMax = 120;
+
+
+
+export const GetPortalWebsiteSupportConversationParams = zod.object({
+  "conversationId": zod.coerce.string().min(1).max(getPortalWebsiteSupportConversationPathConversationIdMax)
+})
+
+export const GetPortalWebsiteSupportConversationResponse = zod.object({
+  "conversation": zod.object({
+  "conversationId": zod.string(),
+  "mode": zod.enum(['assistant', 'human']),
+  "status": zod.enum(['ai', 'queued', 'assigned', 'in_progress', 'closed']),
+  "visitorName": zod.string().nullable(),
+  "teamId": zod.string().nullable(),
+  "assignedStaffId": zod.string().nullable(),
+  "created": zod.string(),
+  "updated": zod.string(),
+  "lastMessageAt": zod.string()
+}),
+  "messages": zod.array(zod.object({
+  "messageId": zod.string(),
+  "senderType": zod.enum(['visitor', 'assistant', 'staff', 'system']),
+  "displayName": zod.string(),
+  "text": zod.string(),
+  "created": zod.string()
+}))
+})
+
+
+export const acceptPortalWebsiteSupportConversationPathConversationIdMax = 120;
+
+
+
+export const AcceptPortalWebsiteSupportConversationParams = zod.object({
+  "conversationId": zod.coerce.string().min(1).max(acceptPortalWebsiteSupportConversationPathConversationIdMax)
+})
+
+export const AcceptPortalWebsiteSupportConversationResponse = zod.object({
+  "conversationId": zod.string(),
+  "mode": zod.enum(['assistant', 'human']),
+  "status": zod.enum(['ai', 'queued', 'assigned', 'in_progress', 'closed']),
+  "visitorName": zod.string().nullable(),
+  "teamId": zod.string().nullable(),
+  "assignedStaffId": zod.string().nullable(),
+  "created": zod.string(),
+  "updated": zod.string(),
+  "lastMessageAt": zod.string()
+})
+
+
+export const replyPortalWebsiteSupportConversationPathConversationIdMax = 120;
+
+
+
+export const ReplyPortalWebsiteSupportConversationParams = zod.object({
+  "conversationId": zod.coerce.string().min(1).max(replyPortalWebsiteSupportConversationPathConversationIdMax)
+})
+
+export const replyPortalWebsiteSupportConversationBodyTextMax = 2000;
+
+export const replyPortalWebsiteSupportConversationBodyRequestIdMin = 16;
+export const replyPortalWebsiteSupportConversationBodyRequestIdMax = 120;
+
+
+
+export const ReplyPortalWebsiteSupportConversationBody = zod.object({
+  "text": zod.string().min(1).max(replyPortalWebsiteSupportConversationBodyTextMax),
+  "requestId": zod.string().min(replyPortalWebsiteSupportConversationBodyRequestIdMin).max(replyPortalWebsiteSupportConversationBodyRequestIdMax)
+})
+
+export const ReplyPortalWebsiteSupportConversationResponse = zod.object({
+  "messageId": zod.string(),
+  "senderType": zod.enum(['visitor', 'assistant', 'staff', 'system']),
+  "displayName": zod.string(),
+  "text": zod.string(),
+  "created": zod.string()
+})
+
+
+export const assignPortalWebsiteSupportConversationPathConversationIdMax = 120;
+
+
+
+export const AssignPortalWebsiteSupportConversationParams = zod.object({
+  "conversationId": zod.coerce.string().min(1).max(assignPortalWebsiteSupportConversationPathConversationIdMax)
+})
+
+export const assignPortalWebsiteSupportConversationBodyAssignedStaffIdMax = 120;
+
+
+
+export const AssignPortalWebsiteSupportConversationBody = zod.object({
+  "assignedStaffId": zod.string().max(assignPortalWebsiteSupportConversationBodyAssignedStaffIdMax).nullable()
+})
+
+export const AssignPortalWebsiteSupportConversationResponse = zod.object({
+  "conversationId": zod.string(),
+  "mode": zod.enum(['assistant', 'human']),
+  "status": zod.enum(['ai', 'queued', 'assigned', 'in_progress', 'closed']),
+  "visitorName": zod.string().nullable(),
+  "teamId": zod.string().nullable(),
+  "assignedStaffId": zod.string().nullable(),
+  "created": zod.string(),
+  "updated": zod.string(),
+  "lastMessageAt": zod.string()
+})
+
+
+export const closePortalWebsiteSupportConversationPathConversationIdMax = 120;
+
+
+
+export const ClosePortalWebsiteSupportConversationParams = zod.object({
+  "conversationId": zod.coerce.string().min(1).max(closePortalWebsiteSupportConversationPathConversationIdMax)
+})
+
+export const ClosePortalWebsiteSupportConversationResponse = zod.object({
+  "conversationId": zod.string(),
+  "mode": zod.enum(['assistant', 'human']),
+  "status": zod.enum(['ai', 'queued', 'assigned', 'in_progress', 'closed']),
+  "visitorName": zod.string().nullable(),
+  "teamId": zod.string().nullable(),
+  "assignedStaffId": zod.string().nullable(),
+  "created": zod.string(),
+  "updated": zod.string(),
+  "lastMessageAt": zod.string()
+})
+
+
+export const GetPortalWebsiteSupportSettingsResponse = zod.object({
+  "supportTeamId": zod.string().nullable(),
+  "teams": zod.array(zod.object({
+  "teamId": zod.string(),
+  "name": zod.string()
+})),
+  "agents": zod.array(zod.object({
+  "staffId": zod.string(),
+  "displayName": zod.string(),
+  "eligible": zod.boolean(),
+  "available": zod.boolean()
+})),
+  "self": zod.object({
+  "eligible": zod.boolean(),
+  "available": zod.boolean()
+}),
+  "canManage": zod.boolean(),
+  "canAssign": zod.boolean()
+})
+
+
+export const updatePortalWebsiteSupportSettingsBodySupportTeamIdMax = 120;
+
+
+
+export const UpdatePortalWebsiteSupportSettingsBody = zod.object({
+  "supportTeamId": zod.string().max(updatePortalWebsiteSupportSettingsBodySupportTeamIdMax).nullable()
+})
+
+export const UpdatePortalWebsiteSupportSettingsResponse = zod.object({
+  "supportTeamId": zod.string().nullable(),
+  "teams": zod.array(zod.object({
+  "teamId": zod.string(),
+  "name": zod.string()
+})),
+  "agents": zod.array(zod.object({
+  "staffId": zod.string(),
+  "displayName": zod.string(),
+  "eligible": zod.boolean(),
+  "available": zod.boolean()
+})),
+  "self": zod.object({
+  "eligible": zod.boolean(),
+  "available": zod.boolean()
+}),
+  "canManage": zod.boolean(),
+  "canAssign": zod.boolean()
+})
+
+
+export const updatePortalWebsiteSupportEligibilityPathStaffIdMax = 120;
+
+
+
+export const UpdatePortalWebsiteSupportEligibilityParams = zod.object({
+  "staffId": zod.coerce.string().min(1).max(updatePortalWebsiteSupportEligibilityPathStaffIdMax)
+})
+
+export const UpdatePortalWebsiteSupportEligibilityBody = zod.object({
+  "eligible": zod.boolean(),
+  "consentConfirmed": zod.boolean()
+})
+
+export const UpdatePortalWebsiteSupportEligibilityResponse = zod.object({
+  "supportTeamId": zod.string().nullable(),
+  "teams": zod.array(zod.object({
+  "teamId": zod.string(),
+  "name": zod.string()
+})),
+  "agents": zod.array(zod.object({
+  "staffId": zod.string(),
+  "displayName": zod.string(),
+  "eligible": zod.boolean(),
+  "available": zod.boolean()
+})),
+  "self": zod.object({
+  "eligible": zod.boolean(),
+  "available": zod.boolean()
+}),
+  "canManage": zod.boolean(),
+  "canAssign": zod.boolean()
+})
+
+
+export const UpdatePortalWebsiteSupportAvailabilityBody = zod.object({
+  "available": zod.boolean()
+})
+
+export const UpdatePortalWebsiteSupportAvailabilityResponse = zod.object({
+  "supportTeamId": zod.string().nullable(),
+  "teams": zod.array(zod.object({
+  "teamId": zod.string(),
+  "name": zod.string()
+})),
+  "agents": zod.array(zod.object({
+  "staffId": zod.string(),
+  "displayName": zod.string(),
+  "eligible": zod.boolean(),
+  "available": zod.boolean()
+})),
+  "self": zod.object({
+  "eligible": zod.boolean(),
+  "available": zod.boolean()
+}),
+  "canManage": zod.boolean(),
+  "canAssign": zod.boolean()
+})
+
+
 export const ListPortalStaffResponse = zod.object({
   "staff": zod.array(zod.object({
   "staffId": zod.string(),
