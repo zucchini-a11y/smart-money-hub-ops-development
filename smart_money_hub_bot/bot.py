@@ -3795,6 +3795,7 @@ class SmartMoneyHubBot:
         sender: dict[str, Any] | None = None,
     ) -> None:
         request_id = uuid.uuid4().hex
+        request_started_at = time_module.monotonic()
         logger.info("Coach request received. request_id=%s.", request_id)
         is_admin = self.admin_id is not None and telegram_id == self.admin_id
         routed = self.message_router.route_quick_reply(
@@ -3893,6 +3894,7 @@ class SmartMoneyHubBot:
 
         interaction_id: int | None = None
         question_recorded = False
+        persistence_started_at = time_module.monotonic()
         try:
             interaction_id = self.store.save_dm_coaching_interaction(
                 telegram_id=telegram_id,
@@ -3911,6 +3913,11 @@ class SmartMoneyHubBot:
                 + "\n\nI couldn't save this coaching interaction locally. "
                 "Please try again later."
             )
+        logger.info(
+            "Coach interaction persistence completed (elapsed_ms=%s). request_id=%s.",
+            int((time_module.monotonic() - persistence_started_at) * 1000),
+            request_id,
+        )
         if assessment and interaction_id is not None:
             try:
                 self.store.record_knowledge_question(
@@ -3979,6 +3986,13 @@ class SmartMoneyHubBot:
                 markup,
                 reply_to_message_id=reply_to_message_id,
                 sender=sender if reply_to_message_id is not None else None,
+            )
+            logger.info(
+                "Coach Telegram send completed (elapsed_ms=%s, total_elapsed_ms=%s). "
+                "request_id=%s.",
+                int((time_module.monotonic() - send_started_at) * 1000),
+                int((time_module.monotonic() - request_started_at) * 1000),
+                request_id,
             )
         except TelegramAPIError:
             logger.warning("Coach Telegram send failed. request_id=%s.", request_id)
