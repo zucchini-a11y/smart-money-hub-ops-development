@@ -168,3 +168,17 @@ mtime_ms = 1793851276293
 storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/69997517-28dc-4981-b7c5-02d06557ee1e/449e4a6a-5830-4de4-9635-606e5ea2ce49"
 storage_version_token = "1793851281406741"
 content_type = "text/html"
+
+[[outputs]]
+id = "wihG63jrKKfjGQ8RjPgIJ"
+uri = "file://generated-artifacts/smart-money-hub-signal-support-bridge.zip"
+type = "unspecified"
+title = "Updated Signal bot source"
+description = "Full Signal bot source with the Development-only shared Support Portal connector. No runtime data or secrets are included; the bridge remains disabled until its isolated test settings are configured."
+logical_id = "20eec684-517d-4c92-ab18-2f0f3a3a1a80"
+content_hash = "sha256:a1295829d2c8d51f67f54fa55dad9147eaab5e1fa82d9f3bdaa42a3b0c7192f2"
+size = 848454
+mtime_ms = 1793882379820
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/20eec684-517d-4c92-ab18-2f0f3a3a1a80/6bd78790-b941-4eb5-a8cc-e874c44461d1"
+storage_version_token = "1793882389091718"
+content_type = "application/octet-stream"

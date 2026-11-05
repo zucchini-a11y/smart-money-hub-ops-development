@@ -1,0 +1,14 @@
+{
+  "label": "TEST ONLY / DO NOT TRADE",
+  "chart_file": "test_only_zone_chart.png",
+  "setup": {
+    "id": "TEST-FIXTURE-001",
+    "market": "TEST ONLY - DO NOT TRADE",
+    "zone": "100–101",
+    "timeframe": "TEST",
+    "condition": "TEST ONLY: synthetic candle close above 101.00; not a real market condition",
+    "status": "active",
+    "expires": 4102444800
+  },
+  "preview_confirmation": "TEST ONLY: synthetic close above 101.00; fixture preview, not an observed market event"
+}
