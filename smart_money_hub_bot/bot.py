@@ -3979,6 +3979,7 @@ class SmartMoneyHubBot:
                 + f"\n\nI can show you the matching {title} diagram if you’d like. "
                 "Just say yes."
             )
+        send_started_at = time_module.monotonic()
         try:
             self._send_private_coach_reply(
                 chat_id,
