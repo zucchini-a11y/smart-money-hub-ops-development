@@ -1,0 +1,24 @@
+[Unit]
+Description=Smart Money Hub Telegram Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=smhbot
+Group=smhbot
+WorkingDirectory=/opt/smart-money-hub/app
+EnvironmentFile=/etc/smart-money-hub.env
+ExecStart=/opt/smart-money-hub/.venv/bin/python -m smart_money_hub_bot
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/smart-money-hub/data
+
+[Install]
+WantedBy=multi-user.target
