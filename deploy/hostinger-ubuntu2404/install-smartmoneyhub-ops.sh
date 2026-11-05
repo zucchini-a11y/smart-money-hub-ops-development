@@ -7,7 +7,7 @@ if [[ "$(id -u)" -ne 0 ]]; then
 fi
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-BUNDLE_ROOT="$(cd -- "$SCRIPT_DIR/../../.." && pwd)"
+BUNDLE_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 SITE_SOURCE="$BUNDLE_ROOT/site"
 SITE_ROOT="/var/www/smartmoneyhub-ops"
 NGINX_SOURCE="$SCRIPT_DIR/smartmoneyhub-ops.nginx.conf"
