@@ -1013,7 +1013,6 @@ class BotFlowTests(unittest.TestCase):
         dashboard = self.bot.admin_dashboard
         dashboard.admin_id = self.user_id
         dashboard.channel_posts.destination_chat_id = -1004481197912
-        dashboard._content_edit_pending[self.user_id] = "pending-draft"
         self.bot.store.create_scheduled_channel_post(
             schedule_date="2026-11-01",
             schedule_time="10:00",
@@ -1128,6 +1127,7 @@ class BotFlowTests(unittest.TestCase):
         dashboard = self.bot.admin_dashboard
         dashboard.admin_id = self.user_id
         dashboard.channel_posts.destination_chat_id = -1004481197912
+        dashboard._content_edit_pending[self.user_id] = "pending-draft"
         self.bot.store.create_scheduled_channel_post(
             schedule_date="2099-01-01",
             schedule_time="10:00",

@@ -437,6 +437,9 @@ class AdminDashboard:
                 request_text = request_text[len(prefix):].strip()
                 break
 
+        if any(shortcut in request_text for shortcut in ADMIN_MENU_TEXT_ACTIONS):
+            return False
+
         explicit_action = bool(
             re.match(
                 r"^(?:create|write|draft|generate|make|edit|cancel|send|"
