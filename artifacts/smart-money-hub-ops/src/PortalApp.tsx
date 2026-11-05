@@ -27,17 +27,18 @@ import {
 } from '@workspace/api-client-react';
 import type { MemberSession, PortalCaseSummary, PortalSession, PortalStaff, StaffPerformanceRow, StaffTask, StaffTeam } from '@workspace/api-client-react';
 import {
-  Activity, ArrowLeft, ArrowUpRight, Check, CheckCircle2, ChevronRight, CircleHelp,
+  Activity, ArrowLeft, ArrowUpRight, Check, CheckCircle2, ChevronLeft, ChevronRight, CircleHelp,
   Bell, Eye, EyeOff, FileText, KeyRound, LockKeyhole, LogOut, MessageSquareText,
   Plus, Search, ShieldCheck, Users, X, Gauge, RefreshCw, Radio, CircleAlert, Database, History, Bot,
 } from 'lucide-react';
 import { Link, Route, Switch, Router as WouterRouter, useLocation, useParams } from 'wouter';
-import { ClerkProvider, SignUp, useAuth, useClerk, useSignIn } from '@clerk/react';
+import { ClerkProvider, UserProfile, useAuth, useClerk, useSignIn, useSignUp } from '@clerk/react';
 import { publishableKeyFromHost } from '@clerk/react/internal';
 import { shadcn } from '@clerk/themes';
 import { useToast } from '@/hooks/use-toast';
 import NotFound from '@/pages/not-found';
 import ProAccessReview from '@/components/pro-access-review';
+import { MemberDashboardExperience, MemberSignupExperience } from '@/components/member-experience';
 import EducationVideos from '@/pages/education-videos';
 import ChannelHistory from '@/pages/channel-history';
 import TradeManagement from '@/pages/trades';
@@ -68,41 +69,41 @@ const clerkAppearance = {
   logoImageUrl: `${window.location.origin}${basePath}/vayda-logo.png`,
   },
   variables: {
-    colorPrimary: '#17634f',
-    colorForeground: '#152c28',
-    colorMutedForeground: '#64746f',
-    colorDanger: '#a12d29',
-    colorBackground: '#ffffff',
-    colorInput: '#ffffff',
-    colorInputForeground: '#152c28',
-    colorNeutral: '#152c28',
-    fontFamily: "'Manrope', sans-serif",
-    borderRadius: '0.75rem',
+    colorPrimary: '#d2b978',
+    colorForeground: '#eeeae0',
+    colorMutedForeground: '#a3aaa1',
+    colorDanger: '#e7a99d',
+    colorBackground: '#171e1c',
+    colorInput: '#121816',
+    colorInputForeground: '#eeeae0',
+    colorNeutral: '#eeeae0',
+    fontFamily: "'DM Sans', sans-serif",
+    borderRadius: '2px',
   },
   elements: {
     rootBox: 'w-full flex justify-center',
-    cardBox: 'bg-white rounded-2xl w-[440px] max-w-full overflow-hidden shadow-xl border border-slate-200',
+    cardBox: 'bg-[#171e1c] rounded-none w-[480px] max-w-full overflow-hidden border border-[#383d35]',
     card: '!shadow-none !border-0 !bg-transparent !rounded-none',
     footer: '!shadow-none !border-0 !bg-transparent !rounded-none',
-    headerTitle: 'text-slate-900 font-semibold',
-    headerSubtitle: 'text-slate-600',
-    socialButtonsBlockButtonText: 'text-slate-800',
-    formFieldLabel: 'text-slate-700',
-    footerActionLink: 'text-emerald-800 font-semibold',
-    footerActionText: 'text-slate-600',
-    dividerText: 'text-slate-500',
-    identityPreviewEditButton: 'text-emerald-800',
-    formFieldSuccessText: 'text-emerald-800',
-    alertText: 'text-rose-800',
+    headerTitle: 'text-[#eeeae0] font-semibold',
+    headerSubtitle: 'text-[#a3aaa1]',
+    socialButtonsBlockButtonText: 'text-[#eeeae0]',
+    formFieldLabel: 'text-[#c5c9bf]',
+    footerActionLink: 'text-[#e7d39b] font-semibold',
+    footerActionText: 'text-[#a3aaa1]',
+    dividerText: 'text-[#a3aaa1]',
+    identityPreviewEditButton: 'text-[#e7d39b]',
+    formFieldSuccessText: 'text-[#8ab39a]',
+    alertText: 'text-[#e7a99d]',
     logoBox: 'mb-2',
     logoImage: 'max-h-12',
-    socialButtonsBlockButton: 'border-slate-300',
+    socialButtonsBlockButton: 'border-[#4b5149] bg-[#121816]',
     formButtonPrimary: 'font-semibold',
-    formFieldInput: 'text-slate-900',
-    footerAction: 'text-slate-600',
-    dividerLine: 'bg-slate-200',
-    alert: 'bg-rose-50 border-rose-200',
-    otpCodeFieldInput: 'text-slate-900',
+    formFieldInput: 'text-[#eeeae0] bg-[#121816] border-[#4b5149]',
+    footerAction: 'text-[#a3aaa1]',
+    dividerLine: 'bg-[#383d35]',
+    alert: 'bg-[#3b201d] border-[#793a31]',
+    otpCodeFieldInput: 'text-[#eeeae0] bg-[#121816] border-[#4b5149]',
     formFieldRow: 'mb-4',
     main: 'gap-5',
   },
@@ -208,14 +209,19 @@ function Login() {
   useEffect(() => {
     if (staffSession.data) {
       navigate(staffSession.data.mustChangePassword ? '/account/password' : staffSession.data.dashboardPath);
-    } else if (memberSession.data) {
+    } else if (memberSession.data?.learningDashboard) {
       navigate(memberSession.data.dashboardPath);
+    } else if (memberSession.data) {
+      setError('This account does not currently have a member learning dashboard entitlement.');
     }
   }, [staffSession.data, memberSession.data, navigate]);
 
   const finishMemberSignIn = async () => {
     await signIn.finalize();
     const member = await getMemberSession();
+    if (!member.learningDashboard) {
+      throw Object.assign(new Error('This account does not currently have a member learning dashboard entitlement.'), { status: 403 });
+    }
     client.setQueryData(getGetMemberSessionQueryKey(), member);
     await client.invalidateQueries({ queryKey: getGetMemberSessionQueryKey() });
     navigate(member.dashboardPath);
@@ -458,30 +464,18 @@ function MemberDashboardPage({ session }: { session: MemberSession }) {
     navigate('/');
   };
 
-  return <main className="page member-dashboard" data-testid="member-dashboard">
-    <div className="page-heading"><div><div className="eyebrow">MEMBER WORKSPACE</div><h1>Welcome, {session.displayName}</h1><p className="subheading">Your member account is verified and ready.</p></div><button className="btn btn-outline" type="button" onClick={() => void signOut()} data-testid="button-member-sign-out"><LogOut size={14}/> Sign out</button></div>
-    <div className="member-dashboard-grid">
-      <section className="section-panel">
-        <div className="section-head"><div><h2 className="section-title">Account access</h2><p className="section-note">Access is assigned by the server for this account.</p></div><div className="stat-icon"><ShieldCheck size={17}/></div></div>
-        <div className="member-access-list">
-          <div><span>Account</span><strong>Verified member</strong></div>
-          <div><span>Learning dashboard</span><strong>{session.learningDashboard ? 'Available' : 'Not assigned'}</strong></div>
-          <div><span>PRO Signals</span><strong>{session.proSignalsAccess ? 'Authorized' : 'Not assigned'}</strong></div>
-        </div>
-        {!session.proSignalsAccess && <p className="member-access-note">Registration and Telegram identity do not grant PRO Signals access.</p>}
-        <Link className="btn btn-primary" href="/education" data-testid="link-member-learning">Explore the learning approach <ArrowUpRight size={14}/></Link>
-      </section>
-      <section className="section-panel">
-        <div className="section-head"><div><h2 className="section-title">Link Telegram</h2><p className="section-note">Connect the Telegram identity you control.</p></div><div className="stat-icon"><Bot size={17}/></div></div>
-        <div className="member-telegram-body"><TelegramLinkWidget session={session}/></div>
-      </section>
-    </div>
-  </main>;
+  return <MemberDashboardExperience
+    session={session}
+    telegramIdentityWidget={<TelegramLinkWidget session={session}/>}
+    onSignOut={() => void signOut()}
+    onSettings={() => navigate('/member/settings')}
+  />;
 }
 
 function MemberRoot() {
   const [location, navigate] = useLocation();
   const { isLoaded, isSignedIn } = useAuth();
+  const clerk = useClerk();
   const staff = useGetPortalSession({ query: { queryKey: sessionKey, retry: false, staleTime: 0 } });
   const member = useGetMemberSession({
     query: { queryKey: getGetMemberSessionQueryKey(), enabled: isLoaded && isSignedIn === true, retry: false },
@@ -499,8 +493,28 @@ function MemberRoot() {
   if (!isSignedIn) return null;
   if (member.isError || !member.data) {
     const message = (member.error as { message?: string } | null)?.message ?? 'This account does not have member dashboard access.';
-    return <main className="page"><div className="unauthorized"><div className="empty-mark"><ShieldCheck size={20}/></div><h1>Member access unavailable</h1><p>{message}</p><Link className="btn btn-outline" href="/" data-testid="link-member-access-home">Return to the public website</Link></div></main>;
+    return <main className="member-experience mx-signup-loading"><section className="mx-signup-panel mx-access-unavailable">
+      <div className="mx-overline"><span className="mx-live-mark"/> ACCESS CHECK</div>
+      <h1>Member access unavailable</h1>
+      <p>{message}</p>
+      <div className="mx-access-actions">
+        <Link className="mx-button mx-button-quiet" href="/" data-testid="link-member-access-home">Return to the public website</Link>
+        <button className="mx-button mx-button-gold" type="button" onClick={() => void clerk.signOut({ redirectUrl: `${basePath}/` })}>Sign out</button>
+      </div>
+    </section></main>;
   }
+  if (!member.data.learningDashboard) {
+    return <main className="member-experience mx-signup-loading"><section className="mx-signup-panel mx-access-unavailable" role="alert">
+      <div className="mx-overline"><span className="mx-live-mark"/> ACCESS CHECK</div>
+      <h1>Dashboard access not assigned</h1>
+      <p>This account has no assigned member learning dashboard. Staff or PRO access will not be granted automatically.</p>
+      <div className="mx-access-actions">
+        <Link className="mx-button mx-button-quiet" href="/">Return to the public website</Link>
+        <button className="mx-button mx-button-gold" type="button" onClick={() => void clerk.signOut({ redirectUrl: `${basePath}/` })}>Sign out</button>
+      </div>
+    </section></main>;
+  }
+  if (location === '/member/settings') return <MemberAccountSettingsPage session={member.data}/>;
   if (location !== member.data.dashboardPath) return null;
   return <MemberDashboardPage session={member.data}/>;
 }
@@ -1303,7 +1317,7 @@ function HomeRedirect() {
   });
   useEffect(() => {
     if (staff.data) navigate(staff.data.mustChangePassword ? '/account/password' : staff.data.dashboardPath);
-    else if (member.data) navigate(member.data.dashboardPath);
+    else if (member.data?.learningDashboard) navigate(member.data.dashboardPath);
   }, [staff.data, member.data, navigate]);
   return <PublicSite/>;
 }
@@ -1314,16 +1328,247 @@ function LegacyLoginRedirect() {
   return null;
 }
 
+function memberSignupError(value: unknown, fallback: string) {
+  if (value instanceof Error && value.message) return value.message;
+  if (value && typeof value === 'object') {
+    const candidate = value as {
+      message?: string;
+      errors?: Array<{ longMessage?: string; message?: string }>;
+    };
+    return candidate.errors?.[0]?.longMessage
+      ?? candidate.errors?.[0]?.message
+      ?? candidate.message
+      ?? fallback;
+  }
+  return fallback;
+}
+
 function MemberSignUpPage() {
-  return <main className="member-signup-page">
-    <div className="member-signup-heading"><Brand/><div><div className="eyebrow">MEMBER ACCOUNT</div><h1>Create your learning account</h1><p>Staff tools are not available through public registration.</p></div></div>
-    <div className="member-signup-card">
-      <SignUp
-        routing="path"
-        path={`${basePath}/sign-up`}
-        signInUrl={`${basePath}/login`}
-        forceRedirectUrl={`${basePath}/member/dashboard`}
-      />
+  const [location, navigate] = useLocation();
+  const { isLoaded, isSignedIn } = useAuth();
+  const { signUp, fetchStatus } = useSignUp();
+  const clerk = useClerk();
+  const client = useQueryClient();
+  const [step, setStep] = useState<'details' | 'verification'>('details');
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const staff = useGetPortalSession({
+    query: { queryKey: sessionKey, refetchOnMount: 'always', retry: false, staleTime: 0 },
+  });
+  const member = useGetMemberSession({
+    query: {
+      queryKey: getGetMemberSessionQueryKey(),
+      enabled: isLoaded && isSignedIn === true,
+      retry: false,
+    },
+  });
+
+  useEffect(() => {
+    if (staff.data) {
+      navigate(staff.data.mustChangePassword ? '/account/password' : staff.data.dashboardPath);
+    } else if (member.data?.learningDashboard) {
+      navigate(member.data.dashboardPath);
+    }
+  }, [staff.data, member.data, navigate]);
+
+  useEffect(() => {
+    if (location !== '/sign-up/verify-email') return;
+    if (busy) return;
+    if (signUp.id && signUp.emailAddress) {
+      setStep('verification');
+      setEmail(signUp.emailAddress);
+      return;
+    }
+    setStep('details');
+    setNotice('This verification session is no longer available. Enter your details to start again.');
+    navigate('/sign-up', { replace: true });
+  }, [location, signUp.id, signUp.emailAddress, busy, navigate]);
+
+  const setField = (field: 'fullName' | 'email' | 'password' | 'code', value: string) => {
+    if (field === 'fullName') setFullName(value);
+    else if (field === 'email') setEmail(value);
+    else if (field === 'password') setPassword(value);
+    else setCode(value);
+    setError('');
+  };
+
+  const submitDetails = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError('');
+    setNotice('');
+
+    const nameParts = fullName.trim().split(/\s+/).filter(Boolean);
+    if (nameParts.length === 0) {
+      setError('Enter your full name to continue.');
+      return;
+    }
+    if (!isLoaded || fetchStatus === 'fetching') {
+      setError('Account registration is still loading. Try again in a moment.');
+      return;
+    }
+
+    setBusy(true);
+    try {
+      if (signUp.id) await signUp.reset();
+      const [firstName, ...restOfName] = nameParts;
+      const result = await signUp.password({
+        emailAddress: email.trim().toLowerCase(),
+        password,
+        firstName,
+        lastName: restOfName.join(' ') || undefined,
+        unsafeMetadata: { fullName: fullName.trim() },
+      });
+      if (result.error) throw result.error;
+
+      setPassword('');
+      setCode('');
+      setStep('verification');
+      navigate('/sign-up/verify-email');
+
+      const sent = await signUp.verifications.sendEmailCode();
+      if (sent.error) throw sent.error;
+      setNotice('A verification code has been sent. Your dashboard stays locked until your email is verified.');
+    } catch (failure) {
+      setError(memberSignupError(failure, 'We could not start registration. Check your details and try again.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const verifyEmail = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError('');
+    setNotice('');
+    setBusy(true);
+    try {
+      const verified = await signUp.verifications.verifyEmailCode({ code: code.trim() });
+      if (verified.error) throw verified.error;
+
+      const finalized = await signUp.finalize();
+      if (finalized.error) throw finalized.error;
+
+      const session = await getMemberSession();
+      if (!session.learningDashboard) {
+        throw Object.assign(new Error('This account does not currently have a member learning dashboard entitlement.'), { status: 403 });
+      }
+      client.setQueryData(getGetMemberSessionQueryKey(), session);
+      await client.invalidateQueries({ queryKey: getGetMemberSessionQueryKey() });
+      navigate(session.dashboardPath, { replace: true });
+    } catch (failure) {
+      const status = (failure as { status?: number })?.status;
+      if (status === 401 || status === 403) {
+        await clerk.signOut().catch(() => undefined);
+        client.clear();
+        setError('This account is not eligible for the member dashboard. Staff access is assigned separately by the owner; PRO access is never automatic.');
+      } else {
+        setError(memberSignupError(failure, 'That code could not be verified. Request a new code and try again.'));
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resendCode = async () => {
+    setError('');
+    setNotice('');
+    setBusy(true);
+    try {
+      const sent = await signUp.verifications.sendEmailCode();
+      if (sent.error) throw sent.error;
+      setNotice('A new verification code has been sent. Check the email address shown above.');
+    } catch (failure) {
+      setError(memberSignupError(failure, 'The code could not be resent. Wait a moment and try again.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const returnToDetails = async () => {
+    setError('');
+    setNotice('');
+    setCode('');
+    setStep('details');
+    navigate('/sign-up');
+  };
+
+  const changeDetails = async () => {
+    setError('');
+    setNotice('');
+    setCode('');
+    await signUp.reset();
+    setStep('details');
+    navigate('/sign-up');
+  };
+
+  if (staff.isLoading || !isLoaded || (isSignedIn && member.isLoading)) {
+    return <main className="member-experience mx-signup-loading" aria-label="Checking account access"><div className="skeleton" style={{ width: 260, height: 28 }}/></main>;
+  }
+  if (staff.data || member.data?.learningDashboard) return null;
+  if (member.data && !member.data.learningDashboard) {
+    return <main className="member-experience mx-signup-loading"><section className="mx-signup-panel mx-access-unavailable" role="alert">
+      <div className="mx-overline"><span className="mx-live-mark"/> ACCESS CHECK</div>
+      <h1>Dashboard access not assigned</h1>
+      <p>This account has no assigned member learning dashboard. Staff or PRO access will not be granted automatically.</p>
+      <div className="mx-access-actions">
+        <Link className="mx-button mx-button-quiet" href="/">Return to the public website</Link>
+        <button className="mx-button mx-button-gold" type="button" onClick={() => void clerk.signOut({ redirectUrl: `${basePath}/` })}>Sign out</button>
+      </div>
+    </section></main>;
+  }
+  if (isSignedIn && member.isError) {
+    return <main className="member-experience mx-signup-loading"><section className="mx-signup-panel mx-access-unavailable" role="alert">
+      <div className="mx-overline"><span className="mx-live-mark"/> ACCESS CHECK</div>
+      <h1>Member access unavailable</h1>
+      <p>This account does not have member dashboard access. Staff access is assigned separately by the owner.</p>
+      <div className="mx-access-actions">
+        <Link className="mx-button mx-button-quiet" href="/">Return to the public website</Link>
+        <button className="mx-button mx-button-gold" type="button" onClick={() => void clerk.signOut({ redirectUrl: `${basePath}/` })}>Sign out</button>
+      </div>
+    </section></main>;
+  }
+
+  return <MemberSignupExperience
+    step={step}
+    fullName={fullName}
+    email={email}
+    password={password}
+    code={code}
+    busy={busy || fetchStatus === 'fetching'}
+    error={error}
+    notice={notice}
+    onFieldChange={setField}
+    onSubmit={(event) => void submitDetails(event)}
+    onVerify={(event) => void verifyEmail(event)}
+    onResend={() => void resendCode()}
+    onBack={() => void returnToDetails()}
+    onChangeDetails={() => void changeDetails()}
+  />;
+}
+
+function MemberAccountSettingsPage({ session }: { session: MemberSession }) {
+  const [, navigate] = useLocation();
+  return <main className="member-experience mx-settings-page">
+    <div className="mx-settings-shell">
+      <header className="mx-dashboard-header">
+        <Link className="mx-wordmark" href="/" aria-label="Smart Money Hub home">
+          <img className="mx-wordmark-image" src={`${basePath}/vayda-logo.png`} alt="" aria-hidden="true"/>
+          <span><strong>VAYDA</strong><small>SMART MONEY HUB</small></span>
+        </Link>
+        <button className="mx-button mx-button-quiet" type="button" onClick={() => navigate('/member/dashboard')}><ChevronLeft size={15}/> Back to dashboard</button>
+      </header>
+      <section className="mx-settings-heading">
+        <div className="mx-overline"><span className="mx-live-mark"/> MEMBER ACCOUNT</div>
+        <h1>Account settings</h1>
+        <p>Manage the email and security settings for {session.email}.</p>
+      </section>
+      <div className="mx-clerk-profile">
+        <UserProfile routing="hash"/>
+      </div>
     </div>
   </main>;
 }
@@ -1365,8 +1610,10 @@ function Router() {
         ? 'Sign In | VAYDA Smart Money Hub'
         : normalizedPath.startsWith('/sign-up')
           ? 'Create Member Account | VAYDA Smart Money Hub'
-          : normalizedPath === '/member/dashboard'
-            ? 'Member Dashboard | VAYDA Smart Money Hub'
+        : normalizedPath === '/member/dashboard'
+          ? 'Member Dashboard | VAYDA Smart Money Hub'
+          : normalizedPath === '/member/settings'
+            ? 'Member Account Settings | VAYDA Smart Money Hub'
             : 'VAYDA Support Portal | Staff Workspace';
       document.querySelector('link[rel="canonical"]')?.remove();
       const description = document.querySelector<HTMLMetaElement>('meta[name="description"]');
@@ -1380,6 +1627,7 @@ function Router() {
     <Route path="/login" component={Login}/>
     <Route path="/staff/login" component={LegacyLoginRedirect}/>
     <Route path="/member/dashboard" component={MemberRoot}/>
+    <Route path="/member/settings" component={MemberRoot}/>
     <Route>{() => isPublicRoute ? normalizedPath === '/' ? <HomeRedirect/> : <PublicSite/> : <PortalRoot/>}</Route>
   </Switch></RoutedErrorBoundary>;
 }

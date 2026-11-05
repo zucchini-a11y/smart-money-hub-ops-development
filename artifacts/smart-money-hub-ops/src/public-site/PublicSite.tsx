@@ -164,6 +164,7 @@ function Header({ location }: { location: string }) {
       <nav id="vayda-public-nav" className={`vs-nav ${open ? 'is-open' : ''}`} aria-label="Public navigation">
         {pages.slice(1).map((page) => <Link key={page.href} href={page.href} aria-current={location === page.href ? 'page' : undefined} onClick={() => setOpen(false)} data-testid={`link-public-${page.href.slice(1) || 'home'}`}>{page.label}</Link>)}
         {isConfiguredPublicUrl(publicSiteLinks.primaryCommunity) && <ExternalLink href={publicSiteLinks.primaryCommunity} className="vs-nav-cta" data-testid="link-public-community-entry">Enter community <ArrowUpRight size={13} /></ExternalLink>}
+        <Link href="/sign-up" className="vs-create-account" onClick={() => setOpen(false)} data-testid="link-public-create-account">Create account <ArrowUpRight size={13} /></Link>
         <Link href="/login" className="vs-staff-link" onClick={() => setOpen(false)} data-testid="link-public-login">Sign in</Link>
       </nav>
     </div>

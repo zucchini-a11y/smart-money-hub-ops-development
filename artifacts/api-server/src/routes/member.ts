@@ -61,7 +61,10 @@ async function requireMemberIdentity(req: Request, res: Response): Promise<Membe
     return null;
   }
 
-  const name = [user.firstName, user.lastName].filter(Boolean).join(" ").trim();
+  const profileName = typeof user.unsafeMetadata?.fullName === "string"
+    ? user.unsafeMetadata.fullName.trim().slice(0, 120)
+    : "";
+  const name = [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || profileName;
   return {
     clerkUserId,
     email,

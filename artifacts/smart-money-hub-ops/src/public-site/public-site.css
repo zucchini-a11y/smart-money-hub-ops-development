@@ -54,6 +54,9 @@
 .vs-nav-cta:hover { background: var(--gold); color: var(--ink) !important; }
 .vs-nav .vs-staff-link { color: var(--gold-bright); font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: .06em; white-space: nowrap; }
 .vs-nav .vs-staff-link::after { background: var(--green); }
+.vs-nav .vs-create-account { display: inline-flex; min-height: 38px; align-items: center; justify-content: center; gap: 7px; padding: 0 12px; border: 1px solid rgba(215,189,123,.48); color: var(--gold-bright); font: 9px 'DM Mono', monospace; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; transition: background .2s ease, color .2s ease, border-color .2s ease; }
+.vs-nav .vs-create-account::after { display: none; }
+.vs-nav .vs-create-account:hover { border-color: var(--gold); background: rgba(215,189,123,.09); color: var(--text); }
 .vs-menu-toggle { display: none; width: 44px; height: 44px; border: 1px solid var(--line); background: transparent; cursor: pointer; transition: border-color .2s ease, background .2s ease, transform .2s ease; }
 .vs-menu-toggle:hover { border-color: rgba(215,189,123,.45); background: rgba(215,189,123,.05); }
 .vs-menu-toggle:active { transform: scale(.96); }
@@ -212,8 +215,9 @@
   .vs-menu-toggle { display: block; }
   .vs-nav { position: absolute; top: 100%; right: 0; left: 0; display: flex; max-height: 0; flex-direction: column; align-items: stretch; overflow: hidden; padding: 0 20px; border-bottom: 1px solid transparent; background: #101617; opacity: 0; pointer-events: none; transform: translateY(-8px); visibility: hidden; transition: max-height .28s ease, opacity .2s ease, transform .24s ease, padding .24s ease, border-color .2s ease, visibility 0s linear .28s; }
   .vs-nav.is-open { max-height: calc(100dvh - 72px); overflow-y: auto; padding: 12px 20px 20px; border-color: var(--line); opacity: 1; pointer-events: auto; transform: translateY(0); visibility: visible; transition: max-height .28s ease, opacity .2s ease, transform .24s ease, padding .24s ease, border-color .2s ease, visibility 0s; }
-  .vs-nav a { padding: 12px 4px; font-size: 13px; }
+   .vs-nav a { padding: 12px 4px; font-size: 13px; }
   .vs-nav a::after { display: none; }
+   .vs-nav .vs-create-account { width: fit-content; min-height: 42px; margin-top: 3px; padding-inline: 15px; }
   .vs-nav-cta { margin-top: 5px; }
   .vs-home-hero { min-height: auto; }
   .vs-home-hero::before { background: radial-gradient(ellipse at 84% 52%, rgba(48,79,62,.25), transparent 58%), linear-gradient(180deg, #0c1112 0%, rgba(12,17,18,.95) 55%, #0c1112 100%); }

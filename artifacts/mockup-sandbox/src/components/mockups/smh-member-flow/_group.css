@@ -1,0 +1,167 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap");
+
+.smh-member-group {
+  min-height: 100vh;
+  background: #f6f3eb;
+  color: #283b33;
+  font-family: "DM Sans", sans-serif;
+  font-synthesis: none;
+}
+
+.smh-member-group * { box-sizing: border-box; }
+.smh-member-group button,
+.smh-member-group a { font: inherit; }
+.smh-member-group button { cursor: pointer; }
+
+.smh-member-group .page {
+  padding: 36px clamp(20px, 4vw, 54px) 60px;
+  max-width: 1440px;
+  margin: 0 auto;
+}
+.smh-member-group .eyebrow {
+  font: 500 10px "IBM Plex Mono", monospace;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: #7b877f;
+}
+.smh-member-group .page-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 20px;
+  margin-bottom: 28px;
+}
+.smh-member-group h1,
+.smh-member-group h2,
+.smh-member-group p { margin-top: 0; }
+.smh-member-group h1 {
+  font: 700 clamp(28px, 3vw, 38px) Manrope, sans-serif;
+  letter-spacing: -.045em;
+  color: #233c34;
+  margin: 8px 0 7px;
+}
+.smh-member-group .subheading {
+  font-size: 13px;
+  color: #7a837d;
+  margin: 0;
+}
+.smh-member-group .stat-icon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  background: #e8eee8;
+  color: #3d715e;
+}
+.smh-member-group .section-panel {
+  background: #fbfaf6;
+  border: 1px solid #e8e3d9;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.smh-member-group .section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+.smh-member-group .section-title {
+  font: 700 15px Manrope, sans-serif;
+  letter-spacing: -.02em;
+  margin: 0;
+  color: #2d4239;
+}
+.smh-member-group .section-note {
+  color: #879088;
+  font-size: 11px;
+  margin: 5px 0 0;
+}
+.smh-member-group .btn {
+  border: 0;
+  border-radius: 7px;
+  padding: 10px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  transition: transform .16s, background .16s;
+}
+.smh-member-group .btn:hover { transform: translateY(-1px); }
+.smh-member-group .btn-primary {
+  background: #2d6650;
+  color: #fffdf5;
+}
+.smh-member-group .btn-primary:hover { background: #245540; }
+.smh-member-group .btn-outline {
+  border: 1px solid #dcded4;
+  background: #fffefa;
+  color: #45554b;
+}
+.smh-member-group .btn-outline:hover { background: #f2f0e8; }
+.smh-member-group .btn svg { width: 15px; height: 15px; }
+
+.smh-member-group .member-dashboard { max-width: 1180px; margin-inline: auto; }
+.smh-member-group .member-dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.smh-member-group .member-dashboard-grid .section-panel {
+  min-width: 0;
+  padding: 22px;
+  background: #fff;
+  border: 1px solid #e8e3d9;
+  border-radius: 12px;
+}
+.smh-member-group .member-access-list {
+  display: grid;
+  gap: 10px;
+  margin: 18px 0;
+  padding: 15px;
+  border: 1px solid #eee9df;
+  border-radius: 9px;
+  background: #fbfaf6;
+}
+.smh-member-group .member-access-list > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  color: #778279;
+  font-size: 12px;
+}
+.smh-member-group .member-access-list strong {
+  color: #34483e;
+  font-size: 12px;
+  text-align: right;
+}
+.smh-member-group .member-access-note {
+  margin: 0 0 16px;
+  color: #78847c;
+  font-size: 11px;
+  line-height: 1.55;
+}
+.smh-member-group .member-telegram-body { margin-top: 18px; }
+.smh-member-group .member-telegram-link {
+  display: grid;
+  gap: 12px;
+  color: #66736a;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.smh-member-group .member-telegram-link p { margin: 0; }
+.smh-member-group .member-telegram-link a { color: #2c624b; font-weight: 700; }
+.smh-member-group [data-testid="telegram-link-widget"] { min-height: 45px; }
+
+@media (max-width: 760px) {
+  .smh-member-group .member-dashboard-grid { grid-template-columns: 1fr; }
+  .smh-member-group .member-dashboard-grid .section-panel { padding: 17px; }
+  .smh-member-group .page { padding: 26px 16px 45px; }
+  .smh-member-group .page-heading { align-items: flex-start; flex-direction: column; margin-bottom: 20px; }
+  .smh-member-group .page-heading .btn { align-self: stretch; }
+}
