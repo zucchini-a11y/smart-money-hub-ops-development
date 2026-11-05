@@ -690,6 +690,302 @@ export const LinkMemberTelegramResponse = zod.object({
 })
 
 
+/**
+ * @summary Read the verified member economic calendar
+ */
+export const GetMemberCalendarQueryParams = zod.object({
+  "from": zod.date().optional(),
+  "to": zod.date().optional(),
+  "currency": zod.enum(['USD']).optional(),
+  "impact": zod.enum(['high', 'medium', 'low', 'unavailable']).optional()
+})
+
+export const GetMemberCalendarResponse = zod.object({
+  "events": zod.array(zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "currency": zod.enum(['USD']),
+  "eventDate": zod.coerce.date(),
+  "eventAt": zod.coerce.date().nullable(),
+  "timeLabel": zod.string(),
+  "impact": zod.enum(['high', 'medium', 'low', 'unavailable']),
+  "impactBasis": zod.enum(['smh_estimate', 'source_verified', 'unavailable']),
+  "sourceName": zod.string(),
+  "sourceUrl": zod.string().url(),
+  "verificationStatus": zod.string(),
+  "timezoneStatus": zod.string(),
+  "previous": zod.string().nullable(),
+  "forecast": zod.string().nullable(),
+  "actual": zod.string().nullable(),
+  "lastRetrievedAt": zod.coerce.date()
+})),
+  "sources": zod.array(zod.object({
+  "id": zod.string(),
+  "sourceName": zod.string(),
+  "status": zod.enum(['available', 'stale', 'unverified', 'failed']),
+  "checkedAt": zod.coerce.date().nullable(),
+  "message": zod.string()
+})),
+  "refreshedAt": zod.coerce.date().nullable(),
+  "stale": zod.boolean()
+})
+
+
+/**
+ * @summary List the current member's journal trades
+ */
+export const listMemberJournalTradesQueryInstrumentMax = 24;
+
+
+
+export const ListMemberJournalTradesQueryParams = zod.object({
+  "instrument": zod.coerce.string().max(listMemberJournalTradesQueryInstrumentMax).optional(),
+  "outcome": zod.enum(['open', 'win', 'loss', 'breakeven']).optional()
+})
+
+export const listMemberJournalTradesResponseTradesItemOneInstrumentMin = 2;
+export const listMemberJournalTradesResponseTradesItemOneInstrumentMax = 24;
+
+export const listMemberJournalTradesResponseTradesItemOneEntryPriceExclusiveMin = 0;
+
+export const listMemberJournalTradesResponseTradesItemOneStopLossExclusiveMin = 0;
+
+export const listMemberJournalTradesResponseTradesItemOneTakeProfitExclusiveMin = 0;
+
+export const listMemberJournalTradesResponseTradesItemOnePositionSizeExclusiveMin = 0;
+
+export const listMemberJournalTradesResponseTradesItemOneRiskPercentMin = 0;
+export const listMemberJournalTradesResponseTradesItemOneRiskPercentMax = 100;
+
+export const listMemberJournalTradesResponseTradesItemOneNotesMax = 5000;
+
+
+
+export const ListMemberJournalTradesResponse = zod.object({
+  "trades": zod.array(zod.object({
+  "instrument": zod.string().min(listMemberJournalTradesResponseTradesItemOneInstrumentMin).max(listMemberJournalTradesResponseTradesItemOneInstrumentMax),
+  "direction": zod.enum(['long', 'short']),
+  "entryPrice": zod.number().gt(listMemberJournalTradesResponseTradesItemOneEntryPriceExclusiveMin),
+  "stopLoss": zod.number().gt(listMemberJournalTradesResponseTradesItemOneStopLossExclusiveMin),
+  "takeProfit": zod.number().gt(listMemberJournalTradesResponseTradesItemOneTakeProfitExclusiveMin),
+  "positionSize": zod.number().gt(listMemberJournalTradesResponseTradesItemOnePositionSizeExclusiveMin),
+  "riskPercent": zod.number().min(listMemberJournalTradesResponseTradesItemOneRiskPercentMin).max(listMemberJournalTradesResponseTradesItemOneRiskPercentMax).nullish(),
+  "entryAt": zod.coerce.date(),
+  "exitAt": zod.coerce.date().nullish(),
+  "outcome": zod.enum(['open', 'win', 'loss', 'breakeven']),
+  "realizedPnl": zod.number().nullish(),
+  "notes": zod.string().max(listMemberJournalTradesResponseTradesItemOneNotesMax).optional()
+}).and(zod.object({
+  "id": zod.string().uuid(),
+  "riskRewardRatio": zod.number().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}))),
+  "summary": zod.object({
+  "totalTrades": zod.number().int(),
+  "openTrades": zod.number().int(),
+  "wins": zod.number().int(),
+  "losses": zod.number().int(),
+  "breakeven": zod.number().int(),
+  "winRate": zod.number().nullable(),
+  "totalRecordedPnl": zod.number(),
+  "averagePlannedRiskReward": zod.number().nullable()
+})
+})
+
+
+/**
+ * @summary Create a trade in the current member's journal
+ */
+export const createMemberJournalTradeBodyInstrumentMin = 2;
+export const createMemberJournalTradeBodyInstrumentMax = 24;
+
+export const createMemberJournalTradeBodyEntryPriceExclusiveMin = 0;
+
+export const createMemberJournalTradeBodyStopLossExclusiveMin = 0;
+
+export const createMemberJournalTradeBodyTakeProfitExclusiveMin = 0;
+
+export const createMemberJournalTradeBodyPositionSizeExclusiveMin = 0;
+
+export const createMemberJournalTradeBodyRiskPercentMin = 0;
+export const createMemberJournalTradeBodyRiskPercentMax = 100;
+
+export const createMemberJournalTradeBodyNotesMax = 5000;
+
+
+
+export const CreateMemberJournalTradeBody = zod.object({
+  "instrument": zod.string().min(createMemberJournalTradeBodyInstrumentMin).max(createMemberJournalTradeBodyInstrumentMax),
+  "direction": zod.enum(['long', 'short']),
+  "entryPrice": zod.number().gt(createMemberJournalTradeBodyEntryPriceExclusiveMin),
+  "stopLoss": zod.number().gt(createMemberJournalTradeBodyStopLossExclusiveMin),
+  "takeProfit": zod.number().gt(createMemberJournalTradeBodyTakeProfitExclusiveMin),
+  "positionSize": zod.number().gt(createMemberJournalTradeBodyPositionSizeExclusiveMin),
+  "riskPercent": zod.number().min(createMemberJournalTradeBodyRiskPercentMin).max(createMemberJournalTradeBodyRiskPercentMax).nullish(),
+  "entryAt": zod.coerce.date(),
+  "exitAt": zod.coerce.date().nullish(),
+  "outcome": zod.enum(['open', 'win', 'loss', 'breakeven']),
+  "realizedPnl": zod.number().nullish(),
+  "notes": zod.string().max(createMemberJournalTradeBodyNotesMax).optional()
+})
+
+export const createMemberJournalTradeResponseOneInstrumentMin = 2;
+export const createMemberJournalTradeResponseOneInstrumentMax = 24;
+
+export const createMemberJournalTradeResponseOneEntryPriceExclusiveMin = 0;
+
+export const createMemberJournalTradeResponseOneStopLossExclusiveMin = 0;
+
+export const createMemberJournalTradeResponseOneTakeProfitExclusiveMin = 0;
+
+export const createMemberJournalTradeResponseOnePositionSizeExclusiveMin = 0;
+
+export const createMemberJournalTradeResponseOneRiskPercentMin = 0;
+export const createMemberJournalTradeResponseOneRiskPercentMax = 100;
+
+export const createMemberJournalTradeResponseOneNotesMax = 5000;
+
+
+
+export const CreateMemberJournalTradeResponse = zod.object({
+  "instrument": zod.string().min(createMemberJournalTradeResponseOneInstrumentMin).max(createMemberJournalTradeResponseOneInstrumentMax),
+  "direction": zod.enum(['long', 'short']),
+  "entryPrice": zod.number().gt(createMemberJournalTradeResponseOneEntryPriceExclusiveMin),
+  "stopLoss": zod.number().gt(createMemberJournalTradeResponseOneStopLossExclusiveMin),
+  "takeProfit": zod.number().gt(createMemberJournalTradeResponseOneTakeProfitExclusiveMin),
+  "positionSize": zod.number().gt(createMemberJournalTradeResponseOnePositionSizeExclusiveMin),
+  "riskPercent": zod.number().min(createMemberJournalTradeResponseOneRiskPercentMin).max(createMemberJournalTradeResponseOneRiskPercentMax).nullish(),
+  "entryAt": zod.coerce.date(),
+  "exitAt": zod.coerce.date().nullish(),
+  "outcome": zod.enum(['open', 'win', 'loss', 'breakeven']),
+  "realizedPnl": zod.number().nullish(),
+  "notes": zod.string().max(createMemberJournalTradeResponseOneNotesMax).optional()
+}).and(zod.object({
+  "id": zod.string().uuid(),
+  "riskRewardRatio": zod.number().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}))
+
+
+/**
+ * @summary Update a trade owned by the current member
+ */
+export const UpdateMemberJournalTradeParams = zod.object({
+  "tradeId": zod.coerce.string().uuid()
+})
+
+export const updateMemberJournalTradeBodyInstrumentMin = 2;
+export const updateMemberJournalTradeBodyInstrumentMax = 24;
+
+export const updateMemberJournalTradeBodyEntryPriceExclusiveMin = 0;
+
+export const updateMemberJournalTradeBodyStopLossExclusiveMin = 0;
+
+export const updateMemberJournalTradeBodyTakeProfitExclusiveMin = 0;
+
+export const updateMemberJournalTradeBodyPositionSizeExclusiveMin = 0;
+
+export const updateMemberJournalTradeBodyRiskPercentMin = 0;
+export const updateMemberJournalTradeBodyRiskPercentMax = 100;
+
+export const updateMemberJournalTradeBodyNotesMax = 5000;
+
+
+
+export const UpdateMemberJournalTradeBody = zod.object({
+  "instrument": zod.string().min(updateMemberJournalTradeBodyInstrumentMin).max(updateMemberJournalTradeBodyInstrumentMax).optional(),
+  "direction": zod.enum(['long', 'short']).optional(),
+  "entryPrice": zod.number().gt(updateMemberJournalTradeBodyEntryPriceExclusiveMin).optional(),
+  "stopLoss": zod.number().gt(updateMemberJournalTradeBodyStopLossExclusiveMin).optional(),
+  "takeProfit": zod.number().gt(updateMemberJournalTradeBodyTakeProfitExclusiveMin).optional(),
+  "positionSize": zod.number().gt(updateMemberJournalTradeBodyPositionSizeExclusiveMin).optional(),
+  "riskPercent": zod.number().min(updateMemberJournalTradeBodyRiskPercentMin).max(updateMemberJournalTradeBodyRiskPercentMax).nullish(),
+  "entryAt": zod.coerce.date().optional(),
+  "exitAt": zod.coerce.date().nullish(),
+  "outcome": zod.enum(['open', 'win', 'loss', 'breakeven']).optional(),
+  "realizedPnl": zod.number().nullish(),
+  "notes": zod.string().max(updateMemberJournalTradeBodyNotesMax).optional()
+})
+
+export const updateMemberJournalTradeResponseOneInstrumentMin = 2;
+export const updateMemberJournalTradeResponseOneInstrumentMax = 24;
+
+export const updateMemberJournalTradeResponseOneEntryPriceExclusiveMin = 0;
+
+export const updateMemberJournalTradeResponseOneStopLossExclusiveMin = 0;
+
+export const updateMemberJournalTradeResponseOneTakeProfitExclusiveMin = 0;
+
+export const updateMemberJournalTradeResponseOnePositionSizeExclusiveMin = 0;
+
+export const updateMemberJournalTradeResponseOneRiskPercentMin = 0;
+export const updateMemberJournalTradeResponseOneRiskPercentMax = 100;
+
+export const updateMemberJournalTradeResponseOneNotesMax = 5000;
+
+
+
+export const UpdateMemberJournalTradeResponse = zod.object({
+  "instrument": zod.string().min(updateMemberJournalTradeResponseOneInstrumentMin).max(updateMemberJournalTradeResponseOneInstrumentMax),
+  "direction": zod.enum(['long', 'short']),
+  "entryPrice": zod.number().gt(updateMemberJournalTradeResponseOneEntryPriceExclusiveMin),
+  "stopLoss": zod.number().gt(updateMemberJournalTradeResponseOneStopLossExclusiveMin),
+  "takeProfit": zod.number().gt(updateMemberJournalTradeResponseOneTakeProfitExclusiveMin),
+  "positionSize": zod.number().gt(updateMemberJournalTradeResponseOnePositionSizeExclusiveMin),
+  "riskPercent": zod.number().min(updateMemberJournalTradeResponseOneRiskPercentMin).max(updateMemberJournalTradeResponseOneRiskPercentMax).nullish(),
+  "entryAt": zod.coerce.date(),
+  "exitAt": zod.coerce.date().nullish(),
+  "outcome": zod.enum(['open', 'win', 'loss', 'breakeven']),
+  "realizedPnl": zod.number().nullish(),
+  "notes": zod.string().max(updateMemberJournalTradeResponseOneNotesMax).optional()
+}).and(zod.object({
+  "id": zod.string().uuid(),
+  "riskRewardRatio": zod.number().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}))
+
+
+/**
+ * @summary Delete a trade owned by the current member
+ */
+export const DeleteMemberJournalTradeParams = zod.object({
+  "tradeId": zod.coerce.string().uuid()
+})
+
+export const DeleteMemberJournalTradeResponse = zod.object({
+  "deleted": zod.literal(true)
+})
+
+
+/**
+ * @summary Ask the member-only educational AI Coach
+ */
+export const sendMemberCoachMessageBodyMessageMax = 1200;
+
+export const sendMemberCoachMessageBodyHistoryItemContentMax = 1200;
+
+export const sendMemberCoachMessageBodyHistoryMax = 12;
+
+
+
+export const SendMemberCoachMessageBody = zod.object({
+  "message": zod.string().min(1).max(sendMemberCoachMessageBodyMessageMax),
+  "history": zod.array(zod.object({
+  "role": zod.enum(['user', 'assistant']),
+  "content": zod.string().min(1).max(sendMemberCoachMessageBodyHistoryItemContentMax)
+})).max(sendMemberCoachMessageBodyHistoryMax).optional()
+})
+
+export const SendMemberCoachMessageResponse = zod.object({
+  "reply": zod.string(),
+  "topic": zod.string(),
+  "disclaimer": zod.string()
+})
+
+
 export const GetPortalDashboardResponse = zod.object({
   "openCount": zod.number().int(),
   "uncertainCount": zod.number().int(),

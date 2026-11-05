@@ -37,6 +37,7 @@ import type {
   BotOutbox,
   BotOutboxAck,
   BotOutboxAckInput,
+  CreateMemberJournalTrade,
   EducationModule,
   EducationModuleUpdate,
   EducationVideo,
@@ -46,11 +47,13 @@ import type {
   ErrorEnvelope,
   ErrorResponse,
   GetMemberBotCaseParams,
+  GetMemberCalendarParams,
   GetPortalChannelHistoryParams,
   HandleBrowserLoginCallbackParams,
   HealthStatus,
   LinkMemberTelegramInput,
   ListMemberBotCasesParams,
+  ListMemberJournalTradesParams,
   ListPortalCasesParams,
   ListPortalMemberApplicationsParams,
   ListPortalWebsiteSupportConversationsParams,
@@ -60,6 +63,12 @@ import type {
   LogoutBrowserSessionParams,
   LogoutSuccess,
   MemberAccessApplicationList,
+  MemberCalendarResponse,
+  MemberCoachChatInput,
+  MemberCoachChatResponse,
+  MemberJournalDeleteResponse,
+  MemberJournalResponse,
+  MemberJournalTrade,
   MemberSession,
   MemberTelegramLink,
   MobileTokenExchangeRequest,
@@ -134,6 +143,7 @@ import type {
   SupportSession,
   SupportStaff,
   SupportStatusInput,
+  UpdateMemberJournalTrade,
   WebsiteChatMessageInput,
   WebsiteConversationDetail,
   WebsiteConversationInput,
@@ -2950,6 +2960,513 @@ export const useLinkMemberTelegram = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getLinkMemberTelegramMutationOptions(options));
+    }
+
+export const getGetMemberCalendarUrl = (params?: GetMemberCalendarParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/member/calendar?${stringifiedParams}` : `/api/member/calendar`
+}
+
+/**
+ * @summary Read the verified member economic calendar
+ */
+export const getMemberCalendar = async (params?: GetMemberCalendarParams, options?: Parameters<typeof customFetch>[1]): Promise<MemberCalendarResponse> => {
+
+  return customFetch<MemberCalendarResponse>(getGetMemberCalendarUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMemberCalendarQueryKey = (params?: GetMemberCalendarParams,) => {
+    return [
+    `/api/member/calendar`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetMemberCalendarQueryOptions = <TData = Awaited<ReturnType<typeof getMemberCalendar>>, TError = ErrorType<ErrorResponse>>(params?: GetMemberCalendarParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMemberCalendar>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMemberCalendarQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMemberCalendar>>> = ({ signal }) => getMemberCalendar(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMemberCalendar>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMemberCalendarQueryResult = NonNullable<Awaited<ReturnType<typeof getMemberCalendar>>>
+export type GetMemberCalendarQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Read the verified member economic calendar
+ */
+
+export function useGetMemberCalendar<TData = Awaited<ReturnType<typeof getMemberCalendar>>, TError = ErrorType<ErrorResponse>>(
+ params?: GetMemberCalendarParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMemberCalendar>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMemberCalendarQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListMemberJournalTradesUrl = (params?: ListMemberJournalTradesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/member/journal?${stringifiedParams}` : `/api/member/journal`
+}
+
+/**
+ * @summary List the current member's journal trades
+ */
+export const listMemberJournalTrades = async (params?: ListMemberJournalTradesParams, options?: Parameters<typeof customFetch>[1]): Promise<MemberJournalResponse> => {
+
+  return customFetch<MemberJournalResponse>(getListMemberJournalTradesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListMemberJournalTradesQueryKey = (params?: ListMemberJournalTradesParams,) => {
+    return [
+    `/api/member/journal`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListMemberJournalTradesQueryOptions = <TData = Awaited<ReturnType<typeof listMemberJournalTrades>>, TError = ErrorType<ErrorResponse>>(params?: ListMemberJournalTradesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMemberJournalTrades>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListMemberJournalTradesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listMemberJournalTrades>>> = ({ signal }) => listMemberJournalTrades(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listMemberJournalTrades>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListMemberJournalTradesQueryResult = NonNullable<Awaited<ReturnType<typeof listMemberJournalTrades>>>
+export type ListMemberJournalTradesQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List the current member's journal trades
+ */
+
+export function useListMemberJournalTrades<TData = Awaited<ReturnType<typeof listMemberJournalTrades>>, TError = ErrorType<ErrorResponse>>(
+ params?: ListMemberJournalTradesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMemberJournalTrades>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListMemberJournalTradesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateMemberJournalTradeUrl = () => {
+
+
+
+
+  return `/api/member/journal`
+}
+
+/**
+ * @summary Create a trade in the current member's journal
+ */
+export const createMemberJournalTrade = async (createMemberJournalTradeBody: CreateMemberJournalTrade, options?: Parameters<typeof customFetch>[1]): Promise<MemberJournalTrade> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<MemberJournalTrade>(getCreateMemberJournalTradeUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createMemberJournalTradeBody)
+  }
+);}
+
+
+
+
+
+export const getCreateMemberJournalTradeMutationKey = () => ['createMemberJournalTrade'] as const;
+
+export const getCreateMemberJournalTradeMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createMemberJournalTrade>>, TError,CreateMemberJournalTradeMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createMemberJournalTrade>>, TError,CreateMemberJournalTradeMutationVariables, TContext> => {
+
+const mutationKey = getCreateMemberJournalTradeMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createMemberJournalTrade>>, CreateMemberJournalTradeMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createMemberJournalTrade(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateMemberJournalTradeMutationResult = NonNullable<Awaited<ReturnType<typeof createMemberJournalTrade>>>
+    export type CreateMemberJournalTradeMutationBody = BodyType<CreateMemberJournalTrade>
+    export type CreateMemberJournalTradeMutationError = ErrorType<ErrorResponse>
+    export type CreateMemberJournalTradeMutationVariables = {data: BodyType<CreateMemberJournalTrade>}
+
+    /**
+ * @summary Create a trade in the current member's journal
+ */
+export const useCreateMemberJournalTrade = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createMemberJournalTrade>>, TError,CreateMemberJournalTradeMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createMemberJournalTrade>>,
+        TError,
+        CreateMemberJournalTradeMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateMemberJournalTradeMutationOptions(options));
+    }
+
+export const getUpdateMemberJournalTradeUrl = (tradeId: string,) => {
+
+
+
+
+  return `/api/member/journal/${tradeId}`
+}
+
+/**
+ * @summary Update a trade owned by the current member
+ */
+export const updateMemberJournalTrade = async (tradeId: string,
+    updateMemberJournalTradeBody: UpdateMemberJournalTrade, options?: Parameters<typeof customFetch>[1]): Promise<MemberJournalTrade> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<MemberJournalTrade>(getUpdateMemberJournalTradeUrl(tradeId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updateMemberJournalTradeBody)
+  }
+);}
+
+
+
+
+
+export const getUpdateMemberJournalTradeMutationKey = () => ['updateMemberJournalTrade'] as const;
+
+export const getUpdateMemberJournalTradeMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMemberJournalTrade>>, TError,UpdateMemberJournalTradeMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateMemberJournalTrade>>, TError,UpdateMemberJournalTradeMutationVariables, TContext> => {
+
+const mutationKey = getUpdateMemberJournalTradeMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateMemberJournalTrade>>, UpdateMemberJournalTradeMutationVariables> = (props) => {
+          const {tradeId,data} = props ?? {};
+
+          return  updateMemberJournalTrade(tradeId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateMemberJournalTradeMutationResult = NonNullable<Awaited<ReturnType<typeof updateMemberJournalTrade>>>
+    export type UpdateMemberJournalTradeMutationBody = BodyType<UpdateMemberJournalTrade>
+    export type UpdateMemberJournalTradeMutationError = ErrorType<ErrorResponse>
+    export type UpdateMemberJournalTradeMutationVariables = {tradeId: string;data: BodyType<UpdateMemberJournalTrade>}
+
+    /**
+ * @summary Update a trade owned by the current member
+ */
+export const useUpdateMemberJournalTrade = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMemberJournalTrade>>, TError,UpdateMemberJournalTradeMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateMemberJournalTrade>>,
+        TError,
+        UpdateMemberJournalTradeMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateMemberJournalTradeMutationOptions(options));
+    }
+
+export const getDeleteMemberJournalTradeUrl = (tradeId: string,) => {
+
+
+
+
+  return `/api/member/journal/${tradeId}`
+}
+
+/**
+ * @summary Delete a trade owned by the current member
+ */
+export const deleteMemberJournalTrade = async (tradeId: string, options?: Parameters<typeof customFetch>[1]): Promise<MemberJournalDeleteResponse> => {
+
+  return customFetch<MemberJournalDeleteResponse>(getDeleteMemberJournalTradeUrl(tradeId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteMemberJournalTradeMutationKey = () => ['deleteMemberJournalTrade'] as const;
+
+export const getDeleteMemberJournalTradeMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteMemberJournalTrade>>, TError,DeleteMemberJournalTradeMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteMemberJournalTrade>>, TError,DeleteMemberJournalTradeMutationVariables, TContext> => {
+
+const mutationKey = getDeleteMemberJournalTradeMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteMemberJournalTrade>>, DeleteMemberJournalTradeMutationVariables> = (props) => {
+          const {tradeId} = props ?? {};
+
+          return  deleteMemberJournalTrade(tradeId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteMemberJournalTradeMutationResult = NonNullable<Awaited<ReturnType<typeof deleteMemberJournalTrade>>>
+
+    export type DeleteMemberJournalTradeMutationError = ErrorType<ErrorResponse>
+    export type DeleteMemberJournalTradeMutationVariables = {tradeId: string}
+
+    /**
+ * @summary Delete a trade owned by the current member
+ */
+export const useDeleteMemberJournalTrade = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteMemberJournalTrade>>, TError,DeleteMemberJournalTradeMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteMemberJournalTrade>>,
+        TError,
+        DeleteMemberJournalTradeMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDeleteMemberJournalTradeMutationOptions(options));
+    }
+
+export const getSendMemberCoachMessageUrl = () => {
+
+
+
+
+  return `/api/member/coach/chat`
+}
+
+/**
+ * @summary Ask the member-only educational AI Coach
+ */
+export const sendMemberCoachMessage = async (memberCoachChatInput: MemberCoachChatInput, options?: Parameters<typeof customFetch>[1]): Promise<MemberCoachChatResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<MemberCoachChatResponse>(getSendMemberCoachMessageUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(memberCoachChatInput)
+  }
+);}
+
+
+
+
+
+export const getSendMemberCoachMessageMutationKey = () => ['sendMemberCoachMessage'] as const;
+
+export const getSendMemberCoachMessageMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendMemberCoachMessage>>, TError,SendMemberCoachMessageMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendMemberCoachMessage>>, TError,SendMemberCoachMessageMutationVariables, TContext> => {
+
+const mutationKey = getSendMemberCoachMessageMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendMemberCoachMessage>>, SendMemberCoachMessageMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  sendMemberCoachMessage(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendMemberCoachMessageMutationResult = NonNullable<Awaited<ReturnType<typeof sendMemberCoachMessage>>>
+    export type SendMemberCoachMessageMutationBody = BodyType<MemberCoachChatInput>
+    export type SendMemberCoachMessageMutationError = ErrorType<ErrorResponse>
+    export type SendMemberCoachMessageMutationVariables = {data: BodyType<MemberCoachChatInput>}
+
+    /**
+ * @summary Ask the member-only educational AI Coach
+ */
+export const useSendMemberCoachMessage = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendMemberCoachMessage>>, TError,SendMemberCoachMessageMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendMemberCoachMessage>>,
+        TError,
+        SendMemberCoachMessageMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSendMemberCoachMessageMutationOptions(options));
     }
 
 export const getGetPortalDashboardUrl = () => {

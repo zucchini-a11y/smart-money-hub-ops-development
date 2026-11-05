@@ -6,6 +6,7 @@ import portalRouter from "./portal";
 import portalApplicantControlsRouter from "./portal-applicant-controls";
 import educationVideosRouter from "./education-videos";
 import memberRouter from "./member";
+import memberToolsRouter from "./member-tools";
 import websiteSupportRouter from "./website-support";
 import { requirePasswordReady, requirePortalSession } from "../lib/portal-auth";
 
@@ -14,6 +15,7 @@ const router: IRouter = Router();
 router.use(healthRouter);
 router.use(authRouter);
 router.use(memberRouter);
+router.use(memberToolsRouter);
 router.use(supportRouter);
 router.use(portalRouter);
 router.use(websiteSupportRouter);

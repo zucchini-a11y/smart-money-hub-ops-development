@@ -505,6 +505,228 @@ export interface MemberSession {
   telegramUsername: string | null;
 }
 
+export type MemberCalendarEventCurrency = typeof MemberCalendarEventCurrency[keyof typeof MemberCalendarEventCurrency];
+
+
+export const MemberCalendarEventCurrency = {
+  USD: 'USD',
+} as const;
+
+export type MemberCalendarEventImpact = typeof MemberCalendarEventImpact[keyof typeof MemberCalendarEventImpact];
+
+
+export const MemberCalendarEventImpact = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+  unavailable: 'unavailable',
+} as const;
+
+export type MemberCalendarEventImpactBasis = typeof MemberCalendarEventImpactBasis[keyof typeof MemberCalendarEventImpactBasis];
+
+
+export const MemberCalendarEventImpactBasis = {
+  smh_estimate: 'smh_estimate',
+  source_verified: 'source_verified',
+  unavailable: 'unavailable',
+} as const;
+
+export interface MemberCalendarEvent {
+  id: string;
+  title: string;
+  currency: MemberCalendarEventCurrency;
+  eventDate: string;
+  eventAt: string | null;
+  timeLabel: string;
+  impact: MemberCalendarEventImpact;
+  impactBasis: MemberCalendarEventImpactBasis;
+  sourceName: string;
+  sourceUrl: string;
+  verificationStatus: string;
+  timezoneStatus: string;
+  previous: string | null;
+  forecast: string | null;
+  actual: string | null;
+  lastRetrievedAt: string;
+}
+
+export type MemberCalendarSourceStatus = typeof MemberCalendarSourceStatus[keyof typeof MemberCalendarSourceStatus];
+
+
+export const MemberCalendarSourceStatus = {
+  available: 'available',
+  stale: 'stale',
+  unverified: 'unverified',
+  failed: 'failed',
+} as const;
+
+export interface MemberCalendarSource {
+  id: string;
+  sourceName: string;
+  status: MemberCalendarSourceStatus;
+  checkedAt: string | null;
+  message: string;
+}
+
+export interface MemberCalendarResponse {
+  events: MemberCalendarEvent[];
+  sources: MemberCalendarSource[];
+  refreshedAt: string | null;
+  stale: boolean;
+}
+
+export type CreateMemberJournalTradeDirection = typeof CreateMemberJournalTradeDirection[keyof typeof CreateMemberJournalTradeDirection];
+
+
+export const CreateMemberJournalTradeDirection = {
+  long: 'long',
+  short: 'short',
+} as const;
+
+export type CreateMemberJournalTradeOutcome = typeof CreateMemberJournalTradeOutcome[keyof typeof CreateMemberJournalTradeOutcome];
+
+
+export const CreateMemberJournalTradeOutcome = {
+  open: 'open',
+  win: 'win',
+  loss: 'loss',
+  breakeven: 'breakeven',
+} as const;
+
+export interface CreateMemberJournalTrade {
+  /**
+     * @minLength 2
+     * @maxLength 24
+     */
+  instrument: string;
+  direction: CreateMemberJournalTradeDirection;
+  /** @exclusiveMinimum 0 */
+  entryPrice: number;
+  /** @exclusiveMinimum 0 */
+  stopLoss: number;
+  /** @exclusiveMinimum 0 */
+  takeProfit: number;
+  /** @exclusiveMinimum 0 */
+  positionSize: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  riskPercent?: number | null;
+  entryAt: string;
+  exitAt?: string | null;
+  outcome: CreateMemberJournalTradeOutcome;
+  realizedPnl?: number | null;
+  /** @maxLength 5000 */
+  notes?: string;
+}
+
+export type UpdateMemberJournalTradeDirection = typeof UpdateMemberJournalTradeDirection[keyof typeof UpdateMemberJournalTradeDirection];
+
+
+export const UpdateMemberJournalTradeDirection = {
+  long: 'long',
+  short: 'short',
+} as const;
+
+export type UpdateMemberJournalTradeOutcome = typeof UpdateMemberJournalTradeOutcome[keyof typeof UpdateMemberJournalTradeOutcome];
+
+
+export const UpdateMemberJournalTradeOutcome = {
+  open: 'open',
+  win: 'win',
+  loss: 'loss',
+  breakeven: 'breakeven',
+} as const;
+
+export interface UpdateMemberJournalTrade {
+  /**
+     * @minLength 2
+     * @maxLength 24
+     */
+  instrument?: string;
+  direction?: UpdateMemberJournalTradeDirection;
+  /** @exclusiveMinimum 0 */
+  entryPrice?: number;
+  /** @exclusiveMinimum 0 */
+  stopLoss?: number;
+  /** @exclusiveMinimum 0 */
+  takeProfit?: number;
+  /** @exclusiveMinimum 0 */
+  positionSize?: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  riskPercent?: number | null;
+  entryAt?: string;
+  exitAt?: string | null;
+  outcome?: UpdateMemberJournalTradeOutcome;
+  realizedPnl?: number | null;
+  /** @maxLength 5000 */
+  notes?: string;
+}
+
+export type MemberJournalTrade = CreateMemberJournalTrade & ({
+  id: string;
+  riskRewardRatio: number | null;
+  createdAt: string;
+  updatedAt: string;
+});
+
+export interface MemberJournalSummary {
+  totalTrades: number;
+  openTrades: number;
+  wins: number;
+  losses: number;
+  breakeven: number;
+  winRate: number | null;
+  totalRecordedPnl: number;
+  averagePlannedRiskReward: number | null;
+}
+
+export interface MemberJournalResponse {
+  trades: MemberJournalTrade[];
+  summary: MemberJournalSummary;
+}
+
+export interface MemberJournalDeleteResponse {
+  deleted: true;
+}
+
+export type MemberCoachMessageRole = typeof MemberCoachMessageRole[keyof typeof MemberCoachMessageRole];
+
+
+export const MemberCoachMessageRole = {
+  user: 'user',
+  assistant: 'assistant',
+} as const;
+
+export interface MemberCoachMessage {
+  role: MemberCoachMessageRole;
+  /**
+     * @minLength 1
+     * @maxLength 1200
+     */
+  content: string;
+}
+
+export interface MemberCoachChatInput {
+  /**
+     * @minLength 1
+     * @maxLength 1200
+     */
+  message: string;
+  /** @maxItems 12 */
+  history?: MemberCoachMessage[];
+}
+
+export interface MemberCoachChatResponse {
+  reply: string;
+  topic: string;
+  disclaimer: string;
+}
+
 export interface LinkMemberTelegramInput {
   /**
      * @minLength 1
@@ -2229,6 +2451,48 @@ caseId: string;
  */
 telegramUserId: number;
 };
+
+export type GetMemberCalendarParams = {
+from?: string;
+to?: string;
+currency?: GetMemberCalendarCurrency;
+impact?: GetMemberCalendarImpact;
+};
+
+export type GetMemberCalendarCurrency = typeof GetMemberCalendarCurrency[keyof typeof GetMemberCalendarCurrency];
+
+
+export const GetMemberCalendarCurrency = {
+  USD: 'USD',
+} as const;
+
+export type GetMemberCalendarImpact = typeof GetMemberCalendarImpact[keyof typeof GetMemberCalendarImpact];
+
+
+export const GetMemberCalendarImpact = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+  unavailable: 'unavailable',
+} as const;
+
+export type ListMemberJournalTradesParams = {
+/**
+ * @maxLength 24
+ */
+instrument?: string;
+outcome?: ListMemberJournalTradesOutcome;
+};
+
+export type ListMemberJournalTradesOutcome = typeof ListMemberJournalTradesOutcome[keyof typeof ListMemberJournalTradesOutcome];
+
+
+export const ListMemberJournalTradesOutcome = {
+  open: 'open',
+  win: 'win',
+  loss: 'loss',
+  breakeven: 'breakeven',
+} as const;
 
 export type GetPortalChannelHistoryParams = {
 /**

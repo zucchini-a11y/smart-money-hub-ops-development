@@ -19,13 +19,13 @@ function memberAuthEnabled(): boolean {
   return process.env.NODE_ENV !== "production" || process.env.SMH_MEMBER_AUTH_ENABLED === "true";
 }
 
-type MemberIdentity = {
+export type MemberIdentity = {
   clerkUserId: string;
   email: string;
   displayName: string;
 };
 
-async function requireMemberIdentity(req: Request, res: Response): Promise<MemberIdentity | null> {
+export async function requireMemberIdentity(req: Request, res: Response): Promise<MemberIdentity | null> {
   if (!memberAuthEnabled()) {
     res.status(404).json({ error: "Member sign-in is not enabled in this environment." });
     return null;

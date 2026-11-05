@@ -38,7 +38,13 @@ import { shadcn } from '@clerk/themes';
 import { useToast } from '@/hooks/use-toast';
 import NotFound from '@/pages/not-found';
 import ProAccessReview from '@/components/pro-access-review';
-import { MemberDashboardExperience, MemberSignupExperience } from '@/components/member-experience';
+import {
+  MemberCalendarExperience,
+  MemberCoachExperience,
+  MemberDashboardExperience,
+  MemberJournalExperience,
+  MemberSignupExperience,
+} from '@/components/member-experience';
 import EducationVideos from '@/pages/education-videos';
 import ChannelHistory from '@/pages/channel-history';
 import TradeManagement from '@/pages/trades';
@@ -151,6 +157,10 @@ function taskNoticeLabel(type: string) {
 function isUnauthorized(error: unknown) {
   return Boolean(error && typeof error === 'object' && [401, 403].includes((error as { status?: number }).status ?? 0));
 }
+const memberFeaturePaths = new Set(['/member/dashboard', '/member/calendar', '/member/journal', '/member/coach', '/member/settings']);
+function safeMemberReturnTo(value: string | null | undefined) {
+  return value && memberFeaturePaths.has(value) ? value : null;
+}
 function initials(name: string) {
   return name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]?.toUpperCase() ?? '').join('');
 }
@@ -190,6 +200,7 @@ function Login() {
   const [recoveryCode, setRecoveryCode] = useState('');
   const [newMemberPassword, setNewMemberPassword] = useState('');
   const [, navigate] = useLocation();
+  const returnTo = safeMemberReturnTo(new URLSearchParams(window.location.search).get('returnTo'));
   const client = useQueryClient();
   const login = usePortalLogin();
   const portalLogout = usePortalLogout();
@@ -213,11 +224,11 @@ function Login() {
     if (staffSession.data) {
       navigate(staffSession.data.mustChangePassword ? '/account/password' : staffSession.data.dashboardPath);
     } else if (memberSession.data?.learningDashboard) {
-      navigate(memberSession.data.dashboardPath);
+      navigate(returnTo ?? memberSession.data.dashboardPath);
     } else if (memberSession.data) {
       setError('This account does not currently have a member learning dashboard entitlement.');
     }
-  }, [staffSession.data, memberSession.data, navigate]);
+  }, [staffSession.data, memberSession.data, navigate, returnTo]);
 
   const finishMemberSignIn = async () => {
     await signIn.finalize();
@@ -227,7 +238,7 @@ function Login() {
     }
     client.setQueryData(getGetMemberSessionQueryKey(), member);
     await client.invalidateQueries({ queryKey: getGetMemberSessionQueryKey() });
-    navigate(member.dashboardPath);
+    navigate(returnTo ?? member.dashboardPath);
   };
 
   const sendMemberSignInCode = async (secondFactor = false) => {
@@ -562,8 +573,11 @@ function MemberRoot() {
 
   useEffect(() => {
     if (staff.data) navigate(staff.data.mustChangePassword ? '/account/password' : staff.data.dashboardPath);
-    else if (isLoaded && isSignedIn !== true) navigate('/login');
-  }, [staff.data, isLoaded, isSignedIn, navigate]);
+    else if (isLoaded && isSignedIn !== true) {
+      const destination = safeMemberReturnTo(location) ?? '/member/dashboard';
+      navigate(`/login?returnTo=${encodeURIComponent(destination)}`);
+    }
+  }, [staff.data, isLoaded, isSignedIn, navigate, location]);
 
   if (staff.isLoading || !isLoaded || (isSignedIn && member.isLoading)) {
     return <main className="page"><div className="skeleton" style={{ width: 260, height: 28 }}/><div className="skeleton" style={{ width: '100%', maxWidth: 560, height: 180, marginTop: 24 }}/></main>;
@@ -594,6 +608,9 @@ function MemberRoot() {
     </section></main>;
   }
   if (location === '/member/settings') return <MemberAccountSettingsPage session={member.data}/>;
+  if (location === '/member/calendar') return <MemberCalendarExperience />;
+  if (location === '/member/journal') return <MemberJournalExperience />;
+  if (location === '/member/coach') return <MemberCoachExperience />;
   if (location !== member.data.dashboardPath) return null;
   return <MemberDashboardPage session={member.data}/>;
 }
@@ -1692,6 +1709,12 @@ function Router() {
           ? 'Create Member Account | VAYDA Smart Money Hub'
         : normalizedPath === '/member/dashboard'
           ? 'Member Dashboard | VAYDA Smart Money Hub'
+          : normalizedPath === '/member/calendar'
+            ? 'Economic Calendar | VAYDA Smart Money Hub'
+            : normalizedPath === '/member/journal'
+              ? 'Trade Journal | VAYDA Smart Money Hub'
+              : normalizedPath === '/member/coach'
+                ? 'AI Coach | VAYDA Smart Money Hub'
           : normalizedPath === '/member/settings'
             ? 'Member Account Settings | VAYDA Smart Money Hub'
             : 'VAYDA Support Portal | Staff Workspace';
@@ -1707,6 +1730,9 @@ function Router() {
     <Route path="/login" component={Login}/>
     <Route path="/staff/login" component={LegacyLoginRedirect}/>
     <Route path="/member/dashboard" component={MemberRoot}/>
+    <Route path="/member/calendar" component={MemberRoot}/>
+    <Route path="/member/journal" component={MemberRoot}/>
+    <Route path="/member/coach" component={MemberRoot}/>
     <Route path="/member/settings" component={MemberRoot}/>
     <Route>{() => isPublicRoute ? normalizedPath === '/' ? <HomeRedirect/> : <PublicSite/> : <PortalRoot/>}</Route>
   </Switch></RoutedErrorBoundary>;

@@ -15,6 +15,8 @@ tags:
     description: Authenticated staff support portal
   - name: Auth
     description: Browser and mobile authentication endpoints.
+  - name: members
+    description: Verified member learning features.
 paths:
   /healthz:
     get:
@@ -697,6 +699,260 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
           description: Telegram identity is already linked to another account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /member/calendar:
+    get:
+      operationId: getMemberCalendar
+      tags:
+        - members
+      summary: Read the verified member economic calendar
+      security:
+        - clerkSession: []
+      parameters:
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: currency
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [USD]
+        - name: impact
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [high, medium, low, unavailable]
+      responses:
+        "200":
+          description: Calendar events and source status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberCalendarResponse"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Verified member access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /member/journal:
+    get:
+      operationId: listMemberJournalTrades
+      tags:
+        - members
+      summary: List the current member's journal trades
+      security:
+        - clerkSession: []
+      parameters:
+        - name: instrument
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 24
+        - name: outcome
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [open, win, loss, breakeven]
+      responses:
+        "200":
+          description: Member-owned trades and derived summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberJournalResponse"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Verified member access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createMemberJournalTrade
+      tags:
+        - members
+      summary: Create a trade in the current member's journal
+      security:
+        - clerkSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMemberJournalTrade"
+      responses:
+        "201":
+          description: Trade created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberJournalTrade"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Verified member access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /member/journal/{tradeId}:
+    patch:
+      operationId: updateMemberJournalTrade
+      tags:
+        - members
+      summary: Update a trade owned by the current member
+      security:
+        - clerkSession: []
+      parameters:
+        - name: tradeId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMemberJournalTrade"
+      responses:
+        "200":
+          description: Trade updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberJournalTrade"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Verified member access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Trade not found for this member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteMemberJournalTrade
+      tags:
+        - members
+      summary: Delete a trade owned by the current member
+      security:
+        - clerkSession: []
+      parameters:
+        - name: tradeId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Trade deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberJournalDeleteResponse"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Verified member access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Trade not found for this member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /member/coach/chat:
+    post:
+      operationId: sendMemberCoachMessage
+      tags:
+        - members
+      summary: Ask the member-only educational AI Coach
+      security:
+        - clerkSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemberCoachChatInput"
+      responses:
+        "200":
+          description: Educational Coach response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberCoachChatResponse"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Verified member access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Coach rate limit reached
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Coach is temporarily unavailable
           content:
             application/json:
               schema:
@@ -3732,6 +3988,298 @@ components:
         - proSignalsAccess
         - telegramLinked
         - telegramUsername
+    MemberCalendarEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        currency:
+          type: string
+          enum: [USD]
+        eventDate:
+          type: string
+          format: date
+        eventAt:
+          type: string
+          format: date-time
+          nullable: true
+        timeLabel:
+          type: string
+        impact:
+          type: string
+          enum: [high, medium, low, unavailable]
+        impactBasis:
+          type: string
+          enum: [smh_estimate, source_verified, unavailable]
+        sourceName:
+          type: string
+        sourceUrl:
+          type: string
+          format: uri
+        verificationStatus:
+          type: string
+        timezoneStatus:
+          type: string
+        previous:
+          type: string
+          nullable: true
+        forecast:
+          type: string
+          nullable: true
+        actual:
+          type: string
+          nullable: true
+        lastRetrievedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - title
+        - currency
+        - eventDate
+        - eventAt
+        - timeLabel
+        - impact
+        - impactBasis
+        - sourceName
+        - sourceUrl
+        - verificationStatus
+        - timezoneStatus
+        - previous
+        - forecast
+        - actual
+        - lastRetrievedAt
+    MemberCalendarSource:
+      type: object
+      properties:
+        id:
+          type: string
+        sourceName:
+          type: string
+        status:
+          type: string
+          enum: [available, stale, unverified, failed]
+        checkedAt:
+          type: string
+          format: date-time
+          nullable: true
+        message:
+          type: string
+      required: [id, sourceName, status, checkedAt, message]
+    MemberCalendarResponse:
+      type: object
+      properties:
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemberCalendarEvent"
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemberCalendarSource"
+        refreshedAt:
+          type: string
+          format: date-time
+          nullable: true
+        stale:
+          type: boolean
+      required: [events, sources, refreshedAt, stale]
+    CreateMemberJournalTrade:
+      type: object
+      properties:
+        instrument:
+          type: string
+          minLength: 2
+          maxLength: 24
+        direction:
+          type: string
+          enum: [long, short]
+        entryPrice:
+          type: number
+          exclusiveMinimum: 0
+        stopLoss:
+          type: number
+          exclusiveMinimum: 0
+        takeProfit:
+          type: number
+          exclusiveMinimum: 0
+        positionSize:
+          type: number
+          exclusiveMinimum: 0
+        riskPercent:
+          type: number
+          minimum: 0
+          maximum: 100
+          nullable: true
+        entryAt:
+          type: string
+          format: date-time
+        exitAt:
+          type: string
+          format: date-time
+          nullable: true
+        outcome:
+          type: string
+          enum: [open, win, loss, breakeven]
+        realizedPnl:
+          type: number
+          nullable: true
+        notes:
+          type: string
+          maxLength: 5000
+      required:
+        - instrument
+        - direction
+        - entryPrice
+        - stopLoss
+        - takeProfit
+        - positionSize
+        - entryAt
+        - outcome
+    UpdateMemberJournalTrade:
+      type: object
+      properties:
+        instrument:
+          type: string
+          minLength: 2
+          maxLength: 24
+        direction:
+          type: string
+          enum: [long, short]
+        entryPrice:
+          type: number
+          exclusiveMinimum: 0
+        stopLoss:
+          type: number
+          exclusiveMinimum: 0
+        takeProfit:
+          type: number
+          exclusiveMinimum: 0
+        positionSize:
+          type: number
+          exclusiveMinimum: 0
+        riskPercent:
+          type: number
+          minimum: 0
+          maximum: 100
+          nullable: true
+        entryAt:
+          type: string
+          format: date-time
+        exitAt:
+          type: string
+          format: date-time
+          nullable: true
+        outcome:
+          type: string
+          enum: [open, win, loss, breakeven]
+        realizedPnl:
+          type: number
+          nullable: true
+        notes:
+          type: string
+          maxLength: 5000
+    MemberJournalTrade:
+      allOf:
+        - $ref: "#/components/schemas/CreateMemberJournalTrade"
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            riskRewardRatio:
+              type: number
+              nullable: true
+            createdAt:
+              type: string
+              format: date-time
+            updatedAt:
+              type: string
+              format: date-time
+          required: [id, riskRewardRatio, createdAt, updatedAt]
+    MemberJournalSummary:
+      type: object
+      properties:
+        totalTrades:
+          type: integer
+        openTrades:
+          type: integer
+        wins:
+          type: integer
+        losses:
+          type: integer
+        breakeven:
+          type: integer
+        winRate:
+          type: number
+          nullable: true
+        totalRecordedPnl:
+          type: number
+        averagePlannedRiskReward:
+          type: number
+          nullable: true
+      required:
+        - totalTrades
+        - openTrades
+        - wins
+        - losses
+        - breakeven
+        - winRate
+        - totalRecordedPnl
+        - averagePlannedRiskReward
+    MemberJournalResponse:
+      type: object
+      properties:
+        trades:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemberJournalTrade"
+        summary:
+          $ref: "#/components/schemas/MemberJournalSummary"
+      required: [trades, summary]
+    MemberJournalDeleteResponse:
+      type: object
+      properties:
+        deleted:
+          type: boolean
+          enum: [true]
+      required: [deleted]
+    MemberCoachMessage:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+          minLength: 1
+          maxLength: 1200
+      required: [role, content]
+    MemberCoachChatInput:
+      type: object
+      properties:
+        message:
+          type: string
+          minLength: 1
+          maxLength: 1200
+        history:
+          type: array
+          maxItems: 12
+          items:
+            $ref: "#/components/schemas/MemberCoachMessage"
+      required: [message]
+    MemberCoachChatResponse:
+      type: object
+      properties:
+        reply:
+          type: string
+        topic:
+          type: string
+        disclaimer:
+          type: string
+      required: [reply, topic, disclaimer]
     LinkMemberTelegramInput:
       type: object
       properties:
