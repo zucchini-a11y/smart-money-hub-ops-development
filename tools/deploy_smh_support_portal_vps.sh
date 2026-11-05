@@ -13,6 +13,7 @@ readonly BUNDLE="${TRANSFER_DIR}/smh-support-portal-deploy.tar.gz"
 readonly CHECKSUM="${BUNDLE}.sha256"
 readonly SIGNALS_ENV="/etc/smh-signals.env"
 readonly SUPPORT_ENV="/etc/smh-support-api.env"
+readonly SUPPORT_DB_PASSWORD_FILE="/etc/smh-support-api.db-password"
 readonly NGINX_SITE="/etc/nginx/sites-enabled/smartmoneyhub.tech"
 readonly WEB_ROOT="/var/www/smartmoneyhub-ops"
 readonly API_ROOT="/opt/smh-support-api"
@@ -189,6 +190,43 @@ fi
 runuser -u postgres -- psql -d smh_signals -v ON_ERROR_STOP=1 \
   -f - < "${TEMP_DIR}/migrations/002_support_production.sql"
 
+# Give the Node API a separate SCRAM credential instead of reusing the bot's DB URL.
+if [[ -s "$SUPPORT_DB_PASSWORD_FILE" ]]; then
+  SUPPORT_DB_PASSWORD="$(< "$SUPPORT_DB_PASSWORD_FILE")"
+else
+  SUPPORT_DB_PASSWORD="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+  printf '%s\n' "$SUPPORT_DB_PASSWORD" > "${TEMP_DIR}/support-db-password"
+  chmod 600 "${TEMP_DIR}/support-db-password"
+  install -o root -g root -m 600 "${TEMP_DIR}/support-db-password" "$SUPPORT_DB_PASSWORD_FILE"
+fi
+[[ "$SUPPORT_DB_PASSWORD" =~ ^[a-f0-9]{64}$ ]] || fail "The Support API database credential file is invalid."
+chown root:root "$SUPPORT_DB_PASSWORD_FILE"
+chmod 600 "$SUPPORT_DB_PASSWORD_FILE"
+
+cat > "${TEMP_DIR}/support-db-role.sql" <<EOF
+SELECT format('CREATE ROLE smh_support_api WITH LOGIN PASSWORD %L', '${SUPPORT_DB_PASSWORD}')
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'smh_support_api')
+\\gexec
+ALTER ROLE smh_support_api WITH LOGIN PASSWORD '${SUPPORT_DB_PASSWORD}';
+GRANT CONNECT ON DATABASE smh_signals TO smh_support_api;
+GRANT USAGE ON SCHEMA smh TO smh_support_api;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
+  smh.assistant_case_events,
+  smh.assistant_case_messages,
+  smh.assistant_case_notes,
+  smh.assistant_escalations,
+  smh.assistant_support_replies,
+  smh.portal_audit,
+  smh.portal_sessions,
+  smh.portal_users
+TO smh_support_api;
+EOF
+chmod 600 "${TEMP_DIR}/support-db-role.sql"
+runuser -u postgres -- psql -d smh_signals -v ON_ERROR_STOP=1 \
+  -f - < "${TEMP_DIR}/support-db-role.sql"
+SUPPORT_DATABASE_URL="postgresql://smh_support_api:${SUPPORT_DB_PASSWORD}@127.0.0.1/smh_signals"
+unset SUPPORT_DB_PASSWORD
+
 if ! id smh-support-api >/dev/null 2>&1; then
   useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin smh-support-api
 fi
@@ -203,7 +241,8 @@ ln -sfn "$RELEASE" "${API_ROOT}/current"
 API_INSTALL_CHANGED=1
 
 ENV_TEMP="$(mktemp /etc/smh-support-api.env.XXXXXX)"
-grep '^SMH_DATABASE_URL=' "$SIGNALS_ENV" > "$ENV_TEMP"
+printf 'SMH_DATABASE_URL=%s\n' "$SUPPORT_DATABASE_URL" > "$ENV_TEMP"
+unset SUPPORT_DATABASE_URL
 if [[ -f "$SUPPORT_ENV" ]]; then
   awk -F= '!seen[$1]++ && $1 ~ /^SMH_SUPPORT_(SIGNALS|COACH)_TOKEN$/ { print }' "$SUPPORT_ENV" >> "$ENV_TEMP" || true
 fi
