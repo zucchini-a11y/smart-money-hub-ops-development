@@ -1,2 +1,14 @@
 User-agent: *
 Allow: /
+Disallow: /staff
+Disallow: /support
+Disallow: /operations
+Disallow: /api/
+Disallow: /cases/
+Disallow: /tasks
+Disallow: /command-center
+Disallow: /account
+Disallow: /bot-control
+Disallow: /trades
+Disallow: /signals
+Sitemap: https://smartmoneyhub.tech/sitemap.xml

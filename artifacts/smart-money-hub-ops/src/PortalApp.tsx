@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode, type FormEvent, type ChangeEvent } from 'react';
 import OperationsApp from './App';
+import PublicSite from './public-site/PublicSite';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
@@ -128,7 +129,7 @@ function Login() {
         });
         client.setQueryData(sessionKey, session);
         await client.invalidateQueries({ queryKey: sessionKey });
-        navigate(session.mustChangePassword ? '/account/password' : '/');
+        navigate(session.mustChangePassword ? '/account/password' : '/staff/support');
       },
       onError: (failure) => setError(errMessage(failure, 'Sign-in failed. Check your details and try again.')),
     });
@@ -188,12 +189,12 @@ function AppShell({ session, children }: { session: PortalSession; children: Rea
   const navItems = session.role === 'agent'
     ? [
       { href: '/tasks', label: 'My Tasks', icon: <CheckCircle2 />, testId: 'link-my-tasks' },
-      { href: '/', label: 'My Support Cases', icon: <MessageSquareText />, testId: 'link-my-support-cases' },
+      { href: '/staff/support', label: 'My Support Cases', icon: <MessageSquareText />, testId: 'link-my-support-cases' },
       { href: '/tasks', label: 'Notifications', icon: <Bell />, testId: 'link-notifications', scrollTarget: 'notifications' },
       { href: '/tasks', label: 'Submit Work', icon: <FileText />, testId: 'link-submit-work', scrollTarget: 'submit-work' },
     ]
     : [
-      { href: '/', label: 'Support', icon: <MessageSquareText />, testId: 'link-support' },
+      { href: '/staff/support', label: 'Support', icon: <MessageSquareText />, testId: 'link-support' },
       { href: '/tasks', label: 'Staff Tasks', icon: <CheckCircle2 />, testId: 'link-staff-tasks' },
       { href: '/staff', label: 'Staff', icon: <Users />, testId: session.role === 'owner' ? 'link-staff-accounts' : 'link-staff' },
       ...(session.role === 'owner' ? [
@@ -263,7 +264,7 @@ function AppShell({ session, children }: { session: PortalSession; children: Rea
     }
     knownReportNoticeIds.current = unreadIds;
   }, [reportNotificationQuery.data?.notifications, toast]);
-  const signOut = () => logout.mutate(undefined, { onSuccess: () => { client.clear(); navigate('/'); }, onError: () => client.invalidateQueries({ queryKey: sessionKey }) });
+  const signOut = () => logout.mutate(undefined, { onSuccess: () => { client.clear(); navigate('/staff/login'); }, onError: () => client.invalidateQueries({ queryKey: sessionKey }) });
    return <div className="portal-shell">
     <aside className="sidebar"><Brand/><div className="nav-label">Main menu</div>{navItems.map((item) => <Link key={item.testId} href={item.href} onClick={() => item.scrollTarget && setScrollTarget(item.scrollTarget)} className={`nav-link ${(item.scrollTarget ? activeScrollTarget === item.scrollTarget : location === item.href) ? 'active' : ''}`} data-testid={item.testId}>{item.icon}{item.label}</Link>)}<div className="sidebar-bottom"><div className="person"><span className="person-avatar">{initials(session.displayName)}</span><div><div className="person-name">{session.displayName}</div><div className="person-role">{session.role === 'owner' ? 'Owner' : session.role === 'manager' ? 'Support Manager' : 'Support Agent'}</div></div></div>{session.role === 'owner' && <><Link className={`account-link owner-command-link ${location === '/command-center' ? 'selected' : ''}`} href="/command-center"><Gauge size={14}/>Command center <span>DEV</span></Link><Link className={`account-link owner-education-link ${location === '/command-center/education-videos' ? 'selected' : ''}`} href="/command-center/education-videos" data-testid="link-owner-education-videos"><FileText size={14}/>Education videos</Link><Link className={`account-link owner-history-link ${location === '/command-center/channel-history' ? 'selected' : ''}`} href="/command-center/channel-history" data-testid="link-owner-channel-history"><History size={14}/>Channel history</Link></>}<Link className="account-link" href="/account/password"><KeyRound size={14}/>Change password</Link><button className="signout" onClick={signOut} disabled={logout.isPending} data-testid="button-sign-out"><LogOut size={13} style={{ verticalAlign: 'middle', marginRight: 6 }} />{logout.isPending ? 'Signing out…' : 'Sign out'}</button></div></aside>
      <div className="main-column"><div className="mobile-top"><Brand/><div className="mobile-actions">{session.role === 'owner' && <><Link href="/bot-control" aria-label="Bot control center" data-testid="mobile-quick-bot-control"><Bot size={17}/></Link><Link href="/command-center" aria-label="Owner command center"><Gauge size={17}/></Link><Link href="/command-center/education-videos" aria-label="Education videos" data-testid="mobile-link-owner-education-videos"><FileText size={17}/></Link><Link href="/command-center/channel-history" aria-label="Channel history" data-testid="mobile-link-owner-channel-history"><History size={17}/></Link><Link href="/trades" aria-label="Trade management" data-testid="mobile-link-owner-trades"><Activity size={17}/></Link></>}<Link href="/account/password" aria-label="Change password"><KeyRound size={17}/></Link><button onClick={signOut} aria-label="Sign out"><LogOut size={17}/></button></div></div><nav className="mobile-nav" aria-label="Portal navigation">{navItems.map((item) => <Link key={item.testId} href={item.href} onClick={() => item.scrollTarget && setScrollTarget(item.scrollTarget)} className={`mobile-nav-link ${(item.scrollTarget ? activeScrollTarget === item.scrollTarget : location === item.href) ? 'active' : ''}`} data-testid={`mobile-${item.testId}`}>{item.icon}<span>{item.label}</span></Link>)}</nav><header className="topbar"><div className="crumb">{location === '/bot-control' ? 'Owner tools / Bot control center' : location.startsWith('/command-center') ? 'Owner tools / Command center' : location === '/trades' ? 'Owner tools / Trade management' : 'Staff Support Portal'}</div><div className="top-right"><span className="secure-label"><span className="secure-dot"/ >Private workspace</span><span>{session.displayName}</span></div></header>{children}</div>
@@ -672,7 +673,7 @@ function CaseDetail({ session }: { session: PortalSession }) {
   if (!item) return <main className="page"><Empty title="Case not found">This case may have been removed or you may not have access.</Empty></main>;
   const isClosed = item.status === 'closed';
   return <main className="page">
-    <div className="page-heading"><div><Link className="eyebrow" href="/" data-testid="link-back-queue"><ArrowLeft size={13} style={{verticalAlign:'middle',marginRight:6}}/>SUPPORT QUEUE</Link><h1 style={{fontSize:31}}>Case conversation</h1><p className="subheading">Review the member question and send a response as yourself.</p></div>{!isClosed && <button className="btn btn-outline" onClick={closeCase} disabled={close.isPending} data-testid="button-close-case"><Check size={14}/>{close.isPending ? 'Closing…' : 'Close case'}</button>}</div>
+    <div className="page-heading"><div><Link className="eyebrow" href="/staff/support" data-testid="link-back-queue"><ArrowLeft size={13} style={{verticalAlign:'middle',marginRight:6}}/>SUPPORT QUEUE</Link><h1 style={{fontSize:31}}>Case conversation</h1><p className="subheading">Review the member question and send a response as yourself.</p></div>{!isClosed && <button className="btn btn-outline" onClick={closeCase} disabled={close.isPending} data-testid="button-close-case"><Check size={14}/>{close.isPending ? 'Closing…' : 'Close case'}</button>}</div>
     {failure && <div className="notice notice-error" role="alert" data-testid="status-case-error">{failure}</div>}{feedback && <div className="notice notice-info" role="status" data-testid="status-reply-success">{feedback}</div>}
     <div className="case-layout"><section className="case-content"><div className="case-top"><div className="case-topline"><span className="case-id" data-testid="text-case-id">{item.caseId}</span><Status value={item.status}/></div><h2 className="case-question" data-testid="text-case-question">{item.question}</h2><div className="case-meta"><span>Member ID {item.memberId}</span><span>Submitted {prettyDate(item.created)}</span><span>Updated {prettyDate(item.updated)}</span></div></div>
        <div className="thread"><div className="thread-label">Conversation · {item.replies.length} {item.replies.length === 1 ? 'reply' : 'replies'}</div><article className="message"><div className="message-head"><span className="message-name">Member {item.memberId}</span><time className="message-date">{prettyDate(item.created)}</time></div><p className="message-text">{item.question}</p></article>{item.replies.map((entry) => <article className="message reply" key={entry.replyId} data-testid={`reply-${entry.replyId}`}><div className="message-head"><span className="message-name">{entry.responderName}</span><span style={{display:'flex',gap:9,alignItems:'center'}}><Status value={entry.status}/><time className="message-date">{prettyDate(entry.created)}</time></span></div><p className="message-text">{entry.text}</p></article>)}{item.replies.length === 0 && <div className="muted-small" style={{padding:'3px 0 8px'}}>No replies have been sent yet.</div>}</div>
@@ -878,15 +879,18 @@ function PasswordPage({ session }: { session: PortalSession }) {
 
 function AccessDenied() {
   const [, navigate] = useLocation();
-  return <main className="page"><div className="unauthorized"><div className="empty-mark"><ShieldCheck size={20}/></div><h1>Administrator access required</h1><p>This area is limited to administrator accounts. If you need staff access changed, contact your VAYDA administrator.</p><button className="btn btn-outline" onClick={()=>navigate('/')} data-testid="button-return-queue"><ArrowLeft size={14}/>Return to support queue</button></div></main>;
+  return <main className="page"><div className="unauthorized"><div className="empty-mark"><ShieldCheck size={20}/></div><h1>Administrator access required</h1><p>This area is limited to administrator accounts. If you need staff access changed, contact your VAYDA administrator.</p><button className="btn btn-outline" onClick={()=>navigate('/staff/support')} data-testid="button-return-queue"><ArrowLeft size={14}/>Return to support queue</button></div></main>;
 }
 
 function ProtectedRouter({ session }: { session: PortalSession }) {
   const [location, navigate] = useLocation();
+  const shouldReturnToQueue = !session.mustChangePassword
+    && (location === '/' || location === '/support' || location === '/staff/login');
   useEffect(() => {
     if (session.mustChangePassword && location !== '/account/password') navigate('/account/password');
-  }, [session.mustChangePassword, location, navigate]);
-  if (session.mustChangePassword && location !== '/account/password') return <div className="page"><div className="skeleton" style={{width:220,height:24}}/></div>;
+    else if (shouldReturnToQueue) navigate('/staff/support');
+  }, [session.mustChangePassword, shouldReturnToQueue, location, navigate]);
+  if ((session.mustChangePassword && location !== '/account/password') || shouldReturnToQueue) return <div className="page"><div className="skeleton" style={{width:220,height:24}}/></div>;
   if (location === '/operations' || location.startsWith('/operations/')) {
     const routeBase = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/operations`;
     return <OperationsApp routeBase={routeBase} />;
@@ -895,7 +899,7 @@ function ProtectedRouter({ session }: { session: PortalSession }) {
     // Password page remains reachable for voluntary changes.
   }
   return <AppShell session={session}><Switch>
-    <Route path="/">{() => <Queue session={session}/>}</Route>
+    <Route path="/staff/support">{() => <Queue session={session}/>}</Route>
     <Route path="/bot-control">{() => session.role === 'owner' ? <BotControl/> : <AccessDenied/>}</Route>
     <Route path="/command-center/member-access">{() => session.role === 'owner' ? <MemberAccessPage/> : <AccessDenied/>}</Route>
     <Route path="/command-center/pro-access">{() => session.role === 'owner' ? <ProAccessReview/> : <AccessDenied/>}</Route>
@@ -928,7 +932,33 @@ function RoutedErrorBoundary({ children }: { children: ReactNode }) {
   return <ErrorBoundary resetKey={location}>{children}</ErrorBoundary>;
 }
 function Router() {
-  return <RoutedErrorBoundary><PortalRoot/></RoutedErrorBoundary>;
+  const [location] = useLocation();
+  const normalizedPath = location === '/' ? '/' : location.replace(/\/+$/, '');
+  const publicRoutes = new Set([
+    '/',
+    '/about',
+    '/education',
+    '/market-analysis',
+    '/philosophy',
+    '/community',
+    '/contact',
+  ]);
+  const isPublicRoute = publicRoutes.has(normalizedPath);
+
+  useEffect(() => {
+    const robots = document.querySelector<HTMLMetaElement>('meta[name="robots"]');
+    if (robots) robots.content = isPublicRoute ? 'index, follow' : 'noindex, nofollow';
+    if (!isPublicRoute) {
+      document.title = normalizedPath === '/staff/login'
+        ? 'Staff Sign In | VAYDA Support Portal'
+        : 'VAYDA Support Portal | Staff Workspace';
+      document.querySelector('link[rel="canonical"]')?.remove();
+      const description = document.querySelector<HTMLMetaElement>('meta[name="description"]');
+      if (description) description.content = 'Private VAYDA staff workspace. Authorized access only.';
+    }
+  }, [isPublicRoute, normalizedPath]);
+
+  return <RoutedErrorBoundary>{isPublicRoute ? <PublicSite /> : <PortalRoot />}</RoutedErrorBoundary>;
 }
 function App() {
   return <QueryClientProvider client={queryClient}><TooltipProvider><WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><Router/></WouterRouter><Toaster/></TooltipProvider></QueryClientProvider>;
