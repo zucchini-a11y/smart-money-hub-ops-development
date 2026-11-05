@@ -9,6 +9,14 @@ The Hostinger Ubuntu VPS is the live runtime for the Smart Money Hub Telegram bo
 
 **How to apply:** Package only the tested files needed for a VPS update, transfer them through SFTP, preserve the current VPS files before replacing them, and restart the VPS service only after the upload. Verify its service state and polling heartbeat; do not restart the Replit bot.
 
+### Operations Center domain hosting
+
+The owner chose the Hostinger VPS for the Operations Center at `smartmoneyhub.tech`; `www` aliases the apex. Replit remains the development source, so web updates must be packaged and transferred manually. Preserve email and unrelated DNS records when changing the website target.
+
+**Why:** The owner selected VPS hosting instead of Replit publishing for this domain.
+
+**How to apply:** Serve the Operations Center from the VPS, keep HTTPS renewal enabled, and change only the apex website A record during future migrations. Do not imply the Operations Center has live bot telemetry unless that integration is built and verified.
+
 ### Telegram API address-family preference
 
 On this Hostinger VPS, prefer IPv4 for outbound Telegram Bot API calls while leaving IPv6 enabled. Forced IPv4 reached `api.telegram.org` quickly, while IPv6 timed out; Python's Telegram send request consequently took about 20 seconds. The owner reported faster replies after the VPS began preferring IPv4.

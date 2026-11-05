@@ -22,4 +22,4 @@
 - [Education promotion publishing](education-topic-promotions.md) — scheduled Monday/Thursday topic promotions should publish without approval after checks; never publish them late.
 - [Routine channel publish limit](routine-channel-publish-limit.md) — allow an admin to publish an eligible missed routine post today only when today’s routine-post slot is free.
 - [Cloudflare CLI setup](cloudflare-cli-setup.md) — install the Cloudflare CLI globally in this pnpm workspace; validate any `.replit` cleanup through its config tool.
-- [Hostinger VPS deployment](hostinger-vps-deployment.md) — transfer updates manually, keep one poller, and prefer IPv4 for Telegram API calls on this VPS.
+- [Hostinger VPS deployment](hostinger-vps-deployment.md) — bot and Operations Center use the Hostinger VPS; transfer web updates manually, preserve mail DNS, keep one poller, and prefer IPv4 for Telegram.
