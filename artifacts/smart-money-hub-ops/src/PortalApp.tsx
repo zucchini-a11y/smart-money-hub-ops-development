@@ -184,6 +184,8 @@ function Login() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [memberLoginStep, setMemberLoginStep] = useState<'credentials' | 'email-code' | 'mfa-email-code'>('credentials');
+  const [memberLoginCode, setMemberLoginCode] = useState('');
   const [recoveryStep, setRecoveryStep] = useState<'closed' | 'code' | 'new-password'>('closed');
   const [recoveryCode, setRecoveryCode] = useState('');
   const [newMemberPassword, setNewMemberPassword] = useState('');
@@ -228,6 +230,31 @@ function Login() {
     navigate(member.dashboardPath);
   };
 
+  const sendMemberSignInCode = async (secondFactor = false) => {
+    const result = secondFactor
+      ? await signIn.mfa.sendEmailCode()
+      : await signIn.emailCode.sendCode();
+    if (result.error) {
+      throw new Error('We could not send the email verification code. Try again or use the member password recovery option.');
+    }
+    setMemberLoginCode('');
+    setMemberLoginStep(secondFactor ? 'mfa-email-code' : 'email-code');
+    setNotice('A verification code was sent to the email on your member account.');
+  };
+
+  const completeMemberAccess = async () => {
+    try {
+      await finishMemberSignIn();
+    } catch (failure) {
+      await clerk.signOut().catch(() => undefined);
+      const status = (failure as { status?: number })?.status;
+      if (status === 403) {
+        throw new Error('Sign-in succeeded, but this account is not currently eligible for the member dashboard. Verify the email used at registration, then contact the owner if access is still unavailable.');
+      }
+      throw new Error('Sign-in succeeded, but member access could not be checked. Please try again.');
+    }
+  };
+
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setError('');
@@ -257,21 +284,67 @@ function Login() {
       }
       if (!clerkLoaded) throw new Error('Member sign-in is still loading. Try again in a moment.');
       const attempt = await signIn.password({ identifier: identifier.trim(), password });
-      if (attempt.error || signIn.status !== 'complete') {
-        throw new Error('Email or username and password are incorrect.');
+      if (attempt.error) {
+        throw new Error('We could not sign you in. Members must use the email they registered with; staff may use their email or username. If you are unsure of the member password, use “Forgot your member password?”');
       }
-      try {
-        await finishMemberSignIn();
-      } catch (memberFailure) {
-        await clerk.signOut().catch(() => undefined);
-        const status = (memberFailure as { status?: number })?.status;
-        if (status === 403) {
-          throw new Error('This account does not have member dashboard access. Staff access must be assigned by the owner, and PRO access is not automatic.');
+      if (signIn.status === 'needs_first_factor') {
+        if (signIn.supportedFirstFactors.some((factor) => factor.strategy === 'email_code')) {
+          await sendMemberSignInCode();
+          return;
         }
-        throw new Error('The member account could not be verified. Try again after your email is verified.');
+        throw new Error('This account needs another verification step before sign-in can continue. Check the registered email or contact the owner.');
       }
+      if (signIn.status === 'needs_second_factor') {
+        if (signIn.supportedSecondFactors.some((factor) => factor.strategy === 'email_code')) {
+          await sendMemberSignInCode(true);
+          return;
+        }
+        throw new Error('This account requires an additional security check that is not available in this sign-in flow. Contact the owner.');
+      }
+      if (signIn.status !== 'complete') {
+        throw new Error('This account needs another verification step. Use the registered member email and try again.');
+      }
+      await completeMemberAccess();
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : 'Sign-in failed. Check your details and try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const verifyMemberSignInCode = async (event: FormEvent) => {
+    event.preventDefault();
+    setError('');
+    setNotice('');
+    setBusy(true);
+    try {
+      const result = memberLoginStep === 'mfa-email-code'
+        ? await signIn.mfa.verifyEmailCode({ code: memberLoginCode.trim() })
+        : await signIn.emailCode.verifyCode({ code: memberLoginCode.trim() });
+      if (result.error) {
+        setError('That code could not be verified. Check it and try again, or request a new code.');
+        return;
+      }
+      if (signIn.status !== 'complete') {
+        setError('The code was accepted, but another security step is still required. Contact the owner for help.');
+        return;
+      }
+      await completeMemberAccess();
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'Member sign-in could not be completed. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resendMemberSignInCode = async () => {
+    setError('');
+    setNotice('');
+    setBusy(true);
+    try {
+      await sendMemberSignInCode(memberLoginStep === 'mfa-email-code');
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'A new verification code could not be sent.');
     } finally {
       setBusy(false);
     }
@@ -347,11 +420,16 @@ function Login() {
       <div className="login-foot">MEMBERS · LEARNERS · AUTHORIZED STAFF</div>
     </section>
     <section className="login-panel"><div className="login-form">
-      <div className="eyebrow">WELCOME BACK</div><h2>Sign in to continue</h2><p>Enter the email or username linked to your account.</p>
+      <div className="eyebrow">WELCOME BACK</div><h2>Sign in to continue</h2><p>Members use their registered email. Staff may use their email or username.</p>
       {error && <div className="notice notice-error" role="alert" data-testid="status-login-error">{error}</div>}
       {notice && <div className="notice notice-info" role="status" data-testid="status-login-notice">{notice}</div>}
-      {recoveryStep === 'closed' ? <form onSubmit={submit}>
-        <div className="form-field"><label className="form-label" htmlFor="login-identifier">Email or username</label><input id="login-identifier" className="field-input" type="text" autoComplete="username" required maxLength={254} value={identifier} onChange={(event) => setIdentifier(event.target.value)} data-testid="input-identifier" /></div>
+      {memberLoginStep !== 'credentials' ? <form onSubmit={verifyMemberSignInCode}>
+        <div className="form-field"><label className="form-label" htmlFor="member-signin-code">Email verification code</label><input id="member-signin-code" className="field-input" inputMode="numeric" autoComplete="one-time-code" required maxLength={12} value={memberLoginCode} onChange={(event) => setMemberLoginCode(event.target.value)} /></div>
+        <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? 'Verifying…' : 'Verify and continue'} <ChevronRight size={15} /></button>
+        <button className="login-link-button" type="button" onClick={() => void resendMemberSignInCode()} disabled={busy}>Resend code</button>
+        <button className="login-link-button" type="button" onClick={() => { setMemberLoginStep('credentials'); setMemberLoginCode(''); setNotice(''); }} disabled={busy}>Back to sign in</button>
+      </form> : recoveryStep === 'closed' ? <form onSubmit={submit}>
+        <div className="form-field"><label className="form-label" htmlFor="login-identifier">Email or staff username</label><input id="login-identifier" className="field-input" type="text" autoComplete="username" required maxLength={254} value={identifier} onChange={(event) => setIdentifier(event.target.value)} data-testid="input-identifier" /></div>
         <div className="form-field"><label className="form-label" htmlFor="login-password">Password</label><div className="password-wrap"><input id="login-password" className="field-input" type={showPassword ? 'text' : 'password'} autoComplete="current-password" required maxLength={256} value={password} onChange={(event) => setPassword(event.target.value)} data-testid="input-password" /><button type="button" className="password-toggle" aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword(!showPassword)} data-testid="button-toggle-password">{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button></div></div>
         <button className="btn btn-primary" type="submit" disabled={busy || login.isPending} data-testid="button-sign-in">{busy ? 'Signing in…' : 'Sign in securely'} <ChevronRight size={15} /></button>
         <button className="login-link-button" type="button" onClick={() => void startRecovery()} disabled={busy} data-testid="button-forgot-member-password">Forgot your member password?</button>
