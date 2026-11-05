@@ -26,3 +26,11 @@ The Node Support API must use a dedicated PostgreSQL login with a generated SCRA
 **Why:** The production Node `pg` client failed with `client password must be a string` when the bot's database URL was reused.
 
 **How to apply:** Keep the bot's database environment unchanged. Provision a restricted API role, store its random password with mode `0600`, and grant only the support schema/tables the API uses.
+
+### Existing portal schema compatibility
+
+Keep portal authentication compatible with both legacy `admin`/`agent` roles and the existing `owner`/`manager`/`agent` roles. `CREATE TABLE IF NOT EXISTS` does not add columns to a pre-existing portal table; use explicit additive migrations in Development. When adding password-state tracking to existing accounts, default it to false so current staff are not unexpectedly forced to reset passwords.
+
+**Why:** The imported portal's login selected a password-state column absent from the existing Development table, causing a 503; the existing owner role also differed from the imported code's legacy role names.
+
+**How to apply:** Inspect Development columns and role constraints before relying on imported migrations, add only the missing schema in `smh_test`, and preserve the existing role values and credentials. Do not apply the Development compatibility migration to the VPS without an approved production rollout.

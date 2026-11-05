@@ -217,7 +217,11 @@ function publicStaff(row: Record<string, unknown>) {
     staffId: String(row.id),
     email: String(row.email),
     displayName: String(row.display_name),
-    role: row.role === "admin" ? "owner" : row.is_manager ? "manager" : "agent",
+    role: row.role === "admin" || row.role === "owner"
+      ? "owner"
+      : row.role === "manager" || row.is_manager
+        ? "manager"
+        : "agent",
     active: Boolean(row.active),
     mustChangePassword: Boolean(row.must_change_password),
     created: String(row.created),
@@ -495,8 +499,8 @@ router.post("/portal/auth/login", requireSameOrigin, async (req, res): Promise<v
   }
   const result = await pool.query(
     `SELECT u.id,u.email,u.display_name,u.password_hash,u.role,u.active,u.must_change_password,
-            CASE WHEN u.role='admin' THEN 'owner'
-                 WHEN mr.staff_id IS NOT NULL THEN 'manager'
+            CASE WHEN u.role IN ('admin','owner') THEN 'owner'
+                 WHEN u.role='manager' OR mr.staff_id IS NOT NULL THEN 'manager'
                  ELSE 'agent' END AS effective_role
        FROM smh.portal_users u
        LEFT JOIN smh.portal_manager_roles mr ON mr.staff_id=u.id
@@ -976,7 +980,7 @@ router.patch("/portal/tasks/:taskId/status", requireSameOrigin, async (req, res)
     if (nextStatus === "submitted_for_review") {
       const reviewers = await client.query(
         `SELECT DISTINCT id FROM smh.portal_users
-          WHERE active=TRUE AND (role='admin' OR id IN (
+          WHERE active=TRUE AND (role IN ('admin','owner') OR id IN (
             SELECT staff_id FROM smh.staff_team_members WHERE team_id=$1 AND team_role='manager'
           ))`,
         [current.team_id],
@@ -1366,7 +1370,8 @@ router.put("/portal/teams/:teamId/members", requireSameOrigin, async (req, res):
       const account = await client.query(
         `SELECT u.id FROM smh.portal_users u
           WHERE u.id=$1 AND u.active=TRUE
-            AND (($2='manager' AND EXISTS (SELECT 1 FROM smh.portal_manager_roles mr WHERE mr.staff_id=u.id))
+            AND (($2='manager' AND (u.role='manager' OR EXISTS (
+                    SELECT 1 FROM smh.portal_manager_roles mr WHERE mr.staff_id=u.id)))
               OR ($2='worker' AND u.role='agent' AND NOT EXISTS (
                 SELECT 1 FROM smh.portal_manager_roles mr WHERE mr.staff_id=u.id)))`,
         [member.staffId, member.teamRole],
@@ -2828,7 +2833,7 @@ router.post("/portal/cases/:caseId/notes", requireSameOrigin, async (req, res): 
         `INSERT INTO ${supportSchema}.portal_users
            (id,email,display_name,password_hash,role,active,must_change_password,created,updated,last_login)
          SELECT id,'support-' || id || '@test.invalid',display_name,'disabled-test-mirror',
-                CASE WHEN role='owner' THEN 'admin' ELSE 'agent' END,TRUE,FALSE,$2,$2,NULL
+                 CASE WHEN role='admin' THEN 'owner' ELSE role END,TRUE,FALSE,$2,$2,NULL
            FROM smh.portal_users WHERE id=$1
          ON CONFLICT(id) DO UPDATE SET display_name=EXCLUDED.display_name,active=TRUE`,
         [identity.id, new Date().toISOString()],
@@ -2859,7 +2864,7 @@ router.get("/portal/staff", async (req, res): Promise<void> => {
   }
   const result = await pool.query(
     `SELECT u.id,u.email,u.display_name,u.role,u.active,u.must_change_password,u.created,u.last_login,
-            (mr.staff_id IS NOT NULL) AS is_manager
+            (u.role='manager' OR mr.staff_id IS NOT NULL) AS is_manager
        FROM smh.portal_users u
        LEFT JOIN smh.portal_manager_roles mr ON mr.staff_id=u.id
       ORDER BY u.role,u.email`,
@@ -2941,7 +2946,7 @@ router.patch("/portal/staff/:staffId", requireSameOrigin, async (req, res): Prom
     const result = await client.query(
       `UPDATE smh.portal_users
           SET active=$1,updated=$2
-        WHERE id=$3 AND role='agent'
+        WHERE id=$3 AND role IN ('agent','manager')
         RETURNING id,email,display_name,role,active,must_change_password,created,last_login`,
       [parsed.data.active, new Date().toISOString(), params.data.staffId],
     );

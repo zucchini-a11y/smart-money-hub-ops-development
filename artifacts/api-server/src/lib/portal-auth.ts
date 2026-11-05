@@ -79,8 +79,8 @@ export async function requirePortalSession(
   const tokenHash = hashSessionToken(token);
   const result = await pool.query(
     `SELECT u.id, u.email, u.display_name, u.must_change_password,
-            CASE WHEN u.role='admin' THEN 'owner'
-                 WHEN mr.staff_id IS NOT NULL THEN 'manager'
+            CASE WHEN u.role IN ('admin','owner') THEN 'owner'
+                 WHEN u.role='manager' OR mr.staff_id IS NOT NULL THEN 'manager'
                  ELSE 'agent' END AS effective_role
        FROM ${supportSchema}.portal_sessions s
        JOIN ${supportSchema}.portal_users u ON u.id = s.staff_id
