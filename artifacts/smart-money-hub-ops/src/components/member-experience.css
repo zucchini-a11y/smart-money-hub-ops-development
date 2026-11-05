@@ -220,3 +220,162 @@
 @media (prefers-reduced-motion: reduce) {
   .member-experience *, .member-experience *::before, .member-experience *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* Public-home visual system, isolated to registration and access-check screens. */
+.member-experience.member-signup-experience,
+.member-experience.mx-signup-loading {
+  --mx-bg: #080e12;
+  --mx-surface: #0e171c;
+  --mx-surface-raised: #132127;
+  --mx-border: rgba(175, 213, 211, .12);
+  --mx-border-green: rgba(84, 230, 208, .25);
+  --mx-text: #eaf4f1;
+  --mx-muted: #a0b4b4;
+  --mx-dim: #718686;
+  --mx-gold: #62e1cf;
+  --mx-gold-light: #a1fff0;
+  --mx-green: #9b8aff;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: radial-gradient(ellipse at 78% 46%, rgba(31,112,108,.13), transparent 38%), var(--mx-bg);
+  color: var(--mx-text);
+  font-family: 'Space Grotesk', sans-serif;
+}
+.member-experience.member-signup-experience::before,
+.member-experience.mx-signup-loading::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background-image: linear-gradient(rgba(98,225,207,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(98,225,207,.035) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: linear-gradient(115deg, transparent 8%, #000 76%);
+  content: '';
+  pointer-events: none;
+}
+.member-signup-experience .mx-signup-shell { position: relative; z-index: 1; width: min(1280px, calc(100% - 72px)); }
+.member-signup-experience .mx-signup-shell > .mx-wordmark { margin-top: 25px; }
+.member-signup-experience .mx-wordmark-image { border-color: rgba(98,225,207,.32); }
+.member-signup-experience .mx-wordmark strong { font: 700 12px/1 'Space Grotesk', sans-serif; letter-spacing: .2em; }
+.member-signup-experience .mx-wordmark small { color: var(--mx-dim); font: 8px/1 'JetBrains Mono', monospace; letter-spacing: .16em; }
+.member-signup-experience .mx-signup-layout {
+  grid-template-columns: minmax(0, 1fr) minmax(390px, .77fr);
+  gap: clamp(45px, 8vw, 128px);
+  padding: 46px 4.3% 58px;
+}
+.member-signup-experience .mx-overline,
+.member-signup-experience .mx-step-label,
+.member-signup-experience .mx-principle-index,
+.member-signup-experience .mx-signup-footer > span {
+  font-family: 'JetBrains Mono', monospace;
+}
+.member-signup-experience .mx-overline { color: var(--mx-gold); font-size: 9px; letter-spacing: .19em; }
+.member-signup-experience .mx-live-mark { background: var(--mx-green); box-shadow: none; }
+.member-signup-experience .mx-aside-statement {
+  color: var(--mx-text);
+  font: 500 clamp(48px, 7.2vw, 99px)/.97 'Space Grotesk', sans-serif;
+  letter-spacing: -.085em;
+}
+.member-signup-experience .mx-principle { border-left-color: rgba(98,225,207,.62); }
+.member-signup-experience .mx-principle-index { color: var(--mx-green); font-size: 9px; letter-spacing: .16em; }
+.member-signup-experience .mx-principle blockquote {
+  color: var(--mx-gold);
+  font: 500 clamp(24px, 3vw, 37px)/1.1 'Space Grotesk', sans-serif;
+  letter-spacing: -.06em;
+}
+.member-signup-experience .mx-principle p { color: var(--mx-muted); font-size: 12px; }
+.member-signup-experience .mx-aside-foot { color: var(--mx-dim); }
+.member-signup-experience .mx-aside-foot svg { color: var(--mx-green); }
+.member-signup-experience .mx-signup-panel {
+  position: relative;
+  padding: clamp(28px, 4vw, 46px);
+  border-color: rgba(98,225,207,.18);
+  border-radius: 2px;
+  background: linear-gradient(145deg, rgba(19,33,39,.84), rgba(8,14,18,.93));
+  box-shadow: 0 32px 90px rgba(0,0,0,.28), inset 0 1px rgba(234,244,241,.035);
+}
+.member-signup-experience .mx-step-label { color: var(--mx-gold); font-size: 9px; letter-spacing: .15em; }
+.member-signup-experience .mx-step-label > span:first-child { color: var(--mx-green); }
+.member-signup-experience .mx-step-label i { background: rgba(98,225,207,.4); }
+.member-signup-experience .mx-signup-panel h1 {
+  margin-top: 24px;
+  color: var(--mx-text);
+  font: 500 clamp(30px, 3.4vw, 42px)/1.02 'Space Grotesk', sans-serif;
+  letter-spacing: -.065em;
+}
+.member-signup-experience .mx-panel-intro { color: var(--mx-muted); font-size: 12px; line-height: 1.8; }
+.member-signup-experience .mx-panel-intro strong { color: var(--mx-text); }
+.member-signup-experience .mx-field { color: var(--mx-muted); font-size: 11px; }
+.member-signup-experience .mx-field input {
+  min-height: 47px;
+  border-color: rgba(175,213,211,.16);
+  border-radius: 2px;
+  background: rgba(8,14,18,.72);
+  color: var(--mx-text);
+  font: 13px 'Space Grotesk', sans-serif;
+}
+.member-signup-experience .mx-field input:focus { border-color: rgba(98,225,207,.72); background: rgba(14,23,28,.9); }
+.member-signup-experience .mx-field input::placeholder { color: var(--mx-dim); }
+.member-signup-experience .mx-input-wrap > svg { color: #83a19f; }
+.member-signup-experience .mx-field small { color: var(--mx-dim); }
+.member-signup-experience .mx-code-input { font: 500 20px 'JetBrains Mono', monospace !important; letter-spacing: .34em; }
+.member-signup-experience .mx-button { border-radius: 999px; font: 600 10px 'JetBrains Mono', monospace !important; letter-spacing: .06em; text-transform: uppercase; }
+.member-signup-experience .mx-button-gold { background: var(--mx-gold); color: var(--mx-bg) !important; }
+.member-signup-experience .mx-button-gold:not(:disabled):hover { background: var(--mx-gold-light); }
+.member-signup-experience .mx-form-note svg { color: var(--mx-green); }
+.member-signup-experience .mx-message { border-radius: 2px; }
+.member-signup-experience .mx-message-error { border-color: rgba(213,143,132,.32); background: rgba(213,143,132,.08); color: #e8b2aa; }
+.member-signup-experience .mx-message-notice { border-color: rgba(98,225,207,.22); background: rgba(98,225,207,.06); color: #a7e8df; }
+.member-signup-experience .mx-text-button { color: var(--mx-gold); }
+.member-signup-experience .mx-text-button:hover { color: var(--mx-gold-light); }
+.member-signup-experience .mx-back-button { color: var(--mx-muted); }
+.member-signup-experience .mx-signup-legal,
+.member-signup-experience .mx-signup-footer { border-color: var(--mx-border); color: var(--mx-dim); }
+.member-signup-experience .mx-signin-prompt { color: var(--mx-muted); }
+.member-signup-experience .mx-signin-prompt a,
+.member-signup-experience .mx-signup-footer a { color: var(--mx-gold); }
+.member-signup-experience .mx-signin-prompt a:hover,
+.member-signup-experience .mx-signup-footer a:hover { color: var(--mx-gold-light); }
+.member-signup-experience :focus-visible { outline-color: var(--mx-gold-light); }
+.member-experience.mx-signup-loading .mx-signup-panel {
+  width: min(540px, 100%);
+  padding: clamp(28px, 6vw, 52px);
+  border-color: rgba(98,225,207,.18);
+  border-radius: 2px;
+  background: linear-gradient(145deg, rgba(19,33,39,.9), rgba(8,14,18,.96));
+  box-shadow: 0 32px 90px rgba(0,0,0,.3), inset 0 1px rgba(234,244,241,.035);
+}
+.member-experience.mx-signup-loading .mx-overline { color: var(--mx-gold); font: 500 9px 'JetBrains Mono', monospace; letter-spacing: .17em; }
+.member-experience.mx-signup-loading .mx-access-unavailable h1 {
+  color: var(--mx-text);
+  font: 500 clamp(30px, 5vw, 40px)/1.04 'Space Grotesk', sans-serif;
+  letter-spacing: -.06em;
+}
+.member-experience.mx-signup-loading .mx-access-unavailable > p { color: var(--mx-muted); font-size: 13px; }
+.member-experience.mx-signup-loading .mx-access-actions .mx-button-quiet {
+  border-color: rgba(175,213,211,.2);
+  background: transparent;
+  color: var(--mx-text);
+}
+.member-experience.mx-signup-loading .mx-access-actions .mx-button-quiet:hover { border-color: rgba(98,225,207,.45); background: rgba(98,225,207,.06); }
+.member-experience.mx-signup-loading .mx-access-actions .mx-button-gold { background: var(--mx-gold); color: var(--mx-bg) !important; }
+.member-experience.mx-signup-loading .skeleton { background: linear-gradient(90deg, var(--mx-surface-raised) 25%, rgba(98,225,207,.07) 45%, var(--mx-surface-raised) 65%); background-size: 200% 100%; }
+@media (max-width: 800px) {
+  .member-signup-experience .mx-signup-layout { grid-template-columns: minmax(0, .85fr) minmax(340px, 1fr); gap: 35px; padding-inline: 0; }
+  .member-signup-experience .mx-aside-statement { font-size: clamp(43px, 7vw, 58px); }
+}
+@media (max-width: 620px) {
+  .member-signup-experience .mx-signup-shell { width: calc(100% - 38px); }
+  .member-signup-experience .mx-signup-layout { display: block; padding: 35px 0 32px; }
+  .member-signup-experience .mx-signup-aside { padding-bottom: 25px; }
+  .member-signup-experience .mx-aside-statement { margin: 20px 0 22px; font-size: clamp(42px, 12vw, 58px); }
+  .member-signup-experience .mx-principle { padding: 14px 0 14px 16px; }
+  .member-signup-experience .mx-principle blockquote { margin: 9px 0 6px; font-size: 25px; }
+  .member-signup-experience .mx-aside-foot { margin-top: 14px; }
+  .member-signup-experience .mx-signup-panel { padding: 25px 21px; }
+  .member-signup-experience .mx-signup-panel h1 { font-size: 32px; }
+  .member-signup-experience .mx-signup-footer { flex-direction: column; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .member-signup-experience .mx-signup-panel { animation: none; }
+}
