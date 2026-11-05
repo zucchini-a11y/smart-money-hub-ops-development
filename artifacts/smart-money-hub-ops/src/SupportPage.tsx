@@ -75,21 +75,24 @@ function LoginCard({
 
   return (
     <div className="sp-page sp-auth-page">
-      <header className="sp-topbar">
-        <div className="sp-brand">
-          <div className="sp-brand-mark"><ShieldCheck size={19} /></div>
-          <div><div className="sp-brand-name">smart money hub</div><div className="sp-brand-sub">SUPPORT PORTAL</div></div>
-        </div>
-        <Link className="sp-operations-link" href="/operations"><ArrowUpRight size={14} /><span>Operations Center</span></Link>
-      </header>
       <main className="sp-auth-main">
         <div className="sp-auth-aside">
-          <div className="sp-eyebrow">STAFF ACCESS · PRIVATE WORKSPACE</div>
-          <h1>Support, with the full picture.</h1>
-          <p>Signals and Coach conversations meet in one secure queue, so every member gets a thoughtful follow-through.</p>
-          <div className="sp-auth-points">
-            <span><span className="sp-checkmark"><Check size={12} /></span> Shared Signals + Coach inbox</span>
-            <span><span className="sp-checkmark"><Check size={12} /></span> Staff-only notes and case history</span>
+          <div className="sp-login-brand">
+            <div className="sp-login-brand-mark"><ShieldCheck size={20} /></div>
+            <div><div className="sp-login-brand-name">VAYDA</div><div className="sp-login-brand-sub">SMART MONEY HUB</div></div>
+          </div>
+          <div className="sp-auth-copy">
+            <div className="sp-eyebrow">STAFF ACCESS · PRIVATE WORKSPACE</div>
+            <h1>Support, with the full picture.</h1>
+            <p>Signals and Coach conversations meet in one secure queue, so every member gets a thoughtful follow-through.</p>
+            <div className="sp-auth-points">
+              <span><span className="sp-checkmark"><Check size={12} /></span> Shared Signals + Coach inbox</span>
+              <span><span className="sp-checkmark"><Check size={12} /></span> Staff-only notes and case history</span>
+            </div>
+          </div>
+          <div className="sp-auth-bottom">
+            <Link className="sp-login-operations" href="/operations" data-testid="link-support-login-operations"><ArrowUpRight size={14} /><span>Operations Center</span></Link>
+            <span className="sp-auth-footnote">PRIVATE STAFF WORKSPACE</span>
           </div>
           <div className="sp-auth-watermark"><ShieldCheck size={124} strokeWidth={.65} /></div>
         </div>
@@ -132,7 +135,7 @@ function LoginCard({
           <div className="sp-login-foot"><ShieldCheck size={14} /> Staff access only <span>·</span> Protected session</div>
         </section>
       </main>
-      <footer className="sp-footer"><span>SMART MONEY HUB · SUPPORT</span><span>PRIVATE STAFF WORKSPACE</span></footer>
+      <footer className="sp-footer"><span>VAYDA · SMART MONEY HUB</span><span>PRIVATE STAFF WORKSPACE</span></footer>
     </div>
   );
 }
@@ -210,7 +213,7 @@ export default function SupportPage() {
 
   if (session.isLoading) {
     return <div className="sp-page sp-session-loading">
-      <div className="sp-topbar"><div className="sp-brand"><div className="sp-brand-mark"><ShieldCheck size={19} /></div><div><div className="sp-brand-name">smart money hub</div><div className="sp-brand-sub">SUPPORT PORTAL</div></div></div><Link className="sp-operations-link" href="/operations"><ArrowUpRight size={14} /> Operations Center</Link></div>
+      <div className="sp-topbar"><div className="sp-brand"><div className="sp-brand-mark"><ShieldCheck size={19} /></div><div><div className="sp-brand-name">VAYDA</div><div className="sp-brand-sub">SMART MONEY HUB · SUPPORT</div></div></div><Link className="sp-operations-link" href="/operations"><ArrowUpRight size={14} /> Operations Center</Link></div>
       <main className="sp-loading-card" aria-label="Checking staff access"><div className="sp-skeleton sp-skeleton-title" /><div className="sp-skeleton sp-skeleton-row" /><div className="sp-skeleton sp-skeleton-row short" /></main>
     </div>;
   }
@@ -247,16 +250,36 @@ export default function SupportPage() {
   const replyCount = allCases.filter((item) => ["new", "assigned"].includes(item.workflowStatus)).length;
 
   return (
-    <div className="sp-page">
-      <header className="sp-topbar">
-        <div className="sp-brand">
-          <div className="sp-brand-mark"><ShieldCheck size={19} /></div>
-          <div><div className="sp-brand-name">smart money hub</div><div className="sp-brand-sub">SUPPORT PORTAL <span>· STAFF WORKSPACE</span></div></div>
+    <div className="sp-page sp-support-shell">
+      <aside className="sp-sidebar" aria-label="Support portal navigation">
+        <div className="sp-sidebar-brand">
+          <div className="sp-brand-mark"><ShieldCheck size={20} /></div>
+          <div><div className="sp-brand-name">VAYDA</div><div className="sp-brand-sub">SMART MONEY HUB</div></div>
         </div>
+        <div className="sp-sidebar-caption">STAFF WORKSPACE</div>
+        <nav className="sp-sidebar-nav" aria-label="Staff navigation">
+          <Link className="sp-sidebar-link is-active" href="/support" aria-current="page" data-testid="link-support-sidebar">
+            <Inbox size={16} /><span className="sp-sidebar-link-label">Support cases</span><span className="sp-sidebar-count">{openCount}</span>
+          </Link>
+          <Link className="sp-sidebar-link" href="/operations" data-testid="link-support-operations">
+            <ArrowUpRight size={16} /><span className="sp-sidebar-link-label">Operations Center</span>
+          </Link>
+        </nav>
+        <div className="sp-sidebar-bottom">
+          <div><ShieldCheck size={14} /><span>Private staff workspace</span></div>
+          <p>Signals and Coach support, together in one queue.</p>
+        </div>
+      </aside>
+      <div className="sp-content">
+        <header className="sp-topbar">
+          <div className="sp-mobile-brand">
+            <div className="sp-brand-mark"><ShieldCheck size={17} /></div>
+            <div><div className="sp-brand-name">VAYDA</div><div className="sp-brand-sub">SUPPORT PORTAL</div></div>
+          </div>
         <div className="sp-top-actions">
           <span className="sp-session-status"><span /> Staff session active</span>
           <span className="sp-staff-pill" data-testid="text-support-staff"><span className="sp-staff-avatar">{session.data?.staff?.displayName?.split(/\s+/).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("")}</span><span>{session.data?.staff?.displayName} <i>·</i> {role}</span></span>
-          <Link className="sp-operations-link" href="/operations"><ArrowUpRight size={14} /><span>Operations Center</span></Link>
+          <Link className="sp-operations-link sp-mobile-operations-link" href="/operations" data-testid="link-support-mobile-operations"><ArrowUpRight size={14} /><span>Operations Center</span></Link>
           <Button variant="outline" size="sm" className="sp-signout" onClick={() => logout.mutate(undefined, { onSuccess: async () => { setSelectedId(""); await client.invalidateQueries({ queryKey: getGetSupportSessionQueryKey() }); } })} disabled={logout.isPending} data-testid="button-support-logout">
             <LogOut size={14} /> <span>{logout.isPending ? "Signing out…" : "Sign out"}</span>
           </Button>
@@ -413,6 +436,7 @@ export default function SupportPage() {
         </div>
         <footer className="sp-footer"><span><ShieldCheck size={13} /> Staff-only workspace</span><span>Support Portal <i>·</i> Member data is handled securely</span></footer>
       </main>
+      </div>
     </div>
   );
 }

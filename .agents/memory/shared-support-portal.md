@@ -10,3 +10,11 @@ The Support Portal should be shared by both bots through one authenticated API a
 **How to apply:** Add new support flows through the shared API, scope every bot request to its authenticated bot and Telegram member, and keep Development data under `smh_test`. Before production changes, review a schema-only export and use an additive migration that preserves current accounts and cases. Do not publish or alter the VPS as part of a Development-only change. A portal-only production rollout may start with staff authentication and no bot tokens; bot endpoints must reject requests until each bot's matching token is configured. Portal availability alone does not mean Signal or Coach ingestion is connected.
 
 **Why:** The owner needs the shared domain portal before the separate bot processes have their production bridge credentials configured.
+
+### Visual direction
+
+The owner selected the VAYDA portal's forest-green, warm-cream, and muted-gold visual language for the shared Support Portal. Keep the existing authenticated support API and case workflow; do not import unrelated portal modules as part of a visual update.
+
+**Why:** The owner asked for the domain portal to match the existing VAYDA portal design while preserving the current shared-case product.
+
+**How to apply:** Use the supplied VAYDA source as the visual reference for support login, navigation, and case-workspace styling. Keep feature and backend migrations separate unless the owner requests them.

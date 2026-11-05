@@ -1,15 +1,18 @@
 .sp-page {
-  --sp-paper: #f5f3ed;
-  --sp-card: #fffefa;
-  --sp-ink: #2d4439;
-  --sp-body: #526258;
+  --sp-paper: #f6f3eb;
+  --sp-card: #fbfaf6;
+  --sp-ink: #30483b;
+  --sp-body: #586b5f;
   --sp-muted: #849087;
-  --sp-line: #e5e1d8;
+  --sp-line: #e6e2d8;
   --sp-line-soft: #eeebe3;
-  --sp-evergreen: #386b53;
-  --sp-evergreen-dark: #244a38;
-  --sp-sage: #eaf0e8;
-  --sp-gold: #b18135;
+  --sp-evergreen: #203d35;
+  --sp-evergreen-dark: #182e29;
+  --sp-sage: #eaf1e9;
+  --sp-gold: #f4c978;
+  --app-font-sans: "DM Sans", sans-serif;
+  --app-font-serif: "Manrope", sans-serif;
+  --app-font-mono: "IBM Plex Mono", monospace;
   min-height: 100dvh;
   color: var(--sp-ink);
   background:
@@ -358,4 +361,144 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .sp-page *, .sp-page *::before, .sp-page *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; }
+}
+
+/* VAYDA portal presentation */
+.sp-auth-page { background: #f4f1e8; }
+.sp-auth-main {
+  width: 100%;
+  min-height: calc(100dvh - 48px);
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 480px);
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
+  background: #f4f1e8;
+}
+.sp-auth-aside {
+  min-height: calc(100dvh - 48px);
+  justify-content: space-between;
+  padding: clamp(30px, 5vw, 76px);
+  color: #f6f1e5;
+  background: #203d35;
+}
+.sp-login-brand { position: relative; z-index: 1; display: flex; align-items: center; gap: 12px; }
+.sp-login-brand-mark {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(244, 201, 120, .34);
+  border-radius: 50%;
+  color: #f4c978;
+  background: #142a25;
+}
+.sp-login-brand-name { color: #f2efe5; font: 800 14px "Manrope", sans-serif; letter-spacing: .1em; }
+.sp-login-brand-sub { margin-top: 4px; color: #b2c1b8; font: 500 9px "IBM Plex Mono", monospace; letter-spacing: .13em; }
+.sp-auth-copy { position: relative; z-index: 1; margin: auto 0; padding: 44px 0; }
+.sp-auth-aside .sp-eyebrow { color: #f4c978; }
+.sp-auth-aside h1 { color: #f3efe4; }
+.sp-auth-aside > .sp-auth-copy > p { color: #b7c5ba; }
+.sp-auth-points { color: #d4ded6; }
+.sp-checkmark { border-color: rgba(244, 201, 120, .32); color: #f4c978; background: rgba(244, 201, 120, .08); }
+.sp-auth-watermark { color: rgba(244, 201, 120, .09); }
+.sp-auth-bottom { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.sp-login-operations {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 11px;
+  border: 1px solid rgba(239, 237, 225, .19);
+  border-radius: 7px;
+  color: #d5dfd8;
+  font-size: 10px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: color .18s ease, border-color .18s ease, background .18s ease;
+}
+.sp-login-operations:hover { border-color: rgba(244, 201, 120, .45); color: #f4c978; background: rgba(255, 255, 255, .035); }
+.sp-auth-footnote { color: #91a99a; font: 9px "IBM Plex Mono", monospace; letter-spacing: .12em; }
+.sp-auth-main > .sp-login-card {
+  width: min(100%, 440px);
+  align-self: center;
+  justify-self: center;
+  margin: 30px;
+  padding: 34px;
+  border-color: #e6e2d8;
+  border-radius: 12px;
+  background: #fbfaf6;
+  box-shadow: 0 22px 60px rgba(32, 61, 53, .08);
+}
+.sp-login-icon { border-color: #ead8af; color: #8b6d35; background: #f6eedb; }
+.sp-auth-page > .sp-footer { width: 100%; padding: 12px clamp(18px, 4vw, 56px); }
+
+.sp-support-shell { display: flex; background: var(--sp-paper); }
+.sp-sidebar {
+  width: 252px;
+  min-height: 100dvh;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  padding: 27px 18px 20px;
+  color: #f2efe5;
+  background: #203d35;
+}
+.sp-sidebar-brand { display: flex; align-items: center; gap: 11px; padding: 0 12px 27px; border-bottom: 1px solid rgba(239, 237, 225, .14); }
+.sp-sidebar .sp-brand-mark { width: 40px; height: 40px; border: 1px solid rgba(244, 201, 120, .28); border-radius: 50%; color: #f4c978; background: #142a25; }
+.sp-sidebar .sp-brand-name { color: #f2efe5; font: 800 14px "Manrope", sans-serif; letter-spacing: .1em; }
+.sp-sidebar .sp-brand-sub { color: #b2c1b8; font: 500 9px "IBM Plex Mono", monospace; letter-spacing: .13em; }
+.sp-sidebar-caption { padding: 24px 13px 10px; color: #8da99a; font: 500 9px "IBM Plex Mono", monospace; letter-spacing: .13em; }
+.sp-sidebar-nav { display: grid; gap: 4px; }
+.sp-sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 12px;
+  border-radius: 8px;
+  color: #c9d4ce;
+  font-size: 11px;
+  text-decoration: none;
+  transition: color .18s ease, background .18s ease;
+}
+.sp-sidebar-link:hover, .sp-sidebar-link.is-active { color: #f4c978; background: #2e5146; }
+.sp-sidebar-link > svg { flex: none; }
+.sp-sidebar-link-label { flex: 1; }
+.sp-sidebar-count { padding: 2px 6px; border: 1px solid rgba(244, 201, 120, .2); border-radius: 99px; color: #f4c978; font: 9px "IBM Plex Mono", monospace; }
+.sp-sidebar-bottom { margin-top: auto; padding: 17px 9px 0; border-top: 1px solid rgba(239, 237, 225, .14); }
+.sp-sidebar-bottom > div { display: flex; align-items: center; gap: 8px; color: #d8e1d9; font-size: 10px; font-weight: 600; }
+.sp-sidebar-bottom svg { color: #f4c978; }
+.sp-sidebar-bottom p { margin: 9px 0 0; color: #9db0a3; font-size: 9px; line-height: 1.6; }
+.sp-content { min-width: 0; flex: 1; }
+.sp-support-shell .sp-topbar { background: #fbfaf6; }
+.sp-support-shell .sp-topbar .sp-mobile-operations-link { display: none; }
+.sp-mobile-brand { display: none; }
+.sp-support-shell .sp-top-actions { gap: 10px; }
+.sp-support-shell .sp-operations-link { border-color: #e5e1d8; color: #526a5a; background: #fbfaf6; }
+.sp-support-shell .sp-operations-link:hover { border-color: #d4c08f; color: #765d2f; background: #f8f2e4; }
+.sp-support-shell .sp-primary-button { border-color: #203d35 !important; color: #f6f1e5 !important; background: #203d35 !important; }
+.sp-support-shell .sp-primary-button:hover { border-color: #2e5146 !important; color: #f4c978 !important; background: #2e5146 !important; }
+.sp-support-shell .sp-case-row.is-selected { background: linear-gradient(90deg, #f2f1e7, #fbfaf6); }
+.sp-support-shell .sp-case-row.is-selected::before { background: #c29b52; }
+
+@media (max-width: 920px) {
+  .sp-sidebar { width: 216px; }
+}
+@media (max-width: 700px) {
+  .sp-sidebar { display: none; }
+  .sp-mobile-brand { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .sp-mobile-brand .sp-brand-mark { width: 32px; height: 32px; border-color: #ead8af; color: #8b6d35; background: #f6eedb; }
+  .sp-mobile-brand .sp-brand-name { color: #263e33; font-size: 12px; }
+  .sp-mobile-brand .sp-brand-sub { color: #76857a; font-size: 7px; }
+  .sp-support-shell .sp-topbar .sp-mobile-operations-link { display: inline-flex; }
+  .sp-support-shell .sp-top-actions { gap: 7px; }
+  .sp-auth-main { min-height: 0; grid-template-columns: 1fr; gap: 0; padding: 0; }
+  .sp-auth-aside { min-height: 330px; padding: 23px 22px; }
+  .sp-auth-copy { margin: 0; padding: 30px 0 18px; }
+  .sp-auth-aside h1 { font-size: clamp(31px, 8vw, 43px); }
+  .sp-auth-aside > .sp-auth-copy > p { font-size: 11px; }
+  .sp-auth-points { display: none; }
+  .sp-auth-watermark { right: 1%; bottom: -8%; }
+  .sp-auth-bottom { align-items: flex-start; }
+  .sp-auth-footnote { display: none; }
+  .sp-auth-main > .sp-login-card { width: calc(100% - 36px); margin: 22px auto; padding: 24px; }
+  .sp-auth-page > .sp-footer { padding-right: 18px; padding-left: 18px; }
 }
