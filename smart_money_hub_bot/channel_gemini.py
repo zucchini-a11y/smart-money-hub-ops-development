@@ -27,6 +27,7 @@ _MAX_POST_CHARS = 500
 _MAX_FEEDBACK_ITEMS = 5
 _MAX_FEEDBACK_CHARS = 300
 _MAX_TRANSIENT_HTTP_RETRIES = 1
+_MAX_SERVICE_UNAVAILABLE_RETRIES = 3
 _MAX_TIMEOUT_RETRIES = 1
 _TIMEOUT_RETRY_DELAY_SECONDS = 0.5
 _TRANSIENT_HTTP_STATUSES = frozenset({500, 502, 503, 504})
@@ -160,12 +161,17 @@ class GeminiChannelContentService:
                 break
             except HTTPError as error:
                 http_status = int(error.code)
+                retry_limit = (
+                    _MAX_SERVICE_UNAVAILABLE_RETRIES
+                    if http_status == 503
+                    else _MAX_TRANSIENT_HTTP_RETRIES
+                )
                 if (
                     http_status in _TRANSIENT_HTTP_STATUSES
-                    and retries < _MAX_TRANSIENT_HTTP_RETRIES
+                    and retries < retry_limit
                 ):
                     retries += 1
-                    delay = self._retry_after_seconds(error)
+                    delay = self._retry_after_seconds(error, retry_number=retries)
                     logger.warning(
                         "Transient Gemini provider error; retrying same model "
                         "attempt=%s http_status=%s delay_seconds=%.1f "
@@ -681,13 +687,14 @@ class GeminiChannelContentService:
         return f"gemini_http_error_{status}"
 
     @staticmethod
-    def _retry_after_seconds(error: HTTPError) -> float:
+    def _retry_after_seconds(error: HTTPError, *, retry_number: int = 1) -> float:
         value = error.headers.get("Retry-After") if error.headers else None
         try:
             delay = float(value) if value is not None else 1.0
         except (TypeError, ValueError):
             delay = 1.0
-        return min(max(delay, 0.1), _MAX_RETRY_AFTER_SECONDS)
+        backoff = min(2 ** max(0, retry_number - 1), _MAX_RETRY_AFTER_SECONDS)
+        return min(max(delay, backoff, 0.1), _MAX_RETRY_AFTER_SECONDS)
 
     @staticmethod
     def _log_failure(category: str, started: float, request_id: str) -> None:

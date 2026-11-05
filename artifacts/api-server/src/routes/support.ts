@@ -47,7 +47,17 @@ import {
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
-const schema = "smh_test";
+const requestedSchema = process.env.SMH_SUPPORT_SCHEMA;
+const productionSupportEnabled =
+  process.env.NODE_ENV === "production" &&
+  process.env.SMH_SUPPORT_PRODUCTION_ENABLED === "true" &&
+  requestedSchema === "smh" &&
+  Boolean(process.env.SMH_DATABASE_URL);
+const developmentSupportEnabled =
+  process.env.NODE_ENV !== "production" &&
+  process.env.SMH_SUPPORT_PRODUCTION_ENABLED !== "true" &&
+  (!requestedSchema || requestedSchema === "smh_test");
+const schema: "smh" | "smh_test" = productionSupportEnabled ? "smh" : "smh_test";
 const SESSION_COOKIE = "smh_support_session";
 const SESSION_HOURS = 8;
 const loginFailures = new Map<string, { count: number; expiresAt: number }>();
@@ -64,11 +74,22 @@ type StaffIdentity = {
 type BotIdentity = "signals" | "coach";
 
 function isDevSchemaEnabled(res: Response): boolean {
-  if (process.env.NODE_ENV === "production" || (process.env.SMH_SUPPORT_SCHEMA && process.env.SMH_SUPPORT_SCHEMA !== schema)) {
+  if (!productionSupportEnabled && !developmentSupportEnabled) {
     res.status(404).json({ error: "Support API is not enabled in this environment." });
     return false;
   }
   return true;
+}
+
+function staffRoleSql(alias: "u"): string {
+  if (schema !== "smh") return `${alias}.role`;
+  return `CASE
+    WHEN ${alias}.role='admin' THEN 'owner'
+    WHEN ${alias}.role='agent' AND EXISTS (
+      SELECT 1 FROM smh.portal_manager_roles pm WHERE pm.staff_id=${alias}.id
+    ) THEN 'manager'
+    ELSE ${alias}.role
+  END`;
 }
 
 function safeText(value: unknown, min: number, max: number): string | null {
@@ -87,9 +108,29 @@ function hashPassword(password: string): string {
 
 function verifyPassword(password: string, stored: string): boolean {
   const parts = stored.split("$");
-  if (parts.length !== 3 || parts[0] !== "scrypt" || !/^[a-f0-9]{32}$/i.test(parts[1]) || !/^[a-f0-9]{128}$/i.test(parts[2])) return false;
-  const expected = Buffer.from(parts[2], "hex");
-  const actual = scryptSync(password, Buffer.from(parts[1], "hex"), 64, { maxmem: 64 * 1024 * 1024 });
+  let saltHex: string;
+  let digestHex: string;
+  let N = 16_384;
+  let r = 8;
+  let p = 1;
+
+  if (parts.length === 3 && parts[0] === "scrypt") {
+    [, saltHex, digestHex] = parts;
+  } else if (
+    parts.length === 6 &&
+    parts[0] === "scrypt" &&
+    parts[1] === "16384" &&
+    parts[2] === "8" &&
+    parts[3] === "1"
+  ) {
+    [, , , , saltHex, digestHex] = parts;
+  } else {
+    return false;
+  }
+
+  if (!/^[a-f0-9]{32}$/i.test(saltHex) || !/^[a-f0-9]{128}$/i.test(digestHex)) return false;
+  const expected = Buffer.from(digestHex, "hex");
+  const actual = scryptSync(password, Buffer.from(saltHex, "hex"), 64, { N, r, p, maxmem: 64 * 1024 * 1024 });
   return timingSafeEqual(expected, actual);
 }
 
@@ -113,7 +154,7 @@ function clearSessionCookie(res: Response): void {
 
 function sameOrigin(req: Request): boolean {
   const origin = req.get("origin");
-  if (!origin) return true;
+  if (!origin) return process.env.NODE_ENV !== "production";
   try {
     return new URL(origin).host === req.get("host");
   } catch {
@@ -133,7 +174,7 @@ async function staffIdentity(req: Request): Promise<StaffIdentity | null> {
   const token = requestCookie(req, SESSION_COOKIE);
   if (!token || token.length > 200) return null;
   const result = await pool.query(
-    `SELECT u.id,u.email,u.display_name,u.role
+    `SELECT u.id,u.email,u.display_name,${staffRoleSql("u")} AS role
        FROM ${schema}.portal_sessions s
        JOIN ${schema}.portal_users u ON u.id=s.staff_id
       WHERE s.token_hash=$1 AND s.expires>$2 AND u.active=TRUE`,
@@ -258,7 +299,8 @@ async function writeAudit(actorId: string, action: string, entityId: string, det
 router.get("/support/auth/session", async (req, res): Promise<void> => {
   if (!isDevSchemaEnabled(res)) return;
   const count = await pool.query(`SELECT count(*)::int AS count FROM ${schema}.portal_users`);
-  res.json(sessionView(await staffIdentity(req), Number(count.rows[0]?.count ?? 0) === 0));
+  const needsSetup = process.env.NODE_ENV !== "production" && Number(count.rows[0]?.count ?? 0) === 0;
+  res.json(sessionView(await staffIdentity(req), needsSetup));
 });
 
 router.post("/support/auth/bootstrap", async (req, res): Promise<void> => {
@@ -322,7 +364,8 @@ router.post("/support/auth/login", async (req, res): Promise<void> => {
     return;
   }
   const result = await pool.query(
-    `SELECT id,email,display_name,password_hash,role,active FROM ${schema}.portal_users WHERE lower(email)=$1`,
+    `SELECT u.id,u.email,u.display_name,u.password_hash,${staffRoleSql("u")} AS role,u.active
+       FROM ${schema}.portal_users u WHERE lower(u.email)=$1`,
     [email],
   );
   const row = result.rows[0];
@@ -433,7 +476,10 @@ router.get("/support/staff", async (req, res): Promise<void> => {
   if (!isDevSchemaEnabled(res)) return;
   const identity = await requireStaff(req, res);
   if (!identity) return;
-  const result = await pool.query(`SELECT id,display_name,role FROM ${schema}.portal_users WHERE active=TRUE ORDER BY display_name`);
+  const result = await pool.query(
+    `SELECT u.id,u.display_name,${staffRoleSql("u")} AS role
+       FROM ${schema}.portal_users u WHERE u.active=TRUE ORDER BY u.display_name`,
+  );
   res.json(ListSupportStaffResponse.parse(result.rows.map((row) => ({
     id: String(row.id), displayName: String(row.display_name), role: row.role,
   }))));

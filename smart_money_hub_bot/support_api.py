@@ -1,6 +1,6 @@
 """Small authenticated client for the shared support portal API.
 
-It stays off unless both the isolated-test flag and explicit enable flag are set.
+It stays off unless explicitly enabled for an isolated test or production rollout.
 """
 
 from __future__ import annotations
@@ -46,15 +46,24 @@ class SupportApiClient:
 
     @classmethod
     def from_environment(cls, *, bot: str = "coach") -> SupportApiClient | None:
-        if os.getenv("SMH_ISOLATED_TEST_INSTANCE", "").casefold() not in {"1", "true", "yes"}:
-            return None
         if os.getenv("SMH_SUPPORT_API_ENABLED", "").casefold() not in {"1", "true", "yes"}:
+            return None
+        isolated_test = os.getenv("SMH_ISOLATED_TEST_INSTANCE", "").casefold() in {"1", "true", "yes"}
+        production_enabled = os.getenv("SMH_SUPPORT_PRODUCTION_ENABLED", "").casefold() == "true"
+        if production_enabled:
+            if isolated_test:
+                raise ValueError("Production support cannot be enabled on an isolated test bot.")
+        elif not isolated_test:
             return None
         variable = "SMH_SUPPORT_COACH_TOKEN" if bot == "coach" else "SMH_SUPPORT_SIGNALS_TOKEN"
         base_url = os.getenv("SMH_SUPPORT_API_URL", "").strip()
         token = os.getenv(variable, "")
         if not base_url or not token:
+            if production_enabled:
+                raise ValueError("Production support API URL and bot token are required.")
             return None
+        if production_enabled and not base_url.startswith("https://"):
+            raise ValueError("Production support API connections must use HTTPS.")
         return cls(base_url, token)
 
     def _request(self, method: str, path: str, *, payload: dict | None = None) -> dict:

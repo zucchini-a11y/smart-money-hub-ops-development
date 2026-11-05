@@ -1,4 +1,4 @@
-"""Authenticated client for the shared Development Support Portal API."""
+"""Authenticated client for the shared Support Portal API."""
 
 from __future__ import annotations
 
@@ -64,7 +64,11 @@ class SupportApiClient:
         enabled = os.getenv("SMH_SUPPORT_API_ENABLED", "").casefold() in {"1", "true", "yes"}
         if not enabled:
             return None
-        if not isolated_test or database_schema != "smh_test":
+        production_enabled = os.getenv("SMH_SUPPORT_PRODUCTION_ENABLED", "").casefold() == "true"
+        if production_enabled:
+            if isolated_test or database_schema != "smh":
+                raise ValueError("Production support API requires the live Signal bot using the smh schema.")
+        elif not isolated_test or database_schema != "smh_test":
             raise ValueError("The shared support API is allowed only for the isolated smh_test bot.")
         if bot != "signals":
             raise ValueError("This client is configured for the Signal bot only.")
@@ -72,6 +76,8 @@ class SupportApiClient:
         token = os.getenv("SMH_SUPPORT_SIGNALS_TOKEN", "")
         if not api_root or not token:
             raise ValueError("The isolated support API URL and Signal bot token are required.")
+        if production_enabled and not api_root.startswith("https://"):
+            raise ValueError("Production support API connections must use HTTPS.")
         return cls(api_root, token)
 
     def _request(self, method: str, path: str, *, payload: dict | None = None) -> dict:

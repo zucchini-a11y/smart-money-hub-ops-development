@@ -337,7 +337,7 @@ class GeminiChannelContentTests(unittest.TestCase):
         self.assertEqual(caught.exception.http_status, 429)
         self.assertEqual(mocked.call_count, 1)
 
-    def test_transient_server_error_retries_once_with_the_same_model(self) -> None:
+    def test_transient_server_error_retries_with_the_same_model(self) -> None:
         request_url = (
             "https://generativelanguage.googleapis.com/v1beta/models/"
             f"{GEMINI_MODEL}:generateContent"
@@ -375,7 +375,71 @@ class GeminiChannelContentTests(unittest.TestCase):
         requests = [call.args[0] for call in mocked.call_args_list]
         self.assertEqual([request.full_url for request in requests], [request_url] * 2)
         self.assertTrue(all(GEMINI_MODEL in request.full_url for request in requests))
-        sleep.assert_called_once_with(0.1)
+        sleep.assert_called_once_with(1.0)
+
+    def test_service_unavailable_uses_bounded_backoff_before_recovering(self) -> None:
+        request_url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{GEMINI_MODEL}:generateContent"
+        )
+        response_text = (
+            "CATEGORY: education\nPOST:\n"
+            "A concise lesson about waiting for confirmation."
+        )
+        unavailable = lambda: HTTPError(
+            request_url, 503, "temporarily unavailable", {"Retry-After": "0"}, None
+        )
+        with (
+            patch(
+                "smart_money_hub_bot.channel_gemini.urlopen",
+                side_effect=[unavailable(), unavailable(), unavailable(), _Response(_candidate(response_text))],
+            ) as mocked,
+            patch("smart_money_hub_bot.channel_gemini.time.sleep") as sleep,
+        ):
+            result = self.service.generate(
+                schedule_date="2026-11-05",
+                schedule_time="14:00",
+                preferred_category="new_week_preparation",
+                history=[],
+                admin_feedback=[],
+                session_context={"session": "new_york"},
+            )
+
+        self.assertEqual(result.content, "A concise lesson about waiting for confirmation.")
+        self.assertEqual(mocked.call_count, 4)
+        self.assertTrue(all(call.args[0].full_url == request_url for call in mocked.call_args_list))
+        self.assertTrue(all(GEMINI_MODEL in call.args[0].full_url for call in mocked.call_args_list))
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], [1.0, 2.0, 2.0])
+
+    def test_service_unavailable_fails_safely_after_bounded_retries(self) -> None:
+        request_url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{GEMINI_MODEL}:generateContent"
+        )
+        unavailable = lambda: HTTPError(
+            request_url, 503, "temporarily unavailable", {"Retry-After": "0"}, None
+        )
+        with (
+            patch(
+                "smart_money_hub_bot.channel_gemini.urlopen",
+                side_effect=[unavailable(), unavailable(), unavailable(), unavailable()],
+            ) as mocked,
+            patch("smart_money_hub_bot.channel_gemini.time.sleep") as sleep,
+        ):
+            with self.assertRaises(GeminiChannelGenerationError) as caught:
+                self.service.generate(
+                    schedule_date="2026-11-05",
+                    schedule_time="14:00",
+                    preferred_category="new_week_preparation",
+                    history=[],
+                    admin_feedback=[],
+                    session_context={"session": "new_york"},
+                )
+
+        self.assertEqual(caught.exception.category, "gemini_service_unavailable")
+        self.assertEqual(caught.exception.http_status, 503)
+        self.assertEqual(mocked.call_count, 4)
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], [1.0, 2.0, 2.0])
 
     def test_timeout_retries_once_with_the_same_model_and_longer_timeout(self) -> None:
         response_text = (

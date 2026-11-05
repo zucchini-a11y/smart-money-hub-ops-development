@@ -44,6 +44,26 @@ class SharedSupportClientTests(unittest.TestCase):
                 SupportApiClient.from_environment(
                     isolated_test=True, database_schema="smh")
 
+    def test_production_environment_requires_explicit_live_schema_and_https(self):
+        production = {
+            "SMH_SUPPORT_API_ENABLED": "true",
+            "SMH_SUPPORT_PRODUCTION_ENABLED": "true",
+            "SMH_SUPPORT_API_URL": "https://support.example.test",
+            "SMH_SUPPORT_SIGNALS_TOKEN": "t" * 40,
+        }
+        with patch.dict(os.environ, production, clear=True):
+            self.assertIsNotNone(SupportApiClient.from_environment(
+                isolated_test=False, database_schema="smh"))
+            with self.assertRaisesRegex(ValueError, "live Signal bot"):
+                SupportApiClient.from_environment(
+                    isolated_test=True, database_schema="smh_test")
+
+        production["SMH_SUPPORT_API_URL"] = "http://support.example.test"
+        with patch.dict(os.environ, production, clear=True):
+            with self.assertRaisesRegex(ValueError, "HTTPS"):
+                SupportApiClient.from_environment(
+                    isolated_test=False, database_schema="smh")
+
     def test_enabled_environment_requires_url_and_bot_token(self):
         with patch.dict(os.environ, {"SMH_SUPPORT_API_ENABLED": "true"}, clear=True):
             with self.assertRaisesRegex(ValueError, "URL and Signal bot token"):

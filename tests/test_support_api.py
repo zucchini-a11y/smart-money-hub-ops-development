@@ -38,6 +38,21 @@ class SupportApiClientTests(unittest.TestCase):
         ):
             self.assertIsNotNone(SupportApiClient.from_environment())
 
+    def test_production_client_requires_explicit_flag_and_https(self) -> None:
+        production = {
+            "SMH_SUPPORT_API_ENABLED": "true",
+            "SMH_SUPPORT_PRODUCTION_ENABLED": "true",
+            "SMH_SUPPORT_API_URL": "https://support.example.test",
+            "SMH_SUPPORT_COACH_TOKEN": "t" * 40,
+        }
+        with patch.dict(os.environ, production, clear=True):
+            self.assertIsNotNone(SupportApiClient.from_environment())
+
+        production["SMH_SUPPORT_API_URL"] = "http://support.example.test"
+        with patch.dict(os.environ, production, clear=True):
+            with self.assertRaisesRegex(ValueError, "HTTPS"):
+                SupportApiClient.from_environment()
+
     def test_create_case_sends_bearer_token_and_stable_update_id(self) -> None:
         client = SupportApiClient("https://support.example.test/api", "t" * 40)
         response = _Response({"caseId": "case-12345678"})
