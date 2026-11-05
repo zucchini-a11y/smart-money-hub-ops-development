@@ -38,6 +38,24 @@ class MessageRouterTests(unittest.TestCase):
         self.assertEqual(self.router.route(101, "Alright").intent, "acknowledgement")
         self.assertEqual(self.router.route(101, "What’s up?").intent, "greeting")
 
+    def test_quick_reply_route_handles_simple_messages_without_provider(self) -> None:
+        provider = Mock()
+        router = CoachMessageRouter(provider, _EmptyKnowledgeStore())
+
+        routed = router.route_quick_reply(
+            101,
+            "Hi",
+            is_admin=True,
+            request_id="a" * 32,
+        )
+
+        self.assertIsNotNone(routed)
+        self.assertEqual(routed.intent, "greeting")
+        self.assertIn("CEO", routed.reply.response)
+        self.assertEqual(routed.response_path, "local_response")
+        provider.evaluate.assert_not_called()
+        self.assertIsNone(router.route_quick_reply(101, "Explain a BOS"))
+
     def test_admin_greetings_use_a_more_formal_tone(self) -> None:
         response = self.router.route(
             101, "Good morning", profile={"is_admin": True}

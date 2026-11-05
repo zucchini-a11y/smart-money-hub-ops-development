@@ -2633,6 +2633,34 @@ class BotFlowTests(unittest.TestCase):
         self.assertEqual(self.bot.sessions[self.user_id].step, 1)
         self.assertNotIn("You’re welcome", self.api.messages[-1]["text"])
 
+    def test_simple_coach_reply_skips_slow_context_lookups(self) -> None:
+        with (
+            patch.object(
+                self.bot.store,
+                "recent_dm_coaching_interactions",
+                side_effect=AssertionError("history lookup should be skipped"),
+            ),
+            patch.object(
+                self.bot.store,
+                "progress_for",
+                side_effect=AssertionError("profile lookup should be skipped"),
+            ),
+            patch.object(
+                self.bot,
+                "_attach_curriculum_context",
+                side_effect=AssertionError("curriculum lookup should be skipped"),
+            ),
+        ):
+            self.bot._process_coach_message(
+                self.chat_id,
+                self.user_id,
+                self.username,
+                "Hi",
+            )
+
+        self.assertTrue(self.api.messages)
+        self.assertEqual(self.api.messages[-1]["chat_id"], self.chat_id)
+
     def test_recovery_notice_follows_a_long_outage_once_per_private_member(self) -> None:
         recovered_at = self._record_poll_recovery(timedelta(hours=1))
 

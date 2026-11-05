@@ -130,6 +130,33 @@ class CoachMessageRouter:
         self.store = store
         self._last_simple_reply: dict[tuple[int, str], str] = {}
 
+    def route_quick_reply(
+        self,
+        telegram_id: int,
+        message: str,
+        *,
+        is_admin: bool = False,
+        request_id: str | None = None,
+    ) -> RoutedCoachMessage | None:
+        """Route simple conversation replies without requiring stored context."""
+        if not isinstance(request_id, str) or not re.fullmatch(
+            r"[0-9a-f]{32}", request_id
+        ):
+            request_id = uuid.uuid4().hex
+        simple_intent, greeting = _simple_intent(message)
+        if not simple_intent:
+            return None
+        response = self._varied_reply(
+            telegram_id, simple_intent, greeting, is_admin=is_admin
+        )
+        return self._routed(
+            simple_intent,
+            CoachReply(response, "Conversation", (), ""),
+            None,
+            "local_response",
+            request_id=request_id,
+        )
+
     def route(
         self,
         telegram_id: int,
@@ -168,18 +195,14 @@ class CoachMessageRouter:
                 request_id=request_id,
             )
 
-        simple_intent, greeting = _simple_intent(message)
-        if simple_intent:
-            response = self._varied_reply(
-                telegram_id, simple_intent, greeting, is_admin=is_admin
-            )
-            return self._routed(
-                simple_intent,
-                CoachReply(response, "Conversation", (), ""),
-                None,
-                "local_response",
-                request_id=request_id,
-            )
+        quick_reply = self.route_quick_reply(
+            telegram_id,
+            message,
+            is_admin=is_admin,
+            request_id=request_id,
+        )
+        if quick_reply is not None:
+            return quick_reply
 
         requested_episode = requested_episode_number(message)
         if (

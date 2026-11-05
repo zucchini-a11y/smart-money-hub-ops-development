@@ -3782,75 +3782,89 @@ class SmartMoneyHubBot:
     ) -> None:
         request_id = uuid.uuid4().hex
         logger.info("Coach request received. request_id=%s.", request_id)
-        try:
-            history = self.store.recent_dm_coaching_interactions(telegram_id)
-            profile = self.store.progress_for(telegram_id)
-            sunday_plan = self.store.latest_sunday_preparation(telegram_id)
-            recent_checkins = self.store.recent_checkins(telegram_id, limit=1)
-            if sunday_plan:
-                profile["learning_goal"] = (
-                    sunday_plan.get("concept_focus")
-                    or sunday_plan.get("weekly_goal")
-                    or sunday_plan.get("mistake_to_avoid")
-                )
-            elif recent_checkins:
-                profile["learning_goal"] = recent_checkins[0].get("next_focus")
-        except Exception:
-            logger.exception("Could not load saved coaching context.")
-            history = []
-            profile = {}
-        profile["is_admin"] = self.admin_id is not None and telegram_id == self.admin_id
-        confused = self._is_confusion_request(question)
-        include_resources = self._should_include_education_resources(question)
-        resource_query = self._education_followup_query(question, history)
-        diagram: dict[str, Any] | None = None
-        try:
-            diagram = self.admin_dashboard.education_diagrams.diagram_for_question(
-                resource_query
-            )
-        except Exception:
-            logger.warning("Could not retrieve a matching Coach diagram.")
-        if diagram:
-            profile["matching_education_diagram_context"] = {
-                "title": " ".join(str(diagram.get("title") or "").split())[:120],
-                "description": " ".join(
-                    str(diagram.get("description") or "").split()
-                )[:300],
-            }
-        explicit_diagram_request = self._is_explicit_diagram_request(question)
-        send_diagram = bool(diagram and (confused or explicit_diagram_request))
-        offer_diagram = bool(
-            diagram
-            and not confused
-            and not explicit_diagram_request
-            and self._should_offer_coach_diagram(question)
-        )
-        self._attach_curriculum_context(
-            profile,
-            question,
-            self.education_group_id,
-            include_education_resources=include_resources,
-            resource_query=resource_query,
-        )
-        if self.education_group_id is not None:
-            if not profile.get("episode_context"):
-                try:
-                    profile["group_knowledge_context"] = format_group_context(
-                        self.store.search_education_group_posts(
-                            self.education_group_id,
-                            question,
-                            limit=4,
-                        )
-                    )
-                except Exception:
-                    logger.warning("Could not retrieve educational group context for Coach.")
-        routed = self.message_router.route(
+        is_admin = self.admin_id is not None and telegram_id == self.admin_id
+        routed = self.message_router.route_quick_reply(
             telegram_id,
             question,
-            history=history,
-            profile=profile,
+            is_admin=is_admin,
             request_id=request_id,
         )
+        history: list[dict[str, Any]] = []
+        profile: dict[str, Any] = {"is_admin": is_admin}
+        include_resources = False
+        diagram: dict[str, Any] | None = None
+        send_diagram = False
+        offer_diagram = False
+
+        if routed is None:
+            try:
+                history = self.store.recent_dm_coaching_interactions(telegram_id)
+                profile = self.store.progress_for(telegram_id)
+                sunday_plan = self.store.latest_sunday_preparation(telegram_id)
+                recent_checkins = self.store.recent_checkins(telegram_id, limit=1)
+                if sunday_plan:
+                    profile["learning_goal"] = (
+                        sunday_plan.get("concept_focus")
+                        or sunday_plan.get("weekly_goal")
+                        or sunday_plan.get("mistake_to_avoid")
+                    )
+                elif recent_checkins:
+                    profile["learning_goal"] = recent_checkins[0].get("next_focus")
+            except Exception:
+                logger.exception("Could not load saved coaching context.")
+                history = []
+                profile = {}
+            profile["is_admin"] = is_admin
+            confused = self._is_confusion_request(question)
+            include_resources = self._should_include_education_resources(question)
+            resource_query = self._education_followup_query(question, history)
+            try:
+                diagram = self.admin_dashboard.education_diagrams.diagram_for_question(
+                    resource_query
+                )
+            except Exception:
+                logger.warning("Could not retrieve a matching Coach diagram.")
+            if diagram:
+                profile["matching_education_diagram_context"] = {
+                    "title": " ".join(str(diagram.get("title") or "").split())[:120],
+                    "description": " ".join(
+                        str(diagram.get("description") or "").split()
+                    )[:300],
+                }
+            explicit_diagram_request = self._is_explicit_diagram_request(question)
+            send_diagram = bool(diagram and (confused or explicit_diagram_request))
+            offer_diagram = bool(
+                diagram
+                and not confused
+                and not explicit_diagram_request
+                and self._should_offer_coach_diagram(question)
+            )
+            self._attach_curriculum_context(
+                profile,
+                question,
+                self.education_group_id,
+                include_education_resources=include_resources,
+                resource_query=resource_query,
+            )
+            if self.education_group_id is not None:
+                if not profile.get("episode_context"):
+                    try:
+                        profile["group_knowledge_context"] = format_group_context(
+                            self.store.search_education_group_posts(
+                                self.education_group_id,
+                                question,
+                                limit=4,
+                            )
+                        )
+                    except Exception:
+                        logger.warning("Could not retrieve educational group context for Coach.")
+            routed = self.message_router.route(
+                telegram_id,
+                question,
+                history=history,
+                profile=profile,
+                request_id=request_id,
+            )
         reply = routed.reply
         assessment = routed.assessment
         response_text = reply.response

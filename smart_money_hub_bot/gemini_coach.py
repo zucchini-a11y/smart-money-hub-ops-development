@@ -161,7 +161,7 @@ class GeminiCoachService:
         else:
             models = (GEMINI_MODEL, *GEMINI_FALLBACK_MODELS)
         started_at = time.monotonic()
-        deadline = started_at + self._timeout_seconds * 2
+        deadline = started_at + self._timeout_seconds
         last_error: CoachProviderError | None = None
         for model_index, model in enumerate(models):
             remaining = deadline - time.monotonic()
