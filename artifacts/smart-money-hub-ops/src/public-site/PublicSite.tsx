@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode, type AnchorHTMLAttributes } from 'react';
 import { Link, useLocation } from 'wouter';
-import { ArrowDownRight, ArrowRight, ArrowUpRight, BookOpen, Compass, Mail, ShieldCheck, X } from 'lucide-react';
+import { ArrowDownRight, ArrowRight, ArrowUpRight, BookOpen, Compass, Mail, X } from 'lucide-react';
 import { isConfiguredPublicUrl, publicSiteLinks } from './config';
 import './public-site.css';
 
@@ -17,6 +17,41 @@ const assetBase = import.meta.env.BASE_URL.endsWith('/')
   ? import.meta.env.BASE_URL
   : `${import.meta.env.BASE_URL}/`;
 const logoSrc = `${assetBase}vayda-logo.png`;
+
+type PublicGsapRuntime = { gsap: any; ScrollTrigger: any };
+let publicGsapRuntimePromise: Promise<PublicGsapRuntime> | null = null;
+
+function loadPublicGsapRuntime(): Promise<PublicGsapRuntime> {
+  const browser = window as typeof window & { gsap?: any; ScrollTrigger?: any };
+  if (browser.gsap && browser.ScrollTrigger) {
+    return Promise.resolve({ gsap: browser.gsap, ScrollTrigger: browser.ScrollTrigger });
+  }
+  if (!publicGsapRuntimePromise) {
+    const loadScript = (src: string) => new Promise<void>((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = src;
+      script.async = true;
+      script.onload = () => resolve();
+      script.onerror = () => {
+        script.remove();
+        reject(new Error('Animation library unavailable'));
+      };
+      document.head.appendChild(script);
+    });
+    publicGsapRuntimePromise = loadScript('https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js')
+      .then(() => loadScript('https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js'))
+      .then(() => {
+        const runtime = window as typeof window & { gsap?: any; ScrollTrigger?: any };
+        if (!runtime.gsap || !runtime.ScrollTrigger) throw new Error('Animation library unavailable');
+        return { gsap: runtime.gsap, ScrollTrigger: runtime.ScrollTrigger };
+      })
+      .catch((error: unknown) => {
+        publicGsapRuntimePromise = null;
+        throw error;
+      });
+  }
+  return publicGsapRuntimePromise;
+}
 
 const pageMetadata: Record<string, { title: string; description: string }> = {
   '/': {
@@ -88,7 +123,22 @@ function usePublicPageMotion(path: string) {
 
     const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
     const reduceMotion = motionPreference.matches;
-    window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' });
+    let hashScrollFrame = 0;
+    const scrollToCurrentHash = () => {
+      const anchorId = decodeURIComponent(window.location.hash.slice(1));
+      const anchorTarget = anchorId ? document.getElementById(anchorId) : null;
+      if (!anchorTarget) return;
+      if (hashScrollFrame) window.cancelAnimationFrame(hashScrollFrame);
+      hashScrollFrame = window.requestAnimationFrame(() => {
+        anchorTarget.scrollIntoView({ behavior: 'auto', block: 'start' });
+      });
+    };
+    if (window.location.hash) {
+      scrollToCurrentHash();
+    } else {
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    }
+    window.addEventListener('hashchange', scrollToCurrentHash);
 
     let observer: IntersectionObserver | undefined;
     const revealTargets = root.querySelectorAll<HTMLElement>('[data-reveal]');
@@ -107,19 +157,11 @@ function usePublicPageMotion(path: string) {
       revealTargets.forEach((target) => target.classList.add('is-visible'));
     }
 
-    const hero = root.querySelector<HTMLElement>('.vs-home-hero');
     const header = root.querySelector<HTMLElement>('.vs-header');
-    let heroScrollDistance = hero ? Math.max(hero.offsetHeight, window.innerHeight * 0.8) : 1;
-    const chartFrame = root.querySelector<HTMLElement>('.vs-chart-frame');
     let animationFrame = 0;
     const updateMotion = () => {
       animationFrame = 0;
       const scrollY = window.scrollY || window.pageYOffset;
-      if (!reduceMotion) {
-        const heroProgress = Math.min(1, Math.max(0, scrollY / heroScrollDistance));
-        chartFrame?.style.setProperty('--vs-hero-progress', heroProgress.toFixed(4));
-        chartFrame?.style.setProperty('--vs-scan-x', `${(heroProgress * 400).toFixed(1)}px`);
-      }
       const shouldBlurHeader = scrollY > 12;
       if (header?.classList.contains('is-scrolled') !== shouldBlurHeader) {
         header?.classList.toggle('is-scrolled', shouldBlurHeader);
@@ -128,22 +170,79 @@ function usePublicPageMotion(path: string) {
     const requestMotionUpdate = () => {
       if (!animationFrame) animationFrame = window.requestAnimationFrame(updateMotion);
     };
-    const handleResize = () => {
-      heroScrollDistance = hero ? Math.max(hero.offsetHeight, window.innerHeight * 0.8) : 1;
-      requestMotionUpdate();
-    };
     window.addEventListener('scroll', requestMotionUpdate, { passive: true });
-    window.addEventListener('resize', handleResize);
     requestMotionUpdate();
 
+    let cancelled = false;
+    let gsapContext: { revert: () => void } | undefined;
+    if (path === '/' && !reduceMotion) {
+      void (async () => {
+        try {
+          const { gsap: engine, ScrollTrigger } = await loadPublicGsapRuntime();
+          if (cancelled) return;
+          if (!engine?.registerPlugin || !engine?.context || !ScrollTrigger) return;
+          engine.registerPlugin(ScrollTrigger);
+          gsapContext = engine.context(() => {
+            const marquee = root.querySelector<HTMLElement>('.vs-marquee-track');
+            const marqueeTrigger = root.querySelector<HTMLElement>('.vs-marquee');
+            if (marquee && marqueeTrigger) {
+              engine.to(marquee, {
+                xPercent: -22,
+                ease: 'none',
+                scrollTrigger: { trigger: marqueeTrigger, start: 'top bottom', end: 'bottom top', scrub: 0.8 },
+              });
+            }
+            const statementWords = root.querySelectorAll<HTMLElement>('.vs-statement-word');
+            const statementTrigger = root.querySelector<HTMLElement>('.vs-statement');
+            if (statementWords.length && statementTrigger) {
+              engine.fromTo(statementWords, { opacity: 0.22, y: 14 }, {
+                opacity: 1, y: 0, stagger: 0.09, ease: 'power2.out',
+                scrollTrigger: { trigger: statementTrigger, start: 'top 76%', end: 'bottom 52%', scrub: 0.7 },
+              });
+            }
+            const media = engine.matchMedia();
+            media.add('(min-width: 761px)', () => {
+              const stage = root.querySelector<HTMLElement>('.vs-approach-stage');
+              const steps = root.querySelectorAll<HTMLElement>('.vs-learning-step');
+              if (!stage || !steps.length) return;
+              const timeline = engine.timeline({
+                scrollTrigger: {
+                  trigger: stage,
+                  start: 'top top+=78',
+                  end: `+=${steps.length * 72}%`,
+                  pin: true,
+                  scrub: 0.7,
+                  anticipatePin: 1,
+                },
+              });
+              steps.forEach((step: HTMLElement, index: number) => {
+                timeline.fromTo(step, { opacity: 0.35, y: 12 }, { opacity: 1, y: 0, duration: 0.7 }, index);
+              });
+              return () => timeline.scrollTrigger?.kill();
+            });
+            return () => media.revert();
+          }, root);
+        } catch {
+          gsapContext?.revert();
+          root.querySelectorAll<HTMLElement>('.vs-statement-word, .vs-learning-step, .vs-marquee-track').forEach((element) => {
+            element.style.removeProperty('opacity');
+            element.style.removeProperty('transform');
+          });
+          // Content remains fully visible and the page remains usable without GSAP.
+        }
+      })();
+    }
+
     return () => {
+      cancelled = true;
+      gsapContext?.revert();
       observer?.disconnect();
       window.removeEventListener('scroll', requestMotionUpdate);
-      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('hashchange', scrollToCurrentHash);
       if (animationFrame) window.cancelAnimationFrame(animationFrame);
-      chartFrame?.style.removeProperty('--vs-hero-progress');
-      chartFrame?.style.removeProperty('--vs-scan-x');
+      if (hashScrollFrame) window.cancelAnimationFrame(hashScrollFrame);
       header?.classList.remove('is-scrolled');
+      root.classList.remove('vs-motion-ready');
     };
   }, [path]);
 }
@@ -154,6 +253,7 @@ function ExternalLink({ href, children, className = '', ...props }: AnchorHTMLAt
 
 function Header({ location }: { location: string }) {
   const [open, setOpen] = useState(false);
+  const isHome = location === '/';
   return <header className="vs-header">
     <div className="vs-header-inner">
       <Link href="/" className="vs-brand" aria-label="VAYDA Smart Money Hub home" onClick={() => setOpen(false)} data-testid="link-public-home-brand">
@@ -164,8 +264,12 @@ function Header({ location }: { location: string }) {
         {open ? <X size={18} /> : <><span /><span /></>}
       </button>
       <nav id="vayda-public-nav" className={`vs-nav ${open ? 'is-open' : ''}`} aria-label="Public navigation">
-        {pages.slice(1).map((page) => <Link key={page.href} href={page.href} aria-current={location === page.href ? 'page' : undefined} onClick={() => setOpen(false)} data-testid={`link-public-${page.href.slice(1) || 'home'}`}>{page.label}</Link>)}
-        {isConfiguredPublicUrl(publicSiteLinks.primaryCommunity) && <ExternalLink href={publicSiteLinks.primaryCommunity} className="vs-nav-cta" data-testid="link-public-community-entry">Enter community <ArrowUpRight size={13} /></ExternalLink>}
+        {isHome ? <>
+          <a href="#approach" onClick={() => setOpen(false)} data-testid="link-public-approach">Approach</a>
+          <a href="#curriculum" onClick={() => setOpen(false)} data-testid="link-public-curriculum">Curriculum</a>
+          <a href="#principles" onClick={() => setOpen(false)} data-testid="link-public-principles">Principles</a>
+        </> : pages.slice(1).map((page) => <Link key={page.href} href={page.href} aria-current={location === page.href ? 'page' : undefined} onClick={() => setOpen(false)} data-testid={`link-public-${page.href.slice(1) || 'home'}`}>{page.label}</Link>)}
+        {isConfiguredPublicUrl(publicSiteLinks.primaryCommunity) && <ExternalLink href={publicSiteLinks.primaryCommunity} className="vs-nav-cta" data-testid="link-public-community-entry">{isHome ? 'Join' : 'Enter community'} <ArrowUpRight size={13} /></ExternalLink>}
         <Link href="/sign-up" className="vs-create-account" onClick={() => setOpen(false)} data-testid="link-public-create-account">Create account <ArrowUpRight size={13} /></Link>
         <Link href="/login" className="vs-staff-link" onClick={() => setOpen(false)} data-testid="link-public-login">Sign in</Link>
       </nav>
@@ -211,10 +315,9 @@ function ChartIllustration() {
         <desc id="vayda-chart-desc">A schematic sequence of candles, a marked area, and a confirmation path. This is not live market data.</desc>
         <defs>
           <pattern id="vs-grid" width="46" height="43" patternUnits="userSpaceOnUse"><path d="M 46 0 L 0 0 0 43" fill="none" stroke="rgba(205,214,198,.1)" strokeWidth="1" /></pattern>
-          <linearGradient id="vs-area" x1="0" x2="1"><stop offset="0" stopColor="#d7bd7b" stopOpacity=".09"/><stop offset="1" stopColor="#d7bd7b" stopOpacity=".01"/></linearGradient>
         </defs>
         <rect x="0" y="0" width="460" height="230" fill="url(#vs-grid)" />
-        <rect x="240" y="104" width="149" height="43" fill="url(#vs-area)" stroke="rgba(215,189,123,.34)" strokeDasharray="4 5" />
+        <rect x="240" y="104" width="149" height="43" fill="none" stroke="rgba(215,189,123,.34)" strokeDasharray="4 5" />
         <text x="247" y="99" fill="#c8b576" fontSize="8" letterSpacing="1.2" fontFamily="DM Mono, monospace">AREA OF INTEREST</text>
         <line className="vs-chart-scanline" x1="20" y1="20" x2="20" y2="222" stroke="#58e6d0" strokeOpacity=".68" strokeWidth="1" />
         <path className="vs-chart-trend" d="M20 210 C65 191 73 178 110 184 S151 154 179 164 S210 133 239 142 S267 112 300 120 S336 85 363 91 S397 53 433 41" fill="none" stroke="rgba(139,185,154,.56)" strokeWidth="1.3" strokeDasharray="4 6" />
@@ -229,7 +332,7 @@ function ChartIllustration() {
         <text x="190" y="248" fill="#77817a" fontSize="8" letterSpacing="1" fontFamily="DM Mono, monospace">WAIT FOR CONFIRMATION</text>
         <text x="385" y="248" fill="#77817a" fontSize="8" letterSpacing="1" fontFamily="DM Mono, monospace">DECIDE</text>
       </svg>
-      <figcaption className="vs-chart-foot"><span><strong>SCHEMATIC</strong> · FOR EDUCATION ONLY</span><span>NOT LIVE MARKET DATA</span></figcaption>
+      <figcaption className="vs-chart-foot"><span>Illustrative example · not market data.</span><span>FOR EDUCATION ONLY</span></figcaption>
     </figure>
   </div>;
 }
@@ -240,44 +343,68 @@ function Home() {
       <section className="vs-home-hero">
         <div className="vs-hero-layout">
           <div className="vs-hero-copy">
-            <div className="vs-hero-mark">A more deliberate way to learn the market</div>
-            <h1>TRADE WITH <span>KNOWLEDGE.</span> EXECUTE WITH CONFIDENCE.</h1>
-            <p>Learn the markets. Understand price action. Master confirmation. Build the discipline to trade independently.</p>
+          <div className="vs-hero-mark">[ Trading education ]</div>
+            <h1>Learn how<br />price really <span>moves.</span></h1>
+            <p>Market education for people who would rather understand the conditions than chase the call.</p>
             <div className="vs-hero-actions">
-              {isConfiguredPublicUrl(publicSiteLinks.primaryCommunity) && <ExternalLink href={publicSiteLinks.primaryCommunity} className="vs-button" data-testid="link-home-community">Join Our Community <ArrowRight /></ExternalLink>}
-              <Link href="/philosophy" className="vs-button vs-button-quiet" data-testid="link-home-philosophy">Our philosophy <ArrowDownRight /></Link>
+              {isConfiguredPublicUrl(publicSiteLinks.primaryCommunity) && <ExternalLink href={publicSiteLinks.primaryCommunity} className="vs-button" data-testid="link-home-community">Join the community <ArrowRight /></ExternalLink>}
+              <a href="#approach" className="vs-button vs-button-quiet" data-testid="link-home-approach">Explore the approach <ArrowDownRight /></a>
             </div>
-            <div className="vs-hero-footnote">NO PROMISES. NO SHORTCUTS. JUST A PROCESS.</div>
+            <div className="vs-hero-footnote">NO CONFIRMATION, NO ENTRY</div>
           </div>
-          <ChartIllustration />
+          <div className="vs-hero-index" aria-hidden="true"><span>READ THE MARKET</span><span>OBSERVE / CONFIRM / DECIDE</span></div>
         </div>
       </section>
-      <div className="vs-shell vs-ticker" data-reveal><span>STRUCTURE</span><b>PRICE ACTION · CONFIRMATION · DISCIPLINE</b><span>INDEPENDENCE</span></div>
+      <section className="vs-marquee" aria-label="Learning themes">
+        <div className="vs-marquee-track"><span>STRUCTURE</span><i>·</i><span>LIQUIDITY</span><i>·</i><span>RISK</span><i>·</i><span>PROCESS</span><i>·</i><span>STRUCTURE</span><i>·</i><span>LIQUIDITY</span><i>·</i><span>RISK</span><i>·</i><span>PROCESS</span><i>·</i></div>
+      </section>
 
-      <section className="vs-section">
+      <section className="vs-approach vs-section" id="approach">
         <div className="vs-shell">
-          <div className="vs-section-heading" data-reveal><div><div className="vs-eyebrow">THE VAYDA APPROACH</div><h2>Clarity is built, not called.</h2></div><p>Markets are uncertain. Your process does not have to be. VAYDA brings practical concepts into focus so traders can make considered decisions for themselves.</p></div>
-          <div className="vs-pillars vs-stagger" data-reveal>
-            <article className="vs-pillar"><span className="vs-index">01 / READ</span><h3>Understand structure</h3><p>Learn to observe price behavior, identify meaningful context, and separate a useful idea from market noise.</p><span className="vs-pillar-sign" aria-hidden="true">↗</span></article>
-            <article className="vs-pillar"><span className="vs-index">02 / WAIT</span><h3>Require confirmation</h3><p>Patience is part of the setup. Build a habit of waiting for your conditions instead of anticipating them.</p><span className="vs-pillar-sign" aria-hidden="true">⌁</span></article>
-            <article className="vs-pillar"><span className="vs-index">03 / OWN</span><h3>Execute with discipline</h3><p>Use a repeatable framework, manage uncertainty, and take responsibility for each decision you make.</p><span className="vs-pillar-sign" aria-hidden="true">◌</span></article>
+          <div className="vs-section-heading" data-reveal><div><div className="vs-eyebrow">01 / APPROACH</div><h2>Read the conditions.<br />Then make a decision.</h2></div><p>There is no shortcut around uncertainty. A useful framework helps you see what is happening, define what matters, and choose whether to act.</p></div>
+          <div className="vs-approach-stage">
+            <div className="vs-learning-steps">
+              <article className="vs-learning-step"><span className="vs-index">01 / STRUCTURE</span><h3>Start with structure</h3><p>Place price in context. Notice the shape of the move before deciding what it might mean.</p></article>
+              <article className="vs-learning-step"><span className="vs-index">02 / LIQUIDITY</span><h3>Let liquidity inform the picture</h3><p>Study where attention gathers and what price does around those areas. A level is context, not a promise.</p></article>
+              <article className="vs-learning-step"><span className="vs-index">03 / RISK</span><h3>Put risk before entry</h3><p>Consider exposure and sizing before acting. Require confirmation, define what you are willing to risk, and stay willing to stand aside.</p></article>
+            </div>
+            <div className="vs-approach-visual"><ChartIllustration /></div>
           </div>
         </div>
       </section>
 
-      <section className="vs-quote-band" data-reveal><div className="vs-eyebrow">THE RULE THAT KEEPS US GROUNDED</div><blockquote>NO CONFIRMATION,<br />NO ENTRY.</blockquote><p>Process over prediction. Every time.</p></section>
+      <section className="vs-statement" data-reveal>
+        <div className="vs-statement-inner"><div className="vs-eyebrow">A DIFFERENT KIND OF EDGE</div><p>{'The point is not to predict every move. It is to know what you are waiting for.'.split(' ').map((word, index) => <span className="vs-statement-word" key={`${word}-${index}`}>{word} </span>)}</p><span className="vs-statement-note">OBSERVE / CONFIRM / DECIDE</span></div>
+      </section>
 
-      <section className="vs-section vs-section-tight">
+      <section className="vs-section vs-curriculum" id="curriculum">
         <div className="vs-shell">
-          <div className="vs-section-heading" data-reveal><div><div className="vs-eyebrow">FIND YOUR NEXT STEP</div><h2>Learn first. Participate with purpose.</h2></div><p>Start with the principles. Then choose the community entry point that fits what you want to explore.</p></div>
-          <div className="vs-pathways vs-stagger" data-reveal>
-            <Link href="/education" className="vs-path-card" data-testid="link-home-education"><div className="vs-path-top"><span>01 / LEARN</span><BookOpen size={17} /></div><h3>Build your understanding</h3><p>Explore the learning approach behind VAYDA. Educational channel details will be added when confirmed.</p><span className="vs-path-action">Explore Free Education <ArrowRight /></span></Link>
-            <Link href="/market-analysis" className="vs-path-card secondary" data-testid="link-home-market-analysis"><div className="vs-path-top"><span>02 / OBSERVE</span><Compass size={17} /></div><h3>Put context first</h3><p>Learn how to read analysis with care, identify confirmation, and leave room for uncertainty.</p><span className="vs-path-action">Access Market Analysis <ArrowRight /></span></Link>
-            <Link href="/community" className="vs-path-card" data-testid="link-home-community-guide"><div className="vs-path-top"><span>03 / CONNECT</span><Compass size={17} /></div><h3>Find your people</h3><p>See how community access works and find the verified starting point.</p><span className="vs-path-action">Community guide <ArrowRight /></span></Link>
+          <div className="vs-section-heading" data-reveal><div><div className="vs-eyebrow">02 / CURRICULUM</div><h2>Four ideas.<br />One considered practice.</h2></div><p>Build a working vocabulary for reading price and making deliberate choices. Each topic is a lens; none removes uncertainty.</p></div>
+          <div className="vs-curriculum-grid" data-reveal>
+            <article className="vs-curriculum-item"><span className="vs-index">01 / MAP</span><h3>Market structure</h3><p>Read swings, shifts, and context to understand where price sits in the larger picture.</p><span className="vs-curriculum-mark">01</span></article>
+            <article className="vs-curriculum-item"><span className="vs-index">02 / NOTICE</span><h3>Liquidity</h3><p>Explore how resting orders and areas of interest can shape the way price behaves.</p><span className="vs-curriculum-mark">02</span></article>
+            <article className="vs-curriculum-item"><span className="vs-index">03 / DEFINE</span><h3>Risk and sizing</h3><p>Think about exposure before an idea becomes a position. Risk belongs in the plan from the start.</p><span className="vs-curriculum-mark">03</span></article>
+            <article className="vs-curriculum-item"><span className="vs-index">04 / REPEAT</span><h3>Process and psychology</h3><p>Practice patience, review decisions honestly, and make room for a clear head.</p><span className="vs-curriculum-mark">04</span></article>
           </div>
         </div>
       </section>
-      <div className="vs-shell vs-disclaimer" role="note" data-reveal><ShieldCheck size={15} style={{ verticalAlign: 'middle', marginRight: 8 }} />VAYDA provides educational content, not personalized financial advice. Trading carries risk, including the possible loss of capital.</div>
+
+      <section className="vs-principles vs-section" id="principles">
+        <div className="vs-shell">
+          <div className="vs-section-heading" data-reveal><div><div className="vs-eyebrow">03 / PRINCIPLES</div><h2>What we will not trade away.</h2></div><p>The method matters most when the outcome is uncertain. These are the standards that keep learning grounded.</p></div>
+          <div className="vs-principles-list" data-reveal>
+            <article><span className="vs-index">01</span><h3>Process over outcome</h3><p>A sound decision is not defined by one result. Work the plan; review the reasoning.</p></article>
+            <article><span className="vs-index">02</span><h3>Risk before reward</h3><p>Capital is exposed to loss. Consider what is at stake before considering what might be gained.</p></article>
+            <article><span className="vs-index">03</span><h3>Honest expectations</h3><p>Education can build understanding. It cannot promise a return or remove market risk.</p></article>
+          </div>
+        </div>
+      </section>
+
+      <section className="vs-home-cta" data-reveal>
+        <div className="vs-home-cta-inner"><div><div className="vs-eyebrow">KEEP LEARNING, AT YOUR PACE</div><h2>Build a process<br />you can explain.</h2><p>Start with the principles. Stay curious. Decide for yourself.</p></div>
+          {isConfiguredPublicUrl(publicSiteLinks.primaryCommunity) && <ExternalLink href={publicSiteLinks.primaryCommunity} className="vs-button" data-testid="link-home-cta-community">Join the Smart Money Hub <ArrowUpRight /></ExternalLink>}
+        </div>
+      </section>
     </main>
   </>;
 }
