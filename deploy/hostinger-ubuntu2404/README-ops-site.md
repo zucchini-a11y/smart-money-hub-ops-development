@@ -1,6 +1,7 @@
 # Operations Center on the Hostinger VPS
 
-This package serves the existing Operations Center as static files through Nginx.
+This package serves the existing Operations Center as static files through Nginx
+at both `smartmoneyhub.tech` and `www.smartmoneyhub.tech`.
 Its `/api/healthz` endpoint returns the same `{ "status": "ok" }` response as the
 current health route. It does not add bot telemetry, event ingestion, or content
 queue integration; those dashboard sections remain unavailable as shown in the
@@ -43,10 +44,11 @@ under `/opt/smart-money-hub/ops-web-backups/`. It does not edit DNS.
 
 ## Connect the domain after local verification
 
-The current apex A record points to Replit. Only after the site responds locally
-and the VPS accepts inbound HTTP, update the apex (`@`) A record at the domain
-provider to the Hostinger VPS IPv4 address. Leave mail, TXT, and unrelated DNS
-records unchanged. Then verify public HTTP before requesting a certificate:
+The current apex A record points to Replit, and `www` is a CNAME to the apex.
+Only after the site responds locally and the VPS accepts inbound HTTP, update
+the apex (`@`) A record at the domain provider to the Hostinger VPS IPv4 address.
+Leave the `www` CNAME, mail, TXT, and unrelated DNS records unchanged. Then
+verify public HTTP before requesting a certificate:
 
 ```sh
 curl -I http://smartmoneyhub.tech/
@@ -56,7 +58,7 @@ Once the domain resolves to this VPS, install Certbot and request HTTPS:
 
 ```sh
 apt install -y certbot python3-certbot-nginx
-certbot --nginx -d smartmoneyhub.tech
+certbot --nginx -d smartmoneyhub.tech -d www.smartmoneyhub.tech
 ```
 
 Finally verify:
