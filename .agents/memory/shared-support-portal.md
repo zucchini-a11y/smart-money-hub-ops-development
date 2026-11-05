@@ -18,3 +18,11 @@ The owner selected the VAYDA portal's forest-green, warm-cream, and muted-gold v
 **Why:** The owner asked for the domain portal to match the existing VAYDA portal design while preserving the current shared-case product.
 
 **How to apply:** Use the supplied VAYDA source as the visual reference for support login, navigation, and case-workspace styling. Keep feature and backend migrations separate unless the owner requests them.
+
+### VPS API database credentials
+
+The Node Support API must use a dedicated PostgreSQL login with a generated SCRAM password stored in a root-only file, and it should receive grants only on Support Portal tables. Do not blindly reuse the bot's database URL: it may rely on OS/peer authentication and contain no password.
+
+**Why:** The production Node `pg` client failed with `client password must be a string` when the bot's database URL was reused.
+
+**How to apply:** Keep the bot's database environment unchanged. Provision a restricted API role, store its random password with mode `0600`, and grant only the support schema/tables the API uses.
