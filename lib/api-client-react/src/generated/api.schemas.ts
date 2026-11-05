@@ -383,6 +383,1528 @@ export interface BotOutboxAck {
   status: BotOutboxAckStatus;
 }
 
+export type EducationVideoDraftInputContentType = typeof EducationVideoDraftInputContentType[keyof typeof EducationVideoDraftInputContentType];
+
+
+export const EducationVideoDraftInputContentType = {
+  'video/mp4': 'video/mp4',
+} as const;
+
+export interface EducationVideoDraftInput {
+  /**
+     * @minLength 2
+     * @maxLength 120
+     */
+  title: string;
+  /**
+     * @minLength 1
+     * @maxLength 900
+     */
+  caption: string;
+  /**
+     * @minLength 1
+     * @maxLength 160
+     */
+  fileName: string;
+  /**
+     * @minimum 1
+     * @maximum 50000000
+     */
+  byteSize: number;
+  contentType: EducationVideoDraftInputContentType;
+  /**
+     * @minLength 16
+     * @maxLength 120
+     */
+  requestId: string;
+}
+
+export interface EducationVideoPublishInput {
+  /**
+     * @minLength 16
+     * @maxLength 120
+     */
+  requestId: string;
+}
+
+export type EducationVideoStatus = typeof EducationVideoStatus[keyof typeof EducationVideoStatus];
+
+
+export const EducationVideoStatus = {
+  awaiting_upload: 'awaiting_upload',
+  draft: 'draft',
+  queued: 'queued',
+  sending: 'sending',
+  published: 'published',
+  uncertain: 'uncertain',
+  failed: 'failed',
+  blocked: 'blocked',
+} as const;
+
+export interface EducationVideo {
+  videoId: string;
+  title: string;
+  caption: string;
+  fileName: string;
+  byteSize: number;
+  status: EducationVideoStatus;
+  createdAt: string;
+  /** @nullable */
+  publishedAt: string | null;
+  targetLabel: string;
+}
+
+export interface EducationVideoList {
+  videos: EducationVideo[];
+  targetAvailable: boolean;
+  targetLabel: string;
+  publishingEnabled: boolean;
+  notice: string;
+}
+
+export interface ErrorResponse {
+  error: string;
+}
+
+export interface PortalLoginInput {
+  /** @maxLength 254 */
+  email: string;
+  /**
+     * @minLength 1
+     * @maxLength 256
+     */
+  password: string;
+}
+
+export type PortalSessionRole = typeof PortalSessionRole[keyof typeof PortalSessionRole];
+
+
+export const PortalSessionRole = {
+  owner: 'owner',
+  manager: 'manager',
+  agent: 'agent',
+} as const;
+
+export interface PortalSession {
+  staffId: string;
+  email: string;
+  displayName: string;
+  role: PortalSessionRole;
+  mustChangePassword: boolean;
+}
+
+export type SignedOutStateStatus = typeof SignedOutStateStatus[keyof typeof SignedOutStateStatus];
+
+
+export const SignedOutStateStatus = {
+  signed_out: 'signed_out',
+} as const;
+
+export interface SignedOutState {
+  status: SignedOutStateStatus;
+}
+
+export type PortalCaseSummaryStatus = typeof PortalCaseSummaryStatus[keyof typeof PortalCaseSummaryStatus];
+
+
+export const PortalCaseSummaryStatus = {
+  open: 'open',
+  reply_sending: 'reply_sending',
+  reply_uncertain: 'reply_uncertain',
+  replied: 'replied',
+  closed: 'closed',
+} as const;
+
+export type PortalCaseSummaryWorkflowStatus = typeof PortalCaseSummaryWorkflowStatus[keyof typeof PortalCaseSummaryWorkflowStatus];
+
+
+export const PortalCaseSummaryWorkflowStatus = {
+  new: 'new',
+  assigned: 'assigned',
+  in_progress: 'in_progress',
+  waiting_for_member: 'waiting_for_member',
+  resolved: 'resolved',
+  closed: 'closed',
+} as const;
+
+export type PortalCaseSummaryPriority = typeof PortalCaseSummaryPriority[keyof typeof PortalCaseSummaryPriority];
+
+
+export const PortalCaseSummaryPriority = {
+  low: 'low',
+  normal: 'normal',
+  high: 'high',
+  urgent: 'urgent',
+} as const;
+
+export interface PortalCaseSummary {
+  caseId: string;
+  memberId: number;
+  question: string;
+  status: PortalCaseSummaryStatus;
+  workflowStatus: PortalCaseSummaryWorkflowStatus;
+  category: string;
+  priority: PortalCaseSummaryPriority;
+  /** @nullable */
+  assignedStaffId: string | null;
+  created: string;
+  updated: string;
+}
+
+export interface PortalDashboard {
+  openCount: number;
+  uncertainCount: number;
+  repliedCount: number;
+  closedCount: number;
+  recentCases: PortalCaseSummary[];
+}
+
+export type PortalCommandCenterScope = typeof PortalCommandCenterScope[keyof typeof PortalCommandCenterScope];
+
+
+export const PortalCommandCenterScope = {
+  development_isolated_test: 'development_isolated_test',
+} as const;
+
+export type PortalCommandCenterAlertCategory = typeof PortalCommandCenterAlertCategory[keyof typeof PortalCommandCenterAlertCategory];
+
+
+export const PortalCommandCenterAlertCategory = {
+  missing_heartbeat: 'missing_heartbeat',
+  stale_heartbeat: 'stale_heartbeat',
+  bot_health_failure: 'bot_health_failure',
+  publishing_failure: 'publishing_failure',
+  publishing_uncertain: 'publishing_uncertain',
+  publishing_pending: 'publishing_pending',
+  pro_stale_applications: 'pro_stale_applications',
+} as const;
+
+export type PortalCommandCenterAlertSeverity = typeof PortalCommandCenterAlertSeverity[keyof typeof PortalCommandCenterAlertSeverity];
+
+
+export const PortalCommandCenterAlertSeverity = {
+  warning: 'warning',
+  critical: 'critical',
+} as const;
+
+export type PortalCommandCenterAlertSourceBot = typeof PortalCommandCenterAlertSourceBot[keyof typeof PortalCommandCenterAlertSourceBot];
+
+
+export const PortalCommandCenterAlertSourceBot = {
+  isolated_test: 'isolated_test',
+} as const;
+
+export type PortalCommandCenterAlertDestination = typeof PortalCommandCenterAlertDestination[keyof typeof PortalCommandCenterAlertDestination];
+
+
+export const PortalCommandCenterAlertDestination = {
+  PRO_Signals: 'PRO Signals',
+  Market_Analysis: 'Market Analysis',
+  System: 'System',
+} as const;
+
+export interface PortalCommandCenterAlert {
+  category: PortalCommandCenterAlertCategory;
+  severity: PortalCommandCenterAlertSeverity;
+  sourceBot: PortalCommandCenterAlertSourceBot;
+  destination: PortalCommandCenterAlertDestination;
+  title: string;
+  count: number;
+  /** @nullable */
+  latestAt: string | null;
+}
+
+export interface PortalCommandCenterOverview {
+  openSupportCases: number;
+  uncertainSupportCases: number;
+  overdueTasks: number;
+  recordedTrades: number;
+  recordedTradeEvents: number;
+  unresolvedPublishingOperations: number;
+  proPendingReview: number;
+  proEvidenceRequested: number;
+  staleProApplications: number;
+}
+
+export type PortalCommandCenterBotId = typeof PortalCommandCenterBotId[keyof typeof PortalCommandCenterBotId];
+
+
+export const PortalCommandCenterBotId = {
+  production: 'production',
+  isolated_test: 'isolated_test',
+} as const;
+
+export type PortalCommandCenterBotHealthStatus = typeof PortalCommandCenterBotHealthStatus[keyof typeof PortalCommandCenterBotHealthStatus];
+
+
+export const PortalCommandCenterBotHealthStatus = {
+  healthy: 'healthy',
+  unhealthy: 'unhealthy',
+  unknown: 'unknown',
+} as const;
+
+export type PortalCommandCenterBotWorkflowStatus = typeof PortalCommandCenterBotWorkflowStatus[keyof typeof PortalCommandCenterBotWorkflowStatus];
+
+
+export const PortalCommandCenterBotWorkflowStatus = {
+  running: 'running',
+  stopped: 'stopped',
+  unknown: 'unknown',
+  not_connected: 'not_connected',
+} as const;
+
+export type PortalCommandCenterBotPublishingStatus = typeof PortalCommandCenterBotPublishingStatus[keyof typeof PortalCommandCenterBotPublishingStatus];
+
+
+export const PortalCommandCenterBotPublishingStatus = {
+  enabled: 'enabled',
+  disabled: 'disabled',
+  locked: 'locked',
+  unknown: 'unknown',
+} as const;
+
+export type PortalCommandCenterBotProcessStatus = typeof PortalCommandCenterBotProcessStatus[keyof typeof PortalCommandCenterBotProcessStatus];
+
+
+export const PortalCommandCenterBotProcessStatus = {
+  running: 'running',
+  unknown: 'unknown',
+  not_connected: 'not_connected',
+} as const;
+
+export type PortalCommandCenterBotTelegramStatus = typeof PortalCommandCenterBotTelegramStatus[keyof typeof PortalCommandCenterBotTelegramStatus];
+
+
+export const PortalCommandCenterBotTelegramStatus = {
+  healthy: 'healthy',
+  degraded: 'degraded',
+  offline: 'offline',
+  unknown: 'unknown',
+} as const;
+
+export type PortalCommandCenterBotDatabaseStatus = typeof PortalCommandCenterBotDatabaseStatus[keyof typeof PortalCommandCenterBotDatabaseStatus];
+
+
+export const PortalCommandCenterBotDatabaseStatus = {
+  healthy: 'healthy',
+  degraded: 'degraded',
+  offline: 'offline',
+  unknown: 'unknown',
+} as const;
+
+export type PortalCommandCenterBotPollingStatus = typeof PortalCommandCenterBotPollingStatus[keyof typeof PortalCommandCenterBotPollingStatus];
+
+
+export const PortalCommandCenterBotPollingStatus = {
+  healthy: 'healthy',
+  degraded: 'degraded',
+  offline: 'offline',
+  unknown: 'unknown',
+} as const;
+
+export interface PortalCommandCenterBot {
+  id: PortalCommandCenterBotId;
+  label: string;
+  healthStatus: PortalCommandCenterBotHealthStatus;
+  workflowStatus: PortalCommandCenterBotWorkflowStatus;
+  publishingStatus: PortalCommandCenterBotPublishingStatus;
+  /** @nullable */
+  lastTelegramUpdate: string | null;
+  processStatus: PortalCommandCenterBotProcessStatus;
+  /** @nullable */
+  healthCheckedAt: string | null;
+  telegramStatus: PortalCommandCenterBotTelegramStatus;
+  databaseStatus: PortalCommandCenterBotDatabaseStatus;
+  pollingStatus: PortalCommandCenterBotPollingStatus;
+  note: string;
+}
+
+export type PortalCommandCenterChannelSourceBot = typeof PortalCommandCenterChannelSourceBot[keyof typeof PortalCommandCenterChannelSourceBot];
+
+
+export const PortalCommandCenterChannelSourceBot = {
+  production: 'production',
+  isolated_test: 'isolated_test',
+} as const;
+
+export type PortalCommandCenterChannelName = typeof PortalCommandCenterChannelName[keyof typeof PortalCommandCenterChannelName];
+
+
+export const PortalCommandCenterChannelName = {
+  PRO_Signals: 'PRO Signals',
+  Market_Analysis: 'Market Analysis',
+  Educational_Group: 'Educational Group',
+} as const;
+
+export type PortalCommandCenterChannelStatus = typeof PortalCommandCenterChannelStatus[keyof typeof PortalCommandCenterChannelStatus];
+
+
+export const PortalCommandCenterChannelStatus = {
+  healthy: 'healthy',
+  degraded: 'degraded',
+  offline: 'offline',
+  unknown: 'unknown',
+  not_connected: 'not_connected',
+} as const;
+
+export interface PortalCommandCenterChannel {
+  sourceBot: PortalCommandCenterChannelSourceBot;
+  name: PortalCommandCenterChannelName;
+  status: PortalCommandCenterChannelStatus;
+  /** @nullable */
+  latestRecordedActivity: string | null;
+  note: string;
+}
+
+export type PortalCommandCenterOperationSourceBot = typeof PortalCommandCenterOperationSourceBot[keyof typeof PortalCommandCenterOperationSourceBot];
+
+
+export const PortalCommandCenterOperationSourceBot = {
+  isolated_test: 'isolated_test',
+} as const;
+
+export type PortalCommandCenterOperationDestination = typeof PortalCommandCenterOperationDestination[keyof typeof PortalCommandCenterOperationDestination];
+
+
+export const PortalCommandCenterOperationDestination = {
+  PRO_Signals: 'PRO Signals',
+  Market_Analysis: 'Market Analysis',
+} as const;
+
+export interface PortalCommandCenterOperation {
+  sourceBot: PortalCommandCenterOperationSourceBot;
+  destination: PortalCommandCenterOperationDestination;
+  operationType: string;
+  status: string;
+  recordedAt: string;
+  telegramAccepted: boolean;
+}
+
+export interface PortalCommandCenterError {
+  category: string;
+  count: number;
+  latestAt: string;
+}
+
+export interface PortalCommandCenter {
+  scope: PortalCommandCenterScope;
+  readOnly: true;
+  refreshedAt: string;
+  /** @nullable */
+  lastTelegramUpdate: string | null;
+  alerts: PortalCommandCenterAlert[];
+  overview: PortalCommandCenterOverview;
+  bots: PortalCommandCenterBot[];
+  channels: PortalCommandCenterChannel[];
+  recentOperations: PortalCommandCenterOperation[];
+  recentErrors: PortalCommandCenterError[];
+}
+
+export type PortalChannelHistoryScope = typeof PortalChannelHistoryScope[keyof typeof PortalChannelHistoryScope];
+
+
+export const PortalChannelHistoryScope = {
+  development_main_bot: 'development_main_bot',
+  development_isolated_test: 'development_isolated_test',
+} as const;
+
+export type PortalChannelHistoryItemSource = typeof PortalChannelHistoryItemSource[keyof typeof PortalChannelHistoryItemSource];
+
+
+export const PortalChannelHistoryItemSource = {
+  bot: 'bot',
+  telegram_manual: 'telegram_manual',
+} as const;
+
+export type PortalChannelHistoryItemDestination = typeof PortalChannelHistoryItemDestination[keyof typeof PortalChannelHistoryItemDestination];
+
+
+export const PortalChannelHistoryItemDestination = {
+  PRO_Signals: 'PRO Signals',
+  Market_Analysis: 'Market Analysis',
+  'Educational_Group_·_Video_tutorials': 'Educational Group · Video tutorials',
+} as const;
+
+export interface PortalChannelHistoryItem {
+  source: PortalChannelHistoryItemSource;
+  destination: PortalChannelHistoryItemDestination;
+  eventType: string;
+  status: string;
+  recordedAt: string;
+  messageText: string;
+  attachmentLabel: string;
+}
+
+export interface PortalChannelHistory {
+  scope: PortalChannelHistoryScope;
+  productionConnected: false;
+  page: number;
+  limit: number;
+  hasMore: boolean;
+  items: PortalChannelHistoryItem[];
+}
+
+export type PortalTradeManagementEnvironment = typeof PortalTradeManagementEnvironment[keyof typeof PortalTradeManagementEnvironment];
+
+
+export const PortalTradeManagementEnvironment = {
+  development_test: 'development_test',
+  production: 'production',
+} as const;
+
+export type PortalTradeManagementWorkerStatus = typeof PortalTradeManagementWorkerStatus[keyof typeof PortalTradeManagementWorkerStatus];
+
+
+export const PortalTradeManagementWorkerStatus = {
+  ready: 'ready',
+  migration_required: 'migration_required',
+  stopped: 'stopped',
+  unknown: 'unknown',
+} as const;
+
+export interface PortalTradeTarget {
+  number: string;
+  price: string;
+  hit: boolean;
+  /** @nullable */
+  hitStatus: string | null;
+}
+
+export interface PortalTradeSummary {
+  tradeId: string;
+  symbol: string;
+  direction: string;
+  state: string;
+  /** @nullable */
+  entry: string | null;
+  /** @nullable */
+  stopLoss: string | null;
+  targets: PortalTradeTarget[];
+  version: number;
+  created: string;
+  updated: string;
+  hasLinkedPost: boolean;
+  eventCount: number;
+}
+
+export interface PortalTradeManagement {
+  environment: PortalTradeManagementEnvironment;
+  workerStatus: PortalTradeManagementWorkerStatus;
+  publishingEnabled: boolean;
+  destinationsVerified: boolean;
+  trades: PortalTradeSummary[];
+}
+
+export type PortalSignalPanelEnvironment = typeof PortalSignalPanelEnvironment[keyof typeof PortalSignalPanelEnvironment];
+
+
+export const PortalSignalPanelEnvironment = {
+  development_test: 'development_test',
+} as const;
+
+export type PortalSignalPanelWorkerStatus = typeof PortalSignalPanelWorkerStatus[keyof typeof PortalSignalPanelWorkerStatus];
+
+
+export const PortalSignalPanelWorkerStatus = {
+  ready: 'ready',
+  migration_required: 'migration_required',
+  disabled: 'disabled',
+  unknown: 'unknown',
+} as const;
+
+export interface PortalSignalSetup {
+  setupId: string;
+  market: string;
+  zone: string;
+  timeframe: string;
+  condition: string;
+  status: string;
+  /** @nullable */
+  expires: number | null;
+  hasChart: boolean;
+  hasMessage: boolean;
+}
+
+export interface PortalSignalDraft {
+  revision: string;
+  market: string;
+  zone: string;
+  timeframe: string;
+  condition: string;
+  step: string;
+  hasChart: boolean;
+  readyToPublish: boolean;
+}
+
+export type PortalSignalActionStatus = typeof PortalSignalActionStatus[keyof typeof PortalSignalActionStatus];
+
+
+export const PortalSignalActionStatus = {
+  queued: 'queued',
+  processing: 'processing',
+  preview_ready: 'preview_ready',
+  approved: 'approved',
+  completed: 'completed',
+  failed: 'failed',
+  uncertain: 'uncertain',
+  stale: 'stale',
+  cancelled: 'cancelled',
+} as const;
+
+export interface PortalSignalAction {
+  commandId: string;
+  action: string;
+  status: PortalSignalActionStatus;
+  previewText: string;
+  safeResult: string;
+  created: string;
+  updated: string;
+  canConfirm: boolean;
+  canCancel: boolean;
+}
+
+export interface PortalSignalPanel {
+  environment: PortalSignalPanelEnvironment;
+  workerStatus: PortalSignalPanelWorkerStatus;
+  publishingEnabled: boolean;
+  destinationsVerified: boolean;
+  panelUpdated: string;
+  activeSetup: PortalSignalSetup | null;
+  zoneDraft: PortalSignalDraft | null;
+  commands: PortalSignalAction[];
+}
+
+export type PortalSignalActionValuesDirection = typeof PortalSignalActionValuesDirection[keyof typeof PortalSignalActionValuesDirection];
+
+
+export const PortalSignalActionValuesDirection = {
+  BUY: 'BUY',
+  SELL: 'SELL',
+} as const;
+
+export interface PortalSignalActionValues {
+  /** @maxLength 80 */
+  market?: string;
+  /** @maxLength 24 */
+  low?: string;
+  /** @maxLength 24 */
+  high?: string;
+  /** @maxLength 30 */
+  timeframe?: string;
+  /**
+     * @minimum 1
+     * @maximum 1440
+     */
+  minutes?: number;
+  /** @maxLength 300 */
+  condition?: string;
+  /** @maxLength 120 */
+  draftRevision?: string;
+  /** @maxLength 120 */
+  setupId?: string;
+  /** @maxLength 300 */
+  confirmation?: string;
+  direction?: PortalSignalActionValuesDirection;
+  /** @maxLength 60 */
+  entryRange?: string;
+  /** @maxLength 24 */
+  stopLoss?: string;
+  /** @maxLength 300 */
+  takeProfits?: string;
+  /** @maxLength 3000 */
+  text?: string;
+}
+
+export type PortalSignalActionInputAction = typeof PortalSignalActionInputAction[keyof typeof PortalSignalActionInputAction];
+
+
+export const PortalSignalActionInputAction = {
+  create_zone_draft: 'create_zone_draft',
+  publish_zone: 'publish_zone',
+  record_confirmation: 'record_confirmation',
+  cancel_setup: 'cancel_setup',
+  expire_setup: 'expire_setup',
+  publish_signal: 'publish_signal',
+  publish_analysis: 'publish_analysis',
+} as const;
+
+export interface PortalSignalActionInput {
+  action: PortalSignalActionInputAction;
+  requestId: string;
+  input: PortalSignalActionValues;
+}
+
+export interface PortalTradeEvent {
+  text: string;
+  created: string;
+}
+
+export interface PortalTradeDetail {
+  trade: PortalTradeSummary;
+  history: PortalTradeEvent[];
+}
+
+export type PortalTradeActionValuesTargetStatus = typeof PortalTradeActionValuesTargetStatus[keyof typeof PortalTradeActionValuesTargetStatus];
+
+
+export const PortalTradeActionValuesTargetStatus = {
+  partial: 'partial',
+  final: 'final',
+} as const;
+
+export type PortalTradeActionValuesOutcome = typeof PortalTradeActionValuesOutcome[keyof typeof PortalTradeActionValuesOutcome];
+
+
+export const PortalTradeActionValuesOutcome = {
+  Win: 'Win',
+  Breakeven: 'Breakeven',
+  Loss: 'Loss',
+  Unrecorded: 'Unrecorded',
+} as const;
+
+export interface PortalTradeActionValues {
+  /** @maxLength 100 */
+  entry?: string;
+  /** @maxLength 100 */
+  stopLoss?: string;
+  /** @maxLength 3 */
+  targetNumber?: string;
+  /** @maxLength 100 */
+  targetPrice?: string;
+  targetStatus?: PortalTradeActionValuesTargetStatus;
+  /** @maxLength 8 */
+  percentage?: string;
+  /** @maxLength 200 */
+  remaining?: string;
+  stopMoved?: boolean;
+  outcome?: PortalTradeActionValuesOutcome;
+  outcomeConfirmed?: boolean;
+  /** @maxLength 100 */
+  exitPrice?: string;
+  /** @maxLength 500 */
+  note?: string;
+  /** @maxLength 300 */
+  reason?: string;
+  /** @maxLength 3000 */
+  text?: string;
+}
+
+export type PortalTradeActionInputAction = typeof PortalTradeActionInputAction[keyof typeof PortalTradeActionInputAction];
+
+
+export const PortalTradeActionInputAction = {
+  entry_bundle: 'entry_bundle',
+  sl_tp: 'sl_tp',
+  sl: 'sl',
+  tp: 'tp',
+  hit: 'hit',
+  partial: 'partial',
+  be: 'be',
+  trail: 'trail',
+  close: 'close',
+  cancel: 'cancel',
+  invalidate: 'invalidate',
+  custom: 'custom',
+  edit: 'edit',
+} as const;
+
+export interface PortalTradeActionInput {
+  action: PortalTradeActionInputAction;
+  requestId: string;
+  input: PortalTradeActionValues;
+}
+
+export type PortalTradeActionStatus = typeof PortalTradeActionStatus[keyof typeof PortalTradeActionStatus];
+
+
+export const PortalTradeActionStatus = {
+  queued: 'queued',
+  processing: 'processing',
+  preview_ready: 'preview_ready',
+  approved: 'approved',
+  completed: 'completed',
+  failed: 'failed',
+  uncertain: 'uncertain',
+  stale: 'stale',
+  cancelled: 'cancelled',
+} as const;
+
+export interface PortalTradeAction {
+  commandId: string;
+  tradeId: string;
+  action: string;
+  status: PortalTradeActionStatus;
+  previewText: string;
+  safeResult: string;
+  created: string;
+  updated: string;
+  canConfirm: boolean;
+  canCancel: boolean;
+}
+
+export type ProMemberApplicationEducationEligibility = typeof ProMemberApplicationEducationEligibility[keyof typeof ProMemberApplicationEducationEligibility];
+
+
+export const ProMemberApplicationEducationEligibility = {
+  eligible_delivery_disabled: 'eligible_delivery_disabled',
+  locked: 'locked',
+} as const;
+
+export interface ProMemberApplication {
+  requestId: string;
+  userId: string;
+  username: string;
+  status: string;
+  registrationStatus: string;
+  fundingStatus: string;
+  educationEligibility: ProMemberApplicationEducationEligibility;
+  channelAccessStatus: string;
+  source: string;
+  hasEvidence: boolean;
+  /** @nullable */
+  evidenceKind: string | null;
+  /** @nullable */
+  evidenceSubmittedAt: string | null;
+  created: string;
+  updated: string;
+}
+
+export interface ProMemberApplicationList {
+  applications: ProMemberApplication[];
+}
+
+export interface ProMemberReviewEvent {
+  eventId: string;
+  action: string;
+  actor: string;
+  reason: string;
+  status: string;
+  deliveryStatus: string;
+  created: string;
+  /** @nullable */
+  completedAt: string | null;
+}
+
+export type ProMemberReviewCommandAction = typeof ProMemberReviewCommandAction[keyof typeof ProMemberReviewCommandAction];
+
+
+export const ProMemberReviewCommandAction = {
+  approve_registration: 'approve_registration',
+  reject_registration: 'reject_registration',
+  verify_funding: 'verify_funding',
+  reject_funding: 'reject_funding',
+  approve: 'approve',
+  reject: 'reject',
+  request_evidence: 'request_evidence',
+} as const;
+
+export type ProMemberReviewCommandStatus = typeof ProMemberReviewCommandStatus[keyof typeof ProMemberReviewCommandStatus];
+
+
+export const ProMemberReviewCommandStatus = {
+  queued: 'queued',
+  processing: 'processing',
+  completed: 'completed',
+  failed: 'failed',
+  uncertain: 'uncertain',
+  stale: 'stale',
+} as const;
+
+export type ProMemberReviewCommandDeliveryStatus = typeof ProMemberReviewCommandDeliveryStatus[keyof typeof ProMemberReviewCommandDeliveryStatus];
+
+
+export const ProMemberReviewCommandDeliveryStatus = {
+  not_attempted: 'not_attempted',
+  sent: 'sent',
+  failed: 'failed',
+  uncertain: 'uncertain',
+  not_needed: 'not_needed',
+} as const;
+
+export interface ProMemberReviewCommand {
+  commandId: string;
+  requestId: string;
+  action: ProMemberReviewCommandAction;
+  status: ProMemberReviewCommandStatus;
+  deliveryStatus: ProMemberReviewCommandDeliveryStatus;
+  safeResult: string;
+  created: string;
+  updated: string;
+  /** @nullable */
+  completedAt: string | null;
+}
+
+export interface ProMemberApplicationDetail {
+  application: ProMemberApplication;
+  history: ProMemberReviewEvent[];
+  latestCommand: ProMemberReviewCommand | null;
+}
+
+export type ProMemberReviewInputAction = typeof ProMemberReviewInputAction[keyof typeof ProMemberReviewInputAction];
+
+
+export const ProMemberReviewInputAction = {
+  approve_registration: 'approve_registration',
+  reject_registration: 'reject_registration',
+  verify_funding: 'verify_funding',
+  reject_funding: 'reject_funding',
+  approve: 'approve',
+  reject: 'reject',
+  request_evidence: 'request_evidence',
+} as const;
+
+export interface ProMemberReviewInput {
+  action: ProMemberReviewInputAction;
+  /**
+     * @minLength 1
+     * @maxLength 1200
+     */
+  reason: string;
+  idempotencyKey: string;
+  /**
+     * @minLength 1
+     * @maxLength 64
+     */
+  expectedUpdated: string;
+}
+
+export type MemberAccessApplicationListScope = typeof MemberAccessApplicationListScope[keyof typeof MemberAccessApplicationListScope];
+
+
+export const MemberAccessApplicationListScope = {
+  development_test: 'development_test',
+  production: 'production',
+} as const;
+
+export type MemberAccessApplicationDestination = typeof MemberAccessApplicationDestination[keyof typeof MemberAccessApplicationDestination];
+
+
+export const MemberAccessApplicationDestination = {
+  education: 'education',
+  analysis: 'analysis',
+  pro: 'pro',
+} as const;
+
+export interface MemberAccessApplication {
+  requestId: string;
+  userId: string;
+  username: string;
+  destination: MemberAccessApplicationDestination;
+  status: string;
+  registrationStatus: string;
+  fundingStatus: string;
+  source: string;
+  created: string;
+  updated: string;
+}
+
+export interface MemberAccessApplicationList {
+  scope: MemberAccessApplicationListScope;
+  applications: MemberAccessApplication[];
+}
+
+export interface ApplicantFollowupSettingsSummary {
+  enabled: boolean;
+  reviewed: boolean;
+  sampleReviewed: boolean;
+  intervalDays: number[];
+  maxReminders: number;
+  categories: string[];
+}
+
+export interface ApplicantFollowupState {
+  userId: string;
+  username: string;
+  privateStatus: string;
+  stage: string;
+  destinations: string[];
+  status: string;
+  pauseReason: string;
+  /** @nullable */
+  consentNoticeAt: string | null;
+  remindersSent: number;
+  /** @nullable */
+  nextFollowup: string | null;
+  hasRecentError: boolean;
+  updated: string;
+}
+
+export type ApplicantFollowupListScope = typeof ApplicantFollowupListScope[keyof typeof ApplicantFollowupListScope];
+
+
+export const ApplicantFollowupListScope = {
+  development_test: 'development_test',
+  production: 'production',
+} as const;
+
+export interface ApplicantFollowupList {
+  scope: ApplicantFollowupListScope;
+  settings: ApplicantFollowupSettingsSummary;
+  applicants: ApplicantFollowupState[];
+}
+
+export interface ApplicantFollowupDelivery {
+  deliveryId: string;
+  category: string;
+  status: string;
+  created: string;
+  updated: string;
+  /** @nullable */
+  sentAt: string | null;
+}
+
+export interface ApplicantFollowupEvent {
+  eventId: string;
+  action: string;
+  created: string;
+}
+
+export interface ApplicantFollowupDetail {
+  applicant: ApplicantFollowupState;
+  deliveries: ApplicantFollowupDelivery[];
+  events: ApplicantFollowupEvent[];
+}
+
+export type ApplicantFollowupStatusInputStatus = typeof ApplicantFollowupStatusInputStatus[keyof typeof ApplicantFollowupStatusInputStatus];
+
+
+export const ApplicantFollowupStatusInputStatus = {
+  active: 'active',
+  paused: 'paused',
+} as const;
+
+export interface ApplicantFollowupStatusInput {
+  status: ApplicantFollowupStatusInputStatus;
+  /**
+     * @minLength 1
+     * @maxLength 64
+     */
+  expectedUpdated: string;
+}
+
+export type PortalReplyStatus = typeof PortalReplyStatus[keyof typeof PortalReplyStatus];
+
+
+export const PortalReplyStatus = {
+  queued: 'queued',
+  sending: 'sending',
+  sent: 'sent',
+  uncertain: 'uncertain',
+  failed: 'failed',
+} as const;
+
+export interface PortalReply {
+  replyId: string;
+  caseId: string;
+  responderName: string;
+  text: string;
+  status: PortalReplyStatus;
+  created: string;
+  updated: string;
+}
+
+export interface PortalCaseNote {
+  noteId: string;
+  staffId: string;
+  responderName: string;
+  text: string;
+  created: string;
+}
+
+export interface PortalCaseEvent {
+  eventId: string;
+  actorName: string;
+  eventType: string;
+  oldValue: string;
+  newValue: string;
+  created: string;
+}
+
+export type PortalCaseDetail = PortalCaseSummary & {
+  replies: PortalReply[];
+  notes: PortalCaseNote[];
+  events: PortalCaseEvent[];
+};
+
+export interface PortalCaseList {
+  cases: PortalCaseSummary[];
+  total: number;
+}
+
+export interface PortalReplyInput {
+  /**
+     * @minLength 3
+     * @maxLength 3000
+     */
+  text: string;
+  /**
+     * @minLength 16
+     * @maxLength 120
+     */
+  requestId: string;
+}
+
+export type PortalStaffRole = typeof PortalStaffRole[keyof typeof PortalStaffRole];
+
+
+export const PortalStaffRole = {
+  owner: 'owner',
+  manager: 'manager',
+  agent: 'agent',
+} as const;
+
+export interface PortalStaff {
+  staffId: string;
+  email: string;
+  displayName: string;
+  role: PortalStaffRole;
+  active: boolean;
+  mustChangePassword: boolean;
+  created: string;
+  /** @nullable */
+  lastLogin: string | null;
+}
+
+export interface PortalStaffList {
+  staff: PortalStaff[];
+}
+
+export type PortalStaffInputRole = typeof PortalStaffInputRole[keyof typeof PortalStaffInputRole];
+
+
+export const PortalStaffInputRole = {
+  manager: 'manager',
+  agent: 'agent',
+} as const;
+
+export interface PortalStaffInput {
+  /** @maxLength 254 */
+  email: string;
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  displayName: string;
+  role?: PortalStaffInputRole;
+}
+
+export interface PortalCaseAssignmentInput {
+  /**
+     * @maxLength 120
+     * @nullable
+     */
+  assignedStaffId: string | null;
+}
+
+export interface PortalCaseNoteInput {
+  /**
+     * @minLength 3
+     * @maxLength 3000
+     */
+  text: string;
+}
+
+export type StaffTaskInputPriority = typeof StaffTaskInputPriority[keyof typeof StaffTaskInputPriority];
+
+
+export const StaffTaskInputPriority = {
+  low: 'low',
+  normal: 'normal',
+  high: 'high',
+  urgent: 'urgent',
+} as const;
+
+export interface StaffTaskInput {
+  /**
+     * @minLength 8
+     * @maxLength 120
+     */
+  requestId: string;
+  /**
+     * @minLength 3
+     * @maxLength 120
+     */
+  title: string;
+  /**
+     * @minLength 1
+     * @maxLength 4000
+     */
+  instructions: string;
+  priority: StaffTaskInputPriority;
+  /**
+     * @minimum 1
+     * @maximum 5
+     */
+  effortPoints: number;
+  /** @nullable */
+  dueAt: string | null;
+  /**
+     * @maxLength 120
+     * @nullable
+     */
+  teamId: string | null;
+  /**
+     * @maxLength 120
+     * @nullable
+     */
+  assignedStaffId: string | null;
+}
+
+export type StaffTaskUpdateInputPriority = typeof StaffTaskUpdateInputPriority[keyof typeof StaffTaskUpdateInputPriority];
+
+
+export const StaffTaskUpdateInputPriority = {
+  low: 'low',
+  normal: 'normal',
+  high: 'high',
+  urgent: 'urgent',
+} as const;
+
+export interface StaffTaskUpdateInput {
+  /** @minLength 1 */
+  expectedUpdatedAt: string;
+  /**
+     * @minLength 3
+     * @maxLength 120
+     */
+  title: string;
+  /**
+     * @minLength 1
+     * @maxLength 4000
+     */
+  instructions: string;
+  priority: StaffTaskUpdateInputPriority;
+  /**
+     * @minimum 1
+     * @maximum 5
+     */
+  effortPoints: number;
+  /** @nullable */
+  dueAt: string | null;
+  /**
+     * @maxLength 120
+     * @nullable
+     */
+  teamId: string | null;
+  /**
+     * @maxLength 120
+     * @nullable
+     */
+  assignedStaffId: string | null;
+}
+
+export type StaffTaskStatusInputStatus = typeof StaffTaskStatusInputStatus[keyof typeof StaffTaskStatusInputStatus];
+
+
+export const StaffTaskStatusInputStatus = {
+  accepted: 'accepted',
+  in_progress: 'in_progress',
+  submitted_for_review: 'submitted_for_review',
+  revision_requested: 'revision_requested',
+  approved: 'approved',
+  cancelled: 'cancelled',
+} as const;
+
+export interface StaffTaskStatusInput {
+  status: StaffTaskStatusInputStatus;
+  /** @maxLength 2000 */
+  note: string;
+}
+
+export interface StaffTaskEvent {
+  eventId: string;
+  actorName: string;
+  eventType: string;
+  oldValue: string;
+  newValue: string;
+  feedback: string;
+  created: string;
+}
+
+export interface StaffTask {
+  taskId: string;
+  title: string;
+  instructions: string;
+  priority: string;
+  effortPoints: number;
+  /** @nullable */
+  dueAt: string | null;
+  /** @nullable */
+  teamId: string | null;
+  /** @nullable */
+  assignedStaffId: string | null;
+  /** @nullable */
+  assigneeName: string | null;
+  status: string;
+  /** @nullable */
+  submissionNote: string | null;
+  /** @nullable */
+  reviewFeedback: string | null;
+  created: string;
+  updated: string;
+  events: StaffTaskEvent[];
+}
+
+export interface StaffTaskList {
+  tasks: StaffTask[];
+}
+
+export interface StaffTaskNotification {
+  notificationId: string;
+  taskId: string;
+  type: string;
+  created: string;
+  /** @nullable */
+  readAt: string | null;
+}
+
+export interface StaffTaskNotificationList {
+  notifications: StaffTaskNotification[];
+}
+
+export type StaffReportNotificationPeriod = typeof StaffReportNotificationPeriod[keyof typeof StaffReportNotificationPeriod];
+
+
+export const StaffReportNotificationPeriod = {
+  daily: 'daily',
+  weekly: 'weekly',
+} as const;
+
+export type StaffReportNotificationOutcome = typeof StaffReportNotificationOutcome[keyof typeof StaffReportNotificationOutcome];
+
+
+export const StaffReportNotificationOutcome = {
+  approved: 'approved',
+  revision_requested: 'revision_requested',
+} as const;
+
+export interface StaffReportNotification {
+  notificationId: string;
+  reportId: string;
+  period: StaffReportNotificationPeriod;
+  periodStart: string;
+  outcome: StaffReportNotificationOutcome;
+  reviewerFeedback: string;
+  href: string;
+  created: string;
+  /** @nullable */
+  readAt: string | null;
+}
+
+export interface StaffReportNotificationList {
+  notifications: StaffReportNotification[];
+}
+
+export type StaffActivityReportInputPeriod = typeof StaffActivityReportInputPeriod[keyof typeof StaffActivityReportInputPeriod];
+
+
+export const StaffActivityReportInputPeriod = {
+  daily: 'daily',
+  weekly: 'weekly',
+} as const;
+
+export interface StaffActivityReportInput {
+  period: StaffActivityReportInputPeriod;
+  periodStart: string;
+  /**
+     * @minLength 1
+     * @maxLength 3000
+     */
+  completedWork: string;
+  /**
+     * @minLength 1
+     * @maxLength 3000
+     */
+  outstandingWork: string;
+  /** @maxLength 2000 */
+  blockers: string;
+  /** @maxLength 2000 */
+  plans: string;
+}
+
+export type StaffActivityReportReviewInputStatus = typeof StaffActivityReportReviewInputStatus[keyof typeof StaffActivityReportReviewInputStatus];
+
+
+export const StaffActivityReportReviewInputStatus = {
+  reviewed: 'reviewed',
+  revision_requested: 'revision_requested',
+} as const;
+
+export interface StaffActivityReportReviewInput {
+  status: StaffActivityReportReviewInputStatus;
+  /**
+     * @minLength 3
+     * @maxLength 2000
+     */
+  note: string;
+}
+
+export interface StaffActivityReportEvent {
+  eventId: string;
+  actorName: string;
+  eventType: string;
+  oldValue: string;
+  newValue: string;
+  feedback: string;
+  created: string;
+}
+
+export interface StaffActivityReport {
+  reportId: string;
+  staffId: string;
+  staffName: string;
+  period: string;
+  periodStart: string;
+  completedWork: string;
+  outstandingWork: string;
+  blockers: string;
+  plans: string;
+  reviewStatus: string;
+  /** @nullable */
+  reviewedByName: string | null;
+  reviewNote: string;
+  created: string;
+  /** @nullable */
+  reviewedAt: string | null;
+  events: StaffActivityReportEvent[];
+}
+
+export interface StaffActivityReportList {
+  reports: StaffActivityReport[];
+}
+
+export interface StaffPerformanceRow {
+  staffId: string;
+  staffName: string;
+  activeTasks: number;
+  activeEffortPoints: number;
+  approvedTasks: number;
+  approvedEffortPoints: number;
+  overdueTasks: number;
+  onTimeApprovals: number;
+  revisionRequests: number;
+  supportCases: number;
+  openSupportCases: number;
+  supportReplies: number;
+}
+
+export interface StaffPerformanceResponse {
+  generatedAt: string;
+  metrics: StaffPerformanceRow[];
+}
+
+export interface StaffTeamInput {
+  /**
+     * @minLength 2
+     * @maxLength 80
+     */
+  name: string;
+}
+
+export type StaffTeamMembersInputMembersItemTeamRole = typeof StaffTeamMembersInputMembersItemTeamRole[keyof typeof StaffTeamMembersInputMembersItemTeamRole];
+
+
+export const StaffTeamMembersInputMembersItemTeamRole = {
+  manager: 'manager',
+  worker: 'worker',
+} as const;
+
+export type StaffTeamMembersInputMembersItem = {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  staffId: string;
+  teamRole: StaffTeamMembersInputMembersItemTeamRole;
+};
+
+export interface StaffTeamMembersInput {
+  /** @maxItems 100 */
+  members: StaffTeamMembersInputMembersItem[];
+}
+
+export type StaffTeamMembersItem = {
+  staffId: string;
+  displayName: string;
+  teamRole: string;
+};
+
+export interface StaffTeam {
+  teamId: string;
+  name: string;
+  members: StaffTeamMembersItem[];
+}
+
+export interface StaffTeamList {
+  teams: StaffTeam[];
+}
+
+export interface PortalStaffCreated {
+  staff: PortalStaff;
+  temporaryPassword: string;
+}
+
+export interface PortalStaffStatusInput {
+  active: boolean;
+}
+
+export interface PortalPasswordInput {
+  /**
+     * @minLength 1
+     * @maxLength 256
+     */
+  currentPassword: string;
+  /**
+     * @minLength 12
+     * @maxLength 256
+     */
+  newPassword: string;
+}
+
+export interface AuthUser {
+  id: string;
+  /** @nullable */
+  email: string | null;
+  /** @nullable */
+  firstName: string | null;
+  /** @nullable */
+  lastName: string | null;
+  /** @nullable */
+  profileImageUrl: string | null;
+}
+
+export interface AuthUserEnvelope {
+  user: AuthUser | null;
+}
+
+export interface MobileTokenExchangeRequest {
+  /** @minLength 1 */
+  code: string;
+  /** @minLength 1 */
+  code_verifier: string;
+  /** @minLength 1 */
+  redirect_uri: string;
+  /** @minLength 1 */
+  state: string;
+  /** @minLength 1 */
+  nonce?: string;
+}
+
+export interface MobileTokenExchangeSuccess {
+  token: string;
+}
+
+export const LogoutSuccessValue = {
+  success: true,
+} as const;
+export type LogoutSuccess = typeof LogoutSuccessValue;
+
+export interface ErrorEnvelope {
+  error: string;
+}
+
+export type AuthorizationSessionHeaderParameter = string;
+
 export type ListWhatsAppConversationsParams = {
 search?: string;
 enquiriesOnly?: boolean;
@@ -414,5 +1936,120 @@ caseId: string;
  * @minimum 1
  */
 telegramUserId: number;
+};
+
+export type GetPortalChannelHistoryParams = {
+/**
+ * @minimum 0
+ * @maximum 1000
+ */
+page?: number;
+/**
+ * @minimum 1
+ * @maximum 50
+ */
+limit?: number;
+destination?: GetPortalChannelHistoryDestination;
+bot?: GetPortalChannelHistoryBot;
+};
+
+export type GetPortalChannelHistoryDestination = typeof GetPortalChannelHistoryDestination[keyof typeof GetPortalChannelHistoryDestination];
+
+
+export const GetPortalChannelHistoryDestination = {
+  all: 'all',
+  signals: 'signals',
+  analysis: 'analysis',
+  education: 'education',
+} as const;
+
+export type GetPortalChannelHistoryBot = typeof GetPortalChannelHistoryBot[keyof typeof GetPortalChannelHistoryBot];
+
+
+export const GetPortalChannelHistoryBot = {
+  main: 'main',
+  test: 'test',
+} as const;
+
+export type ListProMemberApplicationsParams = {
+status?: ListProMemberApplicationsStatus;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+};
+
+export type ListProMemberApplicationsStatus = typeof ListProMemberApplicationsStatus[keyof typeof ListProMemberApplicationsStatus];
+
+
+export const ListProMemberApplicationsStatus = {
+  needs_review: 'needs_review',
+  evidence_requested: 'evidence_requested',
+  approved: 'approved',
+  rejected: 'rejected',
+  not_yet_eligible: 'not_yet_eligible',
+  all: 'all',
+} as const;
+
+export type ListPortalMemberApplicationsParams = {
+destination?: ListPortalMemberApplicationsDestination;
+/**
+ * @maxLength 40
+ */
+status?: string;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+};
+
+export type ListPortalMemberApplicationsDestination = typeof ListPortalMemberApplicationsDestination[keyof typeof ListPortalMemberApplicationsDestination];
+
+
+export const ListPortalMemberApplicationsDestination = {
+  education: 'education',
+  analysis: 'analysis',
+  pro: 'pro',
+} as const;
+
+export type ListPortalCasesParams = {
+status?: ListPortalCasesStatus;
+/**
+ * @maxLength 120
+ */
+search?: string;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+};
+
+export type ListPortalCasesStatus = typeof ListPortalCasesStatus[keyof typeof ListPortalCasesStatus];
+
+
+export const ListPortalCasesStatus = {
+  open: 'open',
+  reply_sending: 'reply_sending',
+  reply_uncertain: 'reply_uncertain',
+  replied: 'replied',
+  closed: 'closed',
+  all: 'all',
+} as const;
+
+export type BeginBrowserLoginParams = {
+returnTo?: string;
+};
+
+export type HandleBrowserLoginCallbackParams = {
+code?: string;
+state?: string;
+iss?: string;
+};
+
+export type LogoutBrowserSessionParams = {
+returnTo?: string;
 };
 

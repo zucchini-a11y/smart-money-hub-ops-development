@@ -1,6 +1,5 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
   description: API specification
@@ -12,11 +11,16 @@ tags:
     description: Health operations
   - name: whatsapp
     description: WhatsApp assistant administration
+  - name: supportPortal
+    description: Authenticated staff support portal
+  - name: Auth
+    description: Browser and mobile authentication endpoints.
 paths:
   /healthz:
     get:
       operationId: healthCheck
-      tags: [health]
+      tags:
+        - health
       summary: Health check
       description: Returns server health status
       responses:
@@ -29,7 +33,8 @@ paths:
   /whatsapp/health:
     get:
       operationId: getWhatsAppHealth
-      tags: [whatsapp]
+      tags:
+        - whatsapp
       summary: WhatsApp assistant health
       responses:
         "200":
@@ -41,7 +46,8 @@ paths:
   /whatsapp/auth/me:
     get:
       operationId: getWhatsAppAuthStatus
-      tags: [whatsapp]
+      tags:
+        - whatsapp
       summary: Current admin session
       responses:
         "200":
@@ -53,7 +59,8 @@ paths:
   /whatsapp/auth/login:
     post:
       operationId: loginWhatsAppAdmin
-      tags: [whatsapp]
+      tags:
+        - whatsapp
       summary: Sign in to the private admin dashboard
       requestBody:
         required: true
@@ -73,7 +80,8 @@ paths:
   /whatsapp/auth/logout:
     post:
       operationId: logoutWhatsAppAdmin
-      tags: [whatsapp]
+      tags:
+        - whatsapp
       summary: End the admin session
       responses:
         "204":
@@ -81,7 +89,8 @@ paths:
   /whatsapp/dashboard:
     get:
       operationId: getWhatsAppDashboard
-      tags: [whatsapp]
+      tags:
+        - whatsapp
       summary: Dashboard totals and recent activity
       responses:
         "200":
@@ -93,7 +102,8 @@ paths:
   /whatsapp/activity:
     get:
       operationId: getWhatsAppActivity
-      tags: [whatsapp]
+      tags:
+        - whatsapp
       summary: Recent sanitized bot activity
       responses:
         "200":
@@ -107,7 +117,8 @@ paths:
   /whatsapp/conversations:
     get:
       operationId: listWhatsAppConversations
-      tags: [whatsapp]
+      tags:
+        - whatsapp
       summary: List WhatsApp conversations and enquiries
       parameters:
         - name: search
@@ -132,7 +143,8 @@ paths:
   /whatsapp/conversations/{conversationId}:
     get:
       operationId: getWhatsAppConversation
-      tags: [whatsapp]
+      tags:
+        - whatsapp
       summary: View a conversation and its messages
       parameters:
         - name: conversationId
@@ -152,7 +164,8 @@ paths:
   /whatsapp/conversations/{conversationId}/reply:
     post:
       operationId: replyToWhatsAppConversation
-      tags: [whatsapp]
+      tags:
+        - whatsapp
       summary: Send an admin reply to a test recipient
       parameters:
         - name: conversationId
@@ -178,7 +191,8 @@ paths:
   /whatsapp/education-modules:
     get:
       operationId: listWhatsAppEducationModules
-      tags: [whatsapp]
+      tags:
+        - whatsapp
       summary: List editable lesson topics
       responses:
         "200":
@@ -192,7 +206,8 @@ paths:
   /whatsapp/education-modules/{slug}:
     put:
       operationId: updateWhatsAppEducationModule
-      tags: [whatsapp]
+      tags:
+        - whatsapp
       summary: Update approved educational content
       parameters:
         - name: slug
@@ -218,7 +233,8 @@ paths:
   /whatsapp/settings:
     get:
       operationId: getWhatsAppSettings
-      tags: [whatsapp]
+      tags:
+        - whatsapp
       summary: Safe connection and assistant settings
       responses:
         "200":
@@ -229,7 +245,8 @@ paths:
                 $ref: "#/components/schemas/WhatsAppSettings"
     patch:
       operationId: updateWhatsAppSettings
-      tags: [whatsapp]
+      tags:
+        - whatsapp
       summary: Pause or resume replies and update the community link
       requestBody:
         required: true
@@ -247,7 +264,8 @@ paths:
   /support/auth/session:
     get:
       operationId: getSupportSession
-      tags: [support]
+      tags:
+        - support
       summary: Check the support staff session
       responses:
         "200":
@@ -259,7 +277,8 @@ paths:
   /support/auth/bootstrap:
     post:
       operationId: bootstrapSupportOwner
-      tags: [support]
+      tags:
+        - support
       summary: Create the first development-only support owner
       requestBody:
         required: true
@@ -279,7 +298,8 @@ paths:
   /support/auth/login:
     post:
       operationId: loginSupportStaff
-      tags: [support]
+      tags:
+        - support
       summary: Sign in to the support portal
       requestBody:
         required: true
@@ -299,7 +319,8 @@ paths:
   /support/auth/logout:
     post:
       operationId: logoutSupportStaff
-      tags: [support]
+      tags:
+        - support
       summary: Sign out of the support portal
       responses:
         "204":
@@ -307,7 +328,8 @@ paths:
   /support/cases:
     get:
       operationId: listSupportCases
-      tags: [support]
+      tags:
+        - support
       summary: List cases visible to the signed-in staff member
       parameters:
         - name: status
@@ -315,7 +337,10 @@ paths:
           required: false
           schema:
             type: string
-            enum: [open, closed, all]
+            enum:
+              - open
+              - closed
+              - all
       responses:
         "200":
           description: Visible support cases
@@ -326,7 +351,8 @@ paths:
   /support/cases/{caseId}:
     get:
       operationId: getSupportCase
-      tags: [support]
+      tags:
+        - support
       summary: Get a case and its conversation history
       parameters:
         - name: caseId
@@ -346,7 +372,8 @@ paths:
   /support/cases/{caseId}/replies:
     post:
       operationId: createSupportReply
-      tags: [support]
+      tags:
+        - support
       summary: Queue a reply for the case's originating bot
       parameters:
         - name: caseId
@@ -370,7 +397,8 @@ paths:
   /support/cases/{caseId}/assignment:
     patch:
       operationId: assignSupportCase
-      tags: [support]
+      tags:
+        - support
       summary: Assign or unassign a case
       parameters:
         - name: caseId
@@ -394,7 +422,8 @@ paths:
   /support/cases/{caseId}/status:
     patch:
       operationId: updateSupportCaseStatus
-      tags: [support]
+      tags:
+        - support
       summary: Update case workflow status
       parameters:
         - name: caseId
@@ -418,7 +447,8 @@ paths:
   /support/cases/{caseId}/notes:
     post:
       operationId: addSupportCaseNote
-      tags: [support]
+      tags:
+        - support
       summary: Add a private staff note
       parameters:
         - name: caseId
@@ -442,7 +472,8 @@ paths:
   /support/staff:
     get:
       operationId: listSupportStaff
-      tags: [support]
+      tags:
+        - support
       summary: List active support staff for assignment
       responses:
         "200":
@@ -456,7 +487,8 @@ paths:
   /support/bot/cases:
     post:
       operationId: createBotSupportCase
-      tags: [support]
+      tags:
+        - support
       summary: Create or retrieve an idempotent case for an authenticated bot
       security:
         - botBearer: []
@@ -475,7 +507,8 @@ paths:
                 $ref: "#/components/schemas/BotCase"
     get:
       operationId: listMemberBotCases
-      tags: [support]
+      tags:
+        - support
       summary: List only the authenticated bot member's cases
       security:
         - botBearer: []
@@ -496,7 +529,8 @@ paths:
   /support/bot/case:
     get:
       operationId: getMemberBotCase
-      tags: [support]
+      tags:
+        - support
       summary: Get only an owned case for the authenticated bot
       security:
         - botBearer: []
@@ -524,7 +558,8 @@ paths:
   /support/bot/cases/{caseId}/messages:
     post:
       operationId: createMemberBotCaseMessage
-      tags: [support]
+      tags:
+        - support
       summary: Add an idempotent member reply to an owned case
       security:
         - botBearer: []
@@ -550,7 +585,8 @@ paths:
   /support/bot/outbox/claim:
     post:
       operationId: claimBotSupportReplies
-      tags: [support]
+      tags:
+        - support
       summary: Claim pending replies for this bot without cross-bot delivery
       security:
         - botBearer: []
@@ -564,7 +600,8 @@ paths:
   /support/bot/outbox/{replyId}/ack:
     post:
       operationId: acknowledgeBotSupportReply
-      tags: [support]
+      tags:
+        - support
       summary: Record delivery outcome without automatic retries
       security:
         - botBearer: []
@@ -587,11 +624,1828 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BotOutboxAck"
+  /portal/auth/login:
+    post:
+      operationId: portalLogin
+      tags:
+        - supportPortal
+      summary: Sign in a staff member
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalLoginInput"
+      responses:
+        "200":
+          description: Signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalSession"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/auth/logout:
+    post:
+      operationId: portalLogout
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Signed out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignedOutState"
+  /portal/auth/session:
+    get:
+      operationId: getPortalSession
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Current staff session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalSession"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/dashboard:
+    get:
+      operationId: getPortalDashboard
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Support queue summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalDashboard"
+  /portal/command-center:
+    get:
+      operationId: getPortalCommandCenter
+      tags:
+        - supportPortal
+      summary: Read the Development-only owner command center
+      description: Returns stored isolated-test monitoring summaries. Live bot and channel health remain unknown unless persisted telemetry exists.
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Read-only monitoring summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalCommandCenter"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Owner access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Available only in the Development isolated-test environment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/channel-history:
+    get:
+      operationId: getPortalChannelHistory
+      tags:
+        - supportPortal
+      summary: Read a selected Development bot's channel post history
+      description: Owner-only history from the main bot's Development schema or the isolated test schema. Production data is not connected.
+      security:
+        - portalSession: []
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 1000
+            default: 0
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 25
+        - name: destination
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - all
+              - signals
+              - analysis
+              - education
+            default: all
+        - name: bot
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - main
+              - test
+            default: main
+      responses:
+        "200":
+          description: Paginated stored Development history for the selected bot; production is not connected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalChannelHistory"
+        "403":
+          description: Owner access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Available only in the Development isolated-test environment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/trades:
+    get:
+      operationId: listPortalTrades
+      tags:
+        - supportPortal
+      summary: List trade-management records for the current environment
+      description: Development is restricted to the isolated test schema; the published application uses only the production schema.
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Current environment trade list and worker availability
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalTradeManagement"
+        "403":
+          description: Owner access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Trade management is unavailable in this environment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/signals:
+    get:
+      operationId: getPortalSignalControl
+      tags:
+        - supportPortal
+      summary: Read isolated Development signal-control status and setup drafts
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Isolated setup, worker status, and recent action history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalSignalPanel"
+        "403":
+          description: Owner access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Available only in isolated Development
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/signals/actions:
+    post:
+      operationId: createPortalSignalAction
+      tags:
+        - supportPortal
+      summary: Prepare a Development-only zone or signal action
+      description: Commands are audited and idempotent. Publishing requires a separate owner confirmation.
+      security:
+        - portalSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalSignalActionInput"
+      responses:
+        "200":
+          description: Existing action returned for a duplicate request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalSignalAction"
+        "201":
+          description: Action queued; no Telegram message was sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalSignalAction"
+        "400":
+          description: Invalid action input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Owner access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: The isolated test bot or its migration is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/signal-actions/{commandId}:
+    get:
+      operationId: getPortalSignalAction
+      tags:
+        - supportPortal
+      summary: Read a prepared signal action
+      security:
+        - portalSession: []
+      parameters:
+        - name: commandId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+      responses:
+        "200":
+          description: Action status and clean channel preview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalSignalAction"
+        "403":
+          description: Owner access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Action not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/signal-actions/{commandId}/confirm:
+    post:
+      operationId: confirmPortalSignalAction
+      tags:
+        - supportPortal
+      summary: Explicitly approve a reviewed signal action
+      security:
+        - portalSession: []
+      parameters:
+        - name: commandId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+      responses:
+        "200":
+          description: Action approved once; the isolated test bot revalidates it
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalSignalAction"
+        "403":
+          description: Owner access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Action not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Publishing is locked or the action has changed state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/signal-actions/{commandId}/cancel:
+    post:
+      operationId: cancelPortalSignalAction
+      tags:
+        - supportPortal
+      summary: Cancel an unsent signal action
+      security:
+        - portalSession: []
+      parameters:
+        - name: commandId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+      responses:
+        "200":
+          description: Unsent action cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalSignalAction"
+        "403":
+          description: Owner access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Action not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/trades/{tradeId}:
+    get:
+      operationId: getPortalTrade
+      tags:
+        - supportPortal
+      summary: Read one trade and its saved history
+      security:
+        - portalSession: []
+      parameters:
+        - name: tradeId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+      responses:
+        "200":
+          description: Trade detail with message identifiers withheld
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalTradeDetail"
+        "403":
+          description: Owner access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Trade not found or unavailable in this environment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/trades/{tradeId}/actions:
+    post:
+      operationId: createPortalTradeAction
+      tags:
+        - supportPortal
+      summary: Create a review draft for a trade action
+      security:
+        - portalSession: []
+      parameters:
+        - name: tradeId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalTradeActionInput"
+      responses:
+        "200":
+          description: Existing draft returned for a duplicate request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalTradeAction"
+        "201":
+          description: Trade action draft queued; no Telegram message has been sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalTradeAction"
+        "400":
+          description: Invalid or incomplete action input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Owner access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Trade changed or duplicate request key was reused
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Trade action worker or required migration is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/trade-actions/{commandId}:
+    get:
+      operationId: getPortalTradeAction
+      tags:
+        - supportPortal
+      summary: Read trade action preview or delivery status
+      security:
+        - portalSession: []
+      parameters:
+        - name: commandId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+      responses:
+        "200":
+          description: Trade action status and clean public preview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalTradeAction"
+        "403":
+          description: Owner access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Trade action not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/trade-actions/{commandId}/confirm:
+    post:
+      operationId: confirmPortalTradeAction
+      tags:
+        - supportPortal
+      summary: Explicitly approve a reviewed trade action for publishing
+      security:
+        - portalSession: []
+      parameters:
+        - name: commandId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+      responses:
+        "200":
+          description: Action approved once; the bot worker will revalidate it
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalTradeAction"
+        "403":
+          description: Owner access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Trade action not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Publishing is locked or the action is no longer confirmable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/trade-actions/{commandId}/cancel:
+    post:
+      operationId: cancelPortalTradeAction
+      tags:
+        - supportPortal
+      summary: Cancel an unsent trade action draft
+      security:
+        - portalSession: []
+      parameters:
+        - name: commandId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+      responses:
+        "200":
+          description: Unsent draft cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalTradeAction"
+        "403":
+          description: Owner access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Trade action not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Draft is already being processed or has been sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/pro-applications:
+    get:
+      operationId: listProMemberApplications
+      tags:
+        - supportPortal
+      summary: List PRO applications for owner review
+      security:
+        - portalSession: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - needs_review
+              - evidence_requested
+              - approved
+              - rejected
+              - not_yet_eligible
+              - all
+            default: needs_review
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: Minimum necessary applicant details; evidence file identifiers are never returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProMemberApplicationList"
+        "403":
+          description: Owner access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Available only in the Development isolated-test environment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/pro-applications/{requestId}:
+    get:
+      operationId: getProMemberApplication
+      tags:
+        - supportPortal
+      summary: View one PRO application and review history
+      security:
+        - portalSession: []
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+      responses:
+        "200":
+          description: Applicant status and minimized audit history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProMemberApplicationDetail"
+        "403":
+          description: Owner access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Application not found or unavailable here
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/pro-applications/{requestId}/evidence:
+    get:
+      operationId: getProMemberEvidence
+      tags:
+        - supportPortal
+      summary: Securely stream one private funding-evidence file
+      description: The file identifier and Telegram credentials are kept server-side and the response is never cached.
+      security:
+        - portalSession: []
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+      responses:
+        "200":
+          description: Private evidence stream
+        "403":
+          description: Owner access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Evidence unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Evidence service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/pro-applications/{requestId}/decisions:
+    post:
+      operationId: submitProMemberReviewDecision
+      tags:
+        - supportPortal
+      summary: Queue an owner-confirmed PRO access decision
+      description: The isolated test bot processes the durable command; requests are never replayed after uncertain delivery.
+      security:
+        - portalSession: []
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProMemberReviewInput"
+      responses:
+        "202":
+          description: Decision accepted for isolated bot processing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProMemberReviewCommand"
+        "403":
+          description: Owner access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Available only in the Development isolated-test environment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Application changed, decision is not permitted, or an earlier command needs review
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/member-applications:
+    get:
+      operationId: listPortalMemberApplications
+      tags:
+        - supportPortal
+      summary: List member access requests by destination
+      description: Owner-only view of the active deployment database. Development is bound to smh_test and Production is bound to smh. Does not return application answers, evidence identifiers, or private reply text.
+      security:
+        - portalSession: []
+      parameters:
+        - name: destination
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - education
+              - analysis
+              - pro
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 40
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: Minimized access-request records
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberAccessApplicationList"
+        "403":
+          description: Owner access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Owner access required or the request is outside the configured deployment database
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/applicant-followups:
+    get:
+      operationId: listPortalApplicantFollowups
+      tags:
+        - supportPortal
+      summary: List applicant follow-up status and safe settings
+      description: Owner-only view of the active deployment database. Development is bound to smh_test and Production is bound to smh. Private message text and Telegram identifiers are never returned.
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Follow-up settings summary and applicant statuses
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicantFollowupList"
+        "403":
+          description: Owner access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Owner access required or the request is outside the configured deployment database
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Follow-up tables have not been migrated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/applicant-followups/{userId}:
+    get:
+      operationId: getPortalApplicantFollowup
+      tags:
+        - supportPortal
+      summary: View one applicant follow-up record and safe history
+      security:
+        - portalSession: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[0-9]{1,20}$
+      responses:
+        "200":
+          description: Follow-up state, delivery statuses, and action history without message content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicantFollowupDetail"
+        "403":
+          description: Owner access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Applicant not found or unavailable here
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Follow-up tables have not been migrated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/applicant-followups/{userId}/status:
+    patch:
+      operationId: updatePortalApplicantFollowupStatus
+      tags:
+        - supportPortal
+      summary: Pause or resume one applicant follow-up schedule
+      description: Updates only the active deployment's schedule. It does not call Telegram. Resume is blocked for opt-outs, unresolved admin reviews, unseen notices, uncertain delivery, or exhausted reminder limits.
+      security:
+        - portalSession: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[0-9]{1,20}$
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApplicantFollowupStatusInput"
+      responses:
+        "200":
+          description: Updated applicant follow-up state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicantFollowupState"
+        "400":
+          description: Invalid status update
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Owner access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Applicant not found or unavailable here
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Applicant state changed or the requested transition is unsafe
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Follow-up tables have not been migrated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/cases:
+    get:
+      operationId: listPortalCases
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - open
+              - reply_sending
+              - reply_uncertain
+              - replied
+              - closed
+              - all
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 120
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: Support cases
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalCaseList"
+  /portal/cases/{caseId}:
+    get:
+      operationId: getPortalCase
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      parameters:
+        - name: caseId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+      responses:
+        "200":
+          description: Support case details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalCaseDetail"
+        "404":
+          description: Case not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/cases/{caseId}/replies:
+    post:
+      operationId: createPortalCaseReply
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      parameters:
+        - name: caseId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalReplyInput"
+      responses:
+        "202":
+          description: Reply safely queued for delivery by the bot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalReply"
+        "409":
+          description: Case is no longer open or this reply was already submitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/cases/{caseId}/assignment:
+    patch:
+      operationId: assignPortalCase
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      parameters:
+        - name: caseId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalCaseAssignmentInput"
+      responses:
+        "200":
+          description: Case assignment updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalCaseSummary"
+        "403":
+          description: Case assignment permission required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/cases/{caseId}/notes:
+    post:
+      operationId: addPortalCaseNote
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      parameters:
+        - name: caseId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalCaseNoteInput"
+      responses:
+        "201":
+          description: Private staff note saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalCaseNote"
+  /portal/cases/{caseId}/close:
+    post:
+      operationId: closePortalCase
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      parameters:
+        - name: caseId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+      responses:
+        "200":
+          description: Case closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalCaseSummary"
+        "404":
+          description: Case not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/staff:
+    get:
+      operationId: listPortalStaff
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Staff accounts (administrator only)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalStaffList"
+        "403":
+          description: Administrator permission required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createPortalStaff
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalStaffInput"
+      responses:
+        "201":
+          description: Staff account created; temporary password is shown only once
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalStaffCreated"
+        "403":
+          description: Administrator permission required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/staff/{staffId}:
+    patch:
+      operationId: updatePortalStaff
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      parameters:
+        - name: staffId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalStaffStatusInput"
+      responses:
+        "200":
+          description: Staff account updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalStaff"
+        "403":
+          description: Administrator permission required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/tasks:
+    get:
+      operationId: listStaffTasks
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Tasks visible to the signed-in staff member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffTaskList"
+    post:
+      operationId: createStaffTask
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StaffTaskInput"
+      responses:
+        "201":
+          description: Task created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffTask"
+  /portal/tasks/{taskId}:
+    get:
+      operationId: getStaffTask
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+      responses:
+        "200":
+          description: Task details with audit history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffTask"
+        "404":
+          description: Task not found or not accessible
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateStaffTask
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StaffTaskUpdateInput"
+      responses:
+        "200":
+          description: Task changes saved with audit history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffTask"
+  /portal/tasks/{taskId}/status:
+    patch:
+      operationId: updateStaffTaskStatus
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StaffTaskStatusInput"
+      responses:
+        "200":
+          description: Task progress or review saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffTask"
+  /portal/task-notifications:
+    get:
+      operationId: listStaffTaskNotifications
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Current staff member's task notifications
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffTaskNotificationList"
+  /portal/task-notifications/{notificationId}/read:
+    patch:
+      operationId: markStaffTaskNotificationRead
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+      responses:
+        "200":
+          description: Notification marked as read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffTaskNotification"
+  /portal/report-notifications:
+    get:
+      operationId: listStaffReportNotifications
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Review outcomes for reports owned by the current staff member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffReportNotificationList"
+  /portal/report-notifications/{notificationId}/read:
+    patch:
+      operationId: markStaffReportNotificationRead
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+      responses:
+        "200":
+          description: Report notification marked as read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffReportNotification"
+  /portal/activity-reports:
+    get:
+      operationId: listStaffActivityReports
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Activity reports visible to this staff account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffActivityReportList"
+    post:
+      operationId: submitStaffActivityReport
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StaffActivityReportInput"
+      responses:
+        "200":
+          description: Existing report returned for an idempotent submission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffActivityReport"
+        "201":
+          description: Activity report submitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffActivityReport"
+  /portal/activity-reports/{reportId}/review:
+    patch:
+      operationId: reviewStaffActivityReport
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      parameters:
+        - name: reportId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StaffActivityReportReviewInput"
+      responses:
+        "200":
+          description: Report review saved with event history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffActivityReport"
+  /portal/performance:
+    get:
+      operationId: getStaffPerformance
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Workload and outcome metrics from task and support records
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffPerformanceResponse"
+  /portal/teams:
+    get:
+      operationId: listStaffTeams
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Teams available to the current staff member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffTeamList"
+    post:
+      operationId: createStaffTeam
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StaffTeamInput"
+      responses:
+        "201":
+          description: Team created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffTeam"
+  /portal/teams/{teamId}/members:
+    put:
+      operationId: setStaffTeamMembers
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StaffTeamMembersInput"
+      responses:
+        "200":
+          description: Team membership replaced
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffTeam"
+  /portal/auth/password:
+    post:
+      operationId: changePortalPassword
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalPasswordInput"
+      responses:
+        "200":
+          description: Password changed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalSession"
+        "400":
+          description: Password does not meet requirements
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/education-videos:
+    get:
+      operationId: listEducationVideos
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Owner-only video drafts and configured destination status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EducationVideoList"
+    post:
+      operationId: createEducationVideoDraft
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EducationVideoDraftInput"
+      responses:
+        "201":
+          description: Draft created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EducationVideo"
+  /portal/education-videos/{videoId}/file:
+    put:
+      operationId: uploadEducationVideoFile
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      parameters:
+        - name: videoId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 16
+            maxLength: 80
+      requestBody:
+        required: true
+        content:
+          video/mp4:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          description: Video file stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EducationVideo"
+        "413":
+          description: Video exceeds the supported upload size
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/education-videos/{videoId}/publish:
+    post:
+      operationId: publishEducationVideo
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      parameters:
+        - name: videoId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 16
+            maxLength: 80
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EducationVideoPublishInput"
+      responses:
+        "202":
+          description: Publication request queued for the configured video-only destination
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EducationVideo"
+        "409":
+          description: Draft is not ready or publication is already in progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "423":
+          description: Publishing is locked or the video destination is not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /auth/user:
+    get:
+      tags:
+        - Auth
+      operationId: getCurrentAuthUser
+      summary: Get the currently authenticated user
+      parameters:
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      responses:
+        "200":
+          description: Authentication state resolved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthUserEnvelope"
+  /login:
+    get:
+      tags:
+        - Auth
+      operationId: beginBrowserLogin
+      summary: Start browser sign-in
+      parameters:
+        - name: returnTo
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect to the OIDC authorization endpoint.
+  /callback:
+    get:
+      tags:
+        - Auth
+      operationId: handleBrowserLoginCallback
+      summary: Complete browser sign-in
+      parameters:
+        - name: code
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: iss
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uri
+      responses:
+        "302":
+          description: Redirect to the validated return path.
+  /logout:
+    get:
+      tags:
+        - Auth
+      operationId: logoutBrowserSession
+      summary: Clear browser session
+      parameters:
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+        - name: returnTo
+          in: query
+          required: false
+          schema:
+            type: string
+            default: /
+      responses:
+        "302":
+          description: Redirect to the sign-out endpoint.
+  /mobile-auth/token-exchange:
+    post:
+      tags:
+        - Auth
+      operationId: exchangeMobileAuthorizationCode
+      summary: Exchange a mobile OIDC code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MobileTokenExchangeRequest"
+      responses:
+        "200":
+          description: Session created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MobileTokenExchangeSuccess"
+        "400":
+          description: Invalid request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Invalid token claims.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Token exchange failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /mobile-auth/logout:
+    post:
+      tags:
+        - Auth
+      operationId: logoutMobileSession
+      summary: Delete a mobile session
+      parameters:
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+      responses:
+        "200":
+          description: Logout processed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogoutSuccess"
 components:
   securitySchemes:
     botBearer:
       type: http
       scheme: bearer
+    portalSession:
+      type: apiKey
+      in: cookie
+      name: smh_portal_session
   schemas:
     HealthStatus:
       type: object
@@ -605,8 +2459,10 @@ components:
       properties:
         status:
           type: string
-          enum: [ok]
-      required: [status]
+          enum:
+            - ok
+      required:
+        - status
     AuthStatus:
       type: object
       properties:
@@ -614,7 +2470,9 @@ components:
           type: boolean
         passwordConfigured:
           type: boolean
-      required: [authenticated, passwordConfigured]
+      required:
+        - authenticated
+        - passwordConfigured
     AdminLogin:
       type: object
       properties:
@@ -622,7 +2480,8 @@ components:
           type: string
           minLength: 1
           maxLength: 256
-      required: [password]
+      required:
+        - password
     WhatsAppDashboard:
       type: object
       properties:
@@ -642,7 +2501,14 @@ components:
             $ref: "#/components/schemas/WhatsAppActivity"
         connection:
           $ref: "#/components/schemas/ConnectionStatus"
-      required: [paused, testMode, conversationsToday, messagesToday, openEnquiries, recentActivity, connection]
+      required:
+        - paused
+        - testMode
+        - conversationsToday
+        - messagesToday
+        - openEnquiries
+        - recentActivity
+        - connection
     ConnectionStatus:
       type: object
       properties:
@@ -654,7 +2520,11 @@ components:
           type: boolean
         allowedTestRecipients:
           type: integer
-      required: [credentialsConfigured, webhookConfigured, geminiConfigured, allowedTestRecipients]
+      required:
+        - credentialsConfigured
+        - webhookConfigured
+        - geminiConfigured
+        - allowedTestRecipients
     WhatsAppActivity:
       type: object
       properties:
@@ -667,7 +2537,11 @@ components:
         createdAt:
           type: string
           format: date-time
-      required: [id, kind, summary, createdAt]
+      required:
+        - id
+        - kind
+        - summary
+        - createdAt
     WhatsAppConversation:
       type: object
       properties:
@@ -676,11 +2550,15 @@ components:
         waId:
           type: string
         displayName:
-          type: ["string", "null"]
+          type:
+            - string
+            - "null"
         lastMessagePreview:
           type: string
         lastMessageAt:
-          type: ["string", "null"]
+          type:
+            - string
+            - "null"
           format: date-time
         unreadCount:
           type: integer
@@ -690,7 +2568,16 @@ components:
           type: boolean
         replyWindowOpen:
           type: boolean
-      required: [id, waId, displayName, lastMessagePreview, lastMessageAt, unreadCount, isEnquiry, testRecipientAllowed, replyWindowOpen]
+      required:
+        - id
+        - waId
+        - displayName
+        - lastMessagePreview
+        - lastMessageAt
+        - unreadCount
+        - isEnquiry
+        - testRecipientAllowed
+        - replyWindowOpen
     WhatsAppConversationDetail:
       type: object
       properties:
@@ -700,7 +2587,9 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WhatsAppMessage"
-      required: [conversation, messages]
+      required:
+        - conversation
+        - messages
     WhatsAppMessage:
       type: object
       properties:
@@ -708,7 +2597,9 @@ components:
           type: integer
         direction:
           type: string
-          enum: [inbound, outbound]
+          enum:
+            - inbound
+            - outbound
         text:
           type: string
         status:
@@ -716,7 +2607,12 @@ components:
         createdAt:
           type: string
           format: date-time
-      required: [id, direction, text, status, createdAt]
+      required:
+        - id
+        - direction
+        - text
+        - status
+        - createdAt
     AdminReply:
       type: object
       properties:
@@ -724,7 +2620,8 @@ components:
           type: string
           minLength: 1
           maxLength: 4096
-      required: [text]
+      required:
+        - text
     EducationModule:
       type: object
       properties:
@@ -739,9 +2636,17 @@ components:
         published:
           type: boolean
         updatedAt:
-          type: ["string", "null"]
+          type:
+            - string
+            - "null"
           format: date-time
-      required: [slug, title, summary, content, published, updatedAt]
+      required:
+        - slug
+        - title
+        - summary
+        - content
+        - published
+        - updatedAt
     EducationModuleUpdate:
       type: object
       properties:
@@ -753,7 +2658,10 @@ components:
           maxLength: 50000
         published:
           type: boolean
-      required: [summary, content, published]
+      required:
+        - summary
+        - content
+        - published
     WhatsAppSettings:
       type: object
       properties:
@@ -762,202 +2670,2714 @@ components:
         testMode:
           type: boolean
         telegramCommunityUrl:
-          type: ["string", "null"]
+          type:
+            - string
+            - "null"
           format: uri
         webhookUrl:
           type: string
         connection:
           $ref: "#/components/schemas/ConnectionStatus"
-      required: [paused, testMode, telegramCommunityUrl, webhookUrl, connection]
+      required:
+        - paused
+        - testMode
+        - telegramCommunityUrl
+        - webhookUrl
+        - connection
     WhatsAppSettingsUpdate:
       type: object
       properties:
         paused:
           type: boolean
         telegramCommunityUrl:
-          type: ["string", "null"]
+          type:
+            - string
+            - "null"
           format: uri
     SupportSession:
       type: object
       properties:
-        authenticated: { type: boolean }
-        needsSetup: { type: boolean }
+        authenticated:
+          type: boolean
+        needsSetup:
+          type: boolean
         staff:
           anyOf:
             - $ref: "#/components/schemas/SupportStaff"
             - type: "null"
-      required: [authenticated, needsSetup, staff]
+      required:
+        - authenticated
+        - needsSetup
+        - staff
     SupportLogin:
       type: object
       properties:
-        email: { type: string, format: email, maxLength: 254 }
-        password: { type: string, minLength: 1, maxLength: 256 }
-      required: [email, password]
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        password:
+          type: string
+          minLength: 1
+          maxLength: 256
+      required:
+        - email
+        - password
     SupportBootstrap:
       type: object
       properties:
-        email: { type: string, format: email, maxLength: 254 }
-        displayName: { type: string, minLength: 1, maxLength: 100 }
-        password: { type: string, minLength: 12, maxLength: 256 }
-      required: [email, displayName, password]
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        password:
+          type: string
+          minLength: 12
+          maxLength: 256
+      required:
+        - email
+        - displayName
+        - password
     SupportStaff:
       type: object
       properties:
-        id: { type: string }
-        displayName: { type: string }
-        role: { type: string, enum: [owner, manager, agent] }
-      required: [id, displayName, role]
+        id:
+          type: string
+        displayName:
+          type: string
+        role:
+          type: string
+          enum:
+            - owner
+            - manager
+            - agent
+      required:
+        - id
+        - displayName
+        - role
     SupportCaseSummary:
       type: object
       properties:
-        caseId: { type: string }
-        sourceBot: { type: string, enum: [signals, coach] }
-        memberId: { type: string }
-        question: { type: string }
-        status: { type: string }
-        workflowStatus: { type: string }
-        category: { type: string }
-        priority: { type: string }
-        assignedStaffId: { type: ["string", "null"] }
-        created: { type: string }
-        updated: { type: string }
-      required: [caseId, sourceBot, memberId, question, status, workflowStatus, category, priority, assignedStaffId, created, updated]
+        caseId:
+          type: string
+        sourceBot:
+          type: string
+          enum:
+            - signals
+            - coach
+        memberId:
+          type: string
+        question:
+          type: string
+        status:
+          type: string
+        workflowStatus:
+          type: string
+        category:
+          type: string
+        priority:
+          type: string
+        assignedStaffId:
+          type:
+            - string
+            - "null"
+        created:
+          type: string
+        updated:
+          type: string
+      required:
+        - caseId
+        - sourceBot
+        - memberId
+        - question
+        - status
+        - workflowStatus
+        - category
+        - priority
+        - assignedStaffId
+        - created
+        - updated
     SupportCaseList:
       type: object
       properties:
         cases:
           type: array
-          items: { $ref: "#/components/schemas/SupportCaseSummary" }
-      required: [cases]
+          items:
+            $ref: "#/components/schemas/SupportCaseSummary"
+      required:
+        - cases
     SupportMessage:
       type: object
       properties:
-        id: { type: string }
-        sender: { type: string, enum: [member, staff] }
-        displayName: { type: string }
-        text: { type: string }
-        status: { type: string }
-        created: { type: string }
-      required: [id, sender, displayName, text, status, created]
+        id:
+          type: string
+        sender:
+          type: string
+          enum:
+            - member
+            - staff
+        displayName:
+          type: string
+        text:
+          type: string
+        status:
+          type: string
+        created:
+          type: string
+      required:
+        - id
+        - sender
+        - displayName
+        - text
+        - status
+        - created
     SupportNote:
       type: object
       properties:
-        id: { type: string }
-        staffName: { type: string }
-        text: { type: string }
-        created: { type: string }
-      required: [id, staffName, text, created]
+        id:
+          type: string
+        staffName:
+          type: string
+        text:
+          type: string
+        created:
+          type: string
+      required:
+        - id
+        - staffName
+        - text
+        - created
     SupportCaseEvent:
       type: object
       properties:
-        id: { type: string }
-        actorName: { type: string }
-        eventType: { type: string }
-        oldValue: { type: string }
-        newValue: { type: string }
-        created: { type: string }
-      required: [id, actorName, eventType, oldValue, newValue, created]
+        id:
+          type: string
+        actorName:
+          type: string
+        eventType:
+          type: string
+        oldValue:
+          type: string
+        newValue:
+          type: string
+        created:
+          type: string
+      required:
+        - id
+        - actorName
+        - eventType
+        - oldValue
+        - newValue
+        - created
     SupportCaseDetail:
       type: object
       properties:
-        case: { $ref: "#/components/schemas/SupportCaseSummary" }
+        case:
+          $ref: "#/components/schemas/SupportCaseSummary"
         messages:
           type: array
-          items: { $ref: "#/components/schemas/SupportMessage" }
+          items:
+            $ref: "#/components/schemas/SupportMessage"
         notes:
           type: array
-          items: { $ref: "#/components/schemas/SupportNote" }
+          items:
+            $ref: "#/components/schemas/SupportNote"
         events:
           type: array
-          items: { $ref: "#/components/schemas/SupportCaseEvent" }
-      required: [case, messages, notes, events]
+          items:
+            $ref: "#/components/schemas/SupportCaseEvent"
+      required:
+        - case
+        - messages
+        - notes
+        - events
     SupportReplyInput:
       type: object
       properties:
-        text: { type: string, minLength: 3, maxLength: 3000 }
-        requestId: { type: string, minLength: 1, maxLength: 128 }
-      required: [text, requestId]
+        text:
+          type: string
+          minLength: 3
+          maxLength: 3000
+        requestId:
+          type: string
+          minLength: 1
+          maxLength: 128
+      required:
+        - text
+        - requestId
     SupportAssignmentInput:
       type: object
       properties:
-        assignedStaffId: { type: ["string", "null"] }
-      required: [assignedStaffId]
+        assignedStaffId:
+          type:
+            - string
+            - "null"
+      required:
+        - assignedStaffId
     SupportStatusInput:
       type: object
       properties:
         workflowStatus:
           type: string
-          enum: [new, assigned, in_progress, waiting_for_member, resolved, closed]
-      required: [workflowStatus]
+          enum:
+            - new
+            - assigned
+            - in_progress
+            - waiting_for_member
+            - resolved
+            - closed
+      required:
+        - workflowStatus
     SupportNoteInput:
       type: object
       properties:
-        text: { type: string, minLength: 3, maxLength: 3000 }
-      required: [text]
+        text:
+          type: string
+          minLength: 3
+          maxLength: 3000
+      required:
+        - text
     BotCreateCaseInput:
       type: object
       properties:
-        requestId: { type: string, minLength: 1, maxLength: 128 }
-        telegramUserId: { type: integer, minimum: 1 }
-        question: { type: string, minLength: 3, maxLength: 1000 }
-      required: [requestId, telegramUserId, question]
+        requestId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        telegramUserId:
+          type: integer
+          minimum: 1
+        question:
+          type: string
+          minLength: 3
+          maxLength: 1000
+      required:
+        - requestId
+        - telegramUserId
+        - question
     BotCase:
       type: object
       properties:
-        caseId: { type: string }
-        sourceBot: { type: string, enum: [signals, coach] }
-        telegramUserId: { type: string }
-        question: { type: string }
-        status: { type: string }
-        created: { type: string }
-        updated: { type: string }
-      required: [caseId, sourceBot, telegramUserId, question, status, created, updated]
+        caseId:
+          type: string
+        sourceBot:
+          type: string
+          enum:
+            - signals
+            - coach
+        telegramUserId:
+          type: string
+        question:
+          type: string
+        status:
+          type: string
+        created:
+          type: string
+        updated:
+          type: string
+      required:
+        - caseId
+        - sourceBot
+        - telegramUserId
+        - question
+        - status
+        - created
+        - updated
     BotCaseList:
       type: object
       properties:
         cases:
           type: array
-          items: { $ref: "#/components/schemas/BotCase" }
-      required: [cases]
+          items:
+            $ref: "#/components/schemas/BotCase"
+      required:
+        - cases
     BotCaseDetail:
       type: object
       properties:
-        case: { $ref: "#/components/schemas/BotCase" }
+        case:
+          $ref: "#/components/schemas/BotCase"
         messages:
           type: array
-          items: { $ref: "#/components/schemas/SupportMessage" }
-      required: [case, messages]
+          items:
+            $ref: "#/components/schemas/SupportMessage"
+      required:
+        - case
+        - messages
     BotMemberMessageInput:
       type: object
       properties:
-        requestId: { type: string, minLength: 1, maxLength: 128 }
-        telegramUserId: { type: integer, minimum: 1 }
-        text: { type: string, minLength: 3, maxLength: 3000 }
-      required: [requestId, telegramUserId, text]
+        requestId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        telegramUserId:
+          type: integer
+          minimum: 1
+        text:
+          type: string
+          minLength: 3
+          maxLength: 3000
+      required:
+        - requestId
+        - telegramUserId
+        - text
     BotOutboxItem:
       type: object
       properties:
-        replyId: { type: string }
-        caseId: { type: string }
-        telegramUserId: { type: string }
-        text: { type: string }
-        responderName: { type: string }
-      required: [replyId, caseId, telegramUserId, text, responderName]
+        replyId:
+          type: string
+        caseId:
+          type: string
+        telegramUserId:
+          type: string
+        text:
+          type: string
+        responderName:
+          type: string
+      required:
+        - replyId
+        - caseId
+        - telegramUserId
+        - text
+        - responderName
     BotOutbox:
       type: object
       properties:
         replies:
           type: array
-          items: { $ref: "#/components/schemas/BotOutboxItem" }
-      required: [replies]
+          items:
+            $ref: "#/components/schemas/BotOutboxItem"
+      required:
+        - replies
     BotOutboxAckInput:
       type: object
       properties:
-        outcome: { type: string, enum: [sent, failed, uncertain] }
-      required: [outcome]
+        outcome:
+          type: string
+          enum:
+            - sent
+            - failed
+            - uncertain
+      required:
+        - outcome
     BotOutboxAck:
       type: object
       properties:
-        status: { type: string, enum: [sent, failed, uncertain] }
-      required: [status]
-
+        status:
+          type: string
+          enum:
+            - sent
+            - failed
+            - uncertain
+      required:
+        - status
+    EducationVideoDraftInput:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 2
+          maxLength: 120
+        caption:
+          type: string
+          minLength: 1
+          maxLength: 900
+        fileName:
+          type: string
+          minLength: 1
+          maxLength: 160
+        byteSize:
+          type: integer
+          minimum: 1
+          maximum: 50000000
+        contentType:
+          type: string
+          enum:
+            - video/mp4
+        requestId:
+          type: string
+          minLength: 16
+          maxLength: 120
+      required:
+        - title
+        - caption
+        - fileName
+        - byteSize
+        - contentType
+        - requestId
+    EducationVideoPublishInput:
+      type: object
+      properties:
+        requestId:
+          type: string
+          minLength: 16
+          maxLength: 120
+      required:
+        - requestId
+    EducationVideo:
+      type: object
+      properties:
+        videoId:
+          type: string
+        title:
+          type: string
+        caption:
+          type: string
+        fileName:
+          type: string
+        byteSize:
+          type: integer
+        status:
+          type: string
+          enum:
+            - awaiting_upload
+            - draft
+            - queued
+            - sending
+            - published
+            - uncertain
+            - failed
+            - blocked
+        createdAt:
+          type: string
+        publishedAt:
+          type:
+            - string
+            - "null"
+        targetLabel:
+          type: string
+      required:
+        - videoId
+        - title
+        - caption
+        - fileName
+        - byteSize
+        - status
+        - createdAt
+        - publishedAt
+        - targetLabel
+    EducationVideoList:
+      type: object
+      properties:
+        videos:
+          type: array
+          items:
+            $ref: "#/components/schemas/EducationVideo"
+        targetAvailable:
+          type: boolean
+        targetLabel:
+          type: string
+        publishingEnabled:
+          type: boolean
+        notice:
+          type: string
+      required:
+        - videos
+        - targetAvailable
+        - targetLabel
+        - publishingEnabled
+        - notice
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+    PortalLoginInput:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        password:
+          type: string
+          minLength: 1
+          maxLength: 256
+      required:
+        - email
+        - password
+    PortalSession:
+      type: object
+      properties:
+        staffId:
+          type: string
+        email:
+          type: string
+          format: email
+        displayName:
+          type: string
+        role:
+          type: string
+          enum:
+            - owner
+            - manager
+            - agent
+        mustChangePassword:
+          type: boolean
+      required:
+        - staffId
+        - email
+        - displayName
+        - role
+        - mustChangePassword
+    SignedOutState:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - signed_out
+      required:
+        - status
+    PortalDashboard:
+      type: object
+      properties:
+        openCount:
+          type: integer
+        uncertainCount:
+          type: integer
+        repliedCount:
+          type: integer
+        closedCount:
+          type: integer
+        recentCases:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortalCaseSummary"
+      required:
+        - openCount
+        - uncertainCount
+        - repliedCount
+        - closedCount
+        - recentCases
+    PortalCommandCenter:
+      type: object
+      properties:
+        scope:
+          type: string
+          enum:
+            - development_isolated_test
+        readOnly:
+          type: boolean
+          const: true
+        refreshedAt:
+          type: string
+        lastTelegramUpdate:
+          type:
+            - string
+            - "null"
+        alerts:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortalCommandCenterAlert"
+        overview:
+          $ref: "#/components/schemas/PortalCommandCenterOverview"
+        bots:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortalCommandCenterBot"
+        channels:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortalCommandCenterChannel"
+        recentOperations:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortalCommandCenterOperation"
+        recentErrors:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortalCommandCenterError"
+      required:
+        - scope
+        - readOnly
+        - refreshedAt
+        - lastTelegramUpdate
+        - alerts
+        - overview
+        - bots
+        - channels
+        - recentOperations
+        - recentErrors
+    PortalChannelHistory:
+      type: object
+      properties:
+        scope:
+          type: string
+          enum:
+            - development_main_bot
+            - development_isolated_test
+        productionConnected:
+          type: boolean
+          const: false
+        page:
+          type: integer
+        limit:
+          type: integer
+        hasMore:
+          type: boolean
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortalChannelHistoryItem"
+      required:
+        - scope
+        - productionConnected
+        - page
+        - limit
+        - hasMore
+        - items
+    PortalChannelHistoryItem:
+      type: object
+      properties:
+        source:
+          type: string
+          enum:
+            - bot
+            - telegram_manual
+        destination:
+          type: string
+          enum:
+            - PRO Signals
+            - Market Analysis
+            - Educational Group · Video tutorials
+        eventType:
+          type: string
+        status:
+          type: string
+        recordedAt:
+          type: string
+        messageText:
+          type: string
+        attachmentLabel:
+          type: string
+      required:
+        - source
+        - destination
+        - eventType
+        - status
+        - recordedAt
+        - messageText
+        - attachmentLabel
+    PortalTradeManagement:
+      type: object
+      properties:
+        environment:
+          type: string
+          enum:
+            - development_test
+            - production
+        workerStatus:
+          type: string
+          enum:
+            - ready
+            - migration_required
+            - stopped
+            - unknown
+        publishingEnabled:
+          type: boolean
+        destinationsVerified:
+          type: boolean
+        trades:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortalTradeSummary"
+      required:
+        - environment
+        - workerStatus
+        - publishingEnabled
+        - destinationsVerified
+        - trades
+    PortalSignalPanel:
+      type: object
+      properties:
+        environment:
+          type: string
+          enum:
+            - development_test
+        workerStatus:
+          type: string
+          enum:
+            - ready
+            - migration_required
+            - disabled
+            - unknown
+        publishingEnabled:
+          type: boolean
+        destinationsVerified:
+          type: boolean
+        panelUpdated:
+          type: string
+        activeSetup:
+          anyOf:
+            - $ref: "#/components/schemas/PortalSignalSetup"
+            - type: "null"
+        zoneDraft:
+          anyOf:
+            - $ref: "#/components/schemas/PortalSignalDraft"
+            - type: "null"
+        commands:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortalSignalAction"
+      required:
+        - environment
+        - workerStatus
+        - publishingEnabled
+        - destinationsVerified
+        - panelUpdated
+        - activeSetup
+        - zoneDraft
+        - commands
+    PortalSignalSetup:
+      type: object
+      properties:
+        setupId:
+          type: string
+        market:
+          type: string
+        zone:
+          type: string
+        timeframe:
+          type: string
+        condition:
+          type: string
+        status:
+          type: string
+        expires:
+          type:
+            - number
+            - "null"
+        hasChart:
+          type: boolean
+        hasMessage:
+          type: boolean
+      required:
+        - setupId
+        - market
+        - zone
+        - timeframe
+        - condition
+        - status
+        - expires
+        - hasChart
+        - hasMessage
+    PortalSignalDraft:
+      type: object
+      properties:
+        revision:
+          type: string
+        market:
+          type: string
+        zone:
+          type: string
+        timeframe:
+          type: string
+        condition:
+          type: string
+        step:
+          type: string
+        hasChart:
+          type: boolean
+        readyToPublish:
+          type: boolean
+      required:
+        - revision
+        - market
+        - zone
+        - timeframe
+        - condition
+        - step
+        - hasChart
+        - readyToPublish
+    PortalSignalActionValues:
+      type: object
+      additionalProperties: false
+      properties:
+        market:
+          type: string
+          maxLength: 80
+        low:
+          type: string
+          maxLength: 24
+        high:
+          type: string
+          maxLength: 24
+        timeframe:
+          type: string
+          maxLength: 30
+        minutes:
+          type: integer
+          minimum: 1
+          maximum: 1440
+        condition:
+          type: string
+          maxLength: 300
+        draftRevision:
+          type: string
+          maxLength: 120
+        setupId:
+          type: string
+          maxLength: 120
+        confirmation:
+          type: string
+          maxLength: 300
+        direction:
+          type: string
+          enum:
+            - BUY
+            - SELL
+        entryRange:
+          type: string
+          maxLength: 60
+        stopLoss:
+          type: string
+          maxLength: 24
+        takeProfits:
+          type: string
+          maxLength: 300
+        text:
+          type: string
+          maxLength: 3000
+    PortalSignalActionInput:
+      type: object
+      properties:
+        action:
+          type: string
+          enum:
+            - create_zone_draft
+            - publish_zone
+            - record_confirmation
+            - cancel_setup
+            - expire_setup
+            - publish_signal
+            - publish_analysis
+        requestId:
+          type: string
+          format: uuid
+        input:
+          $ref: "#/components/schemas/PortalSignalActionValues"
+      required:
+        - action
+        - requestId
+        - input
+    PortalSignalAction:
+      type: object
+      properties:
+        commandId:
+          type: string
+        action:
+          type: string
+        status:
+          type: string
+          enum:
+            - queued
+            - processing
+            - preview_ready
+            - approved
+            - completed
+            - failed
+            - uncertain
+            - stale
+            - cancelled
+        previewText:
+          type: string
+        safeResult:
+          type: string
+        created:
+          type: string
+        updated:
+          type: string
+        canConfirm:
+          type: boolean
+        canCancel:
+          type: boolean
+      required:
+        - commandId
+        - action
+        - status
+        - previewText
+        - safeResult
+        - created
+        - updated
+        - canConfirm
+        - canCancel
+    PortalTradeSummary:
+      type: object
+      properties:
+        tradeId:
+          type: string
+        symbol:
+          type: string
+        direction:
+          type: string
+        state:
+          type: string
+        entry:
+          type:
+            - string
+            - "null"
+        stopLoss:
+          type:
+            - string
+            - "null"
+        targets:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortalTradeTarget"
+        version:
+          type: integer
+        created:
+          type: string
+        updated:
+          type: string
+        hasLinkedPost:
+          type: boolean
+        eventCount:
+          type: integer
+      required:
+        - tradeId
+        - symbol
+        - direction
+        - state
+        - entry
+        - stopLoss
+        - targets
+        - version
+        - created
+        - updated
+        - hasLinkedPost
+        - eventCount
+    PortalTradeTarget:
+      type: object
+      properties:
+        number:
+          type: string
+        price:
+          type: string
+        hit:
+          type: boolean
+        hitStatus:
+          type:
+            - string
+            - "null"
+      required:
+        - number
+        - price
+        - hit
+        - hitStatus
+    PortalTradeDetail:
+      type: object
+      properties:
+        trade:
+          $ref: "#/components/schemas/PortalTradeSummary"
+        history:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortalTradeEvent"
+      required:
+        - trade
+        - history
+    PortalTradeEvent:
+      type: object
+      properties:
+        text:
+          type: string
+        created:
+          type: string
+      required:
+        - text
+        - created
+    PortalTradeActionValues:
+      type: object
+      additionalProperties: false
+      properties:
+        entry:
+          type: string
+          maxLength: 100
+        stopLoss:
+          type: string
+          maxLength: 100
+        targetNumber:
+          type: string
+          maxLength: 3
+        targetPrice:
+          type: string
+          maxLength: 100
+        targetStatus:
+          type: string
+          enum:
+            - partial
+            - final
+        percentage:
+          type: string
+          maxLength: 8
+        remaining:
+          type: string
+          maxLength: 200
+        stopMoved:
+          type: boolean
+        outcome:
+          type: string
+          enum:
+            - Win
+            - Breakeven
+            - Loss
+            - Unrecorded
+        outcomeConfirmed:
+          type: boolean
+        exitPrice:
+          type: string
+          maxLength: 100
+        note:
+          type: string
+          maxLength: 500
+        reason:
+          type: string
+          maxLength: 300
+        text:
+          type: string
+          maxLength: 3000
+    PortalTradeActionInput:
+      type: object
+      properties:
+        action:
+          type: string
+          enum:
+            - entry_bundle
+            - sl_tp
+            - sl
+            - tp
+            - hit
+            - partial
+            - be
+            - trail
+            - close
+            - cancel
+            - invalidate
+            - custom
+            - edit
+        requestId:
+          type: string
+          format: uuid
+        input:
+          $ref: "#/components/schemas/PortalTradeActionValues"
+      required:
+        - action
+        - requestId
+        - input
+    PortalTradeAction:
+      type: object
+      properties:
+        commandId:
+          type: string
+        tradeId:
+          type: string
+        action:
+          type: string
+        status:
+          type: string
+          enum:
+            - queued
+            - processing
+            - preview_ready
+            - approved
+            - completed
+            - failed
+            - uncertain
+            - stale
+            - cancelled
+        previewText:
+          type: string
+        safeResult:
+          type: string
+        created:
+          type: string
+        updated:
+          type: string
+        canConfirm:
+          type: boolean
+        canCancel:
+          type: boolean
+      required:
+        - commandId
+        - tradeId
+        - action
+        - status
+        - previewText
+        - safeResult
+        - created
+        - updated
+        - canConfirm
+        - canCancel
+    PortalCommandCenterAlert:
+      type: object
+      properties:
+        category:
+          type: string
+          enum:
+            - missing_heartbeat
+            - stale_heartbeat
+            - bot_health_failure
+            - publishing_failure
+            - publishing_uncertain
+            - publishing_pending
+            - pro_stale_applications
+        severity:
+          type: string
+          enum:
+            - warning
+            - critical
+        sourceBot:
+          type: string
+          enum:
+            - isolated_test
+        destination:
+          type: string
+          enum:
+            - PRO Signals
+            - Market Analysis
+            - System
+        title:
+          type: string
+        count:
+          type: integer
+        latestAt:
+          type:
+            - string
+            - "null"
+      required:
+        - category
+        - severity
+        - sourceBot
+        - destination
+        - title
+        - count
+        - latestAt
+    PortalCommandCenterOverview:
+      type: object
+      properties:
+        openSupportCases:
+          type: integer
+        uncertainSupportCases:
+          type: integer
+        overdueTasks:
+          type: integer
+        recordedTrades:
+          type: integer
+        recordedTradeEvents:
+          type: integer
+        unresolvedPublishingOperations:
+          type: integer
+        proPendingReview:
+          type: integer
+        proEvidenceRequested:
+          type: integer
+        staleProApplications:
+          type: integer
+      required:
+        - openSupportCases
+        - uncertainSupportCases
+        - overdueTasks
+        - recordedTrades
+        - recordedTradeEvents
+        - unresolvedPublishingOperations
+        - proPendingReview
+        - proEvidenceRequested
+        - staleProApplications
+    PortalCommandCenterBot:
+      type: object
+      properties:
+        id:
+          type: string
+          enum:
+            - production
+            - isolated_test
+        label:
+          type: string
+        healthStatus:
+          type: string
+          enum:
+            - healthy
+            - unhealthy
+            - unknown
+        workflowStatus:
+          type: string
+          enum:
+            - running
+            - stopped
+            - unknown
+            - not_connected
+        publishingStatus:
+          type: string
+          enum:
+            - enabled
+            - disabled
+            - locked
+            - unknown
+        lastTelegramUpdate:
+          type:
+            - string
+            - "null"
+        processStatus:
+          type: string
+          enum:
+            - running
+            - unknown
+            - not_connected
+        healthCheckedAt:
+          type:
+            - string
+            - "null"
+        telegramStatus:
+          type: string
+          enum:
+            - healthy
+            - degraded
+            - offline
+            - unknown
+        databaseStatus:
+          type: string
+          enum:
+            - healthy
+            - degraded
+            - offline
+            - unknown
+        pollingStatus:
+          type: string
+          enum:
+            - healthy
+            - degraded
+            - offline
+            - unknown
+        note:
+          type: string
+      required:
+        - id
+        - label
+        - healthStatus
+        - workflowStatus
+        - publishingStatus
+        - lastTelegramUpdate
+        - processStatus
+        - healthCheckedAt
+        - telegramStatus
+        - databaseStatus
+        - pollingStatus
+        - note
+    PortalCommandCenterChannel:
+      type: object
+      properties:
+        sourceBot:
+          type: string
+          enum:
+            - production
+            - isolated_test
+        name:
+          type: string
+          enum:
+            - PRO Signals
+            - Market Analysis
+            - Educational Group
+        status:
+          type: string
+          enum:
+            - healthy
+            - degraded
+            - offline
+            - unknown
+            - not_connected
+        latestRecordedActivity:
+          type:
+            - string
+            - "null"
+        note:
+          type: string
+      required:
+        - sourceBot
+        - name
+        - status
+        - latestRecordedActivity
+        - note
+    PortalCommandCenterOperation:
+      type: object
+      properties:
+        sourceBot:
+          type: string
+          enum:
+            - isolated_test
+        destination:
+          type: string
+          enum:
+            - PRO Signals
+            - Market Analysis
+        operationType:
+          type: string
+        status:
+          type: string
+        recordedAt:
+          type: string
+        telegramAccepted:
+          type: boolean
+      required:
+        - sourceBot
+        - destination
+        - operationType
+        - status
+        - recordedAt
+        - telegramAccepted
+    PortalCommandCenterError:
+      type: object
+      properties:
+        category:
+          type: string
+        count:
+          type: integer
+        latestAt:
+          type: string
+      required:
+        - category
+        - count
+        - latestAt
+    ProMemberApplicationList:
+      type: object
+      properties:
+        applications:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProMemberApplication"
+      required:
+        - applications
+    ProMemberApplication:
+      type: object
+      properties:
+        requestId:
+          type: string
+        userId:
+          type: string
+        username:
+          type: string
+        status:
+          type: string
+        registrationStatus:
+          type: string
+        fundingStatus:
+          type: string
+        educationEligibility:
+          type: string
+          enum:
+            - eligible_delivery_disabled
+            - locked
+        channelAccessStatus:
+          type: string
+        source:
+          type: string
+        hasEvidence:
+          type: boolean
+        evidenceKind:
+          type:
+            - string
+            - "null"
+        evidenceSubmittedAt:
+          type:
+            - string
+            - "null"
+        created:
+          type: string
+        updated:
+          type: string
+      required:
+        - requestId
+        - userId
+        - username
+        - status
+        - registrationStatus
+        - fundingStatus
+        - educationEligibility
+        - channelAccessStatus
+        - source
+        - hasEvidence
+        - evidenceKind
+        - evidenceSubmittedAt
+        - created
+        - updated
+    ProMemberApplicationDetail:
+      type: object
+      properties:
+        application:
+          $ref: "#/components/schemas/ProMemberApplication"
+        history:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProMemberReviewEvent"
+        latestCommand:
+          oneOf:
+            - $ref: "#/components/schemas/ProMemberReviewCommand"
+            - type: "null"
+      required:
+        - application
+        - history
+        - latestCommand
+    ProMemberReviewEvent:
+      type: object
+      properties:
+        eventId:
+          type: string
+        action:
+          type: string
+        actor:
+          type: string
+        reason:
+          type: string
+        status:
+          type: string
+        deliveryStatus:
+          type: string
+        created:
+          type: string
+        completedAt:
+          type:
+            - string
+            - "null"
+      required:
+        - eventId
+        - action
+        - actor
+        - reason
+        - status
+        - deliveryStatus
+        - created
+        - completedAt
+    ProMemberReviewInput:
+      type: object
+      properties:
+        action:
+          type: string
+          enum:
+            - approve_registration
+            - reject_registration
+            - verify_funding
+            - reject_funding
+            - approve
+            - reject
+            - request_evidence
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 1200
+        idempotencyKey:
+          type: string
+          format: uuid
+        expectedUpdated:
+          type: string
+          minLength: 1
+          maxLength: 64
+      required:
+        - action
+        - reason
+        - idempotencyKey
+        - expectedUpdated
+    ProMemberReviewCommand:
+      type: object
+      properties:
+        commandId:
+          type: string
+        requestId:
+          type: string
+        action:
+          type: string
+          enum:
+            - approve_registration
+            - reject_registration
+            - verify_funding
+            - reject_funding
+            - approve
+            - reject
+            - request_evidence
+        status:
+          type: string
+          enum:
+            - queued
+            - processing
+            - completed
+            - failed
+            - uncertain
+            - stale
+        deliveryStatus:
+          type: string
+          enum:
+            - not_attempted
+            - sent
+            - failed
+            - uncertain
+            - not_needed
+        safeResult:
+          type: string
+        created:
+          type: string
+        updated:
+          type: string
+        completedAt:
+          type:
+            - string
+            - "null"
+      required:
+        - commandId
+        - requestId
+        - action
+        - status
+        - deliveryStatus
+        - safeResult
+        - created
+        - updated
+        - completedAt
+    MemberAccessApplicationList:
+      type: object
+      properties:
+        scope:
+          type: string
+          enum:
+            - development_test
+            - production
+        applications:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemberAccessApplication"
+      required:
+        - scope
+        - applications
+    MemberAccessApplication:
+      type: object
+      properties:
+        requestId:
+          type: string
+        userId:
+          type: string
+        username:
+          type: string
+        destination:
+          type: string
+          enum:
+            - education
+            - analysis
+            - pro
+        status:
+          type: string
+        registrationStatus:
+          type: string
+        fundingStatus:
+          type: string
+        source:
+          type: string
+        created:
+          type: string
+        updated:
+          type: string
+      required:
+        - requestId
+        - userId
+        - username
+        - destination
+        - status
+        - registrationStatus
+        - fundingStatus
+        - source
+        - created
+        - updated
+    ApplicantFollowupSettingsSummary:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        reviewed:
+          type: boolean
+        sampleReviewed:
+          type: boolean
+        intervalDays:
+          type: array
+          items:
+            type: integer
+        maxReminders:
+          type: integer
+        categories:
+          type: array
+          items:
+            type: string
+      required:
+        - enabled
+        - reviewed
+        - sampleReviewed
+        - intervalDays
+        - maxReminders
+        - categories
+    ApplicantFollowupState:
+      type: object
+      properties:
+        userId:
+          type: string
+        username:
+          type: string
+        privateStatus:
+          type: string
+        stage:
+          type: string
+        destinations:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+        pauseReason:
+          type: string
+        consentNoticeAt:
+          type:
+            - string
+            - "null"
+        remindersSent:
+          type: integer
+        nextFollowup:
+          type:
+            - string
+            - "null"
+        hasRecentError:
+          type: boolean
+        updated:
+          type: string
+      required:
+        - userId
+        - username
+        - privateStatus
+        - stage
+        - destinations
+        - status
+        - pauseReason
+        - consentNoticeAt
+        - remindersSent
+        - nextFollowup
+        - hasRecentError
+        - updated
+    ApplicantFollowupList:
+      type: object
+      properties:
+        scope:
+          type: string
+          enum:
+            - development_test
+            - production
+        settings:
+          $ref: "#/components/schemas/ApplicantFollowupSettingsSummary"
+        applicants:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApplicantFollowupState"
+      required:
+        - scope
+        - settings
+        - applicants
+    ApplicantFollowupDelivery:
+      type: object
+      properties:
+        deliveryId:
+          type: string
+        category:
+          type: string
+        status:
+          type: string
+        created:
+          type: string
+        updated:
+          type: string
+        sentAt:
+          type:
+            - string
+            - "null"
+      required:
+        - deliveryId
+        - category
+        - status
+        - created
+        - updated
+        - sentAt
+    ApplicantFollowupEvent:
+      type: object
+      properties:
+        eventId:
+          type: string
+        action:
+          type: string
+        created:
+          type: string
+      required:
+        - eventId
+        - action
+        - created
+    ApplicantFollowupDetail:
+      type: object
+      properties:
+        applicant:
+          $ref: "#/components/schemas/ApplicantFollowupState"
+        deliveries:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApplicantFollowupDelivery"
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApplicantFollowupEvent"
+      required:
+        - applicant
+        - deliveries
+        - events
+    ApplicantFollowupStatusInput:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - active
+            - paused
+        expectedUpdated:
+          type: string
+          minLength: 1
+          maxLength: 64
+      required:
+        - status
+        - expectedUpdated
+    PortalCaseSummary:
+      type: object
+      properties:
+        caseId:
+          type: string
+        memberId:
+          type: integer
+        question:
+          type: string
+        status:
+          type: string
+          enum:
+            - open
+            - reply_sending
+            - reply_uncertain
+            - replied
+            - closed
+        workflowStatus:
+          type: string
+          enum:
+            - new
+            - assigned
+            - in_progress
+            - waiting_for_member
+            - resolved
+            - closed
+        category:
+          type: string
+        priority:
+          type: string
+          enum:
+            - low
+            - normal
+            - high
+            - urgent
+        assignedStaffId:
+          type:
+            - string
+            - "null"
+        created:
+          type: string
+        updated:
+          type: string
+      required:
+        - caseId
+        - memberId
+        - question
+        - status
+        - workflowStatus
+        - category
+        - priority
+        - assignedStaffId
+        - created
+        - updated
+    PortalCaseDetail:
+      allOf:
+        - $ref: "#/components/schemas/PortalCaseSummary"
+        - type: object
+          properties:
+            replies:
+              type: array
+              items:
+                $ref: "#/components/schemas/PortalReply"
+            notes:
+              type: array
+              items:
+                $ref: "#/components/schemas/PortalCaseNote"
+            events:
+              type: array
+              items:
+                $ref: "#/components/schemas/PortalCaseEvent"
+          required:
+            - replies
+            - notes
+            - events
+    PortalCaseList:
+      type: object
+      properties:
+        cases:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortalCaseSummary"
+        total:
+          type: integer
+      required:
+        - cases
+        - total
+    PortalReply:
+      type: object
+      properties:
+        replyId:
+          type: string
+        caseId:
+          type: string
+        responderName:
+          type: string
+        text:
+          type: string
+        status:
+          type: string
+          enum:
+            - queued
+            - sending
+            - sent
+            - uncertain
+            - failed
+        created:
+          type: string
+        updated:
+          type: string
+      required:
+        - replyId
+        - caseId
+        - responderName
+        - text
+        - status
+        - created
+        - updated
+    PortalReplyInput:
+      type: object
+      properties:
+        text:
+          type: string
+          minLength: 3
+          maxLength: 3000
+        requestId:
+          type: string
+          minLength: 16
+          maxLength: 120
+      required:
+        - text
+        - requestId
+    PortalStaff:
+      type: object
+      properties:
+        staffId:
+          type: string
+        email:
+          type: string
+          format: email
+        displayName:
+          type: string
+        role:
+          type: string
+          enum:
+            - owner
+            - manager
+            - agent
+        active:
+          type: boolean
+        mustChangePassword:
+          type: boolean
+        created:
+          type: string
+        lastLogin:
+          type:
+            - string
+            - "null"
+      required:
+        - staffId
+        - email
+        - displayName
+        - role
+        - active
+        - mustChangePassword
+        - created
+        - lastLogin
+    PortalStaffList:
+      type: object
+      properties:
+        staff:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortalStaff"
+      required:
+        - staff
+    PortalStaffInput:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 80
+        role:
+          type: string
+          enum:
+            - manager
+            - agent
+          default: agent
+      required:
+        - email
+        - displayName
+    PortalCaseAssignmentInput:
+      type: object
+      properties:
+        assignedStaffId:
+          type:
+            - string
+            - "null"
+          maxLength: 120
+      required:
+        - assignedStaffId
+    PortalCaseNoteInput:
+      type: object
+      properties:
+        text:
+          type: string
+          minLength: 3
+          maxLength: 3000
+      required:
+        - text
+    PortalCaseNote:
+      type: object
+      properties:
+        noteId:
+          type: string
+        staffId:
+          type: string
+        responderName:
+          type: string
+        text:
+          type: string
+        created:
+          type: string
+      required:
+        - noteId
+        - staffId
+        - responderName
+        - text
+        - created
+    PortalCaseEvent:
+      type: object
+      properties:
+        eventId:
+          type: string
+        actorName:
+          type: string
+        eventType:
+          type: string
+        oldValue:
+          type: string
+        newValue:
+          type: string
+        created:
+          type: string
+      required:
+        - eventId
+        - actorName
+        - eventType
+        - oldValue
+        - newValue
+        - created
+    StaffTaskInput:
+      type: object
+      properties:
+        requestId:
+          type: string
+          minLength: 8
+          maxLength: 120
+        title:
+          type: string
+          minLength: 3
+          maxLength: 120
+        instructions:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        priority:
+          type: string
+          enum:
+            - low
+            - normal
+            - high
+            - urgent
+        effortPoints:
+          type: integer
+          minimum: 1
+          maximum: 5
+        dueAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        teamId:
+          type:
+            - string
+            - "null"
+          maxLength: 120
+        assignedStaffId:
+          type:
+            - string
+            - "null"
+          maxLength: 120
+      required:
+        - requestId
+        - title
+        - instructions
+        - priority
+        - effortPoints
+        - dueAt
+        - teamId
+        - assignedStaffId
+    StaffTaskUpdateInput:
+      type: object
+      properties:
+        expectedUpdatedAt:
+          type: string
+          minLength: 1
+        title:
+          type: string
+          minLength: 3
+          maxLength: 120
+        instructions:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        priority:
+          type: string
+          enum:
+            - low
+            - normal
+            - high
+            - urgent
+        effortPoints:
+          type: integer
+          minimum: 1
+          maximum: 5
+        dueAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        teamId:
+          type:
+            - string
+            - "null"
+          maxLength: 120
+        assignedStaffId:
+          type:
+            - string
+            - "null"
+          maxLength: 120
+      required:
+        - expectedUpdatedAt
+        - title
+        - instructions
+        - priority
+        - effortPoints
+        - dueAt
+        - teamId
+        - assignedStaffId
+    StaffTaskStatusInput:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - accepted
+            - in_progress
+            - submitted_for_review
+            - revision_requested
+            - approved
+            - cancelled
+        note:
+          type: string
+          maxLength: 2000
+      required:
+        - status
+        - note
+    StaffTask:
+      type: object
+      properties:
+        taskId:
+          type: string
+        title:
+          type: string
+        instructions:
+          type: string
+        priority:
+          type: string
+        effortPoints:
+          type: integer
+        dueAt:
+          type:
+            - string
+            - "null"
+        teamId:
+          type:
+            - string
+            - "null"
+        assignedStaffId:
+          type:
+            - string
+            - "null"
+        assigneeName:
+          type:
+            - string
+            - "null"
+        status:
+          type: string
+        submissionNote:
+          type:
+            - string
+            - "null"
+        reviewFeedback:
+          type:
+            - string
+            - "null"
+        created:
+          type: string
+        updated:
+          type: string
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/StaffTaskEvent"
+      required:
+        - taskId
+        - title
+        - instructions
+        - priority
+        - effortPoints
+        - dueAt
+        - teamId
+        - assignedStaffId
+        - assigneeName
+        - status
+        - submissionNote
+        - reviewFeedback
+        - created
+        - updated
+        - events
+    StaffTaskEvent:
+      type: object
+      properties:
+        eventId:
+          type: string
+        actorName:
+          type: string
+        eventType:
+          type: string
+        oldValue:
+          type: string
+        newValue:
+          type: string
+        feedback:
+          type: string
+        created:
+          type: string
+      required:
+        - eventId
+        - actorName
+        - eventType
+        - oldValue
+        - newValue
+        - feedback
+        - created
+    StaffTaskList:
+      type: object
+      properties:
+        tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/StaffTask"
+      required:
+        - tasks
+    StaffTaskNotification:
+      type: object
+      properties:
+        notificationId:
+          type: string
+        taskId:
+          type: string
+        type:
+          type: string
+        created:
+          type: string
+        readAt:
+          type:
+            - string
+            - "null"
+      required:
+        - notificationId
+        - taskId
+        - type
+        - created
+        - readAt
+    StaffTaskNotificationList:
+      type: object
+      properties:
+        notifications:
+          type: array
+          items:
+            $ref: "#/components/schemas/StaffTaskNotification"
+      required:
+        - notifications
+    StaffReportNotification:
+      type: object
+      properties:
+        notificationId:
+          type: string
+        reportId:
+          type: string
+        period:
+          type: string
+          enum:
+            - daily
+            - weekly
+        periodStart:
+          type: string
+        outcome:
+          type: string
+          enum:
+            - approved
+            - revision_requested
+        reviewerFeedback:
+          type: string
+        href:
+          type: string
+        created:
+          type: string
+        readAt:
+          type:
+            - string
+            - "null"
+      required:
+        - notificationId
+        - reportId
+        - period
+        - periodStart
+        - outcome
+        - reviewerFeedback
+        - href
+        - created
+        - readAt
+    StaffReportNotificationList:
+      type: object
+      properties:
+        notifications:
+          type: array
+          items:
+            $ref: "#/components/schemas/StaffReportNotification"
+      required:
+        - notifications
+    StaffActivityReportInput:
+      type: object
+      properties:
+        period:
+          type: string
+          enum:
+            - daily
+            - weekly
+        periodStart:
+          type: string
+          format: date
+        completedWork:
+          type: string
+          minLength: 1
+          maxLength: 3000
+        outstandingWork:
+          type: string
+          minLength: 1
+          maxLength: 3000
+        blockers:
+          type: string
+          maxLength: 2000
+        plans:
+          type: string
+          maxLength: 2000
+      required:
+        - period
+        - periodStart
+        - completedWork
+        - outstandingWork
+        - blockers
+        - plans
+    StaffActivityReportReviewInput:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - reviewed
+            - revision_requested
+        note:
+          type: string
+          minLength: 3
+          maxLength: 2000
+      required:
+        - status
+        - note
+    StaffActivityReportEvent:
+      type: object
+      properties:
+        eventId:
+          type: string
+        actorName:
+          type: string
+        eventType:
+          type: string
+        oldValue:
+          type: string
+        newValue:
+          type: string
+        feedback:
+          type: string
+        created:
+          type: string
+      required:
+        - eventId
+        - actorName
+        - eventType
+        - oldValue
+        - newValue
+        - feedback
+        - created
+    StaffActivityReport:
+      type: object
+      properties:
+        reportId:
+          type: string
+        staffId:
+          type: string
+        staffName:
+          type: string
+        period:
+          type: string
+        periodStart:
+          type: string
+        completedWork:
+          type: string
+        outstandingWork:
+          type: string
+        blockers:
+          type: string
+        plans:
+          type: string
+        reviewStatus:
+          type: string
+        reviewedByName:
+          type:
+            - string
+            - "null"
+        reviewNote:
+          type: string
+        created:
+          type: string
+        reviewedAt:
+          type:
+            - string
+            - "null"
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/StaffActivityReportEvent"
+      required:
+        - reportId
+        - staffId
+        - staffName
+        - period
+        - periodStart
+        - completedWork
+        - outstandingWork
+        - blockers
+        - plans
+        - reviewStatus
+        - reviewedByName
+        - reviewNote
+        - created
+        - reviewedAt
+        - events
+    StaffActivityReportList:
+      type: object
+      properties:
+        reports:
+          type: array
+          items:
+            $ref: "#/components/schemas/StaffActivityReport"
+      required:
+        - reports
+    StaffPerformanceRow:
+      type: object
+      properties:
+        staffId:
+          type: string
+        staffName:
+          type: string
+        activeTasks:
+          type: integer
+        activeEffortPoints:
+          type: integer
+        approvedTasks:
+          type: integer
+        approvedEffortPoints:
+          type: integer
+        overdueTasks:
+          type: integer
+        onTimeApprovals:
+          type: integer
+        revisionRequests:
+          type: integer
+        supportCases:
+          type: integer
+        openSupportCases:
+          type: integer
+        supportReplies:
+          type: integer
+      required:
+        - staffId
+        - staffName
+        - activeTasks
+        - activeEffortPoints
+        - approvedTasks
+        - approvedEffortPoints
+        - overdueTasks
+        - onTimeApprovals
+        - revisionRequests
+        - supportCases
+        - openSupportCases
+        - supportReplies
+    StaffPerformanceResponse:
+      type: object
+      properties:
+        generatedAt:
+          type: string
+        metrics:
+          type: array
+          items:
+            $ref: "#/components/schemas/StaffPerformanceRow"
+      required:
+        - generatedAt
+        - metrics
+    StaffTeamInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 80
+      required:
+        - name
+    StaffTeamMembersInput:
+      type: object
+      properties:
+        members:
+          type: array
+          maxItems: 100
+          items:
+            type: object
+            properties:
+              staffId:
+                type: string
+                minLength: 1
+                maxLength: 120
+              teamRole:
+                type: string
+                enum:
+                  - manager
+                  - worker
+            required:
+              - staffId
+              - teamRole
+      required:
+        - members
+    StaffTeam:
+      type: object
+      properties:
+        teamId:
+          type: string
+        name:
+          type: string
+        members:
+          type: array
+          items:
+            type: object
+            properties:
+              staffId:
+                type: string
+              displayName:
+                type: string
+              teamRole:
+                type: string
+            required:
+              - staffId
+              - displayName
+              - teamRole
+      required:
+        - teamId
+        - name
+        - members
+    StaffTeamList:
+      type: object
+      properties:
+        teams:
+          type: array
+          items:
+            $ref: "#/components/schemas/StaffTeam"
+      required:
+        - teams
+    PortalStaffCreated:
+      type: object
+      properties:
+        staff:
+          $ref: "#/components/schemas/PortalStaff"
+        temporaryPassword:
+          type: string
+      required:
+        - staff
+        - temporaryPassword
+    PortalStaffStatusInput:
+      type: object
+      properties:
+        active:
+          type: boolean
+      required:
+        - active
+    PortalPasswordInput:
+      type: object
+      properties:
+        currentPassword:
+          type: string
+          minLength: 1
+          maxLength: 256
+        newPassword:
+          type: string
+          minLength: 12
+          maxLength: 256
+      required:
+        - currentPassword
+        - newPassword
+    AuthUser:
+      type: object
+      required:
+        - id
+        - email
+        - firstName
+        - lastName
+        - profileImageUrl
+      properties:
+        id:
+          type: string
+        email:
+          type:
+            - string
+            - "null"
+          format: email
+        firstName:
+          type:
+            - string
+            - "null"
+        lastName:
+          type:
+            - string
+            - "null"
+        profileImageUrl:
+          type:
+            - string
+            - "null"
+    AuthUserEnvelope:
+      type: object
+      required:
+        - user
+      properties:
+        user:
+          oneOf:
+            - $ref: "#/components/schemas/AuthUser"
+            - type: "null"
+    MobileTokenExchangeRequest:
+      type: object
+      required:
+        - code
+        - code_verifier
+        - redirect_uri
+        - state
+      properties:
+        code:
+          type: string
+          minLength: 1
+        code_verifier:
+          type: string
+          minLength: 1
+        redirect_uri:
+          type: string
+          minLength: 1
+          format: uri
+        state:
+          type: string
+          minLength: 1
+        nonce:
+          type: string
+          minLength: 1
+    MobileTokenExchangeSuccess:
+      type: object
+      required:
+        - token
+      properties:
+        token:
+          type: string
+    LogoutSuccess:
+      type: object
+      required:
+        - success
+      properties:
+        success:
+          type: boolean
+          const: true
+    ErrorEnvelope:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+  parameters:
+    AuthorizationSessionHeader:
+      name: Authorization
+      in: header
+      required: false
+      schema:
+        type: string
+    SessionCookie:
+      name: sid
+      in: cookie
+      required: false
+      schema:
+        type: string

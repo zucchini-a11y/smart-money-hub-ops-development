@@ -654,3 +654,1802 @@ export const AcknowledgeBotSupportReplyResponse = zod.object({
 })
 
 
+/**
+ * @summary Sign in a staff member
+ */
+export const portalLoginBodyEmailMax = 254;
+
+export const portalLoginBodyPasswordMax = 256;
+
+
+
+export const PortalLoginBody = zod.object({
+  "email": zod.string().email().max(portalLoginBodyEmailMax),
+  "password": zod.string().min(1).max(portalLoginBodyPasswordMax)
+})
+
+export const PortalLoginResponse = zod.object({
+  "staffId": zod.string(),
+  "email": zod.string().email(),
+  "displayName": zod.string(),
+  "role": zod.enum(['owner', 'manager', 'agent']),
+  "mustChangePassword": zod.boolean()
+})
+
+
+export const PortalLogoutResponse = zod.object({
+  "status": zod.enum(['signed_out'])
+})
+
+
+export const GetPortalSessionResponse = zod.object({
+  "staffId": zod.string(),
+  "email": zod.string().email(),
+  "displayName": zod.string(),
+  "role": zod.enum(['owner', 'manager', 'agent']),
+  "mustChangePassword": zod.boolean()
+})
+
+
+export const GetPortalDashboardResponse = zod.object({
+  "openCount": zod.number().int(),
+  "uncertainCount": zod.number().int(),
+  "repliedCount": zod.number().int(),
+  "closedCount": zod.number().int(),
+  "recentCases": zod.array(zod.object({
+  "caseId": zod.string(),
+  "memberId": zod.number().int(),
+  "question": zod.string(),
+  "status": zod.enum(['open', 'reply_sending', 'reply_uncertain', 'replied', 'closed']),
+  "workflowStatus": zod.enum(['new', 'assigned', 'in_progress', 'waiting_for_member', 'resolved', 'closed']),
+  "category": zod.string(),
+  "priority": zod.enum(['low', 'normal', 'high', 'urgent']),
+  "assignedStaffId": zod.string().nullable(),
+  "created": zod.string(),
+  "updated": zod.string()
+}))
+})
+
+
+/**
+ * Returns stored isolated-test monitoring summaries. Live bot and channel health remain unknown unless persisted telemetry exists.
+ * @summary Read the Development-only owner command center
+ */
+export const GetPortalCommandCenterResponse = zod.object({
+  "scope": zod.enum(['development_isolated_test']),
+  "readOnly": zod.literal(true),
+  "refreshedAt": zod.string(),
+  "lastTelegramUpdate": zod.string().nullable(),
+  "alerts": zod.array(zod.object({
+  "category": zod.enum(['missing_heartbeat', 'stale_heartbeat', 'bot_health_failure', 'publishing_failure', 'publishing_uncertain', 'publishing_pending', 'pro_stale_applications']),
+  "severity": zod.enum(['warning', 'critical']),
+  "sourceBot": zod.enum(['isolated_test']),
+  "destination": zod.enum(['PRO Signals', 'Market Analysis', 'System']),
+  "title": zod.string(),
+  "count": zod.number().int(),
+  "latestAt": zod.string().nullable()
+})),
+  "overview": zod.object({
+  "openSupportCases": zod.number().int(),
+  "uncertainSupportCases": zod.number().int(),
+  "overdueTasks": zod.number().int(),
+  "recordedTrades": zod.number().int(),
+  "recordedTradeEvents": zod.number().int(),
+  "unresolvedPublishingOperations": zod.number().int(),
+  "proPendingReview": zod.number().int(),
+  "proEvidenceRequested": zod.number().int(),
+  "staleProApplications": zod.number().int()
+}),
+  "bots": zod.array(zod.object({
+  "id": zod.enum(['production', 'isolated_test']),
+  "label": zod.string(),
+  "healthStatus": zod.enum(['healthy', 'unhealthy', 'unknown']),
+  "workflowStatus": zod.enum(['running', 'stopped', 'unknown', 'not_connected']),
+  "publishingStatus": zod.enum(['enabled', 'disabled', 'locked', 'unknown']),
+  "lastTelegramUpdate": zod.string().nullable(),
+  "processStatus": zod.enum(['running', 'unknown', 'not_connected']),
+  "healthCheckedAt": zod.string().nullable(),
+  "telegramStatus": zod.enum(['healthy', 'degraded', 'offline', 'unknown']),
+  "databaseStatus": zod.enum(['healthy', 'degraded', 'offline', 'unknown']),
+  "pollingStatus": zod.enum(['healthy', 'degraded', 'offline', 'unknown']),
+  "note": zod.string()
+})),
+  "channels": zod.array(zod.object({
+  "sourceBot": zod.enum(['production', 'isolated_test']),
+  "name": zod.enum(['PRO Signals', 'Market Analysis', 'Educational Group']),
+  "status": zod.enum(['healthy', 'degraded', 'offline', 'unknown', 'not_connected']),
+  "latestRecordedActivity": zod.string().nullable(),
+  "note": zod.string()
+})),
+  "recentOperations": zod.array(zod.object({
+  "sourceBot": zod.enum(['isolated_test']),
+  "destination": zod.enum(['PRO Signals', 'Market Analysis']),
+  "operationType": zod.string(),
+  "status": zod.string(),
+  "recordedAt": zod.string(),
+  "telegramAccepted": zod.boolean()
+})),
+  "recentErrors": zod.array(zod.object({
+  "category": zod.string(),
+  "count": zod.number().int(),
+  "latestAt": zod.string()
+}))
+})
+
+
+/**
+ * Owner-only history from the main bot's Development schema or the isolated test schema. Production data is not connected.
+ * @summary Read a selected Development bot's channel post history
+ */
+export const getPortalChannelHistoryQueryPageDefault = 0;
+export const getPortalChannelHistoryQueryPageMin = 0;
+export const getPortalChannelHistoryQueryPageMax = 1000;
+
+export const getPortalChannelHistoryQueryLimitDefault = 25;
+export const getPortalChannelHistoryQueryLimitMax = 50;
+
+export const getPortalChannelHistoryQueryDestinationDefault = `all`;
+export const getPortalChannelHistoryQueryBotDefault = `main`;
+
+export const GetPortalChannelHistoryQueryParams = zod.object({
+  "page": zod.coerce.number().int().min(getPortalChannelHistoryQueryPageMin).max(getPortalChannelHistoryQueryPageMax).default(getPortalChannelHistoryQueryPageDefault),
+  "limit": zod.coerce.number().int().min(1).max(getPortalChannelHistoryQueryLimitMax).default(getPortalChannelHistoryQueryLimitDefault),
+  "destination": zod.enum(['all', 'signals', 'analysis', 'education']).default(getPortalChannelHistoryQueryDestinationDefault),
+  "bot": zod.enum(['main', 'test']).default(getPortalChannelHistoryQueryBotDefault)
+})
+
+export const GetPortalChannelHistoryResponse = zod.object({
+  "scope": zod.enum(['development_main_bot', 'development_isolated_test']),
+  "productionConnected": zod.literal(false),
+  "page": zod.number().int(),
+  "limit": zod.number().int(),
+  "hasMore": zod.boolean(),
+  "items": zod.array(zod.object({
+  "source": zod.enum(['bot', 'telegram_manual']),
+  "destination": zod.enum(['PRO Signals', 'Market Analysis', 'Educational Group · Video tutorials']),
+  "eventType": zod.string(),
+  "status": zod.string(),
+  "recordedAt": zod.string(),
+  "messageText": zod.string(),
+  "attachmentLabel": zod.string()
+}))
+})
+
+
+/**
+ * Development is restricted to the isolated test schema; the published application uses only the production schema.
+ * @summary List trade-management records for the current environment
+ */
+export const ListPortalTradesResponse = zod.object({
+  "environment": zod.enum(['development_test', 'production']),
+  "workerStatus": zod.enum(['ready', 'migration_required', 'stopped', 'unknown']),
+  "publishingEnabled": zod.boolean(),
+  "destinationsVerified": zod.boolean(),
+  "trades": zod.array(zod.object({
+  "tradeId": zod.string(),
+  "symbol": zod.string(),
+  "direction": zod.string(),
+  "state": zod.string(),
+  "entry": zod.string().nullable(),
+  "stopLoss": zod.string().nullable(),
+  "targets": zod.array(zod.object({
+  "number": zod.string(),
+  "price": zod.string(),
+  "hit": zod.boolean(),
+  "hitStatus": zod.string().nullable()
+})),
+  "version": zod.number().int(),
+  "created": zod.string(),
+  "updated": zod.string(),
+  "hasLinkedPost": zod.boolean(),
+  "eventCount": zod.number().int()
+}))
+})
+
+
+/**
+ * @summary Read isolated Development signal-control status and setup drafts
+ */
+export const GetPortalSignalControlResponse = zod.object({
+  "environment": zod.enum(['development_test']),
+  "workerStatus": zod.enum(['ready', 'migration_required', 'disabled', 'unknown']),
+  "publishingEnabled": zod.boolean(),
+  "destinationsVerified": zod.boolean(),
+  "panelUpdated": zod.string(),
+  "activeSetup": zod.union([zod.object({
+  "setupId": zod.string(),
+  "market": zod.string(),
+  "zone": zod.string(),
+  "timeframe": zod.string(),
+  "condition": zod.string(),
+  "status": zod.string(),
+  "expires": zod.number().nullable(),
+  "hasChart": zod.boolean(),
+  "hasMessage": zod.boolean()
+}),zod.null()]),
+  "zoneDraft": zod.union([zod.object({
+  "revision": zod.string(),
+  "market": zod.string(),
+  "zone": zod.string(),
+  "timeframe": zod.string(),
+  "condition": zod.string(),
+  "step": zod.string(),
+  "hasChart": zod.boolean(),
+  "readyToPublish": zod.boolean()
+}),zod.null()]),
+  "commands": zod.array(zod.object({
+  "commandId": zod.string(),
+  "action": zod.string(),
+  "status": zod.enum(['queued', 'processing', 'preview_ready', 'approved', 'completed', 'failed', 'uncertain', 'stale', 'cancelled']),
+  "previewText": zod.string(),
+  "safeResult": zod.string(),
+  "created": zod.string(),
+  "updated": zod.string(),
+  "canConfirm": zod.boolean(),
+  "canCancel": zod.boolean()
+}))
+})
+
+
+/**
+ * Commands are audited and idempotent. Publishing requires a separate owner confirmation.
+ * @summary Prepare a Development-only zone or signal action
+ */
+export const createPortalSignalActionBodyInputMarketMax = 80;
+
+export const createPortalSignalActionBodyInputLowMax = 24;
+
+export const createPortalSignalActionBodyInputHighMax = 24;
+
+export const createPortalSignalActionBodyInputTimeframeMax = 30;
+
+export const createPortalSignalActionBodyInputMinutesMax = 1440;
+
+export const createPortalSignalActionBodyInputConditionMax = 300;
+
+export const createPortalSignalActionBodyInputDraftRevisionMax = 120;
+
+export const createPortalSignalActionBodyInputSetupIdMax = 120;
+
+export const createPortalSignalActionBodyInputConfirmationMax = 300;
+
+export const createPortalSignalActionBodyInputEntryRangeMax = 60;
+
+export const createPortalSignalActionBodyInputStopLossMax = 24;
+
+export const createPortalSignalActionBodyInputTakeProfitsMax = 300;
+
+export const createPortalSignalActionBodyInputTextMax = 3000;
+
+
+
+export const CreatePortalSignalActionBody = zod.object({
+  "action": zod.enum(['create_zone_draft', 'publish_zone', 'record_confirmation', 'cancel_setup', 'expire_setup', 'publish_signal', 'publish_analysis']),
+  "requestId": zod.string().uuid(),
+  "input": zod.object({
+  "market": zod.string().max(createPortalSignalActionBodyInputMarketMax).optional(),
+  "low": zod.string().max(createPortalSignalActionBodyInputLowMax).optional(),
+  "high": zod.string().max(createPortalSignalActionBodyInputHighMax).optional(),
+  "timeframe": zod.string().max(createPortalSignalActionBodyInputTimeframeMax).optional(),
+  "minutes": zod.number().int().min(1).max(createPortalSignalActionBodyInputMinutesMax).optional(),
+  "condition": zod.string().max(createPortalSignalActionBodyInputConditionMax).optional(),
+  "draftRevision": zod.string().max(createPortalSignalActionBodyInputDraftRevisionMax).optional(),
+  "setupId": zod.string().max(createPortalSignalActionBodyInputSetupIdMax).optional(),
+  "confirmation": zod.string().max(createPortalSignalActionBodyInputConfirmationMax).optional(),
+  "direction": zod.enum(['BUY', 'SELL']).optional(),
+  "entryRange": zod.string().max(createPortalSignalActionBodyInputEntryRangeMax).optional(),
+  "stopLoss": zod.string().max(createPortalSignalActionBodyInputStopLossMax).optional(),
+  "takeProfits": zod.string().max(createPortalSignalActionBodyInputTakeProfitsMax).optional(),
+  "text": zod.string().max(createPortalSignalActionBodyInputTextMax).optional()
+})
+})
+
+export const CreatePortalSignalActionResponse = zod.object({
+  "commandId": zod.string(),
+  "action": zod.string(),
+  "status": zod.enum(['queued', 'processing', 'preview_ready', 'approved', 'completed', 'failed', 'uncertain', 'stale', 'cancelled']),
+  "previewText": zod.string(),
+  "safeResult": zod.string(),
+  "created": zod.string(),
+  "updated": zod.string(),
+  "canConfirm": zod.boolean(),
+  "canCancel": zod.boolean()
+})
+
+
+/**
+ * @summary Read a prepared signal action
+ */
+export const getPortalSignalActionPathCommandIdMax = 120;
+
+
+
+export const GetPortalSignalActionParams = zod.object({
+  "commandId": zod.coerce.string().min(1).max(getPortalSignalActionPathCommandIdMax)
+})
+
+export const GetPortalSignalActionResponse = zod.object({
+  "commandId": zod.string(),
+  "action": zod.string(),
+  "status": zod.enum(['queued', 'processing', 'preview_ready', 'approved', 'completed', 'failed', 'uncertain', 'stale', 'cancelled']),
+  "previewText": zod.string(),
+  "safeResult": zod.string(),
+  "created": zod.string(),
+  "updated": zod.string(),
+  "canConfirm": zod.boolean(),
+  "canCancel": zod.boolean()
+})
+
+
+/**
+ * @summary Explicitly approve a reviewed signal action
+ */
+export const confirmPortalSignalActionPathCommandIdMax = 120;
+
+
+
+export const ConfirmPortalSignalActionParams = zod.object({
+  "commandId": zod.coerce.string().min(1).max(confirmPortalSignalActionPathCommandIdMax)
+})
+
+export const ConfirmPortalSignalActionResponse = zod.object({
+  "commandId": zod.string(),
+  "action": zod.string(),
+  "status": zod.enum(['queued', 'processing', 'preview_ready', 'approved', 'completed', 'failed', 'uncertain', 'stale', 'cancelled']),
+  "previewText": zod.string(),
+  "safeResult": zod.string(),
+  "created": zod.string(),
+  "updated": zod.string(),
+  "canConfirm": zod.boolean(),
+  "canCancel": zod.boolean()
+})
+
+
+/**
+ * @summary Cancel an unsent signal action
+ */
+export const cancelPortalSignalActionPathCommandIdMax = 120;
+
+
+
+export const CancelPortalSignalActionParams = zod.object({
+  "commandId": zod.coerce.string().min(1).max(cancelPortalSignalActionPathCommandIdMax)
+})
+
+export const CancelPortalSignalActionResponse = zod.object({
+  "commandId": zod.string(),
+  "action": zod.string(),
+  "status": zod.enum(['queued', 'processing', 'preview_ready', 'approved', 'completed', 'failed', 'uncertain', 'stale', 'cancelled']),
+  "previewText": zod.string(),
+  "safeResult": zod.string(),
+  "created": zod.string(),
+  "updated": zod.string(),
+  "canConfirm": zod.boolean(),
+  "canCancel": zod.boolean()
+})
+
+
+/**
+ * @summary Read one trade and its saved history
+ */
+export const getPortalTradePathTradeIdMax = 120;
+
+
+
+export const GetPortalTradeParams = zod.object({
+  "tradeId": zod.coerce.string().min(1).max(getPortalTradePathTradeIdMax)
+})
+
+export const GetPortalTradeResponse = zod.object({
+  "trade": zod.object({
+  "tradeId": zod.string(),
+  "symbol": zod.string(),
+  "direction": zod.string(),
+  "state": zod.string(),
+  "entry": zod.string().nullable(),
+  "stopLoss": zod.string().nullable(),
+  "targets": zod.array(zod.object({
+  "number": zod.string(),
+  "price": zod.string(),
+  "hit": zod.boolean(),
+  "hitStatus": zod.string().nullable()
+})),
+  "version": zod.number().int(),
+  "created": zod.string(),
+  "updated": zod.string(),
+  "hasLinkedPost": zod.boolean(),
+  "eventCount": zod.number().int()
+}),
+  "history": zod.array(zod.object({
+  "text": zod.string(),
+  "created": zod.string()
+}))
+})
+
+
+/**
+ * @summary Create a review draft for a trade action
+ */
+export const createPortalTradeActionPathTradeIdMax = 120;
+
+
+
+export const CreatePortalTradeActionParams = zod.object({
+  "tradeId": zod.coerce.string().min(1).max(createPortalTradeActionPathTradeIdMax)
+})
+
+export const createPortalTradeActionBodyInputEntryMax = 100;
+
+export const createPortalTradeActionBodyInputStopLossMax = 100;
+
+export const createPortalTradeActionBodyInputTargetNumberMax = 3;
+
+export const createPortalTradeActionBodyInputTargetPriceMax = 100;
+
+export const createPortalTradeActionBodyInputPercentageMax = 8;
+
+export const createPortalTradeActionBodyInputRemainingMax = 200;
+
+export const createPortalTradeActionBodyInputExitPriceMax = 100;
+
+export const createPortalTradeActionBodyInputNoteMax = 500;
+
+export const createPortalTradeActionBodyInputReasonMax = 300;
+
+export const createPortalTradeActionBodyInputTextMax = 3000;
+
+
+
+export const CreatePortalTradeActionBody = zod.object({
+  "action": zod.enum(['entry_bundle', 'sl_tp', 'sl', 'tp', 'hit', 'partial', 'be', 'trail', 'close', 'cancel', 'invalidate', 'custom', 'edit']),
+  "requestId": zod.string().uuid(),
+  "input": zod.object({
+  "entry": zod.string().max(createPortalTradeActionBodyInputEntryMax).optional(),
+  "stopLoss": zod.string().max(createPortalTradeActionBodyInputStopLossMax).optional(),
+  "targetNumber": zod.string().max(createPortalTradeActionBodyInputTargetNumberMax).optional(),
+  "targetPrice": zod.string().max(createPortalTradeActionBodyInputTargetPriceMax).optional(),
+  "targetStatus": zod.enum(['partial', 'final']).optional(),
+  "percentage": zod.string().max(createPortalTradeActionBodyInputPercentageMax).optional(),
+  "remaining": zod.string().max(createPortalTradeActionBodyInputRemainingMax).optional(),
+  "stopMoved": zod.boolean().optional(),
+  "outcome": zod.enum(['Win', 'Breakeven', 'Loss', 'Unrecorded']).optional(),
+  "outcomeConfirmed": zod.boolean().optional(),
+  "exitPrice": zod.string().max(createPortalTradeActionBodyInputExitPriceMax).optional(),
+  "note": zod.string().max(createPortalTradeActionBodyInputNoteMax).optional(),
+  "reason": zod.string().max(createPortalTradeActionBodyInputReasonMax).optional(),
+  "text": zod.string().max(createPortalTradeActionBodyInputTextMax).optional()
+})
+})
+
+export const CreatePortalTradeActionResponse = zod.object({
+  "commandId": zod.string(),
+  "tradeId": zod.string(),
+  "action": zod.string(),
+  "status": zod.enum(['queued', 'processing', 'preview_ready', 'approved', 'completed', 'failed', 'uncertain', 'stale', 'cancelled']),
+  "previewText": zod.string(),
+  "safeResult": zod.string(),
+  "created": zod.string(),
+  "updated": zod.string(),
+  "canConfirm": zod.boolean(),
+  "canCancel": zod.boolean()
+})
+
+
+/**
+ * @summary Read trade action preview or delivery status
+ */
+export const getPortalTradeActionPathCommandIdMax = 120;
+
+
+
+export const GetPortalTradeActionParams = zod.object({
+  "commandId": zod.coerce.string().min(1).max(getPortalTradeActionPathCommandIdMax)
+})
+
+export const GetPortalTradeActionResponse = zod.object({
+  "commandId": zod.string(),
+  "tradeId": zod.string(),
+  "action": zod.string(),
+  "status": zod.enum(['queued', 'processing', 'preview_ready', 'approved', 'completed', 'failed', 'uncertain', 'stale', 'cancelled']),
+  "previewText": zod.string(),
+  "safeResult": zod.string(),
+  "created": zod.string(),
+  "updated": zod.string(),
+  "canConfirm": zod.boolean(),
+  "canCancel": zod.boolean()
+})
+
+
+/**
+ * @summary Explicitly approve a reviewed trade action for publishing
+ */
+export const confirmPortalTradeActionPathCommandIdMax = 120;
+
+
+
+export const ConfirmPortalTradeActionParams = zod.object({
+  "commandId": zod.coerce.string().min(1).max(confirmPortalTradeActionPathCommandIdMax)
+})
+
+export const ConfirmPortalTradeActionResponse = zod.object({
+  "commandId": zod.string(),
+  "tradeId": zod.string(),
+  "action": zod.string(),
+  "status": zod.enum(['queued', 'processing', 'preview_ready', 'approved', 'completed', 'failed', 'uncertain', 'stale', 'cancelled']),
+  "previewText": zod.string(),
+  "safeResult": zod.string(),
+  "created": zod.string(),
+  "updated": zod.string(),
+  "canConfirm": zod.boolean(),
+  "canCancel": zod.boolean()
+})
+
+
+/**
+ * @summary Cancel an unsent trade action draft
+ */
+export const cancelPortalTradeActionPathCommandIdMax = 120;
+
+
+
+export const CancelPortalTradeActionParams = zod.object({
+  "commandId": zod.coerce.string().min(1).max(cancelPortalTradeActionPathCommandIdMax)
+})
+
+export const CancelPortalTradeActionResponse = zod.object({
+  "commandId": zod.string(),
+  "tradeId": zod.string(),
+  "action": zod.string(),
+  "status": zod.enum(['queued', 'processing', 'preview_ready', 'approved', 'completed', 'failed', 'uncertain', 'stale', 'cancelled']),
+  "previewText": zod.string(),
+  "safeResult": zod.string(),
+  "created": zod.string(),
+  "updated": zod.string(),
+  "canConfirm": zod.boolean(),
+  "canCancel": zod.boolean()
+})
+
+
+/**
+ * @summary List PRO applications for owner review
+ */
+export const listProMemberApplicationsQueryStatusDefault = `needs_review`;
+export const listProMemberApplicationsQueryLimitDefault = 50;
+export const listProMemberApplicationsQueryLimitMax = 100;
+
+
+
+export const ListProMemberApplicationsQueryParams = zod.object({
+  "status": zod.enum(['needs_review', 'evidence_requested', 'approved', 'rejected', 'not_yet_eligible', 'all']).default(listProMemberApplicationsQueryStatusDefault),
+  "limit": zod.coerce.number().int().min(1).max(listProMemberApplicationsQueryLimitMax).default(listProMemberApplicationsQueryLimitDefault)
+})
+
+export const ListProMemberApplicationsResponse = zod.object({
+  "applications": zod.array(zod.object({
+  "requestId": zod.string(),
+  "userId": zod.string(),
+  "username": zod.string(),
+  "status": zod.string(),
+  "registrationStatus": zod.string(),
+  "fundingStatus": zod.string(),
+  "educationEligibility": zod.enum(['eligible_delivery_disabled', 'locked']),
+  "channelAccessStatus": zod.string(),
+  "source": zod.string(),
+  "hasEvidence": zod.boolean(),
+  "evidenceKind": zod.string().nullable(),
+  "evidenceSubmittedAt": zod.string().nullable(),
+  "created": zod.string(),
+  "updated": zod.string()
+}))
+})
+
+
+/**
+ * @summary View one PRO application and review history
+ */
+export const getProMemberApplicationPathRequestIdMax = 120;
+
+
+
+export const GetProMemberApplicationParams = zod.object({
+  "requestId": zod.coerce.string().min(1).max(getProMemberApplicationPathRequestIdMax)
+})
+
+export const GetProMemberApplicationResponse = zod.object({
+  "application": zod.object({
+  "requestId": zod.string(),
+  "userId": zod.string(),
+  "username": zod.string(),
+  "status": zod.string(),
+  "registrationStatus": zod.string(),
+  "fundingStatus": zod.string(),
+  "educationEligibility": zod.enum(['eligible_delivery_disabled', 'locked']),
+  "channelAccessStatus": zod.string(),
+  "source": zod.string(),
+  "hasEvidence": zod.boolean(),
+  "evidenceKind": zod.string().nullable(),
+  "evidenceSubmittedAt": zod.string().nullable(),
+  "created": zod.string(),
+  "updated": zod.string()
+}),
+  "history": zod.array(zod.object({
+  "eventId": zod.string(),
+  "action": zod.string(),
+  "actor": zod.string(),
+  "reason": zod.string(),
+  "status": zod.string(),
+  "deliveryStatus": zod.string(),
+  "created": zod.string(),
+  "completedAt": zod.string().nullable()
+})),
+  "latestCommand": zod.union([zod.object({
+  "commandId": zod.string(),
+  "requestId": zod.string(),
+  "action": zod.enum(['approve_registration', 'reject_registration', 'verify_funding', 'reject_funding', 'approve', 'reject', 'request_evidence']),
+  "status": zod.enum(['queued', 'processing', 'completed', 'failed', 'uncertain', 'stale']),
+  "deliveryStatus": zod.enum(['not_attempted', 'sent', 'failed', 'uncertain', 'not_needed']),
+  "safeResult": zod.string(),
+  "created": zod.string(),
+  "updated": zod.string(),
+  "completedAt": zod.string().nullable()
+}),zod.null()])
+})
+
+
+/**
+ * The file identifier and Telegram credentials are kept server-side and the response is never cached.
+ * @summary Securely stream one private funding-evidence file
+ */
+export const getProMemberEvidencePathRequestIdMax = 120;
+
+
+
+export const GetProMemberEvidenceParams = zod.object({
+  "requestId": zod.coerce.string().min(1).max(getProMemberEvidencePathRequestIdMax)
+})
+
+export const GetProMemberEvidenceResponse = zod.unknown()
+
+
+/**
+ * The isolated test bot processes the durable command; requests are never replayed after uncertain delivery.
+ * @summary Queue an owner-confirmed PRO access decision
+ */
+export const submitProMemberReviewDecisionPathRequestIdMax = 120;
+
+
+
+export const SubmitProMemberReviewDecisionParams = zod.object({
+  "requestId": zod.coerce.string().min(1).max(submitProMemberReviewDecisionPathRequestIdMax)
+})
+
+export const submitProMemberReviewDecisionBodyReasonMax = 1200;
+
+export const submitProMemberReviewDecisionBodyExpectedUpdatedMax = 64;
+
+
+
+export const SubmitProMemberReviewDecisionBody = zod.object({
+  "action": zod.enum(['approve_registration', 'reject_registration', 'verify_funding', 'reject_funding', 'approve', 'reject', 'request_evidence']),
+  "reason": zod.string().min(1).max(submitProMemberReviewDecisionBodyReasonMax),
+  "idempotencyKey": zod.string().uuid(),
+  "expectedUpdated": zod.string().min(1).max(submitProMemberReviewDecisionBodyExpectedUpdatedMax)
+})
+
+export const SubmitProMemberReviewDecisionResponse = zod.object({
+  "commandId": zod.string(),
+  "requestId": zod.string(),
+  "action": zod.enum(['approve_registration', 'reject_registration', 'verify_funding', 'reject_funding', 'approve', 'reject', 'request_evidence']),
+  "status": zod.enum(['queued', 'processing', 'completed', 'failed', 'uncertain', 'stale']),
+  "deliveryStatus": zod.enum(['not_attempted', 'sent', 'failed', 'uncertain', 'not_needed']),
+  "safeResult": zod.string(),
+  "created": zod.string(),
+  "updated": zod.string(),
+  "completedAt": zod.string().nullable()
+})
+
+
+/**
+ * Owner-only view of the active deployment database. Development is bound to smh_test and Production is bound to smh. Does not return application answers, evidence identifiers, or private reply text.
+ * @summary List member access requests by destination
+ */
+export const listPortalMemberApplicationsQueryStatusMax = 40;
+
+export const listPortalMemberApplicationsQueryLimitDefault = 50;
+export const listPortalMemberApplicationsQueryLimitMax = 100;
+
+
+
+export const ListPortalMemberApplicationsQueryParams = zod.object({
+  "destination": zod.enum(['education', 'analysis', 'pro']).optional(),
+  "status": zod.coerce.string().max(listPortalMemberApplicationsQueryStatusMax).optional(),
+  "limit": zod.coerce.number().int().min(1).max(listPortalMemberApplicationsQueryLimitMax).default(listPortalMemberApplicationsQueryLimitDefault)
+})
+
+export const ListPortalMemberApplicationsResponse = zod.object({
+  "scope": zod.enum(['development_test', 'production']),
+  "applications": zod.array(zod.object({
+  "requestId": zod.string(),
+  "userId": zod.string(),
+  "username": zod.string(),
+  "destination": zod.enum(['education', 'analysis', 'pro']),
+  "status": zod.string(),
+  "registrationStatus": zod.string(),
+  "fundingStatus": zod.string(),
+  "source": zod.string(),
+  "created": zod.string(),
+  "updated": zod.string()
+}))
+})
+
+
+/**
+ * Owner-only view of the active deployment database. Development is bound to smh_test and Production is bound to smh. Private message text and Telegram identifiers are never returned.
+ * @summary List applicant follow-up status and safe settings
+ */
+export const ListPortalApplicantFollowupsResponse = zod.object({
+  "scope": zod.enum(['development_test', 'production']),
+  "settings": zod.object({
+  "enabled": zod.boolean(),
+  "reviewed": zod.boolean(),
+  "sampleReviewed": zod.boolean(),
+  "intervalDays": zod.array(zod.number().int()),
+  "maxReminders": zod.number().int(),
+  "categories": zod.array(zod.string())
+}),
+  "applicants": zod.array(zod.object({
+  "userId": zod.string(),
+  "username": zod.string(),
+  "privateStatus": zod.string(),
+  "stage": zod.string(),
+  "destinations": zod.array(zod.string()),
+  "status": zod.string(),
+  "pauseReason": zod.string(),
+  "consentNoticeAt": zod.string().nullable(),
+  "remindersSent": zod.number().int(),
+  "nextFollowup": zod.string().nullable(),
+  "hasRecentError": zod.boolean(),
+  "updated": zod.string()
+}))
+})
+
+
+/**
+ * @summary View one applicant follow-up record and safe history
+ */
+export const getPortalApplicantFollowupPathUserIdRegExp = new RegExp('^[0-9]{1,20}$');
+
+
+export const GetPortalApplicantFollowupParams = zod.object({
+  "userId": zod.coerce.string().regex(getPortalApplicantFollowupPathUserIdRegExp)
+})
+
+export const GetPortalApplicantFollowupResponse = zod.object({
+  "applicant": zod.object({
+  "userId": zod.string(),
+  "username": zod.string(),
+  "privateStatus": zod.string(),
+  "stage": zod.string(),
+  "destinations": zod.array(zod.string()),
+  "status": zod.string(),
+  "pauseReason": zod.string(),
+  "consentNoticeAt": zod.string().nullable(),
+  "remindersSent": zod.number().int(),
+  "nextFollowup": zod.string().nullable(),
+  "hasRecentError": zod.boolean(),
+  "updated": zod.string()
+}),
+  "deliveries": zod.array(zod.object({
+  "deliveryId": zod.string(),
+  "category": zod.string(),
+  "status": zod.string(),
+  "created": zod.string(),
+  "updated": zod.string(),
+  "sentAt": zod.string().nullable()
+})),
+  "events": zod.array(zod.object({
+  "eventId": zod.string(),
+  "action": zod.string(),
+  "created": zod.string()
+}))
+})
+
+
+/**
+ * Updates only the active deployment's schedule. It does not call Telegram. Resume is blocked for opt-outs, unresolved admin reviews, unseen notices, uncertain delivery, or exhausted reminder limits.
+ * @summary Pause or resume one applicant follow-up schedule
+ */
+export const updatePortalApplicantFollowupStatusPathUserIdRegExp = new RegExp('^[0-9]{1,20}$');
+
+
+export const UpdatePortalApplicantFollowupStatusParams = zod.object({
+  "userId": zod.coerce.string().regex(updatePortalApplicantFollowupStatusPathUserIdRegExp)
+})
+
+export const updatePortalApplicantFollowupStatusBodyExpectedUpdatedMax = 64;
+
+
+
+export const UpdatePortalApplicantFollowupStatusBody = zod.object({
+  "status": zod.enum(['active', 'paused']),
+  "expectedUpdated": zod.string().min(1).max(updatePortalApplicantFollowupStatusBodyExpectedUpdatedMax)
+})
+
+export const UpdatePortalApplicantFollowupStatusResponse = zod.object({
+  "userId": zod.string(),
+  "username": zod.string(),
+  "privateStatus": zod.string(),
+  "stage": zod.string(),
+  "destinations": zod.array(zod.string()),
+  "status": zod.string(),
+  "pauseReason": zod.string(),
+  "consentNoticeAt": zod.string().nullable(),
+  "remindersSent": zod.number().int(),
+  "nextFollowup": zod.string().nullable(),
+  "hasRecentError": zod.boolean(),
+  "updated": zod.string()
+})
+
+
+export const listPortalCasesQuerySearchMax = 120;
+
+export const listPortalCasesQueryLimitDefault = 50;
+export const listPortalCasesQueryLimitMax = 100;
+
+
+
+export const ListPortalCasesQueryParams = zod.object({
+  "status": zod.enum(['open', 'reply_sending', 'reply_uncertain', 'replied', 'closed', 'all']).optional(),
+  "search": zod.coerce.string().max(listPortalCasesQuerySearchMax).optional(),
+  "limit": zod.coerce.number().int().min(1).max(listPortalCasesQueryLimitMax).default(listPortalCasesQueryLimitDefault)
+})
+
+export const ListPortalCasesResponse = zod.object({
+  "cases": zod.array(zod.object({
+  "caseId": zod.string(),
+  "memberId": zod.number().int(),
+  "question": zod.string(),
+  "status": zod.enum(['open', 'reply_sending', 'reply_uncertain', 'replied', 'closed']),
+  "workflowStatus": zod.enum(['new', 'assigned', 'in_progress', 'waiting_for_member', 'resolved', 'closed']),
+  "category": zod.string(),
+  "priority": zod.enum(['low', 'normal', 'high', 'urgent']),
+  "assignedStaffId": zod.string().nullable(),
+  "created": zod.string(),
+  "updated": zod.string()
+})),
+  "total": zod.number().int()
+})
+
+
+export const getPortalCasePathCaseIdMax = 120;
+
+
+
+export const GetPortalCaseParams = zod.object({
+  "caseId": zod.coerce.string().min(1).max(getPortalCasePathCaseIdMax)
+})
+
+export const GetPortalCaseResponse = zod.object({
+  "caseId": zod.string(),
+  "memberId": zod.number().int(),
+  "question": zod.string(),
+  "status": zod.enum(['open', 'reply_sending', 'reply_uncertain', 'replied', 'closed']),
+  "workflowStatus": zod.enum(['new', 'assigned', 'in_progress', 'waiting_for_member', 'resolved', 'closed']),
+  "category": zod.string(),
+  "priority": zod.enum(['low', 'normal', 'high', 'urgent']),
+  "assignedStaffId": zod.string().nullable(),
+  "created": zod.string(),
+  "updated": zod.string()
+}).and(zod.object({
+  "replies": zod.array(zod.object({
+  "replyId": zod.string(),
+  "caseId": zod.string(),
+  "responderName": zod.string(),
+  "text": zod.string(),
+  "status": zod.enum(['queued', 'sending', 'sent', 'uncertain', 'failed']),
+  "created": zod.string(),
+  "updated": zod.string()
+})),
+  "notes": zod.array(zod.object({
+  "noteId": zod.string(),
+  "staffId": zod.string(),
+  "responderName": zod.string(),
+  "text": zod.string(),
+  "created": zod.string()
+})),
+  "events": zod.array(zod.object({
+  "eventId": zod.string(),
+  "actorName": zod.string(),
+  "eventType": zod.string(),
+  "oldValue": zod.string(),
+  "newValue": zod.string(),
+  "created": zod.string()
+}))
+}))
+
+
+export const createPortalCaseReplyPathCaseIdMax = 120;
+
+
+
+export const CreatePortalCaseReplyParams = zod.object({
+  "caseId": zod.coerce.string().min(1).max(createPortalCaseReplyPathCaseIdMax)
+})
+
+export const createPortalCaseReplyBodyTextMin = 3;
+export const createPortalCaseReplyBodyTextMax = 3000;
+
+export const createPortalCaseReplyBodyRequestIdMin = 16;
+export const createPortalCaseReplyBodyRequestIdMax = 120;
+
+
+
+export const CreatePortalCaseReplyBody = zod.object({
+  "text": zod.string().min(createPortalCaseReplyBodyTextMin).max(createPortalCaseReplyBodyTextMax),
+  "requestId": zod.string().min(createPortalCaseReplyBodyRequestIdMin).max(createPortalCaseReplyBodyRequestIdMax)
+})
+
+export const CreatePortalCaseReplyResponse = zod.object({
+  "replyId": zod.string(),
+  "caseId": zod.string(),
+  "responderName": zod.string(),
+  "text": zod.string(),
+  "status": zod.enum(['queued', 'sending', 'sent', 'uncertain', 'failed']),
+  "created": zod.string(),
+  "updated": zod.string()
+})
+
+
+export const assignPortalCasePathCaseIdMax = 120;
+
+
+
+export const AssignPortalCaseParams = zod.object({
+  "caseId": zod.coerce.string().min(1).max(assignPortalCasePathCaseIdMax)
+})
+
+export const assignPortalCaseBodyAssignedStaffIdMax = 120;
+
+
+
+export const AssignPortalCaseBody = zod.object({
+  "assignedStaffId": zod.string().max(assignPortalCaseBodyAssignedStaffIdMax).nullable()
+})
+
+export const AssignPortalCaseResponse = zod.object({
+  "caseId": zod.string(),
+  "memberId": zod.number().int(),
+  "question": zod.string(),
+  "status": zod.enum(['open', 'reply_sending', 'reply_uncertain', 'replied', 'closed']),
+  "workflowStatus": zod.enum(['new', 'assigned', 'in_progress', 'waiting_for_member', 'resolved', 'closed']),
+  "category": zod.string(),
+  "priority": zod.enum(['low', 'normal', 'high', 'urgent']),
+  "assignedStaffId": zod.string().nullable(),
+  "created": zod.string(),
+  "updated": zod.string()
+})
+
+
+export const addPortalCaseNotePathCaseIdMax = 120;
+
+
+
+export const AddPortalCaseNoteParams = zod.object({
+  "caseId": zod.coerce.string().min(1).max(addPortalCaseNotePathCaseIdMax)
+})
+
+export const addPortalCaseNoteBodyTextMin = 3;
+export const addPortalCaseNoteBodyTextMax = 3000;
+
+
+
+export const AddPortalCaseNoteBody = zod.object({
+  "text": zod.string().min(addPortalCaseNoteBodyTextMin).max(addPortalCaseNoteBodyTextMax)
+})
+
+export const AddPortalCaseNoteResponse = zod.object({
+  "noteId": zod.string(),
+  "staffId": zod.string(),
+  "responderName": zod.string(),
+  "text": zod.string(),
+  "created": zod.string()
+})
+
+
+export const closePortalCasePathCaseIdMax = 120;
+
+
+
+export const ClosePortalCaseParams = zod.object({
+  "caseId": zod.coerce.string().min(1).max(closePortalCasePathCaseIdMax)
+})
+
+export const ClosePortalCaseResponse = zod.object({
+  "caseId": zod.string(),
+  "memberId": zod.number().int(),
+  "question": zod.string(),
+  "status": zod.enum(['open', 'reply_sending', 'reply_uncertain', 'replied', 'closed']),
+  "workflowStatus": zod.enum(['new', 'assigned', 'in_progress', 'waiting_for_member', 'resolved', 'closed']),
+  "category": zod.string(),
+  "priority": zod.enum(['low', 'normal', 'high', 'urgent']),
+  "assignedStaffId": zod.string().nullable(),
+  "created": zod.string(),
+  "updated": zod.string()
+})
+
+
+export const ListPortalStaffResponse = zod.object({
+  "staff": zod.array(zod.object({
+  "staffId": zod.string(),
+  "email": zod.string().email(),
+  "displayName": zod.string(),
+  "role": zod.enum(['owner', 'manager', 'agent']),
+  "active": zod.boolean(),
+  "mustChangePassword": zod.boolean(),
+  "created": zod.string(),
+  "lastLogin": zod.string().nullable()
+}))
+})
+
+
+export const createPortalStaffBodyEmailMax = 254;
+
+export const createPortalStaffBodyDisplayNameMax = 80;
+
+export const createPortalStaffBodyRoleDefault = `agent`;
+
+export const CreatePortalStaffBody = zod.object({
+  "email": zod.string().email().max(createPortalStaffBodyEmailMax),
+  "displayName": zod.string().min(1).max(createPortalStaffBodyDisplayNameMax),
+  "role": zod.enum(['manager', 'agent']).default(createPortalStaffBodyRoleDefault)
+})
+
+export const CreatePortalStaffResponse = zod.object({
+  "staff": zod.object({
+  "staffId": zod.string(),
+  "email": zod.string().email(),
+  "displayName": zod.string(),
+  "role": zod.enum(['owner', 'manager', 'agent']),
+  "active": zod.boolean(),
+  "mustChangePassword": zod.boolean(),
+  "created": zod.string(),
+  "lastLogin": zod.string().nullable()
+}),
+  "temporaryPassword": zod.string()
+})
+
+
+export const updatePortalStaffPathStaffIdMax = 120;
+
+
+
+export const UpdatePortalStaffParams = zod.object({
+  "staffId": zod.coerce.string().min(1).max(updatePortalStaffPathStaffIdMax)
+})
+
+export const UpdatePortalStaffBody = zod.object({
+  "active": zod.boolean()
+})
+
+export const UpdatePortalStaffResponse = zod.object({
+  "staffId": zod.string(),
+  "email": zod.string().email(),
+  "displayName": zod.string(),
+  "role": zod.enum(['owner', 'manager', 'agent']),
+  "active": zod.boolean(),
+  "mustChangePassword": zod.boolean(),
+  "created": zod.string(),
+  "lastLogin": zod.string().nullable()
+})
+
+
+export const ListStaffTasksResponse = zod.object({
+  "tasks": zod.array(zod.object({
+  "taskId": zod.string(),
+  "title": zod.string(),
+  "instructions": zod.string(),
+  "priority": zod.string(),
+  "effortPoints": zod.number().int(),
+  "dueAt": zod.string().nullable(),
+  "teamId": zod.string().nullable(),
+  "assignedStaffId": zod.string().nullable(),
+  "assigneeName": zod.string().nullable(),
+  "status": zod.string(),
+  "submissionNote": zod.string().nullable(),
+  "reviewFeedback": zod.string().nullable(),
+  "created": zod.string(),
+  "updated": zod.string(),
+  "events": zod.array(zod.object({
+  "eventId": zod.string(),
+  "actorName": zod.string(),
+  "eventType": zod.string(),
+  "oldValue": zod.string(),
+  "newValue": zod.string(),
+  "feedback": zod.string(),
+  "created": zod.string()
+}))
+}))
+})
+
+
+export const createStaffTaskBodyRequestIdMin = 8;
+export const createStaffTaskBodyRequestIdMax = 120;
+
+export const createStaffTaskBodyTitleMin = 3;
+export const createStaffTaskBodyTitleMax = 120;
+
+export const createStaffTaskBodyInstructionsMax = 4000;
+
+export const createStaffTaskBodyEffortPointsMax = 5;
+
+export const createStaffTaskBodyTeamIdMax = 120;
+
+export const createStaffTaskBodyAssignedStaffIdMax = 120;
+
+
+
+export const CreateStaffTaskBody = zod.object({
+  "requestId": zod.string().min(createStaffTaskBodyRequestIdMin).max(createStaffTaskBodyRequestIdMax),
+  "title": zod.string().min(createStaffTaskBodyTitleMin).max(createStaffTaskBodyTitleMax),
+  "instructions": zod.string().min(1).max(createStaffTaskBodyInstructionsMax),
+  "priority": zod.enum(['low', 'normal', 'high', 'urgent']),
+  "effortPoints": zod.number().int().min(1).max(createStaffTaskBodyEffortPointsMax),
+  "dueAt": zod.coerce.date().nullable(),
+  "teamId": zod.string().max(createStaffTaskBodyTeamIdMax).nullable(),
+  "assignedStaffId": zod.string().max(createStaffTaskBodyAssignedStaffIdMax).nullable()
+})
+
+export const CreateStaffTaskResponse = zod.object({
+  "taskId": zod.string(),
+  "title": zod.string(),
+  "instructions": zod.string(),
+  "priority": zod.string(),
+  "effortPoints": zod.number().int(),
+  "dueAt": zod.string().nullable(),
+  "teamId": zod.string().nullable(),
+  "assignedStaffId": zod.string().nullable(),
+  "assigneeName": zod.string().nullable(),
+  "status": zod.string(),
+  "submissionNote": zod.string().nullable(),
+  "reviewFeedback": zod.string().nullable(),
+  "created": zod.string(),
+  "updated": zod.string(),
+  "events": zod.array(zod.object({
+  "eventId": zod.string(),
+  "actorName": zod.string(),
+  "eventType": zod.string(),
+  "oldValue": zod.string(),
+  "newValue": zod.string(),
+  "feedback": zod.string(),
+  "created": zod.string()
+}))
+})
+
+
+export const getStaffTaskPathTaskIdMax = 120;
+
+
+
+export const GetStaffTaskParams = zod.object({
+  "taskId": zod.coerce.string().min(1).max(getStaffTaskPathTaskIdMax)
+})
+
+export const GetStaffTaskResponse = zod.object({
+  "taskId": zod.string(),
+  "title": zod.string(),
+  "instructions": zod.string(),
+  "priority": zod.string(),
+  "effortPoints": zod.number().int(),
+  "dueAt": zod.string().nullable(),
+  "teamId": zod.string().nullable(),
+  "assignedStaffId": zod.string().nullable(),
+  "assigneeName": zod.string().nullable(),
+  "status": zod.string(),
+  "submissionNote": zod.string().nullable(),
+  "reviewFeedback": zod.string().nullable(),
+  "created": zod.string(),
+  "updated": zod.string(),
+  "events": zod.array(zod.object({
+  "eventId": zod.string(),
+  "actorName": zod.string(),
+  "eventType": zod.string(),
+  "oldValue": zod.string(),
+  "newValue": zod.string(),
+  "feedback": zod.string(),
+  "created": zod.string()
+}))
+})
+
+
+export const updateStaffTaskPathTaskIdMax = 120;
+
+
+
+export const UpdateStaffTaskParams = zod.object({
+  "taskId": zod.coerce.string().min(1).max(updateStaffTaskPathTaskIdMax)
+})
+
+
+export const updateStaffTaskBodyTitleMin = 3;
+export const updateStaffTaskBodyTitleMax = 120;
+
+export const updateStaffTaskBodyInstructionsMax = 4000;
+
+export const updateStaffTaskBodyEffortPointsMax = 5;
+
+export const updateStaffTaskBodyTeamIdMax = 120;
+
+export const updateStaffTaskBodyAssignedStaffIdMax = 120;
+
+
+
+export const UpdateStaffTaskBody = zod.object({
+  "expectedUpdatedAt": zod.string().min(1),
+  "title": zod.string().min(updateStaffTaskBodyTitleMin).max(updateStaffTaskBodyTitleMax),
+  "instructions": zod.string().min(1).max(updateStaffTaskBodyInstructionsMax),
+  "priority": zod.enum(['low', 'normal', 'high', 'urgent']),
+  "effortPoints": zod.number().int().min(1).max(updateStaffTaskBodyEffortPointsMax),
+  "dueAt": zod.coerce.date().nullable(),
+  "teamId": zod.string().max(updateStaffTaskBodyTeamIdMax).nullable(),
+  "assignedStaffId": zod.string().max(updateStaffTaskBodyAssignedStaffIdMax).nullable()
+})
+
+export const UpdateStaffTaskResponse = zod.object({
+  "taskId": zod.string(),
+  "title": zod.string(),
+  "instructions": zod.string(),
+  "priority": zod.string(),
+  "effortPoints": zod.number().int(),
+  "dueAt": zod.string().nullable(),
+  "teamId": zod.string().nullable(),
+  "assignedStaffId": zod.string().nullable(),
+  "assigneeName": zod.string().nullable(),
+  "status": zod.string(),
+  "submissionNote": zod.string().nullable(),
+  "reviewFeedback": zod.string().nullable(),
+  "created": zod.string(),
+  "updated": zod.string(),
+  "events": zod.array(zod.object({
+  "eventId": zod.string(),
+  "actorName": zod.string(),
+  "eventType": zod.string(),
+  "oldValue": zod.string(),
+  "newValue": zod.string(),
+  "feedback": zod.string(),
+  "created": zod.string()
+}))
+})
+
+
+export const updateStaffTaskStatusPathTaskIdMax = 120;
+
+
+
+export const UpdateStaffTaskStatusParams = zod.object({
+  "taskId": zod.coerce.string().min(1).max(updateStaffTaskStatusPathTaskIdMax)
+})
+
+export const updateStaffTaskStatusBodyNoteMax = 2000;
+
+
+
+export const UpdateStaffTaskStatusBody = zod.object({
+  "status": zod.enum(['accepted', 'in_progress', 'submitted_for_review', 'revision_requested', 'approved', 'cancelled']),
+  "note": zod.string().max(updateStaffTaskStatusBodyNoteMax)
+})
+
+export const UpdateStaffTaskStatusResponse = zod.object({
+  "taskId": zod.string(),
+  "title": zod.string(),
+  "instructions": zod.string(),
+  "priority": zod.string(),
+  "effortPoints": zod.number().int(),
+  "dueAt": zod.string().nullable(),
+  "teamId": zod.string().nullable(),
+  "assignedStaffId": zod.string().nullable(),
+  "assigneeName": zod.string().nullable(),
+  "status": zod.string(),
+  "submissionNote": zod.string().nullable(),
+  "reviewFeedback": zod.string().nullable(),
+  "created": zod.string(),
+  "updated": zod.string(),
+  "events": zod.array(zod.object({
+  "eventId": zod.string(),
+  "actorName": zod.string(),
+  "eventType": zod.string(),
+  "oldValue": zod.string(),
+  "newValue": zod.string(),
+  "feedback": zod.string(),
+  "created": zod.string()
+}))
+})
+
+
+export const ListStaffTaskNotificationsResponse = zod.object({
+  "notifications": zod.array(zod.object({
+  "notificationId": zod.string(),
+  "taskId": zod.string(),
+  "type": zod.string(),
+  "created": zod.string(),
+  "readAt": zod.string().nullable()
+}))
+})
+
+
+export const markStaffTaskNotificationReadPathNotificationIdMax = 120;
+
+
+
+export const MarkStaffTaskNotificationReadParams = zod.object({
+  "notificationId": zod.coerce.string().min(1).max(markStaffTaskNotificationReadPathNotificationIdMax)
+})
+
+export const MarkStaffTaskNotificationReadResponse = zod.object({
+  "notificationId": zod.string(),
+  "taskId": zod.string(),
+  "type": zod.string(),
+  "created": zod.string(),
+  "readAt": zod.string().nullable()
+})
+
+
+export const ListStaffReportNotificationsResponse = zod.object({
+  "notifications": zod.array(zod.object({
+  "notificationId": zod.string(),
+  "reportId": zod.string(),
+  "period": zod.enum(['daily', 'weekly']),
+  "periodStart": zod.string(),
+  "outcome": zod.enum(['approved', 'revision_requested']),
+  "reviewerFeedback": zod.string(),
+  "href": zod.string(),
+  "created": zod.string(),
+  "readAt": zod.string().nullable()
+}))
+})
+
+
+export const markStaffReportNotificationReadPathNotificationIdMax = 120;
+
+
+
+export const MarkStaffReportNotificationReadParams = zod.object({
+  "notificationId": zod.coerce.string().min(1).max(markStaffReportNotificationReadPathNotificationIdMax)
+})
+
+export const MarkStaffReportNotificationReadResponse = zod.object({
+  "notificationId": zod.string(),
+  "reportId": zod.string(),
+  "period": zod.enum(['daily', 'weekly']),
+  "periodStart": zod.string(),
+  "outcome": zod.enum(['approved', 'revision_requested']),
+  "reviewerFeedback": zod.string(),
+  "href": zod.string(),
+  "created": zod.string(),
+  "readAt": zod.string().nullable()
+})
+
+
+export const ListStaffActivityReportsResponse = zod.object({
+  "reports": zod.array(zod.object({
+  "reportId": zod.string(),
+  "staffId": zod.string(),
+  "staffName": zod.string(),
+  "period": zod.string(),
+  "periodStart": zod.string(),
+  "completedWork": zod.string(),
+  "outstandingWork": zod.string(),
+  "blockers": zod.string(),
+  "plans": zod.string(),
+  "reviewStatus": zod.string(),
+  "reviewedByName": zod.string().nullable(),
+  "reviewNote": zod.string(),
+  "created": zod.string(),
+  "reviewedAt": zod.string().nullable(),
+  "events": zod.array(zod.object({
+  "eventId": zod.string(),
+  "actorName": zod.string(),
+  "eventType": zod.string(),
+  "oldValue": zod.string(),
+  "newValue": zod.string(),
+  "feedback": zod.string(),
+  "created": zod.string()
+}))
+}))
+})
+
+
+export const submitStaffActivityReportBodyCompletedWorkMax = 3000;
+
+export const submitStaffActivityReportBodyOutstandingWorkMax = 3000;
+
+export const submitStaffActivityReportBodyBlockersMax = 2000;
+
+export const submitStaffActivityReportBodyPlansMax = 2000;
+
+
+
+export const SubmitStaffActivityReportBody = zod.object({
+  "period": zod.enum(['daily', 'weekly']),
+  "periodStart": zod.coerce.date(),
+  "completedWork": zod.string().min(1).max(submitStaffActivityReportBodyCompletedWorkMax),
+  "outstandingWork": zod.string().min(1).max(submitStaffActivityReportBodyOutstandingWorkMax),
+  "blockers": zod.string().max(submitStaffActivityReportBodyBlockersMax),
+  "plans": zod.string().max(submitStaffActivityReportBodyPlansMax)
+})
+
+export const SubmitStaffActivityReportResponse = zod.object({
+  "reportId": zod.string(),
+  "staffId": zod.string(),
+  "staffName": zod.string(),
+  "period": zod.string(),
+  "periodStart": zod.string(),
+  "completedWork": zod.string(),
+  "outstandingWork": zod.string(),
+  "blockers": zod.string(),
+  "plans": zod.string(),
+  "reviewStatus": zod.string(),
+  "reviewedByName": zod.string().nullable(),
+  "reviewNote": zod.string(),
+  "created": zod.string(),
+  "reviewedAt": zod.string().nullable(),
+  "events": zod.array(zod.object({
+  "eventId": zod.string(),
+  "actorName": zod.string(),
+  "eventType": zod.string(),
+  "oldValue": zod.string(),
+  "newValue": zod.string(),
+  "feedback": zod.string(),
+  "created": zod.string()
+}))
+})
+
+
+export const reviewStaffActivityReportPathReportIdMax = 120;
+
+
+
+export const ReviewStaffActivityReportParams = zod.object({
+  "reportId": zod.coerce.string().min(1).max(reviewStaffActivityReportPathReportIdMax)
+})
+
+export const reviewStaffActivityReportBodyNoteMin = 3;
+export const reviewStaffActivityReportBodyNoteMax = 2000;
+
+
+
+export const ReviewStaffActivityReportBody = zod.object({
+  "status": zod.enum(['reviewed', 'revision_requested']),
+  "note": zod.string().min(reviewStaffActivityReportBodyNoteMin).max(reviewStaffActivityReportBodyNoteMax)
+})
+
+export const ReviewStaffActivityReportResponse = zod.object({
+  "reportId": zod.string(),
+  "staffId": zod.string(),
+  "staffName": zod.string(),
+  "period": zod.string(),
+  "periodStart": zod.string(),
+  "completedWork": zod.string(),
+  "outstandingWork": zod.string(),
+  "blockers": zod.string(),
+  "plans": zod.string(),
+  "reviewStatus": zod.string(),
+  "reviewedByName": zod.string().nullable(),
+  "reviewNote": zod.string(),
+  "created": zod.string(),
+  "reviewedAt": zod.string().nullable(),
+  "events": zod.array(zod.object({
+  "eventId": zod.string(),
+  "actorName": zod.string(),
+  "eventType": zod.string(),
+  "oldValue": zod.string(),
+  "newValue": zod.string(),
+  "feedback": zod.string(),
+  "created": zod.string()
+}))
+})
+
+
+export const GetStaffPerformanceResponse = zod.object({
+  "generatedAt": zod.string(),
+  "metrics": zod.array(zod.object({
+  "staffId": zod.string(),
+  "staffName": zod.string(),
+  "activeTasks": zod.number().int(),
+  "activeEffortPoints": zod.number().int(),
+  "approvedTasks": zod.number().int(),
+  "approvedEffortPoints": zod.number().int(),
+  "overdueTasks": zod.number().int(),
+  "onTimeApprovals": zod.number().int(),
+  "revisionRequests": zod.number().int(),
+  "supportCases": zod.number().int(),
+  "openSupportCases": zod.number().int(),
+  "supportReplies": zod.number().int()
+}))
+})
+
+
+export const ListStaffTeamsResponse = zod.object({
+  "teams": zod.array(zod.object({
+  "teamId": zod.string(),
+  "name": zod.string(),
+  "members": zod.array(zod.object({
+  "staffId": zod.string(),
+  "displayName": zod.string(),
+  "teamRole": zod.string()
+}))
+}))
+})
+
+
+export const createStaffTeamBodyNameMin = 2;
+export const createStaffTeamBodyNameMax = 80;
+
+
+
+export const CreateStaffTeamBody = zod.object({
+  "name": zod.string().min(createStaffTeamBodyNameMin).max(createStaffTeamBodyNameMax)
+})
+
+export const CreateStaffTeamResponse = zod.object({
+  "teamId": zod.string(),
+  "name": zod.string(),
+  "members": zod.array(zod.object({
+  "staffId": zod.string(),
+  "displayName": zod.string(),
+  "teamRole": zod.string()
+}))
+})
+
+
+export const setStaffTeamMembersPathTeamIdMax = 120;
+
+
+
+export const SetStaffTeamMembersParams = zod.object({
+  "teamId": zod.coerce.string().min(1).max(setStaffTeamMembersPathTeamIdMax)
+})
+
+export const setStaffTeamMembersBodyMembersItemStaffIdMax = 120;
+
+export const setStaffTeamMembersBodyMembersMax = 100;
+
+
+
+export const SetStaffTeamMembersBody = zod.object({
+  "members": zod.array(zod.object({
+  "staffId": zod.string().min(1).max(setStaffTeamMembersBodyMembersItemStaffIdMax),
+  "teamRole": zod.enum(['manager', 'worker'])
+})).max(setStaffTeamMembersBodyMembersMax)
+})
+
+export const SetStaffTeamMembersResponse = zod.object({
+  "teamId": zod.string(),
+  "name": zod.string(),
+  "members": zod.array(zod.object({
+  "staffId": zod.string(),
+  "displayName": zod.string(),
+  "teamRole": zod.string()
+}))
+})
+
+
+export const changePortalPasswordBodyCurrentPasswordMax = 256;
+
+export const changePortalPasswordBodyNewPasswordMin = 12;
+export const changePortalPasswordBodyNewPasswordMax = 256;
+
+
+
+export const ChangePortalPasswordBody = zod.object({
+  "currentPassword": zod.string().min(1).max(changePortalPasswordBodyCurrentPasswordMax),
+  "newPassword": zod.string().min(changePortalPasswordBodyNewPasswordMin).max(changePortalPasswordBodyNewPasswordMax)
+})
+
+export const ChangePortalPasswordResponse = zod.object({
+  "staffId": zod.string(),
+  "email": zod.string().email(),
+  "displayName": zod.string(),
+  "role": zod.enum(['owner', 'manager', 'agent']),
+  "mustChangePassword": zod.boolean()
+})
+
+
+export const ListEducationVideosResponse = zod.object({
+  "videos": zod.array(zod.object({
+  "videoId": zod.string(),
+  "title": zod.string(),
+  "caption": zod.string(),
+  "fileName": zod.string(),
+  "byteSize": zod.number().int(),
+  "status": zod.enum(['awaiting_upload', 'draft', 'queued', 'sending', 'published', 'uncertain', 'failed', 'blocked']),
+  "createdAt": zod.string(),
+  "publishedAt": zod.string().nullable(),
+  "targetLabel": zod.string()
+})),
+  "targetAvailable": zod.boolean(),
+  "targetLabel": zod.string(),
+  "publishingEnabled": zod.boolean(),
+  "notice": zod.string()
+})
+
+
+export const createEducationVideoDraftBodyTitleMin = 2;
+export const createEducationVideoDraftBodyTitleMax = 120;
+
+export const createEducationVideoDraftBodyCaptionMax = 900;
+
+export const createEducationVideoDraftBodyFileNameMax = 160;
+
+export const createEducationVideoDraftBodyByteSizeMax = 50000000;
+
+export const createEducationVideoDraftBodyRequestIdMin = 16;
+export const createEducationVideoDraftBodyRequestIdMax = 120;
+
+
+
+export const CreateEducationVideoDraftBody = zod.object({
+  "title": zod.string().min(createEducationVideoDraftBodyTitleMin).max(createEducationVideoDraftBodyTitleMax),
+  "caption": zod.string().min(1).max(createEducationVideoDraftBodyCaptionMax),
+  "fileName": zod.string().min(1).max(createEducationVideoDraftBodyFileNameMax),
+  "byteSize": zod.number().int().min(1).max(createEducationVideoDraftBodyByteSizeMax),
+  "contentType": zod.enum(['video/mp4']),
+  "requestId": zod.string().min(createEducationVideoDraftBodyRequestIdMin).max(createEducationVideoDraftBodyRequestIdMax)
+})
+
+export const CreateEducationVideoDraftResponse = zod.object({
+  "videoId": zod.string(),
+  "title": zod.string(),
+  "caption": zod.string(),
+  "fileName": zod.string(),
+  "byteSize": zod.number().int(),
+  "status": zod.enum(['awaiting_upload', 'draft', 'queued', 'sending', 'published', 'uncertain', 'failed', 'blocked']),
+  "createdAt": zod.string(),
+  "publishedAt": zod.string().nullable(),
+  "targetLabel": zod.string()
+})
+
+
+export const uploadEducationVideoFilePathVideoIdMin = 16;
+export const uploadEducationVideoFilePathVideoIdMax = 80;
+
+
+
+export const UploadEducationVideoFileParams = zod.object({
+  "videoId": zod.coerce.string().min(uploadEducationVideoFilePathVideoIdMin).max(uploadEducationVideoFilePathVideoIdMax)
+})
+
+export const UploadEducationVideoFileResponse = zod.object({
+  "videoId": zod.string(),
+  "title": zod.string(),
+  "caption": zod.string(),
+  "fileName": zod.string(),
+  "byteSize": zod.number().int(),
+  "status": zod.enum(['awaiting_upload', 'draft', 'queued', 'sending', 'published', 'uncertain', 'failed', 'blocked']),
+  "createdAt": zod.string(),
+  "publishedAt": zod.string().nullable(),
+  "targetLabel": zod.string()
+})
+
+
+export const publishEducationVideoPathVideoIdMin = 16;
+export const publishEducationVideoPathVideoIdMax = 80;
+
+
+
+export const PublishEducationVideoParams = zod.object({
+  "videoId": zod.coerce.string().min(publishEducationVideoPathVideoIdMin).max(publishEducationVideoPathVideoIdMax)
+})
+
+export const publishEducationVideoBodyRequestIdMin = 16;
+export const publishEducationVideoBodyRequestIdMax = 120;
+
+
+
+export const PublishEducationVideoBody = zod.object({
+  "requestId": zod.string().min(publishEducationVideoBodyRequestIdMin).max(publishEducationVideoBodyRequestIdMax)
+})
+
+export const PublishEducationVideoResponse = zod.object({
+  "videoId": zod.string(),
+  "title": zod.string(),
+  "caption": zod.string(),
+  "fileName": zod.string(),
+  "byteSize": zod.number().int(),
+  "status": zod.enum(['awaiting_upload', 'draft', 'queued', 'sending', 'published', 'uncertain', 'failed', 'blocked']),
+  "createdAt": zod.string(),
+  "publishedAt": zod.string().nullable(),
+  "targetLabel": zod.string()
+})
+
+
+/**
+ * @summary Get the currently authenticated user
+ */
+export const GetCurrentAuthUserHeader = zod.object({
+  "Authorization": zod.string().optional()
+})
+
+export const GetCurrentAuthUserResponse = zod.object({
+  "user": zod.union([zod.object({
+  "id": zod.string(),
+  "email": zod.string().email().nullable(),
+  "firstName": zod.string().nullable(),
+  "lastName": zod.string().nullable(),
+  "profileImageUrl": zod.string().nullable()
+}),zod.null()])
+})
+
+
+/**
+ * @summary Start browser sign-in
+ */
+export const BeginBrowserLoginQueryParams = zod.object({
+  "returnTo": zod.coerce.string().optional()
+})
+
+export const BeginBrowserLoginResponse = zod.void()
+
+
+/**
+ * @summary Complete browser sign-in
+ */
+export const HandleBrowserLoginCallbackQueryParams = zod.object({
+  "code": zod.coerce.string().optional(),
+  "state": zod.coerce.string().optional(),
+  "iss": zod.coerce.string().url().optional()
+})
+
+export const HandleBrowserLoginCallbackResponse = zod.void()
+
+
+/**
+ * @summary Clear browser session
+ */
+export const logoutBrowserSessionQueryReturnToDefault = `/`;
+
+export const LogoutBrowserSessionQueryParams = zod.object({
+  "returnTo": zod.coerce.string().default(logoutBrowserSessionQueryReturnToDefault)
+})
+
+export const LogoutBrowserSessionHeader = zod.object({
+  "Authorization": zod.string().optional()
+})
+
+export const LogoutBrowserSessionResponse = zod.void()
+
+
+/**
+ * @summary Exchange a mobile OIDC code
+ */
+
+
+
+
+
+
+
+export const ExchangeMobileAuthorizationCodeBody = zod.object({
+  "code": zod.string().min(1),
+  "code_verifier": zod.string().min(1),
+  "redirect_uri": zod.string().url().min(1),
+  "state": zod.string().min(1),
+  "nonce": zod.string().min(1).optional()
+})
+
+export const ExchangeMobileAuthorizationCodeResponse = zod.object({
+  "token": zod.string()
+})
+
+
+/**
+ * @summary Delete a mobile session
+ */
+export const LogoutMobileSessionHeader = zod.object({
+  "Authorization": zod.string().optional()
+})
+
+export const LogoutMobileSessionResponse = zod.object({
+  "success": zod.literal(true)
+})
+
+

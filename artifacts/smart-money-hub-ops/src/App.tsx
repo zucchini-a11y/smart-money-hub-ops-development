@@ -424,8 +424,9 @@ function AppRoutes() {
   </Switch>;
 }
 
-function App() {
-  return <QueryClientProvider client={queryClient}><WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><AppRoutes /></WouterRouter></QueryClientProvider>;
+function App({ routeBase }: { routeBase?: string } = {}) {
+  const base = routeBase ?? import.meta.env.BASE_URL.replace(/\/$/, '');
+  return <QueryClientProvider client={queryClient}><WouterRouter base={base}><AppRoutes /></WouterRouter></QueryClientProvider>;
 }
 
 export default App;
