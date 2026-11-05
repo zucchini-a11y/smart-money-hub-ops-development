@@ -187,7 +187,7 @@ if [[ -L "${API_ROOT}/current" ]]; then
   OLD_API_LINK="$(readlink "${API_ROOT}/current")"
 fi
 runuser -u postgres -- psql -d smh_signals -v ON_ERROR_STOP=1 \
-  -f "${TEMP_DIR}/migrations/002_support_production.sql"
+  -f - < "${TEMP_DIR}/migrations/002_support_production.sql"
 
 if ! id smh-support-api >/dev/null 2>&1; then
   useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin smh-support-api
