@@ -1,0 +1,98 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+.smh-support-group {
+  --button-outline: rgba(0, 0, 0, 0.1);
+  --badge-outline: rgba(0, 0, 0, 0.05);
+  --opaque-button-border-intensity: -8;
+  --elevate-1: rgba(0, 0, 0, 0.03);
+  --elevate-2: rgba(0, 0, 0, 0.08);
+  --background: 220 27% 7%;
+  --foreground: 210 22% 91%;
+  --border: 215 18% 19%;
+  --card: 219 25% 10%;
+  --card-foreground: 210 22% 91%;
+  --card-border: 215 18% 19%;
+  --popover: 220 25% 12%;
+  --popover-foreground: 210 22% 91%;
+  --popover-border: 215 18% 20%;
+  --primary: 152 75% 48%;
+  --primary-foreground: 220 27% 7%;
+  --secondary: 215 20% 14%;
+  --secondary-foreground: 210 22% 91%;
+  --muted: 215 20% 14%;
+  --muted-foreground: 213 12% 56%;
+  --accent: 190 82% 52%;
+  --accent-foreground: 220 27% 7%;
+  --destructive: 4 71% 58%;
+  --destructive-foreground: 210 22% 91%;
+  --input: 215 18% 20%;
+  --ring: 152 75% 48%;
+  --chart-1: 152 75% 48%;
+  --chart-2: 190 82% 52%;
+  --chart-3: 43 84% 61%;
+  --chart-4: 215 18% 45%;
+  --chart-5: 4 71% 58%;
+  --app-font-sans: 'Manrope', sans-serif;
+  --app-font-serif: 'Space Grotesk', sans-serif;
+  --app-font-mono: 'DM Mono', monospace;
+  --radius: 0.5rem;
+  color-scheme: dark;
+  min-height: 100vh;
+  background: radial-gradient(ellipse at 65% -10%, rgba(35, 85, 75, .16), transparent 42%), #0d1119;
+  color: hsl(var(--foreground));
+  font-family: var(--app-font-sans);
+}
+
+.smh-support-group.dark {
+  --button-outline: rgba(255, 255, 255, 0.1);
+  --badge-outline: rgba(255, 255, 255, 0.05);
+  --opaque-button-border-intensity: 9;
+  --elevate-1: rgba(255, 255, 255, 0.04);
+  --elevate-2: rgba(255, 255, 255, 0.09);
+  --background: 220 27% 7%;
+  --foreground: 210 22% 91%;
+  --border: 215 18% 19%;
+  --card: 219 25% 10%;
+  --card-foreground: 210 22% 91%;
+  --card-border: 215 18% 19%;
+  --popover: 220 25% 12%;
+  --popover-foreground: 210 22% 91%;
+  --popover-border: 215 18% 20%;
+  --primary: 152 75% 48%;
+  --primary-foreground: 220 27% 7%;
+  --secondary: 215 20% 14%;
+  --secondary-foreground: 210 22% 91%;
+  --muted: 215 20% 14%;
+  --muted-foreground: 213 12% 56%;
+  --accent: 190 82% 52%;
+  --accent-foreground: 220 27% 7%;
+  --destructive: 4 71% 58%;
+  --destructive-foreground: 210 22% 91%;
+  --input: 215 18% 20%;
+  --ring: 152 75% 48%;
+  --chart-1: 152 75% 48%;
+  --chart-2: 190 82% 52%;
+  --chart-3: 43 84% 61%;
+  --chart-4: 215 18% 45%;
+  --chart-5: 4 71% 58%;
+}
+
+.smh-support-group .mono { font-family: var(--app-font-mono); }
+.smh-support-group .display { font-family: var(--app-font-serif); }
+.smh-support-group .panel {
+  background: linear-gradient(145deg, rgba(21, 29, 40, .94), rgba(16, 22, 31, .96));
+  border: 1px solid rgba(150, 173, 192, .12);
+  box-shadow: 0 18px 48px rgba(0,0,0,.18), inset 0 1px rgba(255,255,255,.025);
+}
+.smh-support-group .fade-up { animation: smh-support-fade-up .55s cubic-bezier(.2,.75,.25,1) both; }
+@keyframes smh-support-fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .smh-support-group *, .smh-support-group *::before, .smh-support-group *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}

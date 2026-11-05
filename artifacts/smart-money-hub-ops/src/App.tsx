@@ -10,10 +10,10 @@ import {
 import SupportPage from './SupportPage';
 
 const queryClient = new QueryClient();
-type ViewPath = '/' | '/activity' | '/content' | '/connections' | '/support';
+type ViewPath = '/operations' | '/activity' | '/content' | '/connections' | '/support';
 
 const navigation: { href: ViewPath; label: string; icon: typeof LayoutDashboard; index: string }[] = [
-  { href: '/', label: 'Overview', icon: LayoutDashboard, index: '01' },
+  { href: '/operations', label: 'Overview', icon: LayoutDashboard, index: '01' },
   { href: '/activity', label: 'Activity stream', icon: Activity, index: '02' },
   { href: '/content', label: 'Content operations', icon: FileText, index: '03' },
   { href: '/connections', label: 'Connections', icon: Link2, index: '04' },
@@ -70,7 +70,7 @@ function Sidebar({ mobileOpen, close }: { mobileOpen: boolean; close: () => void
         <nav aria-label="Primary navigation" className="space-y-1">
           {navigation.map(({ href, label, icon: Icon, index }) => {
             const active = location === href;
-            return <Link key={href} href={href} onClick={close} className={`group flex items-center gap-3 rounded-lg px-3 py-3 text-[12px] transition-colors ${active ? 'border border-emerald-300/[.12] bg-emerald-300/[.075] text-emerald-100' : 'border border-transparent text-slate-400 hover:bg-white/[.035] hover:text-slate-100'}`} aria-current={active ? 'page' : undefined} data-testid={`link-nav-${href === '/' ? 'overview' : href.slice(1)}`}>
+            return <Link key={href} href={href} onClick={close} className={`group flex items-center gap-3 rounded-lg px-3 py-3 text-[12px] transition-colors ${active ? 'border border-emerald-300/[.12] bg-emerald-300/[.075] text-emerald-100' : 'border border-transparent text-slate-400 hover:bg-white/[.035] hover:text-slate-100'}`} aria-current={active ? 'page' : undefined} data-testid={`link-nav-${href === '/operations' ? 'overview' : href.slice(1)}`}>
               <Icon size={16} strokeWidth={1.7} className={active ? 'text-emerald-300' : 'text-slate-500 group-hover:text-slate-300'} />
               <span className="flex-1">{label}</span><span className="mono text-[9px] text-slate-600">{index}</span>
             </Link>;
@@ -396,7 +396,7 @@ function ConnectionsPage() {
 }
 
 function NotFound() {
-  return <main className="mx-auto max-w-4xl px-5 py-20 text-center"><AlertCircle className="mx-auto text-amber-200" /><h1 className="display mt-4 text-3xl text-slate-100">Route not found</h1><Link href="/" className="mt-5 inline-block text-sm text-cyan-200">Return to overview</Link></main>;
+  return <main className="mx-auto max-w-4xl px-5 py-20 text-center"><AlertCircle className="mx-auto text-amber-200" /><h1 className="display mt-4 text-3xl text-slate-100">Route not found</h1><Link href="/operations" className="mt-5 inline-block text-sm text-cyan-200">Return to overview</Link></main>;
 }
 
 function Shell() {
@@ -405,11 +405,10 @@ function Shell() {
     <Sidebar mobileOpen={mobileOpen} close={() => setMobileOpen(false)} />
     <div className="min-w-0 flex-1"><Topbar onMenu={() => setMobileOpen(true)} />
       <Switch>
-        <Route path="/" component={Overview} />
+        <Route path="/operations" component={Overview} />
         <Route path="/activity" component={ActivityPage} />
         <Route path="/content" component={ContentPage} />
         <Route path="/connections" component={ConnectionsPage} />
-        <Route path="/support" component={SupportPage} />
         <Route component={NotFound} />
       </Switch>
       <footer className="mx-auto flex max-w-[1440px] flex-col gap-1 border-t border-white/[.06] px-4 py-5 text-[9px] text-slate-600 sm:flex-row sm:items-center sm:justify-between md:px-8"><span>SMART MONEY HUB OPERATIONS CENTER</span><span>DEVELOPMENT PREVIEW · AUTH NOT CONFIGURED · PRIVATE DATA HIDDEN</span></footer>
@@ -417,8 +416,16 @@ function Shell() {
   </div>;
 }
 
+function AppRoutes() {
+  return <Switch>
+    <Route path="/" component={SupportPage} />
+    <Route path="/support" component={SupportPage} />
+    <Route component={Shell} />
+  </Switch>;
+}
+
 function App() {
-  return <QueryClientProvider client={queryClient}><WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><Shell /></WouterRouter></QueryClientProvider>;
+  return <QueryClientProvider client={queryClient}><WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><AppRoutes /></WouterRouter></QueryClientProvider>;
 }
 
 export default App;

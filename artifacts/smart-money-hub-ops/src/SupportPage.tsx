@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -19,19 +19,41 @@ import {
   useUpdateSupportCaseStatus,
 } from "@workspace/api-client-react";
 import {
-  ArrowLeft, Bot, Check, Clock3, LogOut, MessageCircle, RefreshCw,
-  Send, ShieldCheck, UserRound, Users,
+  ArrowLeft,
+  ArrowUpRight,
+  Bot,
+  Check,
+  ChevronDown,
+  CircleHelp,
+  Clock3,
+  Inbox,
+  LockKeyhole,
+  LogOut,
+  MessageCircle,
+  RefreshCw,
+  Search,
+  Send,
+  ShieldCheck,
+  SlidersHorizontal,
+  Sparkles,
+  UserRound,
+  Users,
 } from "lucide-react";
+import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
 } from "@/components/ui/form";
+import "./SupportPage.css";
 
 type Credentials = { email: string; password: string };
 type BootstrapValues = Credentials & { displayName: string };
 type TextValues = { text: string };
+
+const workflowOptions = ["new", "assigned", "in_progress", "waiting_for_member", "resolved", "closed"];
+const workflowLabel = (value: string) => value.replaceAll("_", " ");
 
 function LoginCard({
   needsSetup,
@@ -52,51 +74,66 @@ function LoginCard({
   });
 
   return (
-    <main className="fade-up mx-auto max-w-2xl px-4 py-8 md:px-8">
-      <section className="panel rounded-2xl p-6 sm:p-8">
-        <div className="mb-6 flex items-center gap-3">
-          <div className="grid h-11 w-11 place-items-center rounded-xl border border-emerald-300/20 bg-emerald-300/[.07] text-emerald-200">
-            <ShieldCheck size={20} />
-          </div>
-          <div>
-            <div className="mono text-[9px] tracking-[.18em] text-emerald-200">STAFF ACCESS</div>
-            <h1 className="display mt-1 text-2xl text-slate-100">Support portal sign-in</h1>
-          </div>
+    <div className="sp-page sp-auth-page">
+      <header className="sp-topbar">
+        <div className="sp-brand">
+          <div className="sp-brand-mark"><ShieldCheck size={19} /></div>
+          <div><div className="sp-brand-name">smart money hub</div><div className="sp-brand-sub">SUPPORT PORTAL</div></div>
         </div>
-        {failure && <div className="mb-4 rounded-lg border border-rose-300/20 bg-rose-300/[.06] p-3 text-sm text-rose-100" role="alert" data-testid="status-support-auth-error">{failure}</div>}
-        {needsSetup ? (
-          <>
-            <p className="mb-5 text-sm leading-6 text-slate-400">Create the first owner account for this Development support portal. This one-time setup is unavailable in Production.</p>
+        <Link className="sp-operations-link" href="/operations"><ArrowUpRight size={14} /><span>Operations Center</span></Link>
+      </header>
+      <main className="sp-auth-main">
+        <div className="sp-auth-aside">
+          <div className="sp-eyebrow">STAFF ACCESS · PRIVATE WORKSPACE</div>
+          <h1>Support, with the full picture.</h1>
+          <p>Signals and Coach conversations meet in one secure queue, so every member gets a thoughtful follow-through.</p>
+          <div className="sp-auth-points">
+            <span><span className="sp-checkmark"><Check size={12} /></span> Shared Signals + Coach inbox</span>
+            <span><span className="sp-checkmark"><Check size={12} /></span> Staff-only notes and case history</span>
+          </div>
+          <div className="sp-auth-watermark"><ShieldCheck size={124} strokeWidth={.65} /></div>
+        </div>
+        <section className="sp-login-card">
+          <div className="sp-login-icon"><LockKeyhole size={18} /></div>
+          <div className="sp-eyebrow">SUPPORT PORTAL</div>
+          <h2>{needsSetup ? "Create your owner account" : "Welcome back"}</h2>
+          <p className="sp-login-intro">{needsSetup
+            ? "Set up the first owner account for this Development support portal."
+            : "Sign in with your staff credentials to open the shared queue."}</p>
+          {failure && <div className="sp-error" role="alert" data-testid="status-support-auth-error">{failure}</div>}
+          {needsSetup ? (
             <Form {...bootstrapForm}>
-              <form className="space-y-4" onSubmit={bootstrapForm.handleSubmit(onBootstrap)}>
+              <form className="sp-form" onSubmit={bootstrapForm.handleSubmit(onBootstrap)}>
                 <FormField control={bootstrapForm.control} name="displayName" rules={{ required: "Enter your name." }} render={({ field }) => (
-                  <FormItem><FormLabel className="text-slate-300">Display name</FormLabel><FormControl><Input autoComplete="name" {...field} data-testid="input-support-display-name" /></FormControl><FormMessage /></FormItem>
+                  <FormItem><FormLabel className="sp-label">Display name</FormLabel><FormControl><Input className="sp-input" autoComplete="name" placeholder="Your name" {...field} data-testid="input-support-display-name" /></FormControl><FormMessage /></FormItem>
                 )} />
                 <FormField control={bootstrapForm.control} name="email" rules={{ required: "Enter your email.", pattern: { value: /^\S+@\S+\.\S+$/, message: "Enter a valid email." } }} render={({ field }) => (
-                  <FormItem><FormLabel className="text-slate-300">Email</FormLabel><FormControl><Input type="email" autoComplete="email" {...field} data-testid="input-support-email" /></FormControl><FormMessage /></FormItem>
+                  <FormItem><FormLabel className="sp-label">Work email</FormLabel><FormControl><Input className="sp-input" type="email" autoComplete="email" placeholder="name@company.com" {...field} data-testid="input-support-email" /></FormControl><FormMessage /></FormItem>
                 )} />
                 <FormField control={bootstrapForm.control} name="password" rules={{ required: "Choose a password.", minLength: { value: 12, message: "Use at least 12 characters." } }} render={({ field }) => (
-                  <FormItem><FormLabel className="text-slate-300">Password</FormLabel><FormControl><Input type="password" autoComplete="new-password" {...field} data-testid="input-support-password" /></FormControl><FormMessage /></FormItem>
+                  <FormItem><FormLabel className="sp-label">Password</FormLabel><FormControl><Input className="sp-input" type="password" autoComplete="new-password" placeholder="At least 12 characters" {...field} data-testid="input-support-password" /></FormControl><FormMessage /></FormItem>
                 )} />
-                <Button type="submit" disabled={busy} className="w-full" data-testid="button-support-bootstrap">{busy ? "Setting up…" : "Create owner account"}</Button>
+                <Button type="submit" disabled={busy} className="sp-primary-button" data-testid="button-support-bootstrap">{busy ? "Setting up…" : "Create owner account"} <ArrowUpRight size={15} /></Button>
               </form>
             </Form>
-          </>
-        ) : (
-          <Form {...loginForm}>
-            <form className="space-y-4" onSubmit={loginForm.handleSubmit(onLogin)}>
-              <FormField control={loginForm.control} name="email" rules={{ required: "Enter your email.", pattern: { value: /^\S+@\S+\.\S+$/, message: "Enter a valid email." } }} render={({ field }) => (
-                <FormItem><FormLabel className="text-slate-300">Email</FormLabel><FormControl><Input type="email" autoComplete="username" {...field} data-testid="input-support-email" /></FormControl><FormMessage /></FormItem>
-              )} />
-              <FormField control={loginForm.control} name="password" rules={{ required: "Enter your password." }} render={({ field }) => (
-                <FormItem><FormLabel className="text-slate-300">Password</FormLabel><FormControl><Input type="password" autoComplete="current-password" {...field} data-testid="input-support-password" /></FormControl><FormMessage /></FormItem>
-              )} />
-              <Button type="submit" disabled={busy} className="w-full" data-testid="button-support-login">{busy ? "Signing in…" : "Sign in"}</Button>
-            </form>
-          </Form>
-        )}
-      </section>
-    </main>
+          ) : (
+            <Form {...loginForm}>
+              <form className="sp-form" onSubmit={loginForm.handleSubmit(onLogin)}>
+                <FormField control={loginForm.control} name="email" rules={{ required: "Enter your email.", pattern: { value: /^\S+@\S+\.\S+$/, message: "Enter a valid email." } }} render={({ field }) => (
+                  <FormItem><FormLabel className="sp-label">Work email</FormLabel><FormControl><Input className="sp-input" type="email" autoComplete="username" placeholder="name@company.com" {...field} data-testid="input-support-email" /></FormControl><FormMessage /></FormItem>
+                )} />
+                <FormField control={loginForm.control} name="password" rules={{ required: "Enter your password." }} render={({ field }) => (
+                  <FormItem><FormLabel className="sp-label">Password</FormLabel><FormControl><Input className="sp-input" type="password" autoComplete="current-password" placeholder="Your password" {...field} data-testid="input-support-password" /></FormControl><FormMessage /></FormItem>
+                )} />
+                <Button type="submit" disabled={busy} className="sp-primary-button" data-testid="button-support-login">{busy ? "Signing in…" : "Sign in to support"} <ArrowUpRight size={15} /></Button>
+              </form>
+            </Form>
+          )}
+          <div className="sp-login-foot"><ShieldCheck size={14} /> Staff access only <span>·</span> Protected session</div>
+        </section>
+      </main>
+      <footer className="sp-footer"><span>SMART MONEY HUB · SUPPORT</span><span>PRIVATE STAFF WORKSPACE</span></footer>
+    </div>
   );
 }
 
@@ -131,6 +168,9 @@ export default function SupportPage() {
   const changeStatus = useUpdateSupportCaseStatus();
   const [failure, setFailure] = useState("");
   const [notice, setNotice] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [searchText, setSearchText] = useState("");
   const priorUpdated = useRef<Map<string, string> | null>(null);
   const replyForm = useForm<TextValues>({ defaultValues: { text: "" } });
   const noteForm = useForm<TextValues>({ defaultValues: { text: "" } });
@@ -160,9 +200,21 @@ export default function SupportPage() {
     ]);
   };
 
+  const allCases = cases.data?.cases ?? [];
+  const filteredCases = useMemo(() => allCases.filter((item) => {
+    const sourceMatch = sourceFilter === "all" || item.sourceBot.toLowerCase() === sourceFilter;
+    const statusMatch = statusFilter === "all" || item.workflowStatus === statusFilter;
+    const searchMatch = `${item.caseId} ${item.question} ${item.sourceBot}`.toLowerCase().includes(searchText.toLowerCase().trim());
+    return sourceMatch && statusMatch && searchMatch;
+  }), [allCases, searchText, sourceFilter, statusFilter]);
+
   if (session.isLoading) {
-    return <main className="mx-auto max-w-7xl px-4 py-10 md:px-8"><div className="panel rounded-xl p-6 text-sm text-slate-400">Checking staff access…</div></main>;
+    return <div className="sp-page sp-session-loading">
+      <div className="sp-topbar"><div className="sp-brand"><div className="sp-brand-mark"><ShieldCheck size={19} /></div><div><div className="sp-brand-name">smart money hub</div><div className="sp-brand-sub">SUPPORT PORTAL</div></div></div><Link className="sp-operations-link" href="/operations"><ArrowUpRight size={14} /> Operations Center</Link></div>
+      <main className="sp-loading-card" aria-label="Checking staff access"><div className="sp-skeleton sp-skeleton-title" /><div className="sp-skeleton sp-skeleton-row" /><div className="sp-skeleton sp-skeleton-row short" /></main>
+    </div>;
   }
+
   if (!signedIn) {
     return <LoginCard
       needsSetup={Boolean(session.data?.needsSetup)}
@@ -191,138 +243,176 @@ export default function SupportPage() {
   const events = detail.data?.events ?? [];
   const role = session.data?.staff?.role;
   const canManage = role === "owner" || role === "manager";
+  const openCount = allCases.filter((item) => !["resolved", "closed"].includes(item.workflowStatus)).length;
+  const replyCount = allCases.filter((item) => ["new", "assigned"].includes(item.workflowStatus)).length;
 
   return (
-    <main className="fade-up mx-auto max-w-[1440px] px-4 py-7 md:px-8 md:py-9">
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <div className="mono text-[9px] tracking-[.2em] text-emerald-200">SHARED MEMBER SUPPORT</div>
-          <h1 className="display mt-2 text-3xl text-slate-100">Support cases</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">Signals and Coach requests share one queue. Replies are delivered by the bot that received the case.</p>
+    <div className="sp-page">
+      <header className="sp-topbar">
+        <div className="sp-brand">
+          <div className="sp-brand-mark"><ShieldCheck size={19} /></div>
+          <div><div className="sp-brand-name">smart money hub</div><div className="sp-brand-sub">SUPPORT PORTAL <span>· STAFF WORKSPACE</span></div></div>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-slate-400" data-testid="text-support-staff">
-            {session.data?.staff?.displayName} · {role}
-          </span>
-          <Button variant="outline" size="sm" onClick={() => logout.mutate(undefined, { onSuccess: async () => { setSelectedId(""); await client.invalidateQueries({ queryKey: getGetSupportSessionQueryKey() }); } })} disabled={logout.isPending} data-testid="button-support-logout">
-            <LogOut size={14} className="mr-2" /> Sign out
+        <div className="sp-top-actions">
+          <span className="sp-session-status"><span /> Staff session active</span>
+          <span className="sp-staff-pill" data-testid="text-support-staff"><span className="sp-staff-avatar">{session.data?.staff?.displayName?.split(/\s+/).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("")}</span><span>{session.data?.staff?.displayName} <i>·</i> {role}</span></span>
+          <Link className="sp-operations-link" href="/operations"><ArrowUpRight size={14} /><span>Operations Center</span></Link>
+          <Button variant="outline" size="sm" className="sp-signout" onClick={() => logout.mutate(undefined, { onSuccess: async () => { setSelectedId(""); await client.invalidateQueries({ queryKey: getGetSupportSessionQueryKey() }); } })} disabled={logout.isPending} data-testid="button-support-logout">
+            <LogOut size={14} /> <span>{logout.isPending ? "Signing out…" : "Sign out"}</span>
           </Button>
         </div>
       </header>
 
-      {notice && <button onClick={() => setNotice("")} className="mb-4 w-full rounded-lg border border-emerald-300/20 bg-emerald-300/[.06] p-3 text-left text-sm text-emerald-100" role="status" data-testid="status-support-notification">{notice}</button>}
-      {failure && <div className="mb-4 rounded-lg border border-rose-300/20 bg-rose-300/[.06] p-3 text-sm text-rose-100" role="alert" data-testid="status-support-error">{failure}</div>}
+      <main className="sp-main">
+        <div className="sp-heading">
+          <div><div className="sp-eyebrow">SHARED MEMBER SUPPORT</div><h1>Support cases</h1><p>Signals and Coach requests, together in one place. Replies are sent through the bot that received the case.</p></div>
+          <div className="sp-heading-meta"><span className="sp-live-indicator"><i /> Queue live</span><span className="sp-meta-divider" /><span>Auto-sync <b>15 sec</b></span></div>
+        </div>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(320px,0.78fr)_minmax(0,1.6fr)]">
-        <section className="panel overflow-hidden rounded-xl">
-          <div className="flex items-center justify-between border-b border-white/[.07] px-5 py-4">
-            <div><div className="mono text-[9px] tracking-[.17em] text-slate-500">CASE QUEUE</div><h2 className="mt-1 text-sm font-semibold text-slate-100">{cases.data?.cases.length ?? 0} records</h2></div>
-            <Button variant="ghost" size="icon" onClick={() => void refresh()} aria-label="Refresh support cases" data-testid="button-support-refresh"><RefreshCw size={15} className={cases.isFetching ? "animate-spin" : ""} /></Button>
-          </div>
-          {cases.isLoading ? <p className="p-5 text-sm text-slate-400">Loading cases…</p> : cases.isError ? <p className="p-5 text-sm text-rose-200">The case queue could not be loaded.</p> : !cases.data?.cases.length ? <div className="p-8 text-center"><MessageCircle className="mx-auto text-slate-600" size={24} /><p className="mt-3 text-sm text-slate-300">No support cases yet</p><p className="mt-1 text-xs text-slate-500">New cases from either bot will appear here.</p></div> : (
-            <div className="max-h-[70vh] overflow-auto">
-              {cases.data.cases.map((item) => (
-                <button key={item.caseId} onClick={() => { setSelectedId(item.caseId); setFailure(""); setNotice(""); }} className={`block w-full border-b border-white/[.06] px-5 py-4 text-left transition hover:bg-white/[.035] ${selectedId === item.caseId ? "bg-emerald-300/[.06]" : ""}`} data-testid={`button-support-case-${item.caseId}`}>
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-cyan-200"><Bot size={12} /> {item.sourceBot}</span>
-                    <span className="text-[10px] text-slate-500">{new Date(item.updated).toLocaleString()}</span>
-                  </div>
-                  <p className="mt-2 line-clamp-2 text-sm text-slate-200">{item.question}</p>
-                  <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-slate-500">
-                    <span>Member {item.memberId}</span><span>·</span><span>{item.workflowStatus.replaceAll("_", " ")}</span><span>·</span><span>{item.priority}</span>
-                  </div>
-                </button>
-              ))}
+        {notice && <button onClick={() => setNotice("")} className="sp-notice" role="status" data-testid="status-support-notification"><span className="sp-notice-icon"><Sparkles size={15} /></span><span>{notice}</span><span className="sp-dismiss">×</span></button>}
+        {failure && <div className="sp-error sp-page-error" role="alert" data-testid="status-support-error">{failure}</div>}
+
+        <div className="sp-workspace">
+          <section className={`sp-queue ${selectedId ? "sp-mobile-hide" : ""}`} aria-label="Support case queue">
+            <div className="sp-queue-header">
+              <div><div className="sp-kicker">INBOX</div><h2>Case queue <span>{filteredCases.length}</span></h2></div>
+              <Button variant="ghost" size="icon" className="sp-refresh" onClick={() => void refresh()} aria-label="Refresh support cases" data-testid="button-support-refresh"><RefreshCw size={15} className={cases.isFetching ? "animate-spin" : ""} /></Button>
             </div>
-          )}
-          <p className="border-t border-white/[.07] px-5 py-3 text-[10px] text-slate-500">Queue refreshes every 15 seconds.</p>
-        </section>
+            <div className="sp-queue-stats"><span><b>{openCount}</b> open</span><i /><span><b>{replyCount}</b> need a reply</span><span className="sp-total-count">{allCases.length} total</span></div>
+            <label className="sp-search"><Search size={15} /><input aria-label="Search support cases" placeholder="Search cases…" value={searchText} onChange={(event) => setSearchText(event.target.value)} /><kbd>/</kbd></label>
+            <div className="sp-filter-row">
+              <label className="sp-filter">
+                <SlidersHorizontal size={13} />
+                <select aria-label="Filter support cases by source" value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)}>
+                  <option value="all">All sources</option><option value="coach">Coach</option><option value="signals">Signals</option>
+                </select><ChevronDown size={12} />
+              </label>
+              <label className="sp-filter">
+                <select aria-label="Filter support cases by status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+                  <option value="all">All statuses</option>{workflowOptions.map((value) => <option key={value} value={value}>{workflowLabel(value)}</option>)}
+                </select><ChevronDown size={12} />
+              </label>
+            </div>
 
-        {!selectedId ? (
-          <section className="panel grid min-h-[420px] place-items-center rounded-xl p-8 text-center">
-            <div><MessageCircle size={28} className="mx-auto text-slate-600" /><h2 className="mt-4 text-lg text-slate-200">Select a case</h2><p className="mt-2 max-w-sm text-sm leading-6 text-slate-500">Review the member’s messages, add a private note, or send a response through the originating bot.</p></div>
+            {cases.isLoading ? (
+              <div className="sp-case-list sp-case-loading" aria-label="Loading support cases">
+                {[0, 1, 2, 3].map((row) => <div className="sp-case-skeleton" key={row}><span /><b /><i /></div>)}
+              </div>
+            ) : cases.isError ? (
+              <div className="sp-queue-state sp-queue-error" role="alert"><CircleHelp size={22} /><strong>Queue unavailable</strong><span>Support cases could not be loaded.</span><Button variant="outline" size="sm" className="sp-secondary-button" onClick={() => void cases.refetch()}>Try again</Button></div>
+            ) : !allCases.length ? (
+              <div className="sp-queue-state"><Inbox size={24} /><strong>No support cases yet</strong><span>New requests from Signals or Coach will appear here.</span></div>
+            ) : !filteredCases.length ? (
+              <div className="sp-queue-state"><Search size={22} /><strong>No matching cases</strong><span>Adjust the filters or search term.</span><button type="button" className="sp-text-action" onClick={() => { setSourceFilter("all"); setStatusFilter("all"); setSearchText(""); }}>Clear filters</button></div>
+            ) : (
+              <div className="sp-case-list">
+                {filteredCases.map((item) => (
+                  <button key={item.caseId} type="button" onClick={() => { setSelectedId(item.caseId); setFailure(""); setNotice(""); }} className={`sp-case-row ${selectedId === item.caseId ? "is-selected" : ""}`} data-testid={`button-support-case-${item.caseId}`}>
+                    <div className="sp-case-row-top">
+                      <span className={`sp-source sp-source-${item.sourceBot.toLowerCase()}`}><Bot size={13} /> {item.sourceBot}</span>
+                      <time>{new Date(item.updated).toLocaleString()}</time>
+                    </div>
+                    <p>{item.question}</p>
+                    <div className="sp-case-row-meta"><span className={`sp-status-dot sp-status-${item.workflowStatus}`} /><span>{workflowLabel(item.workflowStatus)}</span><i>·</i><span>{item.assignedStaffId ? (staff.data ?? []).find((person) => person.id === item.assignedStaffId)?.displayName ?? "Assigned" : "Unassigned"}</span><span className={`sp-priority priority-${item.priority}`}>{item.priority}</span></div>
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="sp-queue-footer"><span className="sp-sync-dot" /> Queue refreshes every 15 seconds</div>
           </section>
-        ) : detail.isLoading ? (
-          <section className="panel rounded-xl p-6 text-sm text-slate-400">Loading case details…</section>
-        ) : detail.isError || !selected ? (
-          <section className="panel rounded-xl p-6 text-sm text-rose-200">This case is unavailable or you no longer have access.</section>
-        ) : (
-          <section className="panel overflow-hidden rounded-xl">
-            <div className="border-b border-white/[.07] p-5 sm:p-6">
-              <button onClick={() => setSelectedId("")} className="mb-4 inline-flex items-center gap-1 text-xs text-slate-400 hover:text-slate-100 xl:hidden" data-testid="button-support-back"><ArrowLeft size={13} /> Case queue</button>
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div><div className="flex items-center gap-2 text-[10px] uppercase tracking-wide text-cyan-200"><Bot size={13} /> {selected.sourceBot} bot</div><h2 className="mt-2 text-lg font-semibold text-slate-100">Case conversation</h2></div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-full border border-white/10 px-2.5 py-1 text-[10px] text-slate-300">{selected.status}</span>
-                  {canManage && <select value={selected.workflowStatus} onChange={(event) => changeStatus.mutate({ caseId: selected.caseId, data: { workflowStatus: event.target.value as "new" | "assigned" | "in_progress" | "waiting_for_member" | "resolved" | "closed" } }, { onSuccess: () => void invalidateCaseData(), onError: () => setFailure("Status could not be updated.") })} className="rounded-md border border-white/10 bg-[#111923] px-2.5 py-1.5 text-xs text-slate-200" aria-label="Workflow status" data-testid="select-support-status">
-                    {["new", "assigned", "in_progress", "waiting_for_member", "resolved", "closed"].map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}
-                  </select>}
+
+          {!selectedId ? (
+            <section className="sp-detail sp-select-state"><div className="sp-select-state-inner"><span className="sp-select-icon"><MessageCircle size={20} /></span><div className="sp-kicker">CASE WORKSPACE</div><h2>Select a case</h2><p>Review the member conversation, assign a teammate, add an internal note, or reply through its originating bot.</p></div></section>
+          ) : detail.isLoading ? (
+            <section className="sp-detail sp-detail-loading"><div className="sp-kicker">LOADING CONVERSATION</div><div className="sp-skeleton sp-skeleton-title" /><div className="sp-skeleton sp-skeleton-row" /><div className="sp-skeleton sp-skeleton-row" /></section>
+          ) : detail.isError || !selected ? (
+            <section className="sp-detail sp-detail-error"><CircleHelp size={23} /><h2>Case unavailable</h2><p>This case is unavailable or you no longer have access.</p><Button variant="outline" size="sm" className="sp-secondary-button" onClick={() => void detail.refetch()}>Try again</Button></section>
+          ) : (
+            <section className="sp-detail" aria-label="Selected support case">
+              <div className="sp-detail-header">
+                <button type="button" onClick={() => setSelectedId("")} className="sp-back" data-testid="button-support-back"><ArrowLeft size={14} /> Case queue</button>
+                <div className="sp-detail-head-row">
+                  <div><div className="sp-case-identifier">{selected.caseId}<span>·</span><span className={`sp-source sp-source-${selected.sourceBot.toLowerCase()}`}><Bot size={13} /> {selected.sourceBot}</span></div><h2>Case conversation</h2></div>
+                  <div className="sp-controls">
+                    <span className={`sp-status-pill sp-status-pill-${selected.workflowStatus}`}><i className={`sp-status-dot sp-status-${selected.workflowStatus}`} />{workflowLabel(selected.workflowStatus)}</span>
+                    {canManage && <label className="sp-control-select"><Users size={14} /><select value={selected.assignedStaffId ?? ""} onChange={(event) => assign.mutate({ caseId: selected.caseId, data: { assignedStaffId: event.target.value || null } }, { onSuccess: () => void invalidateCaseData(), onError: () => setFailure("Assignment could not be updated.") })} aria-label="Assigned support staff" data-testid="select-support-assignee">
+                      <option value="">Unassigned</option>{(staff.data ?? []).map((person) => <option key={person.id} value={person.id}>{person.displayName} · {person.role}</option>)}
+                    </select><ChevronDown size={12} /></label>}
+                    {canManage && <label className="sp-control-select"><select value={selected.workflowStatus} onChange={(event) => changeStatus.mutate({ caseId: selected.caseId, data: { workflowStatus: event.target.value as "new" | "assigned" | "in_progress" | "waiting_for_member" | "resolved" | "closed" } }, { onSuccess: () => void invalidateCaseData(), onError: () => setFailure("Status could not be updated.") })} aria-label="Workflow status" data-testid="select-support-status">
+                      {workflowOptions.map((value) => <option key={value} value={value}>{workflowLabel(value)}</option>)}
+                    </select><ChevronDown size={12} /></label>}
+                  </div>
                 </div>
               </div>
-              <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-slate-200" data-testid="text-support-question">{selected.question}</p>
-              <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-[10px] text-slate-500"><span className="inline-flex items-center gap-1"><UserRound size={12} /> Member {selected.memberId}</span><span className="inline-flex items-center gap-1"><Clock3 size={12} /> {new Date(selected.created).toLocaleString()}</span></div>
-              {canManage && <label className="mt-4 flex max-w-sm items-center gap-2 text-xs text-slate-400"><Users size={13} /> Assign
-                <select value={selected.assignedStaffId ?? ""} onChange={(event) => assign.mutate({ caseId: selected.caseId, data: { assignedStaffId: event.target.value || null } }, { onSuccess: () => void invalidateCaseData(), onError: () => setFailure("Assignment could not be updated.") })} className="min-w-40 rounded-md border border-white/10 bg-[#111923] px-2.5 py-1.5 text-xs text-slate-200" data-testid="select-support-assignee">
-                  <option value="">Unassigned</option>
-                  {(staff.data ?? []).map((person) => <option key={person.id} value={person.id}>{person.displayName} · {person.role}</option>)}
-                </select>
-              </label>}
-            </div>
 
-            <div className="max-h-[34vh] space-y-3 overflow-auto border-b border-white/[.07] p-5 sm:p-6" aria-live="polite">
-              {messages.map((message) => (
-                <article key={message.id} className={`rounded-lg border p-3 ${message.sender === "staff" ? "border-cyan-300/10 bg-cyan-300/[.035]" : "border-white/[.07] bg-white/[.02]"}`} data-testid={`card-support-message-${message.id}`}>
-                  <div className="flex justify-between gap-3"><span className="text-xs font-medium text-slate-200">{message.displayName}</span><span className="text-[10px] text-slate-500">{new Date(message.created).toLocaleString()} · {message.status}</span></div>
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-300">{message.text}</p>
-                </article>
-              ))}
-            </div>
+              <div className="sp-question">
+                <div className="sp-question-label"><CircleHelp size={14} /> MEMBER QUESTION</div>
+                <p data-testid="text-support-question">{selected.question}</p>
+                <div className="sp-question-meta"><span><UserRound size={13} /> Member {selected.memberId}</span><span><Clock3 size={13} /> Received {new Date(selected.created).toLocaleString()}</span><span><MessageCircle size={13} /> {messages.length} messages</span></div>
+              </div>
 
-            <div className="grid gap-5 p-5 sm:p-6">
-              <Form {...replyForm}>
-                <form className="space-y-3" onSubmit={replyForm.handleSubmit((values) => {
-                  setFailure(""); setNotice("");
-                  const requestId = crypto.randomUUID();
-                  reply.mutate({ caseId: selected.caseId, data: { text: values.text.trim(), requestId } }, {
-                    onSuccess: async () => { replyForm.reset({ text: "" }); setNotice("Reply queued for delivery through the originating bot."); await invalidateCaseData(); },
-                    onError: () => setFailure("Reply could not be queued. Check the case before retrying."),
-                  });
-                })}>
-                  <FormField control={replyForm.control} name="text" rules={{ required: "Enter a reply.", minLength: { value: 3, message: "Use at least 3 characters." }, maxLength: { value: 3000, message: "Keep the reply under 3,000 characters." } }} render={({ field }) => (
-                    <FormItem><FormLabel className="text-xs text-slate-300">Reply to member</FormLabel><FormControl><Textarea {...field} rows={3} placeholder="Write a reply. Never include passwords or verification codes." data-testid="input-support-reply" /></FormControl><FormMessage /></FormItem>
-                  )} />
-                  <Button type="submit" size="sm" disabled={reply.isPending || selected.workflowStatus === "closed"} data-testid="button-support-send-reply"><Send size={13} className="mr-2" />{reply.isPending ? "Queueing…" : "Queue reply"}</Button>
-                </form>
-              </Form>
+              <div className="sp-thread-heading"><span>CONVERSATION</span><span>{messages.length} messages <i>·</i> Delivered by {selected.sourceBot}</span></div>
+              <div className="sp-thread" aria-live="polite">
+                {messages.map((message) => (
+                  <article key={message.id} className={`sp-message ${message.sender === "staff" ? "sp-message-staff" : ""}`} data-testid={`card-support-message-${message.id}`}>
+                    <span className="sp-message-avatar">{message.sender === "staff" ? <ShieldCheck size={14} /> : <UserRound size={14} />}</span>
+                    <div className="sp-message-content"><div className="sp-message-meta"><strong>{message.displayName}</strong><time>{new Date(message.created).toLocaleString()}</time><span className={`sp-delivery sp-delivery-${message.status}`}>{message.status}</span></div><p>{message.text}</p></div>
+                  </article>
+                ))}
+              </div>
 
-              {canManage && <Form {...noteForm}>
-                <form className="space-y-3 border-t border-white/[.07] pt-4" onSubmit={noteForm.handleSubmit((values) => {
-                  setFailure("");
-                  addNote.mutate({ caseId: selected.caseId, data: { text: values.text.trim() } }, {
-                    onSuccess: async () => { noteForm.reset({ text: "" }); setNotice("Private note saved."); await invalidateCaseData(); },
-                    onError: () => setFailure("Private note could not be saved."),
-                  });
-                })}>
-                  <FormField control={noteForm.control} name="text" rules={{ required: "Enter a note.", minLength: { value: 3, message: "Use at least 3 characters." }, maxLength: { value: 3000, message: "Keep the note under 3,000 characters." } }} render={({ field }) => (
-                    <FormItem><FormLabel className="text-xs text-slate-300">Private staff note</FormLabel><FormControl><Textarea {...field} rows={2} placeholder="Only support staff can see this note." data-testid="input-support-note" /></FormControl><FormMessage /></FormItem>
-                  )} />
-                  <Button type="submit" size="sm" variant="outline" disabled={addNote.isPending} data-testid="button-support-add-note"><Check size={13} className="mr-2" />Save private note</Button>
-                </form>
-              </Form>}
+              <div className="sp-composer">
+                <div className="sp-composer-title"><span><Send size={14} /> Reply to member</span><span>Sent through {selected.sourceBot}</span></div>
+                <Form {...replyForm}>
+                  <form className="sp-form-body" onSubmit={replyForm.handleSubmit((values) => {
+                    setFailure(""); setNotice("");
+                    const requestId = crypto.randomUUID();
+                    reply.mutate({ caseId: selected.caseId, data: { text: values.text.trim(), requestId } }, {
+                      onSuccess: async () => { replyForm.reset({ text: "" }); setNotice("Reply queued for delivery through the originating bot."); await invalidateCaseData(); },
+                      onError: () => setFailure("Reply could not be queued. Check the case before retrying."),
+                    });
+                  })}>
+                    <FormField control={replyForm.control} name="text" rules={{ required: "Enter a reply.", minLength: { value: 3, message: "Use at least 3 characters." }, maxLength: { value: 3000, message: "Keep the reply under 3,000 characters." } }} render={({ field }) => (
+                      <FormItem><FormControl><Textarea className="sp-textarea" {...field} rows={3} placeholder="Write a reply. Never include passwords or verification codes." data-testid="input-support-reply" /></FormControl><FormMessage /></FormItem>
+                    )} />
+                    <div className="sp-compose-footer"><span>Never include passwords or verification codes.</span><Button type="submit" size="sm" className="sp-primary-button sp-send-button" disabled={reply.isPending || selected.workflowStatus === "closed"} data-testid="button-support-send-reply"><Send size={13} />{reply.isPending ? "Queueing…" : "Queue reply"}</Button></div>
+                  </form>
+                </Form>
+              </div>
 
-              {canManage && notes.length > 0 && <div className="border-t border-white/[.07] pt-4">
-                <h3 className="mb-2 text-xs font-semibold text-slate-300">Private notes</h3>
-                <div className="space-y-2">{notes.map((note) => <div key={note.id} className="rounded-md border border-amber-200/10 bg-amber-100/[.025] p-3" data-testid={`card-support-note-${note.id}`}><div className="text-[10px] text-amber-100">{note.staffName} · {new Date(note.created).toLocaleString()}</div><p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-slate-300">{note.text}</p></div>)}</div>
+              {canManage && <div className="sp-private-note">
+                <div className="sp-note-title"><span><LockKeyhole size={14} /> Private staff note</span><span>Visible to staff only</span></div>
+                <Form {...noteForm}>
+                  <form className="sp-form-body" onSubmit={noteForm.handleSubmit((values) => {
+                    setFailure("");
+                    addNote.mutate({ caseId: selected.caseId, data: { text: values.text.trim() } }, {
+                      onSuccess: async () => { noteForm.reset({ text: "" }); setNotice("Private note saved."); await invalidateCaseData(); },
+                      onError: () => setFailure("Private note could not be saved."),
+                    });
+                  })}>
+                    <FormField control={noteForm.control} name="text" rules={{ required: "Enter a note.", minLength: { value: 3, message: "Use at least 3 characters." }, maxLength: { value: 3000, message: "Keep the note under 3,000 characters." } }} render={({ field }) => (
+                      <FormItem><FormControl><Textarea className="sp-textarea sp-note-textarea" {...field} rows={2} placeholder="Add context for the support team…" data-testid="input-support-note" /></FormControl><FormMessage /></FormItem>
+                    )} />
+                    <div className="sp-compose-footer"><span><LockKeyhole size={12} /> Only support staff can see this.</span><Button type="submit" size="sm" variant="outline" className="sp-note-button" disabled={addNote.isPending} data-testid="button-support-add-note"><Check size={13} />{addNote.isPending ? "Saving…" : "Save private note"}</Button></div>
+                  </form>
+                </Form>
               </div>}
 
-              {events.length > 0 && <div className="border-t border-white/[.07] pt-4">
-                <h3 className="mb-2 text-xs font-semibold text-slate-300">Case history</h3>
-                <div className="space-y-2">{events.map((event) => <div key={event.id} className="text-[11px] text-slate-500" data-testid={`text-support-event-${event.id}`}>{event.actorName} · {event.eventType.replaceAll("_", " ")} {event.oldValue && `(${event.oldValue} → ${event.newValue})`} · {new Date(event.created).toLocaleString()}</div>)}</div>
-              </div>}
-            </div>
-          </section>
-        )}
-      </div>
-    </main>
+              <div className="sp-records">
+                {canManage && <section className="sp-record-section">
+                  <div className="sp-record-heading"><span className="sp-record-icon sp-note-icon"><LockKeyhole size={13} /></span><h3>Private notes</h3><span className="sp-record-count">{notes.length}</span></div>
+                  {notes.length ? <div className="sp-record-list">{notes.map((note) => <article key={note.id} className="sp-saved-note" data-testid={`card-support-note-${note.id}`}><div><strong>{note.staffName}</strong><time>{new Date(note.created).toLocaleString()}</time></div><p>{note.text}</p></article>)}</div> : <p className="sp-record-empty">Staff notes added to this case will appear here.</p>}
+                </section>}
+                <section className="sp-record-section">
+                  <div className="sp-record-heading"><span className="sp-record-icon sp-history-icon"><Clock3 size={13} /></span><h3>Case history</h3><span className="sp-record-count">{events.length}</span></div>
+                  {events.length ? <div className="sp-history-list">{events.map((event) => <div key={event.id} className="sp-history-event" data-testid={`text-support-event-${event.id}`}><span className="sp-history-dot" /><span>{event.actorName} · {event.eventType.replaceAll("_", " ")} {event.oldValue && `(${event.oldValue} → ${event.newValue})`}</span><time>{new Date(event.created).toLocaleString()}</time></div>)}</div> : <p className="sp-record-empty">Case updates will be recorded here.</p>}
+                </section>
+              </div>
+            </section>
+          )}
+        </div>
+        <footer className="sp-footer"><span><ShieldCheck size={13} /> Staff-only workspace</span><span>Support Portal <i>·</i> Member data is handled securely</span></footer>
+      </main>
+    </div>
   );
 }
