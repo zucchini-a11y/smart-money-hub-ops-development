@@ -244,7 +244,354 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WhatsAppSettings"
+  /support/auth/session:
+    get:
+      operationId: getSupportSession
+      tags: [support]
+      summary: Check the support staff session
+      responses:
+        "200":
+          description: Session state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportSession"
+  /support/auth/bootstrap:
+    post:
+      operationId: bootstrapSupportOwner
+      tags: [support]
+      summary: Create the first development-only support owner
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SupportBootstrap"
+      responses:
+        "201":
+          description: Owner account created and signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportSession"
+        "409":
+          description: Setup is already complete
+  /support/auth/login:
+    post:
+      operationId: loginSupportStaff
+      tags: [support]
+      summary: Sign in to the support portal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SupportLogin"
+      responses:
+        "200":
+          description: Signed-in staff session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportSession"
+        "401":
+          description: Invalid credentials
+  /support/auth/logout:
+    post:
+      operationId: logoutSupportStaff
+      tags: [support]
+      summary: Sign out of the support portal
+      responses:
+        "204":
+          description: Session ended
+  /support/cases:
+    get:
+      operationId: listSupportCases
+      tags: [support]
+      summary: List cases visible to the signed-in staff member
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [open, closed, all]
+      responses:
+        "200":
+          description: Visible support cases
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportCaseList"
+  /support/cases/{caseId}:
+    get:
+      operationId: getSupportCase
+      tags: [support]
+      summary: Get a case and its conversation history
+      parameters:
+        - name: caseId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Case detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportCaseDetail"
+        "404":
+          description: Case not found or not visible
+  /support/cases/{caseId}/replies:
+    post:
+      operationId: createSupportReply
+      tags: [support]
+      summary: Queue a reply for the case's originating bot
+      parameters:
+        - name: caseId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SupportReplyInput"
+      responses:
+        "202":
+          description: Reply queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportMessage"
+  /support/cases/{caseId}/assignment:
+    patch:
+      operationId: assignSupportCase
+      tags: [support]
+      summary: Assign or unassign a case
+      parameters:
+        - name: caseId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SupportAssignmentInput"
+      responses:
+        "200":
+          description: Updated case
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportCaseSummary"
+  /support/cases/{caseId}/status:
+    patch:
+      operationId: updateSupportCaseStatus
+      tags: [support]
+      summary: Update case workflow status
+      parameters:
+        - name: caseId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SupportStatusInput"
+      responses:
+        "200":
+          description: Updated case
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportCaseSummary"
+  /support/cases/{caseId}/notes:
+    post:
+      operationId: addSupportCaseNote
+      tags: [support]
+      summary: Add a private staff note
+      parameters:
+        - name: caseId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SupportNoteInput"
+      responses:
+        "201":
+          description: Note saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportNote"
+  /support/staff:
+    get:
+      operationId: listSupportStaff
+      tags: [support]
+      summary: List active support staff for assignment
+      responses:
+        "200":
+          description: Staff accounts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SupportStaff"
+  /support/bot/cases:
+    post:
+      operationId: createBotSupportCase
+      tags: [support]
+      summary: Create or retrieve an idempotent case for an authenticated bot
+      security:
+        - botBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BotCreateCaseInput"
+      responses:
+        "201":
+          description: Case created or retrieved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotCase"
+    get:
+      operationId: listMemberBotCases
+      tags: [support]
+      summary: List only the authenticated bot member's cases
+      security:
+        - botBearer: []
+      parameters:
+        - name: telegramUserId
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Member-owned cases
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotCaseList"
+  /support/bot/case:
+    get:
+      operationId: getMemberBotCase
+      tags: [support]
+      summary: Get only an owned case for the authenticated bot
+      security:
+        - botBearer: []
+      parameters:
+        - name: caseId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: telegramUserId
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Member-owned case
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotCaseDetail"
+        "404":
+          description: Case not found or not owned
+  /support/bot/cases/{caseId}/messages:
+    post:
+      operationId: createMemberBotCaseMessage
+      tags: [support]
+      summary: Add an idempotent member reply to an owned case
+      security:
+        - botBearer: []
+      parameters:
+        - name: caseId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BotMemberMessageInput"
+      responses:
+        "201":
+          description: Member message saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportMessage"
+  /support/bot/outbox/claim:
+    post:
+      operationId: claimBotSupportReplies
+      tags: [support]
+      summary: Claim pending replies for this bot without cross-bot delivery
+      security:
+        - botBearer: []
+      responses:
+        "200":
+          description: Claimed replies for delivery
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotOutbox"
+  /support/bot/outbox/{replyId}/ack:
+    post:
+      operationId: acknowledgeBotSupportReply
+      tags: [support]
+      summary: Record delivery outcome without automatic retries
+      security:
+        - botBearer: []
+      parameters:
+        - name: replyId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BotOutboxAckInput"
+      responses:
+        "200":
+          description: Delivery outcome recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotOutboxAck"
 components:
+  securitySchemes:
+    botBearer:
+      type: http
+      scheme: bearer
   schemas:
     HealthStatus:
       type: object
@@ -430,4 +777,187 @@ components:
         telegramCommunityUrl:
           type: ["string", "null"]
           format: uri
+    SupportSession:
+      type: object
+      properties:
+        authenticated: { type: boolean }
+        needsSetup: { type: boolean }
+        staff:
+          anyOf:
+            - $ref: "#/components/schemas/SupportStaff"
+            - type: "null"
+      required: [authenticated, needsSetup, staff]
+    SupportLogin:
+      type: object
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        password: { type: string, minLength: 1, maxLength: 256 }
+      required: [email, password]
+    SupportBootstrap:
+      type: object
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        displayName: { type: string, minLength: 1, maxLength: 100 }
+        password: { type: string, minLength: 12, maxLength: 256 }
+      required: [email, displayName, password]
+    SupportStaff:
+      type: object
+      properties:
+        id: { type: string }
+        displayName: { type: string }
+        role: { type: string, enum: [owner, manager, agent] }
+      required: [id, displayName, role]
+    SupportCaseSummary:
+      type: object
+      properties:
+        caseId: { type: string }
+        sourceBot: { type: string, enum: [signals, coach] }
+        memberId: { type: string }
+        question: { type: string }
+        status: { type: string }
+        workflowStatus: { type: string }
+        category: { type: string }
+        priority: { type: string }
+        assignedStaffId: { type: ["string", "null"] }
+        created: { type: string }
+        updated: { type: string }
+      required: [caseId, sourceBot, memberId, question, status, workflowStatus, category, priority, assignedStaffId, created, updated]
+    SupportCaseList:
+      type: object
+      properties:
+        cases:
+          type: array
+          items: { $ref: "#/components/schemas/SupportCaseSummary" }
+      required: [cases]
+    SupportMessage:
+      type: object
+      properties:
+        id: { type: string }
+        sender: { type: string, enum: [member, staff] }
+        displayName: { type: string }
+        text: { type: string }
+        status: { type: string }
+        created: { type: string }
+      required: [id, sender, displayName, text, status, created]
+    SupportNote:
+      type: object
+      properties:
+        id: { type: string }
+        staffName: { type: string }
+        text: { type: string }
+        created: { type: string }
+      required: [id, staffName, text, created]
+    SupportCaseEvent:
+      type: object
+      properties:
+        id: { type: string }
+        actorName: { type: string }
+        eventType: { type: string }
+        oldValue: { type: string }
+        newValue: { type: string }
+        created: { type: string }
+      required: [id, actorName, eventType, oldValue, newValue, created]
+    SupportCaseDetail:
+      type: object
+      properties:
+        case: { $ref: "#/components/schemas/SupportCaseSummary" }
+        messages:
+          type: array
+          items: { $ref: "#/components/schemas/SupportMessage" }
+        notes:
+          type: array
+          items: { $ref: "#/components/schemas/SupportNote" }
+        events:
+          type: array
+          items: { $ref: "#/components/schemas/SupportCaseEvent" }
+      required: [case, messages, notes, events]
+    SupportReplyInput:
+      type: object
+      properties:
+        text: { type: string, minLength: 3, maxLength: 3000 }
+        requestId: { type: string, minLength: 1, maxLength: 128 }
+      required: [text, requestId]
+    SupportAssignmentInput:
+      type: object
+      properties:
+        assignedStaffId: { type: ["string", "null"] }
+      required: [assignedStaffId]
+    SupportStatusInput:
+      type: object
+      properties:
+        workflowStatus:
+          type: string
+          enum: [new, assigned, in_progress, waiting_for_member, resolved, closed]
+      required: [workflowStatus]
+    SupportNoteInput:
+      type: object
+      properties:
+        text: { type: string, minLength: 3, maxLength: 3000 }
+      required: [text]
+    BotCreateCaseInput:
+      type: object
+      properties:
+        requestId: { type: string, minLength: 1, maxLength: 128 }
+        telegramUserId: { type: integer, minimum: 1 }
+        question: { type: string, minLength: 3, maxLength: 1000 }
+      required: [requestId, telegramUserId, question]
+    BotCase:
+      type: object
+      properties:
+        caseId: { type: string }
+        sourceBot: { type: string, enum: [signals, coach] }
+        telegramUserId: { type: string }
+        question: { type: string }
+        status: { type: string }
+        created: { type: string }
+        updated: { type: string }
+      required: [caseId, sourceBot, telegramUserId, question, status, created, updated]
+    BotCaseList:
+      type: object
+      properties:
+        cases:
+          type: array
+          items: { $ref: "#/components/schemas/BotCase" }
+      required: [cases]
+    BotCaseDetail:
+      type: object
+      properties:
+        case: { $ref: "#/components/schemas/BotCase" }
+        messages:
+          type: array
+          items: { $ref: "#/components/schemas/SupportMessage" }
+      required: [case, messages]
+    BotMemberMessageInput:
+      type: object
+      properties:
+        requestId: { type: string, minLength: 1, maxLength: 128 }
+        telegramUserId: { type: integer, minimum: 1 }
+        text: { type: string, minLength: 3, maxLength: 3000 }
+      required: [requestId, telegramUserId, text]
+    BotOutboxItem:
+      type: object
+      properties:
+        replyId: { type: string }
+        caseId: { type: string }
+        telegramUserId: { type: string }
+        text: { type: string }
+        responderName: { type: string }
+      required: [replyId, caseId, telegramUserId, text, responderName]
+    BotOutbox:
+      type: object
+      properties:
+        replies:
+          type: array
+          items: { $ref: "#/components/schemas/BotOutboxItem" }
+      required: [replies]
+    BotOutboxAckInput:
+      type: object
+      properties:
+        outcome: { type: string, enum: [sent, failed, uncertain] }
+      required: [outcome]
+    BotOutboxAck:
+      type: object
+      properties:
+        status: { type: string, enum: [sent, failed, uncertain] }
+      required: [status]
 

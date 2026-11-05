@@ -250,3 +250,407 @@ export const UpdateWhatsAppSettingsResponse = zod.object({
 })
 
 
+/**
+ * @summary Check the support staff session
+ */
+export const GetSupportSessionResponse = zod.object({
+  "authenticated": zod.boolean(),
+  "needsSetup": zod.boolean(),
+  "staff": zod.union([zod.object({
+  "id": zod.string(),
+  "displayName": zod.string(),
+  "role": zod.enum(['owner', 'manager', 'agent'])
+}),zod.null()])
+})
+
+
+/**
+ * @summary Create the first development-only support owner
+ */
+export const bootstrapSupportOwnerBodyEmailMax = 254;
+
+export const bootstrapSupportOwnerBodyDisplayNameMax = 100;
+
+export const bootstrapSupportOwnerBodyPasswordMin = 12;
+export const bootstrapSupportOwnerBodyPasswordMax = 256;
+
+
+
+export const BootstrapSupportOwnerBody = zod.object({
+  "email": zod.string().email().max(bootstrapSupportOwnerBodyEmailMax),
+  "displayName": zod.string().min(1).max(bootstrapSupportOwnerBodyDisplayNameMax),
+  "password": zod.string().min(bootstrapSupportOwnerBodyPasswordMin).max(bootstrapSupportOwnerBodyPasswordMax)
+})
+
+export const BootstrapSupportOwnerResponse = zod.object({
+  "authenticated": zod.boolean(),
+  "needsSetup": zod.boolean(),
+  "staff": zod.union([zod.object({
+  "id": zod.string(),
+  "displayName": zod.string(),
+  "role": zod.enum(['owner', 'manager', 'agent'])
+}),zod.null()])
+})
+
+
+/**
+ * @summary Sign in to the support portal
+ */
+export const loginSupportStaffBodyEmailMax = 254;
+
+export const loginSupportStaffBodyPasswordMax = 256;
+
+
+
+export const LoginSupportStaffBody = zod.object({
+  "email": zod.string().email().max(loginSupportStaffBodyEmailMax),
+  "password": zod.string().min(1).max(loginSupportStaffBodyPasswordMax)
+})
+
+export const LoginSupportStaffResponse = zod.object({
+  "authenticated": zod.boolean(),
+  "needsSetup": zod.boolean(),
+  "staff": zod.union([zod.object({
+  "id": zod.string(),
+  "displayName": zod.string(),
+  "role": zod.enum(['owner', 'manager', 'agent'])
+}),zod.null()])
+})
+
+
+/**
+ * @summary Sign out of the support portal
+ */
+export const LogoutSupportStaffResponse = zod.void()
+
+
+/**
+ * @summary List cases visible to the signed-in staff member
+ */
+export const ListSupportCasesQueryParams = zod.object({
+  "status": zod.enum(['open', 'closed', 'all']).optional()
+})
+
+export const ListSupportCasesResponse = zod.object({
+  "cases": zod.array(zod.object({
+  "caseId": zod.string(),
+  "sourceBot": zod.enum(['signals', 'coach']),
+  "memberId": zod.string(),
+  "question": zod.string(),
+  "status": zod.string(),
+  "workflowStatus": zod.string(),
+  "category": zod.string(),
+  "priority": zod.string(),
+  "assignedStaffId": zod.string().nullable(),
+  "created": zod.string(),
+  "updated": zod.string()
+}))
+})
+
+
+/**
+ * @summary Get a case and its conversation history
+ */
+export const GetSupportCaseParams = zod.object({
+  "caseId": zod.coerce.string()
+})
+
+export const GetSupportCaseResponse = zod.object({
+  "case": zod.object({
+  "caseId": zod.string(),
+  "sourceBot": zod.enum(['signals', 'coach']),
+  "memberId": zod.string(),
+  "question": zod.string(),
+  "status": zod.string(),
+  "workflowStatus": zod.string(),
+  "category": zod.string(),
+  "priority": zod.string(),
+  "assignedStaffId": zod.string().nullable(),
+  "created": zod.string(),
+  "updated": zod.string()
+}),
+  "messages": zod.array(zod.object({
+  "id": zod.string(),
+  "sender": zod.enum(['member', 'staff']),
+  "displayName": zod.string(),
+  "text": zod.string(),
+  "status": zod.string(),
+  "created": zod.string()
+})),
+  "notes": zod.array(zod.object({
+  "id": zod.string(),
+  "staffName": zod.string(),
+  "text": zod.string(),
+  "created": zod.string()
+})),
+  "events": zod.array(zod.object({
+  "id": zod.string(),
+  "actorName": zod.string(),
+  "eventType": zod.string(),
+  "oldValue": zod.string(),
+  "newValue": zod.string(),
+  "created": zod.string()
+}))
+})
+
+
+/**
+ * @summary Queue a reply for the case's originating bot
+ */
+export const CreateSupportReplyParams = zod.object({
+  "caseId": zod.coerce.string()
+})
+
+export const createSupportReplyBodyTextMin = 3;
+export const createSupportReplyBodyTextMax = 3000;
+
+export const createSupportReplyBodyRequestIdMax = 128;
+
+
+
+export const CreateSupportReplyBody = zod.object({
+  "text": zod.string().min(createSupportReplyBodyTextMin).max(createSupportReplyBodyTextMax),
+  "requestId": zod.string().min(1).max(createSupportReplyBodyRequestIdMax)
+})
+
+export const CreateSupportReplyResponse = zod.object({
+  "id": zod.string(),
+  "sender": zod.enum(['member', 'staff']),
+  "displayName": zod.string(),
+  "text": zod.string(),
+  "status": zod.string(),
+  "created": zod.string()
+})
+
+
+/**
+ * @summary Assign or unassign a case
+ */
+export const AssignSupportCaseParams = zod.object({
+  "caseId": zod.coerce.string()
+})
+
+export const AssignSupportCaseBody = zod.object({
+  "assignedStaffId": zod.string().nullable()
+})
+
+export const AssignSupportCaseResponse = zod.object({
+  "caseId": zod.string(),
+  "sourceBot": zod.enum(['signals', 'coach']),
+  "memberId": zod.string(),
+  "question": zod.string(),
+  "status": zod.string(),
+  "workflowStatus": zod.string(),
+  "category": zod.string(),
+  "priority": zod.string(),
+  "assignedStaffId": zod.string().nullable(),
+  "created": zod.string(),
+  "updated": zod.string()
+})
+
+
+/**
+ * @summary Update case workflow status
+ */
+export const UpdateSupportCaseStatusParams = zod.object({
+  "caseId": zod.coerce.string()
+})
+
+export const UpdateSupportCaseStatusBody = zod.object({
+  "workflowStatus": zod.enum(['new', 'assigned', 'in_progress', 'waiting_for_member', 'resolved', 'closed'])
+})
+
+export const UpdateSupportCaseStatusResponse = zod.object({
+  "caseId": zod.string(),
+  "sourceBot": zod.enum(['signals', 'coach']),
+  "memberId": zod.string(),
+  "question": zod.string(),
+  "status": zod.string(),
+  "workflowStatus": zod.string(),
+  "category": zod.string(),
+  "priority": zod.string(),
+  "assignedStaffId": zod.string().nullable(),
+  "created": zod.string(),
+  "updated": zod.string()
+})
+
+
+/**
+ * @summary Add a private staff note
+ */
+export const AddSupportCaseNoteParams = zod.object({
+  "caseId": zod.coerce.string()
+})
+
+export const addSupportCaseNoteBodyTextMin = 3;
+export const addSupportCaseNoteBodyTextMax = 3000;
+
+
+
+export const AddSupportCaseNoteBody = zod.object({
+  "text": zod.string().min(addSupportCaseNoteBodyTextMin).max(addSupportCaseNoteBodyTextMax)
+})
+
+export const AddSupportCaseNoteResponse = zod.object({
+  "id": zod.string(),
+  "staffName": zod.string(),
+  "text": zod.string(),
+  "created": zod.string()
+})
+
+
+/**
+ * @summary List active support staff for assignment
+ */
+export const ListSupportStaffResponseItem = zod.object({
+  "id": zod.string(),
+  "displayName": zod.string(),
+  "role": zod.enum(['owner', 'manager', 'agent'])
+})
+export const ListSupportStaffResponse = zod.array(ListSupportStaffResponseItem)
+
+
+/**
+ * @summary Create or retrieve an idempotent case for an authenticated bot
+ */
+export const createBotSupportCaseBodyRequestIdMax = 128;
+
+
+export const createBotSupportCaseBodyQuestionMin = 3;
+export const createBotSupportCaseBodyQuestionMax = 1000;
+
+
+
+export const CreateBotSupportCaseBody = zod.object({
+  "requestId": zod.string().min(1).max(createBotSupportCaseBodyRequestIdMax),
+  "telegramUserId": zod.number().int().min(1),
+  "question": zod.string().min(createBotSupportCaseBodyQuestionMin).max(createBotSupportCaseBodyQuestionMax)
+})
+
+export const CreateBotSupportCaseResponse = zod.object({
+  "caseId": zod.string(),
+  "sourceBot": zod.enum(['signals', 'coach']),
+  "telegramUserId": zod.string(),
+  "question": zod.string(),
+  "status": zod.string(),
+  "created": zod.string(),
+  "updated": zod.string()
+})
+
+
+/**
+ * @summary List only the authenticated bot member's cases
+ */
+
+
+
+export const ListMemberBotCasesQueryParams = zod.object({
+  "telegramUserId": zod.coerce.number().int().min(1)
+})
+
+export const ListMemberBotCasesResponse = zod.object({
+  "cases": zod.array(zod.object({
+  "caseId": zod.string(),
+  "sourceBot": zod.enum(['signals', 'coach']),
+  "telegramUserId": zod.string(),
+  "question": zod.string(),
+  "status": zod.string(),
+  "created": zod.string(),
+  "updated": zod.string()
+}))
+})
+
+
+/**
+ * @summary Get only an owned case for the authenticated bot
+ */
+
+
+
+export const GetMemberBotCaseQueryParams = zod.object({
+  "caseId": zod.coerce.string(),
+  "telegramUserId": zod.coerce.number().int().min(1)
+})
+
+export const GetMemberBotCaseResponse = zod.object({
+  "case": zod.object({
+  "caseId": zod.string(),
+  "sourceBot": zod.enum(['signals', 'coach']),
+  "telegramUserId": zod.string(),
+  "question": zod.string(),
+  "status": zod.string(),
+  "created": zod.string(),
+  "updated": zod.string()
+}),
+  "messages": zod.array(zod.object({
+  "id": zod.string(),
+  "sender": zod.enum(['member', 'staff']),
+  "displayName": zod.string(),
+  "text": zod.string(),
+  "status": zod.string(),
+  "created": zod.string()
+}))
+})
+
+
+/**
+ * @summary Add an idempotent member reply to an owned case
+ */
+export const CreateMemberBotCaseMessageParams = zod.object({
+  "caseId": zod.coerce.string()
+})
+
+export const createMemberBotCaseMessageBodyRequestIdMax = 128;
+
+
+export const createMemberBotCaseMessageBodyTextMin = 3;
+export const createMemberBotCaseMessageBodyTextMax = 3000;
+
+
+
+export const CreateMemberBotCaseMessageBody = zod.object({
+  "requestId": zod.string().min(1).max(createMemberBotCaseMessageBodyRequestIdMax),
+  "telegramUserId": zod.number().int().min(1),
+  "text": zod.string().min(createMemberBotCaseMessageBodyTextMin).max(createMemberBotCaseMessageBodyTextMax)
+})
+
+export const CreateMemberBotCaseMessageResponse = zod.object({
+  "id": zod.string(),
+  "sender": zod.enum(['member', 'staff']),
+  "displayName": zod.string(),
+  "text": zod.string(),
+  "status": zod.string(),
+  "created": zod.string()
+})
+
+
+/**
+ * @summary Claim pending replies for this bot without cross-bot delivery
+ */
+export const ClaimBotSupportRepliesResponse = zod.object({
+  "replies": zod.array(zod.object({
+  "replyId": zod.string(),
+  "caseId": zod.string(),
+  "telegramUserId": zod.string(),
+  "text": zod.string(),
+  "responderName": zod.string()
+}))
+})
+
+
+/**
+ * @summary Record delivery outcome without automatic retries
+ */
+export const AcknowledgeBotSupportReplyParams = zod.object({
+  "replyId": zod.coerce.string()
+})
+
+export const AcknowledgeBotSupportReplyBody = zod.object({
+  "outcome": zod.enum(['sent', 'failed', 'uncertain'])
+})
+
+export const AcknowledgeBotSupportReplyResponse = zod.object({
+  "status": zod.enum(['sent', 'failed', 'uncertain'])
+})
+
+

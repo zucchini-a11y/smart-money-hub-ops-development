@@ -23,10 +23,34 @@ import type {
   AdminLogin,
   AdminReply,
   AuthStatus,
+  BotCase,
+  BotCaseDetail,
+  BotCaseList,
+  BotCreateCaseInput,
+  BotMemberMessageInput,
+  BotOutbox,
+  BotOutboxAck,
+  BotOutboxAckInput,
   EducationModule,
   EducationModuleUpdate,
+  GetMemberBotCaseParams,
   HealthStatus,
+  ListMemberBotCasesParams,
+  ListSupportCasesParams,
   ListWhatsAppConversationsParams,
+  SupportAssignmentInput,
+  SupportBootstrap,
+  SupportCaseDetail,
+  SupportCaseList,
+  SupportCaseSummary,
+  SupportLogin,
+  SupportMessage,
+  SupportNote,
+  SupportNoteInput,
+  SupportReplyInput,
+  SupportSession,
+  SupportStaff,
+  SupportStatusInput,
   WhatsAppActivity,
   WhatsAppConversation,
   WhatsAppConversationDetail,
@@ -1191,5 +1215,1434 @@ export const useUpdateWhatsAppSettings = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getUpdateWhatsAppSettingsMutationOptions(options));
+    }
+
+export const getGetSupportSessionUrl = () => {
+
+
+
+
+  return `/api/support/auth/session`
+}
+
+/**
+ * @summary Check the support staff session
+ */
+export const getSupportSession = async ( options?: Parameters<typeof customFetch>[1]): Promise<SupportSession> => {
+
+  return customFetch<SupportSession>(getGetSupportSessionUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSupportSessionQueryKey = () => {
+    return [
+    `/api/support/auth/session`
+    ] as const;
+    }
+
+
+export const getGetSupportSessionQueryOptions = <TData = Awaited<ReturnType<typeof getSupportSession>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSupportSession>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSupportSessionQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSupportSession>>> = ({ signal }) => getSupportSession({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSupportSession>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSupportSessionQueryResult = NonNullable<Awaited<ReturnType<typeof getSupportSession>>>
+export type GetSupportSessionQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Check the support staff session
+ */
+
+export function useGetSupportSession<TData = Awaited<ReturnType<typeof getSupportSession>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSupportSession>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSupportSessionQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getBootstrapSupportOwnerUrl = () => {
+
+
+
+
+  return `/api/support/auth/bootstrap`
+}
+
+/**
+ * @summary Create the first development-only support owner
+ */
+export const bootstrapSupportOwner = async (supportBootstrap: SupportBootstrap, options?: Parameters<typeof customFetch>[1]): Promise<SupportSession> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<SupportSession>(getBootstrapSupportOwnerUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(supportBootstrap)
+  }
+);}
+
+
+
+
+
+export const getBootstrapSupportOwnerMutationKey = () => ['bootstrapSupportOwner'] as const;
+
+export const getBootstrapSupportOwnerMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bootstrapSupportOwner>>, TError,BootstrapSupportOwnerMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bootstrapSupportOwner>>, TError,BootstrapSupportOwnerMutationVariables, TContext> => {
+
+const mutationKey = getBootstrapSupportOwnerMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bootstrapSupportOwner>>, BootstrapSupportOwnerMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  bootstrapSupportOwner(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BootstrapSupportOwnerMutationResult = NonNullable<Awaited<ReturnType<typeof bootstrapSupportOwner>>>
+    export type BootstrapSupportOwnerMutationBody = BodyType<SupportBootstrap>
+    export type BootstrapSupportOwnerMutationError = ErrorType<void>
+    export type BootstrapSupportOwnerMutationVariables = {data: BodyType<SupportBootstrap>}
+
+    /**
+ * @summary Create the first development-only support owner
+ */
+export const useBootstrapSupportOwner = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bootstrapSupportOwner>>, TError,BootstrapSupportOwnerMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof bootstrapSupportOwner>>,
+        TError,
+        BootstrapSupportOwnerMutationVariables,
+        TContext
+      > => {
+      return useMutation(getBootstrapSupportOwnerMutationOptions(options));
+    }
+
+export const getLoginSupportStaffUrl = () => {
+
+
+
+
+  return `/api/support/auth/login`
+}
+
+/**
+ * @summary Sign in to the support portal
+ */
+export const loginSupportStaff = async (supportLogin: SupportLogin, options?: Parameters<typeof customFetch>[1]): Promise<SupportSession> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<SupportSession>(getLoginSupportStaffUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(supportLogin)
+  }
+);}
+
+
+
+
+
+export const getLoginSupportStaffMutationKey = () => ['loginSupportStaff'] as const;
+
+export const getLoginSupportStaffMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof loginSupportStaff>>, TError,LoginSupportStaffMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof loginSupportStaff>>, TError,LoginSupportStaffMutationVariables, TContext> => {
+
+const mutationKey = getLoginSupportStaffMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof loginSupportStaff>>, LoginSupportStaffMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  loginSupportStaff(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LoginSupportStaffMutationResult = NonNullable<Awaited<ReturnType<typeof loginSupportStaff>>>
+    export type LoginSupportStaffMutationBody = BodyType<SupportLogin>
+    export type LoginSupportStaffMutationError = ErrorType<void>
+    export type LoginSupportStaffMutationVariables = {data: BodyType<SupportLogin>}
+
+    /**
+ * @summary Sign in to the support portal
+ */
+export const useLoginSupportStaff = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof loginSupportStaff>>, TError,LoginSupportStaffMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof loginSupportStaff>>,
+        TError,
+        LoginSupportStaffMutationVariables,
+        TContext
+      > => {
+      return useMutation(getLoginSupportStaffMutationOptions(options));
+    }
+
+export const getLogoutSupportStaffUrl = () => {
+
+
+
+
+  return `/api/support/auth/logout`
+}
+
+/**
+ * @summary Sign out of the support portal
+ */
+export const logoutSupportStaff = async ( options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getLogoutSupportStaffUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getLogoutSupportStaffMutationKey = () => ['logoutSupportStaff'] as const;
+
+export const getLogoutSupportStaffMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof logoutSupportStaff>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof logoutSupportStaff>>, TError,void, TContext> => {
+
+const mutationKey = getLogoutSupportStaffMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof logoutSupportStaff>>, void> = () => {
+
+
+          return  logoutSupportStaff(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LogoutSupportStaffMutationResult = NonNullable<Awaited<ReturnType<typeof logoutSupportStaff>>>
+
+    export type LogoutSupportStaffMutationError = ErrorType<unknown>
+
+
+    /**
+ * @summary Sign out of the support portal
+ */
+export const useLogoutSupportStaff = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof logoutSupportStaff>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof logoutSupportStaff>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getLogoutSupportStaffMutationOptions(options));
+    }
+
+export const getListSupportCasesUrl = (params?: ListSupportCasesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/support/cases?${stringifiedParams}` : `/api/support/cases`
+}
+
+/**
+ * @summary List cases visible to the signed-in staff member
+ */
+export const listSupportCases = async (params?: ListSupportCasesParams, options?: Parameters<typeof customFetch>[1]): Promise<SupportCaseList> => {
+
+  return customFetch<SupportCaseList>(getListSupportCasesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSupportCasesQueryKey = (params?: ListSupportCasesParams,) => {
+    return [
+    `/api/support/cases`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListSupportCasesQueryOptions = <TData = Awaited<ReturnType<typeof listSupportCases>>, TError = ErrorType<unknown>>(params?: ListSupportCasesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSupportCases>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSupportCasesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSupportCases>>> = ({ signal }) => listSupportCases(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSupportCases>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSupportCasesQueryResult = NonNullable<Awaited<ReturnType<typeof listSupportCases>>>
+export type ListSupportCasesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List cases visible to the signed-in staff member
+ */
+
+export function useListSupportCases<TData = Awaited<ReturnType<typeof listSupportCases>>, TError = ErrorType<unknown>>(
+ params?: ListSupportCasesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSupportCases>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSupportCasesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetSupportCaseUrl = (caseId: string,) => {
+
+
+
+
+  return `/api/support/cases/${caseId}`
+}
+
+/**
+ * @summary Get a case and its conversation history
+ */
+export const getSupportCase = async (caseId: string, options?: Parameters<typeof customFetch>[1]): Promise<SupportCaseDetail> => {
+
+  return customFetch<SupportCaseDetail>(getGetSupportCaseUrl(caseId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSupportCaseQueryKey = (caseId: string,) => {
+    return [
+    `/api/support/cases/${caseId}`
+    ] as const;
+    }
+
+
+export const getGetSupportCaseQueryOptions = <TData = Awaited<ReturnType<typeof getSupportCase>>, TError = ErrorType<void>>(caseId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSupportCase>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSupportCaseQueryKey(caseId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSupportCase>>> = ({ signal }) => getSupportCase(caseId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: caseId !== null && caseId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSupportCase>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSupportCaseQueryResult = NonNullable<Awaited<ReturnType<typeof getSupportCase>>>
+export type GetSupportCaseQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get a case and its conversation history
+ */
+
+export function useGetSupportCase<TData = Awaited<ReturnType<typeof getSupportCase>>, TError = ErrorType<void>>(
+ caseId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSupportCase>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSupportCaseQueryOptions(caseId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateSupportReplyUrl = (caseId: string,) => {
+
+
+
+
+  return `/api/support/cases/${caseId}/replies`
+}
+
+/**
+ * @summary Queue a reply for the case's originating bot
+ */
+export const createSupportReply = async (caseId: string,
+    supportReplyInput: SupportReplyInput, options?: Parameters<typeof customFetch>[1]): Promise<SupportMessage> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<SupportMessage>(getCreateSupportReplyUrl(caseId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(supportReplyInput)
+  }
+);}
+
+
+
+
+
+export const getCreateSupportReplyMutationKey = () => ['createSupportReply'] as const;
+
+export const getCreateSupportReplyMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSupportReply>>, TError,CreateSupportReplyMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createSupportReply>>, TError,CreateSupportReplyMutationVariables, TContext> => {
+
+const mutationKey = getCreateSupportReplyMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createSupportReply>>, CreateSupportReplyMutationVariables> = (props) => {
+          const {caseId,data} = props ?? {};
+
+          return  createSupportReply(caseId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateSupportReplyMutationResult = NonNullable<Awaited<ReturnType<typeof createSupportReply>>>
+    export type CreateSupportReplyMutationBody = BodyType<SupportReplyInput>
+    export type CreateSupportReplyMutationError = ErrorType<unknown>
+    export type CreateSupportReplyMutationVariables = {caseId: string;data: BodyType<SupportReplyInput>}
+
+    /**
+ * @summary Queue a reply for the case's originating bot
+ */
+export const useCreateSupportReply = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSupportReply>>, TError,CreateSupportReplyMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createSupportReply>>,
+        TError,
+        CreateSupportReplyMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateSupportReplyMutationOptions(options));
+    }
+
+export const getAssignSupportCaseUrl = (caseId: string,) => {
+
+
+
+
+  return `/api/support/cases/${caseId}/assignment`
+}
+
+/**
+ * @summary Assign or unassign a case
+ */
+export const assignSupportCase = async (caseId: string,
+    supportAssignmentInput: SupportAssignmentInput, options?: Parameters<typeof customFetch>[1]): Promise<SupportCaseSummary> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<SupportCaseSummary>(getAssignSupportCaseUrl(caseId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(supportAssignmentInput)
+  }
+);}
+
+
+
+
+
+export const getAssignSupportCaseMutationKey = () => ['assignSupportCase'] as const;
+
+export const getAssignSupportCaseMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof assignSupportCase>>, TError,AssignSupportCaseMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof assignSupportCase>>, TError,AssignSupportCaseMutationVariables, TContext> => {
+
+const mutationKey = getAssignSupportCaseMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof assignSupportCase>>, AssignSupportCaseMutationVariables> = (props) => {
+          const {caseId,data} = props ?? {};
+
+          return  assignSupportCase(caseId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AssignSupportCaseMutationResult = NonNullable<Awaited<ReturnType<typeof assignSupportCase>>>
+    export type AssignSupportCaseMutationBody = BodyType<SupportAssignmentInput>
+    export type AssignSupportCaseMutationError = ErrorType<unknown>
+    export type AssignSupportCaseMutationVariables = {caseId: string;data: BodyType<SupportAssignmentInput>}
+
+    /**
+ * @summary Assign or unassign a case
+ */
+export const useAssignSupportCase = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof assignSupportCase>>, TError,AssignSupportCaseMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof assignSupportCase>>,
+        TError,
+        AssignSupportCaseMutationVariables,
+        TContext
+      > => {
+      return useMutation(getAssignSupportCaseMutationOptions(options));
+    }
+
+export const getUpdateSupportCaseStatusUrl = (caseId: string,) => {
+
+
+
+
+  return `/api/support/cases/${caseId}/status`
+}
+
+/**
+ * @summary Update case workflow status
+ */
+export const updateSupportCaseStatus = async (caseId: string,
+    supportStatusInput: SupportStatusInput, options?: Parameters<typeof customFetch>[1]): Promise<SupportCaseSummary> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<SupportCaseSummary>(getUpdateSupportCaseStatusUrl(caseId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(supportStatusInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateSupportCaseStatusMutationKey = () => ['updateSupportCaseStatus'] as const;
+
+export const getUpdateSupportCaseStatusMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSupportCaseStatus>>, TError,UpdateSupportCaseStatusMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateSupportCaseStatus>>, TError,UpdateSupportCaseStatusMutationVariables, TContext> => {
+
+const mutationKey = getUpdateSupportCaseStatusMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateSupportCaseStatus>>, UpdateSupportCaseStatusMutationVariables> = (props) => {
+          const {caseId,data} = props ?? {};
+
+          return  updateSupportCaseStatus(caseId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateSupportCaseStatusMutationResult = NonNullable<Awaited<ReturnType<typeof updateSupportCaseStatus>>>
+    export type UpdateSupportCaseStatusMutationBody = BodyType<SupportStatusInput>
+    export type UpdateSupportCaseStatusMutationError = ErrorType<unknown>
+    export type UpdateSupportCaseStatusMutationVariables = {caseId: string;data: BodyType<SupportStatusInput>}
+
+    /**
+ * @summary Update case workflow status
+ */
+export const useUpdateSupportCaseStatus = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSupportCaseStatus>>, TError,UpdateSupportCaseStatusMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateSupportCaseStatus>>,
+        TError,
+        UpdateSupportCaseStatusMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateSupportCaseStatusMutationOptions(options));
+    }
+
+export const getAddSupportCaseNoteUrl = (caseId: string,) => {
+
+
+
+
+  return `/api/support/cases/${caseId}/notes`
+}
+
+/**
+ * @summary Add a private staff note
+ */
+export const addSupportCaseNote = async (caseId: string,
+    supportNoteInput: SupportNoteInput, options?: Parameters<typeof customFetch>[1]): Promise<SupportNote> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<SupportNote>(getAddSupportCaseNoteUrl(caseId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(supportNoteInput)
+  }
+);}
+
+
+
+
+
+export const getAddSupportCaseNoteMutationKey = () => ['addSupportCaseNote'] as const;
+
+export const getAddSupportCaseNoteMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addSupportCaseNote>>, TError,AddSupportCaseNoteMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof addSupportCaseNote>>, TError,AddSupportCaseNoteMutationVariables, TContext> => {
+
+const mutationKey = getAddSupportCaseNoteMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof addSupportCaseNote>>, AddSupportCaseNoteMutationVariables> = (props) => {
+          const {caseId,data} = props ?? {};
+
+          return  addSupportCaseNote(caseId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AddSupportCaseNoteMutationResult = NonNullable<Awaited<ReturnType<typeof addSupportCaseNote>>>
+    export type AddSupportCaseNoteMutationBody = BodyType<SupportNoteInput>
+    export type AddSupportCaseNoteMutationError = ErrorType<unknown>
+    export type AddSupportCaseNoteMutationVariables = {caseId: string;data: BodyType<SupportNoteInput>}
+
+    /**
+ * @summary Add a private staff note
+ */
+export const useAddSupportCaseNote = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addSupportCaseNote>>, TError,AddSupportCaseNoteMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof addSupportCaseNote>>,
+        TError,
+        AddSupportCaseNoteMutationVariables,
+        TContext
+      > => {
+      return useMutation(getAddSupportCaseNoteMutationOptions(options));
+    }
+
+export const getListSupportStaffUrl = () => {
+
+
+
+
+  return `/api/support/staff`
+}
+
+/**
+ * @summary List active support staff for assignment
+ */
+export const listSupportStaff = async ( options?: Parameters<typeof customFetch>[1]): Promise<SupportStaff[]> => {
+
+  return customFetch<SupportStaff[]>(getListSupportStaffUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSupportStaffQueryKey = () => {
+    return [
+    `/api/support/staff`
+    ] as const;
+    }
+
+
+export const getListSupportStaffQueryOptions = <TData = Awaited<ReturnType<typeof listSupportStaff>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSupportStaff>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSupportStaffQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSupportStaff>>> = ({ signal }) => listSupportStaff({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSupportStaff>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSupportStaffQueryResult = NonNullable<Awaited<ReturnType<typeof listSupportStaff>>>
+export type ListSupportStaffQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List active support staff for assignment
+ */
+
+export function useListSupportStaff<TData = Awaited<ReturnType<typeof listSupportStaff>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSupportStaff>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSupportStaffQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateBotSupportCaseUrl = () => {
+
+
+
+
+  return `/api/support/bot/cases`
+}
+
+/**
+ * @summary Create or retrieve an idempotent case for an authenticated bot
+ */
+export const createBotSupportCase = async (botCreateCaseInput: BotCreateCaseInput, options?: Parameters<typeof customFetch>[1]): Promise<BotCase> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<BotCase>(getCreateBotSupportCaseUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(botCreateCaseInput)
+  }
+);}
+
+
+
+
+
+export const getCreateBotSupportCaseMutationKey = () => ['createBotSupportCase'] as const;
+
+export const getCreateBotSupportCaseMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createBotSupportCase>>, TError,CreateBotSupportCaseMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createBotSupportCase>>, TError,CreateBotSupportCaseMutationVariables, TContext> => {
+
+const mutationKey = getCreateBotSupportCaseMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createBotSupportCase>>, CreateBotSupportCaseMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createBotSupportCase(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateBotSupportCaseMutationResult = NonNullable<Awaited<ReturnType<typeof createBotSupportCase>>>
+    export type CreateBotSupportCaseMutationBody = BodyType<BotCreateCaseInput>
+    export type CreateBotSupportCaseMutationError = ErrorType<unknown>
+    export type CreateBotSupportCaseMutationVariables = {data: BodyType<BotCreateCaseInput>}
+
+    /**
+ * @summary Create or retrieve an idempotent case for an authenticated bot
+ */
+export const useCreateBotSupportCase = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createBotSupportCase>>, TError,CreateBotSupportCaseMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createBotSupportCase>>,
+        TError,
+        CreateBotSupportCaseMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateBotSupportCaseMutationOptions(options));
+    }
+
+export const getListMemberBotCasesUrl = (params: ListMemberBotCasesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/support/bot/cases?${stringifiedParams}` : `/api/support/bot/cases`
+}
+
+/**
+ * @summary List only the authenticated bot member's cases
+ */
+export const listMemberBotCases = async (params: ListMemberBotCasesParams, options?: Parameters<typeof customFetch>[1]): Promise<BotCaseList> => {
+
+  return customFetch<BotCaseList>(getListMemberBotCasesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListMemberBotCasesQueryKey = (params?: ListMemberBotCasesParams,) => {
+    return [
+    `/api/support/bot/cases`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListMemberBotCasesQueryOptions = <TData = Awaited<ReturnType<typeof listMemberBotCases>>, TError = ErrorType<unknown>>(params: ListMemberBotCasesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMemberBotCases>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListMemberBotCasesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listMemberBotCases>>> = ({ signal }) => listMemberBotCases(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listMemberBotCases>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListMemberBotCasesQueryResult = NonNullable<Awaited<ReturnType<typeof listMemberBotCases>>>
+export type ListMemberBotCasesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List only the authenticated bot member's cases
+ */
+
+export function useListMemberBotCases<TData = Awaited<ReturnType<typeof listMemberBotCases>>, TError = ErrorType<unknown>>(
+ params: ListMemberBotCasesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMemberBotCases>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListMemberBotCasesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetMemberBotCaseUrl = (params: GetMemberBotCaseParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/support/bot/case?${stringifiedParams}` : `/api/support/bot/case`
+}
+
+/**
+ * @summary Get only an owned case for the authenticated bot
+ */
+export const getMemberBotCase = async (params: GetMemberBotCaseParams, options?: Parameters<typeof customFetch>[1]): Promise<BotCaseDetail> => {
+
+  return customFetch<BotCaseDetail>(getGetMemberBotCaseUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMemberBotCaseQueryKey = (params?: GetMemberBotCaseParams,) => {
+    return [
+    `/api/support/bot/case`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetMemberBotCaseQueryOptions = <TData = Awaited<ReturnType<typeof getMemberBotCase>>, TError = ErrorType<void>>(params: GetMemberBotCaseParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMemberBotCase>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMemberBotCaseQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMemberBotCase>>> = ({ signal }) => getMemberBotCase(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMemberBotCase>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMemberBotCaseQueryResult = NonNullable<Awaited<ReturnType<typeof getMemberBotCase>>>
+export type GetMemberBotCaseQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get only an owned case for the authenticated bot
+ */
+
+export function useGetMemberBotCase<TData = Awaited<ReturnType<typeof getMemberBotCase>>, TError = ErrorType<void>>(
+ params: GetMemberBotCaseParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMemberBotCase>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMemberBotCaseQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateMemberBotCaseMessageUrl = (caseId: string,) => {
+
+
+
+
+  return `/api/support/bot/cases/${caseId}/messages`
+}
+
+/**
+ * @summary Add an idempotent member reply to an owned case
+ */
+export const createMemberBotCaseMessage = async (caseId: string,
+    botMemberMessageInput: BotMemberMessageInput, options?: Parameters<typeof customFetch>[1]): Promise<SupportMessage> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<SupportMessage>(getCreateMemberBotCaseMessageUrl(caseId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(botMemberMessageInput)
+  }
+);}
+
+
+
+
+
+export const getCreateMemberBotCaseMessageMutationKey = () => ['createMemberBotCaseMessage'] as const;
+
+export const getCreateMemberBotCaseMessageMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createMemberBotCaseMessage>>, TError,CreateMemberBotCaseMessageMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createMemberBotCaseMessage>>, TError,CreateMemberBotCaseMessageMutationVariables, TContext> => {
+
+const mutationKey = getCreateMemberBotCaseMessageMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createMemberBotCaseMessage>>, CreateMemberBotCaseMessageMutationVariables> = (props) => {
+          const {caseId,data} = props ?? {};
+
+          return  createMemberBotCaseMessage(caseId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateMemberBotCaseMessageMutationResult = NonNullable<Awaited<ReturnType<typeof createMemberBotCaseMessage>>>
+    export type CreateMemberBotCaseMessageMutationBody = BodyType<BotMemberMessageInput>
+    export type CreateMemberBotCaseMessageMutationError = ErrorType<unknown>
+    export type CreateMemberBotCaseMessageMutationVariables = {caseId: string;data: BodyType<BotMemberMessageInput>}
+
+    /**
+ * @summary Add an idempotent member reply to an owned case
+ */
+export const useCreateMemberBotCaseMessage = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createMemberBotCaseMessage>>, TError,CreateMemberBotCaseMessageMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createMemberBotCaseMessage>>,
+        TError,
+        CreateMemberBotCaseMessageMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateMemberBotCaseMessageMutationOptions(options));
+    }
+
+export const getClaimBotSupportRepliesUrl = () => {
+
+
+
+
+  return `/api/support/bot/outbox/claim`
+}
+
+/**
+ * @summary Claim pending replies for this bot without cross-bot delivery
+ */
+export const claimBotSupportReplies = async ( options?: Parameters<typeof customFetch>[1]): Promise<BotOutbox> => {
+
+  return customFetch<BotOutbox>(getClaimBotSupportRepliesUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getClaimBotSupportRepliesMutationKey = () => ['claimBotSupportReplies'] as const;
+
+export const getClaimBotSupportRepliesMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof claimBotSupportReplies>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof claimBotSupportReplies>>, TError,void, TContext> => {
+
+const mutationKey = getClaimBotSupportRepliesMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof claimBotSupportReplies>>, void> = () => {
+
+
+          return  claimBotSupportReplies(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ClaimBotSupportRepliesMutationResult = NonNullable<Awaited<ReturnType<typeof claimBotSupportReplies>>>
+
+    export type ClaimBotSupportRepliesMutationError = ErrorType<unknown>
+
+
+    /**
+ * @summary Claim pending replies for this bot without cross-bot delivery
+ */
+export const useClaimBotSupportReplies = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof claimBotSupportReplies>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof claimBotSupportReplies>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getClaimBotSupportRepliesMutationOptions(options));
+    }
+
+export const getAcknowledgeBotSupportReplyUrl = (replyId: string,) => {
+
+
+
+
+  return `/api/support/bot/outbox/${replyId}/ack`
+}
+
+/**
+ * @summary Record delivery outcome without automatic retries
+ */
+export const acknowledgeBotSupportReply = async (replyId: string,
+    botOutboxAckInput: BotOutboxAckInput, options?: Parameters<typeof customFetch>[1]): Promise<BotOutboxAck> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<BotOutboxAck>(getAcknowledgeBotSupportReplyUrl(replyId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(botOutboxAckInput)
+  }
+);}
+
+
+
+
+
+export const getAcknowledgeBotSupportReplyMutationKey = () => ['acknowledgeBotSupportReply'] as const;
+
+export const getAcknowledgeBotSupportReplyMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof acknowledgeBotSupportReply>>, TError,AcknowledgeBotSupportReplyMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof acknowledgeBotSupportReply>>, TError,AcknowledgeBotSupportReplyMutationVariables, TContext> => {
+
+const mutationKey = getAcknowledgeBotSupportReplyMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof acknowledgeBotSupportReply>>, AcknowledgeBotSupportReplyMutationVariables> = (props) => {
+          const {replyId,data} = props ?? {};
+
+          return  acknowledgeBotSupportReply(replyId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AcknowledgeBotSupportReplyMutationResult = NonNullable<Awaited<ReturnType<typeof acknowledgeBotSupportReply>>>
+    export type AcknowledgeBotSupportReplyMutationBody = BodyType<BotOutboxAckInput>
+    export type AcknowledgeBotSupportReplyMutationError = ErrorType<unknown>
+    export type AcknowledgeBotSupportReplyMutationVariables = {replyId: string;data: BodyType<BotOutboxAckInput>}
+
+    /**
+ * @summary Record delivery outcome without automatic retries
+ */
+export const useAcknowledgeBotSupportReply = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof acknowledgeBotSupportReply>>, TError,AcknowledgeBotSupportReplyMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof acknowledgeBotSupportReply>>,
+        TError,
+        AcknowledgeBotSupportReplyMutationVariables,
+        TContext
+      > => {
+      return useMutation(getAcknowledgeBotSupportReplyMutationOptions(options));
     }
 

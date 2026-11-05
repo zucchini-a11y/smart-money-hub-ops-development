@@ -55,10 +55,15 @@ from .personal_reminders import (
 from .questions import QUESTIONS
 from .scoring import AssessmentResult, grade_answers
 from .storage import Repository
+from .support_api import SupportApiClient, SupportApiError
 from .telegram_api import TelegramAPI, TelegramAPIError
 
 
 logger = logging.getLogger(__name__)
+SUPPORT_SENSITIVE_TEXT = re.compile(
+    r"\b(password|passcode|verification code|one[- ]time code|recovery code|api key|private key)\b",
+    re.IGNORECASE,
+)
 POLLING_HEARTBEAT_INTERVAL_SECONDS = 30
 POLLING_STALE_AFTER_SECONDS = 60
 TYPING_ACTION_REFRESH_SECONDS = 4
@@ -80,6 +85,7 @@ BOT_RECOVERY_NOTICES = (
 MAIN_MENU: tuple[tuple[str, str], ...] = (
     ("Start SMC Assessment", "menu:assessment"),
     ("💬 Ask Coach", "menu:coach"),
+    ("💬 Contact Support", "menu:support"),
     ("🎯 Challenge Me", "coach:challenge"),
     ("🔍 Review My Setup", "coach:setup"),
     ("📒 Review My Mistake", "coach:mistake"),
@@ -437,6 +443,7 @@ class SmartMoneyHubBot:
             else 0
         )
         self.admin_id = admin_id
+        self.support_api = SupportApiClient.from_environment(bot="coach")
         self.education_group_id = education_group_id
         self.admin_dashboard = AdminDashboard(
             api,
@@ -560,6 +567,7 @@ class SmartMoneyHubBot:
                 except Exception:
                     logger.exception("Could not persist Telegram polling health.")
                 retry_delay = 1
+                self._deliver_support_replies()
             except TelegramAPIError as error:
                 logger.error(
                     "Telegram polling failed: %s. Retrying in %s seconds.",
@@ -587,6 +595,51 @@ class SmartMoneyHubBot:
         while True:
             time_module.sleep(POLLING_HEARTBEAT_INTERVAL_SECONDS)
             self._log_polling_heartbeat()
+
+    def _deliver_support_replies(self) -> None:
+        if self.support_api is None:
+            return
+        try:
+            result = self.support_api.claim_replies()
+        except SupportApiError:
+            logger.warning("Coach could not claim support replies from the portal.")
+            return
+        replies = result.get("replies")
+        if not isinstance(replies, list):
+            logger.warning("Coach support API returned an invalid reply queue.")
+            return
+        for reply in replies:
+            if not isinstance(reply, dict):
+                continue
+            reply_id = str(reply.get("replyId") or "")
+            raw_user_id = reply.get("telegramUserId")
+            text = reply.get("text")
+            if (
+                not re.fullmatch(r"[A-Za-z0-9-]{8,64}", reply_id)
+                or not isinstance(raw_user_id, str)
+                or not raw_user_id.isdigit()
+                or not isinstance(text, str)
+                or not text.strip()
+            ):
+                if re.fullmatch(r"[A-Za-z0-9-]{8,64}", reply_id):
+                    try:
+                        self.support_api.acknowledge_reply(reply_id, "failed")
+                    except SupportApiError:
+                        logger.warning("Coach could not acknowledge an invalid support reply.")
+                continue
+            try:
+                self.api.send_message(int(raw_user_id), text)
+            except Exception:
+                logger.warning("Coach support reply delivery was uncertain; it will not be retried.")
+                try:
+                    self.support_api.acknowledge_reply(reply_id, "uncertain")
+                except SupportApiError:
+                    logger.warning("Coach could not save the uncertain support delivery result.")
+                continue
+            try:
+                self.support_api.acknowledge_reply(reply_id, "sent")
+            except SupportApiError:
+                logger.warning("Coach sent a support reply but could not confirm it to the portal.")
 
     def _log_polling_heartbeat(self, *, now: float | None = None) -> None:
         observed_at = time_module.monotonic() if now is None else now
@@ -1530,6 +1583,138 @@ class SmartMoneyHubBot:
             self._main_menu_keyboard(),
         )
 
+    def _begin_support_contact(
+        self,
+        chat_id: int,
+        telegram_id: int,
+        is_private: bool,
+        username: str | None,
+        first_name: str | None,
+    ) -> None:
+        if not is_private:
+            self.api.send_message(chat_id, "Please message me privately to contact support.")
+            return
+        if self.support_api is None:
+            self.api.send_message(
+                chat_id,
+                "Support is not connected in this isolated test bot yet. Please try again later.",
+                self._nav_keyboard(),
+            )
+            return
+        self.sessions[telegram_id] = Conversation(
+            "support_contact", chat_id, username, first_name
+        )
+        self.api.send_message(
+            chat_id,
+            "Send one message describing what you need help with. Don’t include passwords, verification codes, or private keys. Send /cancel to stop.",
+        )
+
+    def _submit_support_case(
+        self,
+        chat_id: int,
+        telegram_id: int,
+        text: str,
+        *,
+        update_id: int | None,
+    ) -> None:
+        if self.support_api is None:
+            self.api.send_message(chat_id, "Support is not connected in this test bot yet.")
+            return
+        question = text.strip()
+        if len(question) < 3 or len(question) > 1000 or SUPPORT_SENSITIVE_TEXT.search(question):
+            self.api.send_message(
+                chat_id,
+                "Please send 3–1,000 characters without passwords, verification codes, or private keys.",
+            )
+            return
+        try:
+            result = self.support_api.create_case(telegram_id, question, update_id)
+        except SupportApiError:
+            logger.warning("Coach support case request failed.")
+            self.api.send_message(chat_id, "I couldn’t send that to support right now. Please try again later.")
+            return
+        case_id = str(result.get("caseId") or "")
+        if not case_id:
+            logger.warning("Coach support API returned an incomplete case response.")
+            self.api.send_message(chat_id, "Support could not confirm your request. Please try again later.")
+            return
+        self.api.send_message(
+            chat_id,
+            f"Your message is with the support team. Case ID: {case_id}\nUse /my_support to check it or /supportreply {case_id} followed by your message to add details.",
+            self._nav_keyboard(),
+        )
+
+    def _handle_support_command(
+        self,
+        *,
+        chat_id: int,
+        telegram_id: int,
+        is_private: bool,
+        text: str,
+        command: str,
+        update_id: int | None,
+        sender: dict[str, Any],
+    ) -> None:
+        if not is_private:
+            self.api.send_message(chat_id, "Please use support commands in a private chat.")
+            return
+        if command == "/support":
+            self.sessions.pop(telegram_id, None)
+            self._begin_support_contact(
+                chat_id, telegram_id, True, sender.get("username"), sender.get("first_name")
+            )
+            return
+        if self.support_api is None:
+            self.api.send_message(chat_id, "Support is not connected in this isolated test bot yet.")
+            return
+        self.sessions.pop(telegram_id, None)
+        parts = text.strip().split(maxsplit=2)
+        try:
+            if command == "/my_support":
+                result = self.support_api.list_cases(telegram_id)
+                cases = result.get("cases")
+                if not isinstance(cases, list) or not cases:
+                    self.api.send_message(chat_id, "You don’t have any support cases yet. Send /support to contact the team.")
+                    return
+                lines = ["Your recent support cases:"]
+                for case in cases[:8]:
+                    if not isinstance(case, dict):
+                        continue
+                    lines.append(
+                        f"{case.get('caseId')}: {str(case.get('question') or '')[:90]} — {case.get('status')}"
+                    )
+                lines.append("Use /supportcase followed by a case ID to view updates.")
+                self.api.send_message(chat_id, "\n".join(lines))
+                return
+            if command == "/supportcase":
+                if len(parts) < 2 or not re.fullmatch(r"[A-Za-z0-9-]{8,64}", parts[1]):
+                    self.api.send_message(chat_id, "Use /supportcase followed by the case ID shown in /my_support.")
+                    return
+                result = self.support_api.get_case(parts[1], telegram_id)
+                messages = result.get("messages")
+                if not isinstance(messages, list):
+                    raise SupportApiError("invalid_response")
+                lines = [f"Case {parts[1]}"]
+                for item in messages[-6:]:
+                    if isinstance(item, dict):
+                        lines.append(f"{item.get('displayName', 'Support')}: {str(item.get('text') or '')[:700]}")
+                lines.append(f"Reply with /supportreply {parts[1]} followed by your message.")
+                self.api.send_message(chat_id, "\n\n".join(lines))
+                return
+            if command == "/supportreply":
+                if len(parts) < 3 or not re.fullmatch(r"[A-Za-z0-9-]{8,64}", parts[1]):
+                    self.api.send_message(chat_id, "Use /supportreply, the case ID, then your message.")
+                    return
+                message_text = parts[2].strip()
+                if len(message_text) < 3 or len(message_text) > 3000 or SUPPORT_SENSITIVE_TEXT.search(message_text):
+                    self.api.send_message(chat_id, "Please use 3–3,000 characters without passwords, verification codes, or private keys.")
+                    return
+                self.support_api.reply_case(parts[1], telegram_id, message_text, update_id)
+                self.api.send_message(chat_id, "Your update was added to the case.")
+        except SupportApiError:
+            logger.warning("Coach support API request failed (command=%s).", command)
+            self.api.send_message(chat_id, "I couldn’t load or update that case right now. Please try again later.")
+
     def _handle_message(
         self, message: dict[str, Any], *, update_id: int | None = None
     ) -> None:
@@ -1663,6 +1848,17 @@ class SmartMoneyHubBot:
                 )
             return
         telegram_id, chat_id, is_private = self._register(sender, chat)
+        if command in {"/support", "/my_support", "/supportcase", "/supportreply"}:
+            self._handle_support_command(
+                chat_id=chat_id,
+                telegram_id=telegram_id,
+                is_private=is_private,
+                text=text,
+                command=command,
+                update_id=update_id,
+                sender=sender,
+            )
+            return
         self._send_bot_recovery_notice(
             chat_id,
             telegram_id,
@@ -2037,6 +2233,19 @@ class SmartMoneyHubBot:
             self.admin_dashboard.open(chat_id, telegram_id, is_private)
             return
         session = self.sessions.get(telegram_id)
+        if session and session.chat_id == chat_id and session.kind == "support_contact":
+            if command == "/cancel":
+                self.sessions.pop(telegram_id, None)
+                self.api.send_message(chat_id, "Okay, I cancelled the support request.")
+                return
+            self.sessions.pop(telegram_id, None)
+            self._submit_support_case(
+                chat_id,
+                telegram_id,
+                text,
+                update_id=update_id,
+            )
+            return
         if command == "/cancel" and session and session.kind == "personal_reminder":
             self.sessions.pop(telegram_id, None)
             self.api.send_message(chat_id, "Okay, I cancelled that reminder setup.")
@@ -2569,6 +2778,14 @@ class SmartMoneyHubBot:
         elif data == "menu:coach":
             self.sessions.pop(telegram_id, None)
             self._show_coach_menu(chat_id, is_private)
+        elif data == "menu:support":
+            self._begin_support_contact(
+                chat_id,
+                telegram_id,
+                is_private,
+                sender.get("username"),
+                sender.get("first_name"),
+            )
         elif data == "coach:chat":
             self.sessions.pop(telegram_id, None)
             self._enter_coach(chat_id, telegram_id, is_private)

@@ -133,8 +133,286 @@ export interface WhatsAppSettingsUpdate {
   telegramCommunityUrl?: string | null;
 }
 
+export type SupportStaffRole = typeof SupportStaffRole[keyof typeof SupportStaffRole];
+
+
+export const SupportStaffRole = {
+  owner: 'owner',
+  manager: 'manager',
+  agent: 'agent',
+} as const;
+
+export interface SupportStaff {
+  id: string;
+  displayName: string;
+  role: SupportStaffRole;
+}
+
+export interface SupportSession {
+  authenticated: boolean;
+  needsSetup: boolean;
+  staff: SupportStaff | null;
+}
+
+export interface SupportLogin {
+  /** @maxLength 254 */
+  email: string;
+  /**
+     * @minLength 1
+     * @maxLength 256
+     */
+  password: string;
+}
+
+export interface SupportBootstrap {
+  /** @maxLength 254 */
+  email: string;
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  displayName: string;
+  /**
+     * @minLength 12
+     * @maxLength 256
+     */
+  password: string;
+}
+
+export type SupportCaseSummarySourceBot = typeof SupportCaseSummarySourceBot[keyof typeof SupportCaseSummarySourceBot];
+
+
+export const SupportCaseSummarySourceBot = {
+  signals: 'signals',
+  coach: 'coach',
+} as const;
+
+export interface SupportCaseSummary {
+  caseId: string;
+  sourceBot: SupportCaseSummarySourceBot;
+  memberId: string;
+  question: string;
+  status: string;
+  workflowStatus: string;
+  category: string;
+  priority: string;
+  /** @nullable */
+  assignedStaffId: string | null;
+  created: string;
+  updated: string;
+}
+
+export interface SupportCaseList {
+  cases: SupportCaseSummary[];
+}
+
+export type SupportMessageSender = typeof SupportMessageSender[keyof typeof SupportMessageSender];
+
+
+export const SupportMessageSender = {
+  member: 'member',
+  staff: 'staff',
+} as const;
+
+export interface SupportMessage {
+  id: string;
+  sender: SupportMessageSender;
+  displayName: string;
+  text: string;
+  status: string;
+  created: string;
+}
+
+export interface SupportNote {
+  id: string;
+  staffName: string;
+  text: string;
+  created: string;
+}
+
+export interface SupportCaseEvent {
+  id: string;
+  actorName: string;
+  eventType: string;
+  oldValue: string;
+  newValue: string;
+  created: string;
+}
+
+export interface SupportCaseDetail {
+  case: SupportCaseSummary;
+  messages: SupportMessage[];
+  notes: SupportNote[];
+  events: SupportCaseEvent[];
+}
+
+export interface SupportReplyInput {
+  /**
+     * @minLength 3
+     * @maxLength 3000
+     */
+  text: string;
+  /**
+     * @minLength 1
+     * @maxLength 128
+     */
+  requestId: string;
+}
+
+export interface SupportAssignmentInput {
+  /** @nullable */
+  assignedStaffId: string | null;
+}
+
+export type SupportStatusInputWorkflowStatus = typeof SupportStatusInputWorkflowStatus[keyof typeof SupportStatusInputWorkflowStatus];
+
+
+export const SupportStatusInputWorkflowStatus = {
+  new: 'new',
+  assigned: 'assigned',
+  in_progress: 'in_progress',
+  waiting_for_member: 'waiting_for_member',
+  resolved: 'resolved',
+  closed: 'closed',
+} as const;
+
+export interface SupportStatusInput {
+  workflowStatus: SupportStatusInputWorkflowStatus;
+}
+
+export interface SupportNoteInput {
+  /**
+     * @minLength 3
+     * @maxLength 3000
+     */
+  text: string;
+}
+
+export interface BotCreateCaseInput {
+  /**
+     * @minLength 1
+     * @maxLength 128
+     */
+  requestId: string;
+  /** @minimum 1 */
+  telegramUserId: number;
+  /**
+     * @minLength 3
+     * @maxLength 1000
+     */
+  question: string;
+}
+
+export type BotCaseSourceBot = typeof BotCaseSourceBot[keyof typeof BotCaseSourceBot];
+
+
+export const BotCaseSourceBot = {
+  signals: 'signals',
+  coach: 'coach',
+} as const;
+
+export interface BotCase {
+  caseId: string;
+  sourceBot: BotCaseSourceBot;
+  telegramUserId: string;
+  question: string;
+  status: string;
+  created: string;
+  updated: string;
+}
+
+export interface BotCaseList {
+  cases: BotCase[];
+}
+
+export interface BotCaseDetail {
+  case: BotCase;
+  messages: SupportMessage[];
+}
+
+export interface BotMemberMessageInput {
+  /**
+     * @minLength 1
+     * @maxLength 128
+     */
+  requestId: string;
+  /** @minimum 1 */
+  telegramUserId: number;
+  /**
+     * @minLength 3
+     * @maxLength 3000
+     */
+  text: string;
+}
+
+export interface BotOutboxItem {
+  replyId: string;
+  caseId: string;
+  telegramUserId: string;
+  text: string;
+  responderName: string;
+}
+
+export interface BotOutbox {
+  replies: BotOutboxItem[];
+}
+
+export type BotOutboxAckInputOutcome = typeof BotOutboxAckInputOutcome[keyof typeof BotOutboxAckInputOutcome];
+
+
+export const BotOutboxAckInputOutcome = {
+  sent: 'sent',
+  failed: 'failed',
+  uncertain: 'uncertain',
+} as const;
+
+export interface BotOutboxAckInput {
+  outcome: BotOutboxAckInputOutcome;
+}
+
+export type BotOutboxAckStatus = typeof BotOutboxAckStatus[keyof typeof BotOutboxAckStatus];
+
+
+export const BotOutboxAckStatus = {
+  sent: 'sent',
+  failed: 'failed',
+  uncertain: 'uncertain',
+} as const;
+
+export interface BotOutboxAck {
+  status: BotOutboxAckStatus;
+}
+
 export type ListWhatsAppConversationsParams = {
 search?: string;
 enquiriesOnly?: boolean;
+};
+
+export type ListSupportCasesParams = {
+status?: ListSupportCasesStatus;
+};
+
+export type ListSupportCasesStatus = typeof ListSupportCasesStatus[keyof typeof ListSupportCasesStatus];
+
+
+export const ListSupportCasesStatus = {
+  open: 'open',
+  closed: 'closed',
+  all: 'all',
+} as const;
+
+export type ListMemberBotCasesParams = {
+/**
+ * @minimum 1
+ */
+telegramUserId: number;
+};
+
+export type GetMemberBotCaseParams = {
+caseId: string;
+/**
+ * @minimum 1
+ */
+telegramUserId: number;
 };
 

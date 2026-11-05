@@ -3,19 +3,21 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useHealthCheck, getHealthCheckQueryKey } from '@workspace/api-client-react';
 import { Link, Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
 import {
-  Activity, AlertCircle, Bot, BrainCircuit, CalendarClock, Check, ChevronRight,
+  Activity, AlertCircle, Bot, BrainCircuit, CalendarClock, Check, ChevronRight, MessageCircle,
   CircleHelp, Clock3, Command, Database, FileClock, FileText, Gauge,
   LayoutDashboard, Link2, Menu, RefreshCw, RotateCcw, RotateCw, Send, Server, ShieldCheck, Signal, X,
 } from 'lucide-react';
+import SupportPage from './SupportPage';
 
 const queryClient = new QueryClient();
-type ViewPath = '/' | '/activity' | '/content' | '/connections';
+type ViewPath = '/' | '/activity' | '/content' | '/connections' | '/support';
 
 const navigation: { href: ViewPath; label: string; icon: typeof LayoutDashboard; index: string }[] = [
   { href: '/', label: 'Overview', icon: LayoutDashboard, index: '01' },
   { href: '/activity', label: 'Activity stream', icon: Activity, index: '02' },
   { href: '/content', label: 'Content operations', icon: FileText, index: '03' },
   { href: '/connections', label: 'Connections', icon: Link2, index: '04' },
+  { href: '/support', label: 'Support cases', icon: MessageCircle, index: '05' },
 ];
 
 function HealthQuery() {
@@ -407,6 +409,7 @@ function Shell() {
         <Route path="/activity" component={ActivityPage} />
         <Route path="/content" component={ContentPage} />
         <Route path="/connections" component={ConnectionsPage} />
+        <Route path="/support" component={SupportPage} />
         <Route component={NotFound} />
       </Switch>
       <footer className="mx-auto flex max-w-[1440px] flex-col gap-1 border-t border-white/[.06] px-4 py-5 text-[9px] text-slate-600 sm:flex-row sm:items-center sm:justify-between md:px-8"><span>SMART MONEY HUB OPERATIONS CENTER</span><span>DEVELOPMENT PREVIEW · AUTH NOT CONFIGURED · PRIVATE DATA HIDDEN</span></footer>

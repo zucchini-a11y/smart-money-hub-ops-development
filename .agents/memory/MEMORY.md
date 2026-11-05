@@ -23,3 +23,4 @@
 - [Routine channel publish limit](routine-channel-publish-limit.md) — allow an admin to publish an eligible missed routine post today only when today’s routine-post slot is free.
 - [Cloudflare CLI setup](cloudflare-cli-setup.md) — install the Cloudflare CLI globally in this pnpm workspace; validate any `.replit` cleanup through its config tool.
 - [Hostinger VPS deployment](hostinger-vps-deployment.md) — bot and Operations Center use the Hostinger VPS; transfer web updates manually, preserve mail DNS, keep one poller, and prefer IPv4 for Telegram.
+- [Shared support portal](shared-support-portal.md) — keep bot cases and replies behind one authenticated API; isolate Development data and require approval before production cutover.
