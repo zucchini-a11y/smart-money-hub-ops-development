@@ -86,7 +86,8 @@ function usePublicPageMotion(path: string) {
     const root = document.querySelector<HTMLElement>('.vayda-site');
     if (!root) return;
 
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const reduceMotion = motionPreference.matches;
     window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' });
 
     let observer: IntersectionObserver | undefined;
@@ -106,42 +107,43 @@ function usePublicPageMotion(path: string) {
       revealTargets.forEach((target) => target.classList.add('is-visible'));
     }
 
-    const chartStage = root.querySelector<HTMLElement>('.vs-chart-stage');
+    const hero = root.querySelector<HTMLElement>('.vs-home-hero');
+    const header = root.querySelector<HTMLElement>('.vs-header');
+    let heroScrollDistance = hero ? Math.max(hero.offsetHeight, window.innerHeight * 0.8) : 1;
     const chartFrame = root.querySelector<HTMLElement>('.vs-chart-frame');
     let animationFrame = 0;
     const updateMotion = () => {
       animationFrame = 0;
-      revealTargets.forEach((target) => {
-        if (!target.classList.contains('is-visible') && target.getBoundingClientRect().top <= window.innerHeight * 0.92) {
-          target.classList.add('is-visible');
-          observer?.unobserve(target);
-        }
-      });
-      if (chartStage && chartFrame) {
-        if (window.innerWidth <= 760) {
-          chartFrame.style.setProperty('--vs-parallax-y', '0px');
-          return;
-        }
-        const rect = chartStage.getBoundingClientRect();
-        const distanceFromCenter = (rect.top + rect.height / 2 - window.innerHeight / 2) / window.innerHeight;
-        const offset = Math.max(-12, Math.min(12, distanceFromCenter * -12));
-        chartFrame.style.setProperty('--vs-parallax-y', `${offset.toFixed(1)}px`);
+      const scrollY = window.scrollY || window.pageYOffset;
+      if (!reduceMotion) {
+        const heroProgress = Math.min(1, Math.max(0, scrollY / heroScrollDistance));
+        chartFrame?.style.setProperty('--vs-hero-progress', heroProgress.toFixed(4));
+        chartFrame?.style.setProperty('--vs-scan-x', `${(heroProgress * 400).toFixed(1)}px`);
+      }
+      const shouldBlurHeader = scrollY > 12;
+      if (header?.classList.contains('is-scrolled') !== shouldBlurHeader) {
+        header?.classList.toggle('is-scrolled', shouldBlurHeader);
       }
     };
     const requestMotionUpdate = () => {
       if (!animationFrame) animationFrame = window.requestAnimationFrame(updateMotion);
     };
-    if (!reduceMotion) {
-      window.addEventListener('scroll', requestMotionUpdate, { passive: true });
-      window.addEventListener('resize', requestMotionUpdate);
+    const handleResize = () => {
+      heroScrollDistance = hero ? Math.max(hero.offsetHeight, window.innerHeight * 0.8) : 1;
       requestMotionUpdate();
-    }
+    };
+    window.addEventListener('scroll', requestMotionUpdate, { passive: true });
+    window.addEventListener('resize', handleResize);
+    requestMotionUpdate();
 
     return () => {
       observer?.disconnect();
       window.removeEventListener('scroll', requestMotionUpdate);
-      window.removeEventListener('resize', requestMotionUpdate);
+      window.removeEventListener('resize', handleResize);
       if (animationFrame) window.cancelAnimationFrame(animationFrame);
+      chartFrame?.style.removeProperty('--vs-hero-progress');
+      chartFrame?.style.removeProperty('--vs-scan-x');
+      header?.classList.remove('is-scrolled');
     };
   }, [path]);
 }
@@ -214,6 +216,7 @@ function ChartIllustration() {
         <rect x="0" y="0" width="460" height="230" fill="url(#vs-grid)" />
         <rect x="240" y="104" width="149" height="43" fill="url(#vs-area)" stroke="rgba(215,189,123,.34)" strokeDasharray="4 5" />
         <text x="247" y="99" fill="#c8b576" fontSize="8" letterSpacing="1.2" fontFamily="DM Mono, monospace">AREA OF INTEREST</text>
+        <line className="vs-chart-scanline" x1="20" y1="20" x2="20" y2="222" stroke="#58e6d0" strokeOpacity=".68" strokeWidth="1" />
         <path className="vs-chart-trend" d="M20 210 C65 191 73 178 110 184 S151 154 179 164 S210 133 239 142 S267 112 300 120 S336 85 363 91 S397 53 433 41" fill="none" stroke="rgba(139,185,154,.56)" strokeWidth="1.3" strokeDasharray="4 6" />
         {candles.map(([x, y, h, wick, type], index) => <g key={index} className="vs-chart-candle" style={{ animationDelay: `${index * 55}ms` }}>
           <line x1={x + 7} y1={y - wick / 2} x2={x + 7} y2={y + wick / 2} stroke={type === 'up' ? '#8bb99a' : '#bb9d62'} strokeOpacity=".85" />
@@ -379,5 +382,5 @@ export default function PublicSite() {
   const exactPublicPath = pages.some((page) => page.href === path);
   if (!exactPublicPath) return null;
   const page = path === '/' ? <Home /> : path === '/about' ? <About /> : path === '/education' ? <Education /> : path === '/market-analysis' ? <MarketAnalysis /> : path === '/philosophy' ? <Philosophy /> : path === '/community' ? <Community /> : <Contact />;
-  return <div className="vayda-site"><Header location={path} /><div className="vs-page-transition" key={path}>{page}</div><Footer /></div>;
+  return <div className={`vayda-site${path === '/' ? ' is-home' : ''}`}><Header location={path} /><div className="vs-page-transition" key={path}>{page}</div><Footer /></div>;
 }
