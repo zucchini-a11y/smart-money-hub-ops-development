@@ -154,3 +154,17 @@ mtime_ms = 1793770551052
 storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/6ab8af6f-59ca-4c55-9a1f-348b2f947e64/600fa1c6-1cac-4275-97ab-ff9df34fa6ef"
 storage_version_token = "1793770826689815"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "GOt7BFWdg-otFAAtNGaFq"
+uri = "file://generated-artifacts/smh-vps-final-database-download.html"
+type = "html"
+title = "Download final VPS database"
+description = "Open this page and tap Save database to Files, then upload that file through Termius SFTP."
+logical_id = "69997517-28dc-4981-b7c5-02d06557ee1e"
+content_hash = "sha256:11d83a8390d7adb90d8122a4ad4b32bd97fb804823ebb63e35dedbeb0b0e5fb6"
+size = 1879789
+mtime_ms = 1793851276293
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/69997517-28dc-4981-b7c5-02d06557ee1e/449e4a6a-5830-4de4-9635-606e5ea2ce49"
+storage_version_token = "1793851281406741"
+content_type = "text/html"
