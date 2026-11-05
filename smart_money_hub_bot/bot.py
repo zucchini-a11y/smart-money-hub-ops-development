@@ -3364,8 +3364,14 @@ class SmartMoneyHubBot:
         reply_to_message_id: int | None = None,
         sender: dict[str, Any] | None = None,
     ) -> None:
-        self._send_typing_action(chat_id)
         stop_typing = threading.Event()
+        initial_typing_thread = threading.Thread(
+            target=self._send_initial_typing_action,
+            args=(chat_id, stop_typing),
+            name="telegram-coach-typing-initial",
+            daemon=True,
+        )
+        initial_typing_thread.start()
         typing_thread = threading.Thread(
             target=self._refresh_typing_action,
             args=(chat_id, stop_typing),
@@ -3757,6 +3763,14 @@ class SmartMoneyHubBot:
         except TelegramAPIError:
             # A transient status-action failure must not prevent the Coach reply.
             pass
+
+    def _send_initial_typing_action(
+        self,
+        chat_id: int,
+        stop_typing: threading.Event,
+    ) -> None:
+        if not stop_typing.is_set():
+            self._send_typing_action(chat_id)
 
     def _refresh_typing_action(
         self,

@@ -1,4 +1,5 @@
 import sqlite3
+import threading
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -2660,6 +2661,40 @@ class BotFlowTests(unittest.TestCase):
 
         self.assertTrue(self.api.messages)
         self.assertEqual(self.api.messages[-1]["chat_id"], self.chat_id)
+
+    def test_typing_indicator_does_not_block_coach_processing(self) -> None:
+        typing_started = threading.Event()
+        typing_thread_ids: list[int] = []
+        caller_thread_id = threading.get_ident()
+
+        def send_typing_action(chat_id: int) -> None:
+            typing_thread_ids.append(threading.get_ident())
+            typing_started.set()
+
+        def process_message(*args: Any, **kwargs: Any) -> None:
+            self.assertTrue(typing_started.wait(timeout=1))
+
+        with (
+            patch.object(
+                self.bot,
+                "_send_typing_action",
+                side_effect=send_typing_action,
+            ),
+            patch.object(
+                self.bot,
+                "_process_coach_message",
+                side_effect=process_message,
+            ),
+        ):
+            self.bot._answer_coach_message(
+                self.chat_id,
+                self.user_id,
+                self.username,
+                "Hi",
+            )
+
+        self.assertEqual(len(typing_thread_ids), 1)
+        self.assertNotEqual(typing_thread_ids[0], caller_thread_id)
 
     def test_recovery_notice_follows_a_long_outage_once_per_private_member(self) -> None:
         recovered_at = self._record_poll_recovery(timedelta(hours=1))
