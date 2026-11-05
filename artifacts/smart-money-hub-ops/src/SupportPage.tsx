@@ -8,14 +8,13 @@ import {
   getListSupportStaffQueryKey,
   useAddSupportCaseNote,
   useAssignSupportCase,
-  useBootstrapSupportOwner,
   useCreateSupportReply,
   useGetSupportCase,
   useGetSupportSession,
   useListSupportCases,
   useListSupportStaff,
-  useLoginSupportStaff,
   useLogoutSupportStaff,
+  usePortalLogout,
   useUpdateSupportCaseStatus,
 } from "@workspace/api-client-react";
 import {
@@ -39,7 +38,8 @@ import {
   UserRound,
   Users,
 } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
+import { useClerk } from "@clerk/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -48,99 +48,14 @@ import {
 } from "@/components/ui/form";
 import "./SupportPage.css";
 
-type Credentials = { email: string; password: string };
-type BootstrapValues = Credentials & { displayName: string };
 type TextValues = { text: string };
 
 const workflowOptions = ["new", "assigned", "in_progress", "waiting_for_member", "resolved", "closed"];
 const workflowLabel = (value: string) => value.replaceAll("_", " ");
 
-function LoginCard({
-  needsSetup,
-  onLogin,
-  onBootstrap,
-  busy,
-  failure,
-}: {
-  needsSetup: boolean;
-  onLogin: (values: Credentials) => void;
-  onBootstrap: (values: BootstrapValues) => void;
-  busy: boolean;
-  failure: string;
-}) {
-  const loginForm = useForm<Credentials>({ defaultValues: { email: "", password: "" } });
-  const bootstrapForm = useForm<BootstrapValues>({
-    defaultValues: { email: "", displayName: "", password: "" },
-  });
-
-  return (
-    <div className="sp-page sp-auth-page">
-      <main className="sp-auth-main">
-        <div className="sp-auth-aside">
-          <div className="sp-login-brand">
-            <div className="sp-login-brand-mark"><ShieldCheck size={20} /></div>
-            <div><div className="sp-login-brand-name">VAYDA</div><div className="sp-login-brand-sub">SMART MONEY HUB</div></div>
-          </div>
-          <div className="sp-auth-copy">
-            <div className="sp-eyebrow">STAFF ACCESS · PRIVATE WORKSPACE</div>
-            <h1>Support, with the full picture.</h1>
-            <p>Signals and Coach conversations meet in one secure queue, so every member gets a thoughtful follow-through.</p>
-            <div className="sp-auth-points">
-              <span><span className="sp-checkmark"><Check size={12} /></span> Shared Signals + Coach inbox</span>
-              <span><span className="sp-checkmark"><Check size={12} /></span> Staff-only notes and case history</span>
-            </div>
-          </div>
-          <div className="sp-auth-bottom">
-            <Link className="sp-login-operations" href="/operations" data-testid="link-support-login-operations"><ArrowUpRight size={14} /><span>Operations Center</span></Link>
-            <span className="sp-auth-footnote">PRIVATE STAFF WORKSPACE</span>
-          </div>
-          <div className="sp-auth-watermark"><ShieldCheck size={124} strokeWidth={.65} /></div>
-        </div>
-        <section className="sp-login-card">
-          <div className="sp-login-icon"><LockKeyhole size={18} /></div>
-          <div className="sp-eyebrow">SUPPORT PORTAL</div>
-          <h2>{needsSetup ? "Create your owner account" : "Welcome back"}</h2>
-          <p className="sp-login-intro">{needsSetup
-            ? "Set up the first owner account for this Development support portal."
-            : "Sign in with your staff credentials to open the shared queue."}</p>
-          {failure && <div className="sp-error" role="alert" data-testid="status-support-auth-error">{failure}</div>}
-          {needsSetup ? (
-            <Form {...bootstrapForm}>
-              <form className="sp-form" onSubmit={bootstrapForm.handleSubmit(onBootstrap)}>
-                <FormField control={bootstrapForm.control} name="displayName" rules={{ required: "Enter your name." }} render={({ field }) => (
-                  <FormItem><FormLabel className="sp-label">Display name</FormLabel><FormControl><Input className="sp-input" autoComplete="name" placeholder="Your name" {...field} data-testid="input-support-display-name" /></FormControl><FormMessage /></FormItem>
-                )} />
-                <FormField control={bootstrapForm.control} name="email" rules={{ required: "Enter your email.", pattern: { value: /^\S+@\S+\.\S+$/, message: "Enter a valid email." } }} render={({ field }) => (
-                  <FormItem><FormLabel className="sp-label">Work email</FormLabel><FormControl><Input className="sp-input" type="email" autoComplete="email" placeholder="name@company.com" {...field} data-testid="input-support-email" /></FormControl><FormMessage /></FormItem>
-                )} />
-                <FormField control={bootstrapForm.control} name="password" rules={{ required: "Choose a password.", minLength: { value: 12, message: "Use at least 12 characters." } }} render={({ field }) => (
-                  <FormItem><FormLabel className="sp-label">Password</FormLabel><FormControl><Input className="sp-input" type="password" autoComplete="new-password" placeholder="At least 12 characters" {...field} data-testid="input-support-password" /></FormControl><FormMessage /></FormItem>
-                )} />
-                <Button type="submit" disabled={busy} className="sp-primary-button" data-testid="button-support-bootstrap">{busy ? "Setting up…" : "Create owner account"} <ArrowUpRight size={15} /></Button>
-              </form>
-            </Form>
-          ) : (
-            <Form {...loginForm}>
-              <form className="sp-form" onSubmit={loginForm.handleSubmit(onLogin)}>
-                <FormField control={loginForm.control} name="email" rules={{ required: "Enter your email.", pattern: { value: /^\S+@\S+\.\S+$/, message: "Enter a valid email." } }} render={({ field }) => (
-                  <FormItem><FormLabel className="sp-label">Work email</FormLabel><FormControl><Input className="sp-input" type="email" autoComplete="username" placeholder="name@company.com" {...field} data-testid="input-support-email" /></FormControl><FormMessage /></FormItem>
-                )} />
-                <FormField control={loginForm.control} name="password" rules={{ required: "Enter your password." }} render={({ field }) => (
-                  <FormItem><FormLabel className="sp-label">Password</FormLabel><FormControl><Input className="sp-input" type="password" autoComplete="current-password" placeholder="Your password" {...field} data-testid="input-support-password" /></FormControl><FormMessage /></FormItem>
-                )} />
-                <Button type="submit" disabled={busy} className="sp-primary-button" data-testid="button-support-login">{busy ? "Signing in…" : "Sign in to support"} <ArrowUpRight size={15} /></Button>
-              </form>
-            </Form>
-          )}
-          <div className="sp-login-foot"><ShieldCheck size={14} /> Staff access only <span>·</span> Protected session</div>
-        </section>
-      </main>
-      <footer className="sp-footer"><span>VAYDA · SMART MONEY HUB</span><span>PRIVATE STAFF WORKSPACE</span></footer>
-    </div>
-  );
-}
-
 export default function SupportPage() {
+  const clerk = useClerk();
+  const [, navigate] = useLocation();
   const client = useQueryClient();
   const session = useGetSupportSession({
     query: { queryKey: getGetSupportSessionQueryKey(), retry: false, refetchInterval: 30_000 },
@@ -162,9 +77,8 @@ export default function SupportPage() {
   const detail = useGetSupportCase(selectedId, {
     query: { queryKey: getGetSupportCaseQueryKey(selectedId), enabled: signedIn && Boolean(selectedId), refetchInterval: 15_000 },
   });
-  const login = useLoginSupportStaff();
-  const bootstrap = useBootstrapSupportOwner();
   const logout = useLogoutSupportStaff();
+  const portalLogout = usePortalLogout();
   const reply = useCreateSupportReply();
   const addNote = useAddSupportCaseNote();
   const assign = useAssignSupportCase();
@@ -219,25 +133,12 @@ export default function SupportPage() {
   }
 
   if (!signedIn) {
-    return <LoginCard
-      needsSetup={Boolean(session.data?.needsSetup)}
-      busy={login.isPending || bootstrap.isPending}
-      failure={failure || (session.isError ? "Support access is unavailable. Check the Development API and test schema." : "")}
-      onLogin={(values) => {
-        setFailure("");
-        login.mutate({ data: values }, {
-          onSuccess: async () => { await client.invalidateQueries({ queryKey: getGetSupportSessionQueryKey() }); },
-          onError: () => setFailure("Email or password is incorrect."),
-        });
-      }}
-      onBootstrap={(values) => {
-        setFailure("");
-        bootstrap.mutate({ data: values }, {
-          onSuccess: async () => { await client.invalidateQueries({ queryKey: getGetSupportSessionQueryKey() }); },
-          onError: () => setFailure("Owner setup could not be completed. It may already be configured."),
-        });
-      }}
-    />;
+    return <div className="sp-page sp-auth-page"><main className="sp-login-card">
+      <div className="sp-eyebrow">SHARED ACCOUNT ACCESS</div><h2>Sign in to continue</h2>
+      <p className="sp-login-intro">Support tools use the same staff account as the rest of the portal.</p>
+      {session.isError && <div className="sp-error" role="alert">Support access is unavailable. Try again from the shared sign-in page.</div>}
+      <Link className="sp-primary-button" href="/login" data-testid="link-support-shared-login">Go to shared sign-in <ArrowUpRight size={15}/></Link>
+    </main></div>;
   }
 
   const selected = detail.data?.case;
@@ -280,8 +181,8 @@ export default function SupportPage() {
           <span className="sp-session-status"><span /> Staff session active</span>
           <span className="sp-staff-pill" data-testid="text-support-staff"><span className="sp-staff-avatar">{session.data?.staff?.displayName?.split(/\s+/).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("")}</span><span>{session.data?.staff?.displayName} <i>·</i> {role}</span></span>
           <Link className="sp-operations-link sp-mobile-operations-link" href="/operations" data-testid="link-support-mobile-operations"><ArrowUpRight size={14} /><span>Operations Center</span></Link>
-          <Button variant="outline" size="sm" className="sp-signout" onClick={() => logout.mutate(undefined, { onSuccess: async () => { setSelectedId(""); await client.invalidateQueries({ queryKey: getGetSupportSessionQueryKey() }); } })} disabled={logout.isPending} data-testid="button-support-logout">
-            <LogOut size={14} /> <span>{logout.isPending ? "Signing out…" : "Sign out"}</span>
+          <Button variant="outline" size="sm" className="sp-signout" onClick={async () => { await portalLogout.mutateAsync().catch(() => undefined); await logout.mutateAsync().catch(() => undefined); await clerk.signOut().catch(() => undefined); client.clear(); setSelectedId(""); navigate("/login"); }} disabled={portalLogout.isPending || logout.isPending} data-testid="button-support-logout">
+            <LogOut size={14} /> <span>{portalLogout.isPending || logout.isPending ? "Signing out…" : "Sign out"}</span>
           </Button>
         </div>
       </header>

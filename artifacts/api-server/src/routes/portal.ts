@@ -310,8 +310,8 @@ async function reportEvents(reportId: string, includeReviewerNames = false) {
     `SELECT e.id,e.event_type,e.old_value,e.new_value,e.feedback,e.created,
             CASE WHEN $2::boolean OR e.event_type NOT IN ('reviewed','revision_requested')
                  THEN COALESCE(u.display_name,'Staff') ELSE 'Authorized reviewer' END AS actor_name
-       FROM smh.staff_activity_report_events e
-       LEFT JOIN smh.portal_users u ON u.id=e.actor_id
+       FROM ${supportSchema}.staff_activity_report_events e
+       LEFT JOIN ${supportSchema}.portal_users u ON u.id=e.actor_id
       WHERE e.report_id=$1 ORDER BY e.created`,
     [reportId,includeReviewerNames],
   );
@@ -370,8 +370,8 @@ async function taskEvents(taskId: string) {
   const result = await pool.query(
     `SELECT e.id,e.event_type,e.old_value,e.new_value,e.feedback,e.created,
             COALESCE(u.display_name,'Staff') AS actor_name
-       FROM smh.staff_task_events e
-       LEFT JOIN smh.portal_users u ON u.id=e.actor_id
+       FROM ${supportSchema}.staff_task_events e
+       LEFT JOIN ${supportSchema}.portal_users u ON u.id=e.actor_id
       WHERE e.task_id=$1 ORDER BY e.created`,
     [taskId],
   );
@@ -381,9 +381,9 @@ async function taskEvents(taskId: string) {
 async function visibleTask(taskId: string, identity: PortalIdentity) {
   const result = await pool.query(
     `SELECT t.*,u.display_name AS assignee_name,m.team_role
-       FROM smh.staff_tasks t
-       LEFT JOIN smh.portal_users u ON u.id=t.assigned_staff_id
-       LEFT JOIN smh.staff_team_members m
+       FROM ${supportSchema}.staff_tasks t
+       LEFT JOIN ${supportSchema}.portal_users u ON u.id=t.assigned_staff_id
+       LEFT JOIN ${supportSchema}.staff_team_members m
          ON m.team_id=t.team_id AND m.staff_id=$2
       WHERE t.id=$1 AND (
         $3='owner'
@@ -410,7 +410,7 @@ async function addTaskEvent(
 ) {
   const id = randomUUID();
   await client.query(
-    `INSERT INTO smh.staff_task_events(id,task_id,actor_id,event_type,old_value,new_value,feedback,created)
+    `INSERT INTO ${supportSchema}.staff_task_events(id,task_id,actor_id,event_type,old_value,new_value,feedback,created)
      VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
     [id, taskId, actorId, eventType, oldValue, newValue, feedback, created],
   );
@@ -426,7 +426,7 @@ async function addTaskNotification(
   created: string,
 ) {
   await client.query(
-    `INSERT INTO smh.staff_task_notifications(id,recipient_id,task_id,notification_type,dedupe_key,created)
+    `INSERT INTO ${supportSchema}.staff_task_notifications(id,recipient_id,task_id,notification_type,dedupe_key,created)
      VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(dedupe_key) DO NOTHING`,
     [randomUUID(), recipientId, taskId, type, `${eventId}:${recipientId}`, created],
   );
@@ -477,7 +477,7 @@ async function insertAudit(
   detail = "",
 ): Promise<void> {
   await client.query(
-    `INSERT INTO smh.portal_audit(id,actor_id,action,entity_id,created,detail)
+    `INSERT INTO ${supportSchema}.portal_audit(id,actor_id,action,entity_id,created,detail)
      VALUES($1,$2,$3,$4,$5,$6)`,
     [randomUUID(), actorId, action, entityId, new Date().toISOString(), detail],
   );
@@ -488,11 +488,11 @@ router.use("/portal", noStore);
 router.post("/portal/auth/login", requireSameOrigin, async (req, res): Promise<void> => {
   const parsed = PortalLoginBody.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: "Enter a valid email and password." });
+    res.status(400).json({ error: "Enter your email or username and password." });
     return;
   }
-  const email = parsed.data.email.trim().toLowerCase();
-  const key = loginKey(req, email);
+  const identifier = parsed.data.identifier.trim().toLowerCase();
+  const key = loginKey(req, identifier);
   if (loginRateLimited(key)) {
     res.status(429).json({ error: "Too many sign-in attempts. Wait a little and try again." });
     return;
@@ -502,12 +502,15 @@ router.post("/portal/auth/login", requireSameOrigin, async (req, res): Promise<v
             CASE WHEN u.role IN ('admin','owner') THEN 'owner'
                  WHEN u.role='manager' OR mr.staff_id IS NOT NULL THEN 'manager'
                  ELSE 'agent' END AS effective_role
-       FROM smh.portal_users u
-       LEFT JOIN smh.portal_manager_roles mr ON mr.staff_id=u.id
-      WHERE lower(u.email)=$1`,
-    [email],
+        FROM ${supportSchema}.portal_users u
+       LEFT JOIN ${supportSchema}.portal_manager_roles mr ON mr.staff_id=u.id
+       WHERE lower(u.email)=$1
+          OR ($1 !~ '@' AND lower(split_part(u.email,'@',1))=$1)
+       ORDER BY lower(u.email)
+       LIMIT 2`,
+    [identifier],
   );
-  const row = result.rows[0];
+  const row = result.rows.length === 1 ? result.rows[0] : undefined;
   const passwordMatches = verifyPassword(
     parsed.data.password,
     row ? String(row.password_hash) : dummyPasswordHash,
@@ -526,11 +529,11 @@ router.post("/portal/auth/login", requireSameOrigin, async (req, res): Promise<v
   try {
     await client.query("BEGIN");
     await client.query(
-      "INSERT INTO smh.portal_sessions(token_hash,staff_id,created,expires) VALUES($1,$2,$3,$4)",
+      `INSERT INTO ${supportSchema}.portal_sessions(token_hash,staff_id,created,expires) VALUES($1,$2,$3,$4)`,
       [tokenHash, row.id, created, expires],
     );
     await client.query(
-      "UPDATE smh.portal_users SET last_login=$1,updated=$1 WHERE id=$2",
+      `UPDATE ${supportSchema}.portal_users SET last_login=$1,updated=$1 WHERE id=$2`,
       [created, row.id],
     );
     await insertAudit(client, String(row.id), "signed_in", String(row.id));
@@ -560,7 +563,7 @@ router.get("/portal/auth/session", (req, res): void => {
 
 router.post("/portal/auth/logout", requireSameOrigin, async (req, res): Promise<void> => {
   if (req.portalSessionHash) {
-    await pool.query("DELETE FROM smh.portal_sessions WHERE token_hash=$1", [req.portalSessionHash]);
+    await pool.query(`DELETE FROM ${supportSchema}.portal_sessions WHERE token_hash=$1`, [req.portalSessionHash]);
   }
   clearPortalSessionCookie(req, res);
   res.json(PortalLogoutResponse.parse({ status: "signed_out" }));
@@ -574,7 +577,7 @@ router.post("/portal/auth/password", requireSameOrigin, async (req, res): Promis
   }
   const identity = req.portalIdentity!;
   const result = await pool.query(
-    "SELECT password_hash FROM smh.portal_users WHERE id=$1 AND active=TRUE",
+    `SELECT password_hash FROM ${supportSchema}.portal_users WHERE id=$1 AND active=TRUE`,
     [identity.id],
   );
   const row = result.rows[0];
@@ -587,11 +590,11 @@ router.post("/portal/auth/password", requireSameOrigin, async (req, res): Promis
   try {
     await client.query("BEGIN");
     await client.query(
-      "UPDATE smh.portal_users SET password_hash=$1,must_change_password=FALSE,updated=$2 WHERE id=$3",
+      `UPDATE ${supportSchema}.portal_users SET password_hash=$1,must_change_password=FALSE,updated=$2 WHERE id=$3`,
       [hashPassword(parsed.data.newPassword), updated, identity.id],
     );
     await client.query(
-      "DELETE FROM smh.portal_sessions WHERE staff_id=$1 AND token_hash<>$2",
+      `DELETE FROM ${supportSchema}.portal_sessions WHERE staff_id=$1 AND token_hash<>$2`,
       [identity.id, req.portalSessionHash],
     );
     await insertAudit(client, identity.id, "password_changed", identity.id);
@@ -609,15 +612,15 @@ router.get("/portal/tasks", async (req, res): Promise<void> => {
   const identity = req.portalIdentity!;
   const result = await pool.query(
     `SELECT t.*,u.display_name AS assignee_name
-       FROM smh.staff_tasks t
-       LEFT JOIN smh.portal_users u ON u.id=t.assigned_staff_id
+       FROM ${supportSchema}.staff_tasks t
+       LEFT JOIN ${supportSchema}.portal_users u ON u.id=t.assigned_staff_id
       WHERE $1='owner'
          OR ($1='manager' AND EXISTS (
-              SELECT 1 FROM smh.staff_team_members m
+              SELECT 1 FROM ${supportSchema}.staff_team_members m
                WHERE m.team_id=t.team_id AND m.staff_id=$2 AND m.team_role='manager'))
          OR ($1='agent' AND (
               t.assigned_staff_id=$2 OR (t.assigned_staff_id IS NULL AND EXISTS (
-                SELECT 1 FROM smh.staff_team_members m
+                SELECT 1 FROM ${supportSchema}.staff_team_members m
                  WHERE m.team_id=t.team_id AND m.staff_id=$2 AND m.team_role='worker'))))
       ORDER BY t.due_at NULLS LAST,t.updated DESC`,
     [identity.role, identity.id],
@@ -651,7 +654,7 @@ router.post("/portal/tasks", requireSameOrigin, async (req, res): Promise<void> 
   try {
     await client.query("BEGIN");
     const prior = await client.query(
-      "SELECT id FROM smh.staff_tasks WHERE created_by=$1 AND request_id=$2",
+      `SELECT id FROM ${supportSchema}.staff_tasks WHERE created_by=$1 AND request_id=$2`,
       [identity.id, input.requestId],
     );
     if (prior.rows[0]) {
@@ -662,9 +665,9 @@ router.post("/portal/tasks", requireSameOrigin, async (req, res): Promise<void> 
     }
     if (input.teamId) {
       const team = await client.query(
-        `SELECT id,EXISTS(SELECT 1 FROM smh.staff_team_members
+        `SELECT id,EXISTS(SELECT 1 FROM ${supportSchema}.staff_team_members
                          WHERE team_id=$1 AND team_role='worker') AS has_worker
-           FROM smh.staff_teams WHERE id=$1`,
+           FROM ${supportSchema}.staff_teams WHERE id=$1`,
         [input.teamId],
       );
       if (!team.rows[0]) {
@@ -680,9 +683,9 @@ router.post("/portal/tasks", requireSameOrigin, async (req, res): Promise<void> 
     }
     if (input.assignedStaffId) {
       const assignee = await client.query(
-        `SELECT u.id FROM smh.portal_users u
+        `SELECT u.id FROM ${supportSchema}.portal_users u
           WHERE u.id=$1 AND u.active=TRUE AND u.role='agent'
-            AND NOT EXISTS (SELECT 1 FROM smh.portal_manager_roles mr WHERE mr.staff_id=u.id)`,
+            AND NOT EXISTS (SELECT 1 FROM ${supportSchema}.portal_manager_roles mr WHERE mr.staff_id=u.id)`,
         [input.assignedStaffId],
       );
       if (!assignee.rows[0]) {
@@ -692,7 +695,7 @@ router.post("/portal/tasks", requireSameOrigin, async (req, res): Promise<void> 
       }
       if (input.teamId) {
         const member = await client.query(
-          "SELECT 1 FROM smh.staff_team_members WHERE team_id=$1 AND staff_id=$2 AND team_role='worker'",
+          `SELECT 1 FROM ${supportSchema}.staff_team_members WHERE team_id=$1 AND staff_id=$2 AND team_role='worker'`,
           [input.teamId, input.assignedStaffId],
         );
         if (!member.rows[0]) {
@@ -705,7 +708,7 @@ router.post("/portal/tasks", requireSameOrigin, async (req, res): Promise<void> 
     const taskId = randomUUID();
     const created = now;
     await client.query(
-      `INSERT INTO smh.staff_tasks
+      `INSERT INTO ${supportSchema}.staff_tasks
          (id,request_id,title,instructions,priority,effort_points,due_at,team_id,assigned_staff_id,status,created_by,created,updated)
        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'assigned',$10,$11,$11)`,
       [taskId, input.requestId, title, instructions, input.priority, input.effortPoints,
@@ -717,7 +720,7 @@ router.post("/portal/tasks", requireSameOrigin, async (req, res): Promise<void> 
     const recipients = input.assignedStaffId
       ? [input.assignedStaffId]
       : (await client.query(
-          "SELECT staff_id FROM smh.staff_team_members WHERE team_id=$1 AND team_role='worker'",
+          `SELECT staff_id FROM ${supportSchema}.staff_team_members WHERE team_id=$1 AND team_role='worker'`,
           [input.teamId],
         )).rows.map((row) => String(row.staff_id));
     for (const recipient of recipients) {
@@ -731,7 +734,7 @@ router.post("/portal/tasks", requireSameOrigin, async (req, res): Promise<void> 
     await client.query("ROLLBACK");
     if (typeof error === "object" && error !== null && "code" in error && error.code === "23505") {
       const prior = await pool.query(
-        "SELECT id FROM smh.staff_tasks WHERE created_by=$1 AND request_id=$2",
+        `SELECT id FROM ${supportSchema}.staff_tasks WHERE created_by=$1 AND request_id=$2`,
         [identity.id, input.requestId],
       );
       const existing = prior.rows[0] ? await visibleTask(String(prior.rows[0].id), identity) : undefined;
@@ -785,7 +788,7 @@ router.patch("/portal/tasks/:taskId", requireSameOrigin, async (req, res): Promi
   try {
     await client.query("BEGIN");
     const result = await client.query(
-      "SELECT * FROM smh.staff_tasks WHERE id=$1 FOR UPDATE",
+      `SELECT * FROM ${supportSchema}.staff_tasks WHERE id=$1 FOR UPDATE`,
       [params.data.taskId],
     );
     const current = result.rows[0] as Record<string, unknown> | undefined;
@@ -827,9 +830,9 @@ router.patch("/portal/tasks/:taskId", requireSameOrigin, async (req, res): Promi
     }
     if (input.teamId) {
       const team = await client.query(
-        `SELECT EXISTS(SELECT 1 FROM smh.staff_team_members
+        `SELECT EXISTS(SELECT 1 FROM ${supportSchema}.staff_team_members
                        WHERE team_id=$1 AND team_role='worker') AS has_worker
-          FROM smh.staff_teams WHERE id=$1`,
+          FROM ${supportSchema}.staff_teams WHERE id=$1`,
         [input.teamId],
       );
       if (!team.rows[0]) {
@@ -845,9 +848,9 @@ router.patch("/portal/tasks/:taskId", requireSameOrigin, async (req, res): Promi
     }
     if (input.assignedStaffId) {
       const assignee = await client.query(
-        `SELECT 1 FROM smh.portal_users u
+        `SELECT 1 FROM ${supportSchema}.portal_users u
           WHERE u.id=$1 AND u.active=TRUE AND u.role='agent'
-            AND NOT EXISTS(SELECT 1 FROM smh.portal_manager_roles mr WHERE mr.staff_id=u.id)`,
+            AND NOT EXISTS(SELECT 1 FROM ${supportSchema}.portal_manager_roles mr WHERE mr.staff_id=u.id)`,
         [input.assignedStaffId],
       );
       if (!assignee.rows[0]) {
@@ -857,7 +860,7 @@ router.patch("/portal/tasks/:taskId", requireSameOrigin, async (req, res): Promi
       }
       if (input.teamId) {
         const membership = await client.query(
-          "SELECT 1 FROM smh.staff_team_members WHERE team_id=$1 AND staff_id=$2 AND team_role='worker'",
+          `SELECT 1 FROM ${supportSchema}.staff_team_members WHERE team_id=$1 AND staff_id=$2 AND team_role='worker'`,
           [input.teamId, input.assignedStaffId],
         );
         if (!membership.rows[0]) {
@@ -869,7 +872,7 @@ router.patch("/portal/tasks/:taskId", requireSameOrigin, async (req, res): Promi
     }
     const updated = new Date().toISOString();
     await client.query(
-      `UPDATE smh.staff_tasks
+      `UPDATE ${supportSchema}.staff_tasks
           SET title=$1,instructions=$2,priority=$3,effort_points=$4,due_at=$5,
               team_id=$6,assigned_staff_id=$7,updated=$8
         WHERE id=$9`,
@@ -886,7 +889,7 @@ router.patch("/portal/tasks/:taskId", requireSameOrigin, async (req, res): Promi
       const recipients = next.assignedStaffId
         ? [next.assignedStaffId]
         : (await client.query(
-            "SELECT staff_id FROM smh.staff_team_members WHERE team_id=$1 AND team_role='worker'",
+            `SELECT staff_id FROM ${supportSchema}.staff_team_members WHERE team_id=$1 AND team_role='worker'`,
             [next.teamId],
           )).rows.map((row) => String(row.staff_id));
       const notificationType = assignmentChanged ? "reassigned" : "deadline_changed";
@@ -919,9 +922,9 @@ router.patch("/portal/tasks/:taskId/status", requireSameOrigin, async (req, res)
     await client.query("BEGIN");
     const currentResult = await client.query(
       `SELECT t.*,u.display_name AS assignee_name,m.team_role
-         FROM smh.staff_tasks t
-         LEFT JOIN smh.portal_users u ON u.id=t.assigned_staff_id
-         LEFT JOIN smh.staff_team_members m ON m.team_id=t.team_id AND m.staff_id=$2
+         FROM ${supportSchema}.staff_tasks t
+         LEFT JOIN ${supportSchema}.portal_users u ON u.id=t.assigned_staff_id
+         LEFT JOIN ${supportSchema}.staff_team_members m ON m.team_id=t.team_id AND m.staff_id=$2
         WHERE t.id=$1 FOR UPDATE OF t`,
       [params.data.taskId, identity.id],
     );
@@ -962,7 +965,7 @@ router.patch("/portal/tasks/:taskId/status", requireSameOrigin, async (req, res)
     }
     const created = new Date().toISOString();
     await client.query(
-      `UPDATE smh.staff_tasks
+      `UPDATE ${supportSchema}.staff_tasks
           SET status=$1,updated=$2,
               submission_note=CASE WHEN $1='submitted_for_review' THEN $3
                                    WHEN $1='in_progress' THEN NULL ELSE submission_note END,
@@ -979,9 +982,9 @@ router.patch("/portal/tasks/:taskId/status", requireSameOrigin, async (req, res)
     }
     if (nextStatus === "submitted_for_review") {
       const reviewers = await client.query(
-        `SELECT DISTINCT id FROM smh.portal_users
+        `SELECT DISTINCT id FROM ${supportSchema}.portal_users
           WHERE active=TRUE AND (role IN ('admin','owner') OR id IN (
-            SELECT staff_id FROM smh.staff_team_members WHERE team_id=$1 AND team_role='manager'
+            SELECT staff_id FROM ${supportSchema}.staff_team_members WHERE team_id=$1 AND team_role='manager'
           ))`,
         [current.team_id],
       );
@@ -991,7 +994,7 @@ router.patch("/portal/tasks/:taskId/status", requireSameOrigin, async (req, res)
     } else if (!current.assigned_staff_id && current.team_id
       && ["revision_requested", "approved", "cancelled"].includes(nextStatus)) {
       const members = await client.query(
-        `SELECT staff_id FROM smh.staff_team_members WHERE team_id=$1
+        `SELECT staff_id FROM ${supportSchema}.staff_team_members WHERE team_id=$1
          AND team_role=CASE WHEN $2='submitted_for_review' THEN 'manager' ELSE 'worker' END`,
         [current.team_id, nextStatus],
       );
@@ -1015,12 +1018,12 @@ router.get("/portal/activity-reports", async (req, res): Promise<void> => {
   const identity = req.portalIdentity!;
   const result = await pool.query(
     `SELECT r.*,u.display_name AS staff_name,reviewer.display_name AS reviewed_by_name
-       FROM smh.staff_activity_reports r
-       JOIN smh.portal_users u ON u.id=r.staff_id
-       LEFT JOIN smh.portal_users reviewer ON reviewer.id=r.reviewed_by
+       FROM ${supportSchema}.staff_activity_reports r
+       JOIN ${supportSchema}.portal_users u ON u.id=r.staff_id
+       LEFT JOIN ${supportSchema}.portal_users reviewer ON reviewer.id=r.reviewed_by
       WHERE ($1='owner' OR r.staff_id=$2 OR ($1='manager' AND EXISTS (
-        SELECT 1 FROM smh.staff_team_members manager
-        JOIN smh.staff_team_members worker ON worker.team_id=manager.team_id
+        SELECT 1 FROM ${supportSchema}.staff_team_members manager
+        JOIN ${supportSchema}.staff_team_members worker ON worker.team_id=manager.team_id
         WHERE manager.staff_id=$2 AND manager.team_role='manager'
           AND worker.staff_id=r.staff_id AND worker.team_role='worker'
       )))
@@ -1057,7 +1060,7 @@ router.post("/portal/activity-reports", requireSameOrigin, async (req, res): Pro
   try {
     await client.query("BEGIN");
     const existing = await client.query(
-      `SELECT id,review_status FROM smh.staff_activity_reports
+      `SELECT id,review_status FROM ${supportSchema}.staff_activity_reports
         WHERE staff_id=$1 AND period=$2 AND period_start=$3 FOR UPDATE`,
       [identity.id, input.period, periodStart],
     );
@@ -1067,14 +1070,14 @@ router.post("/portal/activity-reports", requireSameOrigin, async (req, res): Pro
       if (String(existing.rows[0].review_status) === "revision_requested") {
         statusCode = 200;
         await client.query(
-          `UPDATE smh.staff_activity_reports
+          `UPDATE ${supportSchema}.staff_activity_reports
               SET completed_work=$1,outstanding_work=$2,blockers=$3,plans=$4,
                   review_status='submitted',reviewed_by=NULL,review_note='',reviewed_at=NULL,created=$5
             WHERE id=$6`,
           [input.completedWork.trim(),input.outstandingWork.trim(),input.blockers.trim(),input.plans.trim(),now,reportId],
         );
         await client.query(
-          `INSERT INTO smh.staff_activity_report_events(id,report_id,actor_id,event_type,old_value,new_value,feedback,created)
+          `INSERT INTO ${supportSchema}.staff_activity_report_events(id,report_id,actor_id,event_type,old_value,new_value,feedback,created)
            VALUES($1,$2,$3,'resubmitted','revision_requested','submitted','',$4)`,
           [randomUUID(),reportId,identity.id,now],
         );
@@ -1085,14 +1088,14 @@ router.post("/portal/activity-reports", requireSameOrigin, async (req, res): Pro
     } else {
       reportId = randomUUID();
       await client.query(
-        `INSERT INTO smh.staff_activity_reports
+        `INSERT INTO ${supportSchema}.staff_activity_reports
            (id,staff_id,period,period_start,completed_work,outstanding_work,blockers,plans,review_status,created)
          VALUES($1,$2,$3,$4,$5,$6,$7,$8,'submitted',$9)`,
         [reportId,identity.id,input.period,periodStart,input.completedWork.trim(),
          input.outstandingWork.trim(),input.blockers.trim(),input.plans.trim(),now],
       );
       await client.query(
-        `INSERT INTO smh.staff_activity_report_events(id,report_id,actor_id,event_type,old_value,new_value,feedback,created)
+        `INSERT INTO ${supportSchema}.staff_activity_report_events(id,report_id,actor_id,event_type,old_value,new_value,feedback,created)
          VALUES($1,$2,$3,'submitted','','submitted','',$4)`,
         [randomUUID(),reportId,identity.id,now],
       );
@@ -1101,8 +1104,8 @@ router.post("/portal/activity-reports", requireSameOrigin, async (req, res): Pro
     await client.query("COMMIT");
     const saved = await pool.query(
       `SELECT r.*,u.display_name AS staff_name,reviewer.display_name AS reviewed_by_name
-         FROM smh.staff_activity_reports r JOIN smh.portal_users u ON u.id=r.staff_id
-         LEFT JOIN smh.portal_users reviewer ON reviewer.id=r.reviewed_by WHERE r.id=$1`,
+         FROM ${supportSchema}.staff_activity_reports r JOIN ${supportSchema}.portal_users u ON u.id=r.staff_id
+         LEFT JOIN ${supportSchema}.portal_users reviewer ON reviewer.id=r.reviewed_by WHERE r.id=$1`,
       [reportId],
     );
     res.status(statusCode).json(SubmitStaffActivityReportResponse.parse(
@@ -1113,8 +1116,8 @@ router.post("/portal/activity-reports", requireSameOrigin, async (req, res): Pro
     if (typeof error === "object" && error !== null && "code" in error && error.code === "23505") {
       const concurrent = await pool.query(
         `SELECT r.*,u.display_name AS staff_name,reviewer.display_name AS reviewed_by_name
-           FROM smh.staff_activity_reports r JOIN smh.portal_users u ON u.id=r.staff_id
-           LEFT JOIN smh.portal_users reviewer ON reviewer.id=r.reviewed_by
+           FROM ${supportSchema}.staff_activity_reports r JOIN ${supportSchema}.portal_users u ON u.id=r.staff_id
+           LEFT JOIN ${supportSchema}.portal_users reviewer ON reviewer.id=r.reviewed_by
           WHERE r.staff_id=$1 AND r.period=$2 AND r.period_start=$3`,
         [identity.id,input.period,periodStart],
       );
@@ -1150,7 +1153,7 @@ router.patch("/portal/activity-reports/:reportId/review", requireSameOrigin, asy
   try {
     await client.query("BEGIN");
     const result = await client.query(
-      "SELECT r.* FROM smh.staff_activity_reports r WHERE r.id=$1 FOR UPDATE",
+      `SELECT r.* FROM ${supportSchema}.staff_activity_reports r WHERE r.id=$1 FOR UPDATE`,
       [params.data.reportId],
     );
     const report = result.rows[0] as Record<string, unknown> | undefined;
@@ -1167,8 +1170,8 @@ router.patch("/portal/activity-reports/:reportId/review", requireSameOrigin, asy
     }
     if (identity.role === "manager") {
       const authorized = await client.query(
-        `SELECT 1 FROM smh.staff_team_members manager
-          JOIN smh.staff_team_members worker ON worker.team_id=manager.team_id
+        `SELECT 1 FROM ${supportSchema}.staff_team_members manager
+          JOIN ${supportSchema}.staff_team_members worker ON worker.team_id=manager.team_id
          WHERE manager.staff_id=$1 AND manager.team_role='manager'
            AND worker.staff_id=$2 AND worker.team_role='worker' LIMIT 1`,
         [identity.id, staffId],
@@ -1186,18 +1189,18 @@ router.patch("/portal/activity-reports/:reportId/review", requireSameOrigin, asy
     }
     const now = new Date().toISOString();
     await client.query(
-      `UPDATE smh.staff_activity_reports SET review_status=$1,reviewed_by=$2,review_note=$3,reviewed_at=$4 WHERE id=$5`,
+      `UPDATE ${supportSchema}.staff_activity_reports SET review_status=$1,reviewed_by=$2,review_note=$3,reviewed_at=$4 WHERE id=$5`,
       [parsed.data.status,identity.id,parsed.data.note.trim(),now,params.data.reportId],
     );
     const reportEventId = randomUUID();
     await client.query(
-      `INSERT INTO smh.staff_activity_report_events(id,report_id,actor_id,event_type,old_value,new_value,feedback,created)
+      `INSERT INTO ${supportSchema}.staff_activity_report_events(id,report_id,actor_id,event_type,old_value,new_value,feedback,created)
        VALUES($1,$2,$3,$4,'submitted',$5,$6,$7)`,
       [reportEventId,params.data.reportId,identity.id,parsed.data.status,parsed.data.status,parsed.data.note.trim(),now],
     );
     const outcome = parsed.data.status === "reviewed" ? "approved" : "revision_requested";
     await client.query(
-      `INSERT INTO smh.staff_report_notifications
+      `INSERT INTO ${supportSchema}.staff_report_notifications
          (id,recipient_id,report_id,report_event_id,outcome,reviewer_feedback,dedupe_key,created)
        VALUES($1,$2,$3,$4,$5,$6,$7,$8)
        ON CONFLICT(dedupe_key) DO NOTHING`,
@@ -1208,8 +1211,8 @@ router.patch("/portal/activity-reports/:reportId/review", requireSameOrigin, asy
     await client.query("COMMIT");
     const updated = await pool.query(
       `SELECT r.*,u.display_name AS staff_name,reviewer.display_name AS reviewed_by_name
-         FROM smh.staff_activity_reports r JOIN smh.portal_users u ON u.id=r.staff_id
-         LEFT JOIN smh.portal_users reviewer ON reviewer.id=r.reviewed_by WHERE r.id=$1`,
+         FROM ${supportSchema}.staff_activity_reports r JOIN ${supportSchema}.portal_users u ON u.id=r.staff_id
+         LEFT JOIN ${supportSchema}.portal_users reviewer ON reviewer.id=r.reviewed_by WHERE r.id=$1`,
       [params.data.reportId],
     );
     res.json(ReviewStaffActivityReportResponse.parse(
@@ -1228,44 +1231,44 @@ router.get("/portal/performance", async (req, res): Promise<void> => {
   const metrics = await pool.query(
     `WITH visible_staff AS (
        SELECT u.id,u.display_name
-         FROM smh.portal_users u
+         FROM ${supportSchema}.portal_users u
         WHERE u.active AND u.role='agent'
           AND ($1='owner' OR u.id=$2 OR ($1='manager' AND EXISTS (
-            SELECT 1 FROM smh.staff_team_members manager
-            JOIN smh.staff_team_members worker ON worker.team_id=manager.team_id
+            SELECT 1 FROM ${supportSchema}.staff_team_members manager
+            JOIN ${supportSchema}.staff_team_members worker ON worker.team_id=manager.team_id
             WHERE manager.staff_id=$2 AND manager.team_role='manager'
               AND worker.staff_id=u.id AND worker.team_role='worker'
           )))
      )
      SELECT s.id AS staff_id,s.display_name AS staff_name,
-       (SELECT count(*)::int FROM smh.staff_tasks t WHERE
+       (SELECT count(*)::int FROM ${supportSchema}.staff_tasks t WHERE
          (t.assigned_staff_id=s.id OR (t.assigned_staff_id IS NULL AND EXISTS(
-           SELECT 1 FROM smh.staff_team_members m WHERE m.team_id=t.team_id AND m.staff_id=s.id AND m.team_role='worker'
+           SELECT 1 FROM ${supportSchema}.staff_team_members m WHERE m.team_id=t.team_id AND m.staff_id=s.id AND m.team_role='worker'
          ))) AND t.status NOT IN ('approved','cancelled')) AS active_tasks,
-       (SELECT COALESCE(sum(t.effort_points),0)::int FROM smh.staff_tasks t WHERE
+       (SELECT COALESCE(sum(t.effort_points),0)::int FROM ${supportSchema}.staff_tasks t WHERE
          (t.assigned_staff_id=s.id OR (t.assigned_staff_id IS NULL AND EXISTS(
-           SELECT 1 FROM smh.staff_team_members m WHERE m.team_id=t.team_id AND m.staff_id=s.id AND m.team_role='worker'
+           SELECT 1 FROM ${supportSchema}.staff_team_members m WHERE m.team_id=t.team_id AND m.staff_id=s.id AND m.team_role='worker'
          ))) AND t.status NOT IN ('approved','cancelled')) AS active_effort_points,
-       (SELECT count(*)::int FROM smh.staff_tasks t WHERE
+       (SELECT count(*)::int FROM ${supportSchema}.staff_tasks t WHERE
          (t.assigned_staff_id=s.id OR (t.assigned_staff_id IS NULL AND EXISTS(
-           SELECT 1 FROM smh.staff_team_members m WHERE m.team_id=t.team_id AND m.staff_id=s.id AND m.team_role='worker'
+           SELECT 1 FROM ${supportSchema}.staff_team_members m WHERE m.team_id=t.team_id AND m.staff_id=s.id AND m.team_role='worker'
          ))) AND t.status='approved') AS approved_tasks,
-       (SELECT COALESCE(sum(t.effort_points),0)::int FROM smh.staff_tasks t WHERE
+       (SELECT COALESCE(sum(t.effort_points),0)::int FROM ${supportSchema}.staff_tasks t WHERE
          (t.assigned_staff_id=s.id OR (t.assigned_staff_id IS NULL AND EXISTS(
-           SELECT 1 FROM smh.staff_team_members m WHERE m.team_id=t.team_id AND m.staff_id=s.id AND m.team_role='worker'
+           SELECT 1 FROM ${supportSchema}.staff_team_members m WHERE m.team_id=t.team_id AND m.staff_id=s.id AND m.team_role='worker'
          ))) AND t.status='approved') AS approved_effort_points,
-       (SELECT count(*)::int FROM smh.staff_tasks t WHERE
+       (SELECT count(*)::int FROM ${supportSchema}.staff_tasks t WHERE
          (t.assigned_staff_id=s.id OR (t.assigned_staff_id IS NULL AND EXISTS(
-           SELECT 1 FROM smh.staff_team_members m WHERE m.team_id=t.team_id AND m.staff_id=s.id AND m.team_role='worker'
+           SELECT 1 FROM ${supportSchema}.staff_team_members m WHERE m.team_id=t.team_id AND m.staff_id=s.id AND m.team_role='worker'
          ))) AND t.status NOT IN ('approved','cancelled') AND t.due_at::timestamptz<now()) AS overdue_tasks,
-       (SELECT count(*)::int FROM smh.staff_tasks t WHERE
+       (SELECT count(*)::int FROM ${supportSchema}.staff_tasks t WHERE
          (t.assigned_staff_id=s.id OR (t.assigned_staff_id IS NULL AND EXISTS(
-           SELECT 1 FROM smh.staff_team_members m WHERE m.team_id=t.team_id AND m.staff_id=s.id AND m.team_role='worker'
+           SELECT 1 FROM ${supportSchema}.staff_team_members m WHERE m.team_id=t.team_id AND m.staff_id=s.id AND m.team_role='worker'
          ))) AND t.status='approved' AND (t.due_at IS NULL OR t.updated::timestamptz<=t.due_at::timestamptz)) AS on_time_approvals,
-       (SELECT count(*)::int FROM smh.staff_task_events e JOIN smh.staff_tasks t ON t.id=e.task_id
+       (SELECT count(*)::int FROM ${supportSchema}.staff_task_events e JOIN ${supportSchema}.staff_tasks t ON t.id=e.task_id
          WHERE e.event_type='status_changed' AND e.new_value='revision_requested' AND
            (t.assigned_staff_id=s.id OR (t.assigned_staff_id IS NULL AND EXISTS(
-             SELECT 1 FROM smh.staff_team_members m WHERE m.team_id=t.team_id AND m.staff_id=s.id AND m.team_role='worker'
+             SELECT 1 FROM ${supportSchema}.staff_team_members m WHERE m.team_id=t.team_id AND m.staff_id=s.id AND m.team_role='worker'
            )))) AS revision_requests,
        (SELECT count(*)::int FROM ${supportSchema}.assistant_escalations c WHERE c.assigned_staff_id=s.id) AS support_cases,
        (SELECT count(*)::int FROM ${supportSchema}.assistant_escalations c
@@ -1291,9 +1294,9 @@ router.get("/portal/performance", async (req, res): Promise<void> => {
 router.get("/portal/teams", async (req, res): Promise<void> => {
   const identity = req.portalIdentity!;
   const teams = await pool.query(
-    `SELECT t.id,t.name FROM smh.staff_teams t
+    `SELECT t.id,t.name FROM ${supportSchema}.staff_teams t
       WHERE $1='owner' OR EXISTS (
-        SELECT 1 FROM smh.staff_team_members m
+        SELECT 1 FROM ${supportSchema}.staff_team_members m
          WHERE m.team_id=t.id AND m.staff_id=$2
            AND (($1='manager' AND m.team_role='manager') OR ($1='agent' AND m.team_role='worker')))
       ORDER BY t.name`,
@@ -1303,7 +1306,7 @@ router.get("/portal/teams", async (req, res): Promise<void> => {
   for (const team of teams.rows) {
     const members = await pool.query(
       `SELECT m.staff_id,u.display_name,m.team_role
-         FROM smh.staff_team_members m JOIN smh.portal_users u ON u.id=m.staff_id
+         FROM ${supportSchema}.staff_team_members m JOIN ${supportSchema}.portal_users u ON u.id=m.staff_id
         WHERE m.team_id=$1 ORDER BY u.display_name`,
       [team.id],
     );
@@ -1332,7 +1335,7 @@ router.post("/portal/teams", requireSameOrigin, async (req, res): Promise<void> 
   const id = randomUUID();
   const created = new Date().toISOString();
   try {
-    await pool.query("INSERT INTO smh.staff_teams(id,name,created_by,created) VALUES($1,$2,$3,$4)",
+    await pool.query(`INSERT INTO ${supportSchema}.staff_teams(id,name,created_by,created) VALUES($1,$2,$3,$4)`,
       [id, name, identity.id, created]);
   } catch (error) {
     if (typeof error === "object" && error !== null && "code" in error && error.code === "23505") {
@@ -1359,7 +1362,7 @@ router.put("/portal/teams/:teamId/members", requireSameOrigin, async (req, res):
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const team = await client.query("SELECT id,name FROM smh.staff_teams WHERE id=$1 FOR UPDATE",
+    const team = await client.query(`SELECT id,name FROM ${supportSchema}.staff_teams WHERE id=$1 FOR UPDATE`,
       [params.data.teamId]);
     if (!team.rows[0]) {
       await client.query("ROLLBACK");
@@ -1368,12 +1371,12 @@ router.put("/portal/teams/:teamId/members", requireSameOrigin, async (req, res):
     }
     for (const member of parsed.data.members) {
       const account = await client.query(
-        `SELECT u.id FROM smh.portal_users u
+        `SELECT u.id FROM ${supportSchema}.portal_users u
           WHERE u.id=$1 AND u.active=TRUE
             AND (($2='manager' AND (u.role='manager' OR EXISTS (
-                    SELECT 1 FROM smh.portal_manager_roles mr WHERE mr.staff_id=u.id)))
+                    SELECT 1 FROM ${supportSchema}.portal_manager_roles mr WHERE mr.staff_id=u.id)))
               OR ($2='worker' AND u.role='agent' AND NOT EXISTS (
-                SELECT 1 FROM smh.portal_manager_roles mr WHERE mr.staff_id=u.id)))`,
+                SELECT 1 FROM ${supportSchema}.portal_manager_roles mr WHERE mr.staff_id=u.id)))`,
         [member.staffId, member.teamRole],
       );
       if (!account.rows[0]) {
@@ -1382,16 +1385,16 @@ router.put("/portal/teams/:teamId/members", requireSameOrigin, async (req, res):
         return;
       }
     }
-    await client.query("DELETE FROM smh.staff_team_members WHERE team_id=$1", [params.data.teamId]);
+    await client.query(`DELETE FROM ${supportSchema}.staff_team_members WHERE team_id=$1`, [params.data.teamId]);
     for (const member of parsed.data.members) {
       await client.query(
-        "INSERT INTO smh.staff_team_members(team_id,staff_id,team_role,created) VALUES($1,$2,$3,$4)",
+        `INSERT INTO ${supportSchema}.staff_team_members(team_id,staff_id,team_role,created) VALUES($1,$2,$3,$4)`,
         [params.data.teamId, member.staffId, member.teamRole, new Date().toISOString()],
       );
     }
     const members = await client.query(
-      `SELECT m.staff_id,u.display_name,m.team_role FROM smh.staff_team_members m
-       JOIN smh.portal_users u ON u.id=m.staff_id WHERE m.team_id=$1 ORDER BY u.display_name`,
+      `SELECT m.staff_id,u.display_name,m.team_role FROM ${supportSchema}.staff_team_members m
+       JOIN ${supportSchema}.portal_users u ON u.id=m.staff_id WHERE m.team_id=$1 ORDER BY u.display_name`,
       [params.data.teamId],
     );
     await client.query("COMMIT");
@@ -1416,11 +1419,11 @@ async function createDueTaskNotifications(staffId: string) {
        SELECT t.id AS task_id,recipient.staff_id AS recipient_id,
               CASE WHEN t.due_at::timestamptz < now()
                    THEN 'deadline_overdue' ELSE 'deadline_approaching' END AS notice_type
-         FROM smh.staff_tasks t
+         FROM ${supportSchema}.staff_tasks t
          CROSS JOIN LATERAL (
            SELECT t.assigned_staff_id AS staff_id WHERE t.assigned_staff_id IS NOT NULL
            UNION
-           SELECT m.staff_id FROM smh.staff_team_members m
+           SELECT m.staff_id FROM ${supportSchema}.staff_team_members m
             WHERE m.team_id=t.team_id AND m.team_role='worker'
               AND t.assigned_staff_id IS NULL
          ) recipient
@@ -1428,7 +1431,7 @@ async function createDueTaskNotifications(staffId: string) {
           AND t.status NOT IN ('approved','cancelled')
           AND t.due_at::timestamptz <= now() + interval '24 hours'
      )
-     INSERT INTO smh.staff_task_notifications
+     INSERT INTO ${supportSchema}.staff_task_notifications
        (id,recipient_id,task_id,notification_type,dedupe_key,created)
      SELECT md5(random()::text||clock_timestamp()::text),recipient_id,task_id,notice_type,
             'deadline:'||task_id||':'||recipient_id||':'||current_date::text||':'||notice_type,
@@ -1443,7 +1446,7 @@ router.get("/portal/task-notifications", async (req, res): Promise<void> => {
   await createDueTaskNotifications(req.portalIdentity!.id);
   const result = await pool.query(
     `SELECT id,task_id,notification_type,created,read_at
-       FROM smh.staff_task_notifications WHERE recipient_id=$1
+       FROM ${supportSchema}.staff_task_notifications WHERE recipient_id=$1
       ORDER BY read_at NULLS FIRST,created DESC LIMIT 50`,
     [req.portalIdentity!.id],
   );
@@ -1465,7 +1468,7 @@ router.patch("/portal/task-notifications/:notificationId/read", requireSameOrigi
     return;
   }
   const result = await pool.query(
-    `UPDATE smh.staff_task_notifications SET read_at=COALESCE(read_at,$1)
+    `UPDATE ${supportSchema}.staff_task_notifications SET read_at=COALESCE(read_at,$1)
       WHERE id=$2 AND recipient_id=$3
       RETURNING id,task_id,notification_type,created,read_at`,
     [new Date().toISOString(), params.data.notificationId, req.portalIdentity!.id],
@@ -1487,8 +1490,8 @@ router.patch("/portal/task-notifications/:notificationId/read", requireSameOrigi
 router.get("/portal/report-notifications", async (req, res): Promise<void> => {
   const result = await pool.query(
     `SELECT n.*,r.period,r.period_start
-       FROM smh.staff_report_notifications n
-       JOIN smh.staff_activity_reports r ON r.id=n.report_id
+       FROM ${supportSchema}.staff_report_notifications n
+       JOIN ${supportSchema}.staff_activity_reports r ON r.id=n.report_id
       WHERE n.recipient_id=$1
       ORDER BY n.read_at NULLS FIRST,n.created DESC LIMIT 50`,
     [req.portalIdentity!.id],
@@ -1506,13 +1509,13 @@ router.patch("/portal/report-notifications/:notificationId/read", requireSameOri
   }
   const result = await pool.query(
     `WITH updated AS (
-       UPDATE smh.staff_report_notifications
+       UPDATE ${supportSchema}.staff_report_notifications
           SET read_at=COALESCE(read_at,$1)
         WHERE id=$2 AND recipient_id=$3
         RETURNING *
      )
      SELECT updated.*,r.period,r.period_start
-       FROM updated JOIN smh.staff_activity_reports r ON r.id=updated.report_id`,
+       FROM updated JOIN ${supportSchema}.staff_activity_reports r ON r.id=updated.report_id`,
     [new Date().toISOString(),params.data.notificationId,req.portalIdentity!.id],
   );
   if (!result.rows[0]) {
@@ -2652,25 +2655,6 @@ router.post("/portal/cases/:caseId/replies", requireSameOrigin, async (req, res)
       res.status(409).json({ error: "This request is not open for a new reply." });
       return;
     }
-    if (supportSchema !== "smh") {
-      const mirroredStaff = await client.query(
-        `INSERT INTO ${supportSchema}.portal_users
-           (id,email,display_name,password_hash,role,active,must_change_password,created,updated,last_login)
-         SELECT id,'support-' || id || '@test.invalid',display_name,'disabled-test-mirror',
-                role,active,FALSE,created,updated,last_login
-           FROM smh.portal_users WHERE id=$1 AND active=TRUE
-         ON CONFLICT(id) DO UPDATE SET
-           display_name=EXCLUDED.display_name,role=EXCLUDED.role,
-           active=EXCLUDED.active,updated=EXCLUDED.updated
-         RETURNING id`,
-        [identity.id],
-      );
-      if (!mirroredStaff.rows[0]) {
-        await client.query("ROLLBACK");
-        res.status(403).json({ error: "Your staff account is inactive. Sign in again." });
-        return;
-      }
-    }
     const replyId = randomUUID();
     const created = new Date().toISOString();
     const replyResult = await client.query(
@@ -2755,7 +2739,7 @@ router.patch("/portal/cases/:caseId/assignment", requireSameOrigin, async (req, 
   const assignedStaffId = parsed.data.assignedStaffId;
   if (assignedStaffId) {
     const activeStaff = await pool.query(
-      "SELECT id FROM smh.portal_users WHERE id=$1 AND active=TRUE",
+      `SELECT id FROM ${supportSchema}.portal_users WHERE id=$1 AND active=TRUE`,
       [assignedStaffId],
     );
     if (!activeStaff.rows[0]) {
@@ -2828,17 +2812,6 @@ router.post("/portal/cases/:caseId/notes", requireSameOrigin, async (req, res): 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    if (supportSchema !== "smh") {
-      await client.query(
-        `INSERT INTO ${supportSchema}.portal_users
-           (id,email,display_name,password_hash,role,active,must_change_password,created,updated,last_login)
-         SELECT id,'support-' || id || '@test.invalid',display_name,'disabled-test-mirror',
-                 CASE WHEN role='admin' THEN 'owner' ELSE role END,TRUE,FALSE,$2,$2,NULL
-           FROM smh.portal_users WHERE id=$1
-         ON CONFLICT(id) DO UPDATE SET display_name=EXCLUDED.display_name,active=TRUE`,
-        [identity.id, new Date().toISOString()],
-      );
-    }
     const created = new Date().toISOString();
     const noteId = randomUUID();
     const result = await client.query(
@@ -2865,8 +2838,8 @@ router.get("/portal/staff", async (req, res): Promise<void> => {
   const result = await pool.query(
     `SELECT u.id,u.email,u.display_name,u.role,u.active,u.must_change_password,u.created,u.last_login,
             (u.role='manager' OR mr.staff_id IS NOT NULL) AS is_manager
-       FROM smh.portal_users u
-       LEFT JOIN smh.portal_manager_roles mr ON mr.staff_id=u.id
+        FROM ${supportSchema}.portal_users u
+        LEFT JOIN ${supportSchema}.portal_manager_roles mr ON mr.staff_id=u.id
       ORDER BY u.role,u.email`,
   );
   res.json(ListPortalStaffResponse.parse({ staff: result.rows.map(publicStaff) }));
@@ -2895,7 +2868,7 @@ router.post("/portal/staff", requireSameOrigin, async (req, res): Promise<void> 
   try {
     await client.query("BEGIN");
     const insert = await client.query(
-      `INSERT INTO smh.portal_users
+      `INSERT INTO ${supportSchema}.portal_users
          (id,email,display_name,password_hash,role,active,must_change_password,created,updated)
        VALUES($1,$2,$3,$4,'agent',TRUE,TRUE,$5,$5)
        RETURNING id,email,display_name,role,active,must_change_password,created,last_login`,
@@ -2903,7 +2876,7 @@ router.post("/portal/staff", requireSameOrigin, async (req, res): Promise<void> 
     );
     if (parsed.data.role === "manager") {
       await client.query(
-        "INSERT INTO smh.portal_manager_roles(staff_id,created) VALUES($1,$2)",
+        `INSERT INTO ${supportSchema}.portal_manager_roles(staff_id,created) VALUES($1,$2)`,
         [staffId, created],
       );
     }
@@ -2944,7 +2917,7 @@ router.patch("/portal/staff/:staffId", requireSameOrigin, async (req, res): Prom
   try {
     await client.query("BEGIN");
     const result = await client.query(
-      `UPDATE smh.portal_users
+      `UPDATE ${supportSchema}.portal_users
           SET active=$1,updated=$2
         WHERE id=$3 AND role IN ('agent','manager')
         RETURNING id,email,display_name,role,active,must_change_password,created,last_login`,
@@ -2955,14 +2928,8 @@ router.patch("/portal/staff/:staffId", requireSameOrigin, async (req, res): Prom
       res.status(404).json({ error: "That staff account could not be found." });
       return;
     }
-    if (supportSchema !== "smh") {
-      await client.query(
-        `UPDATE ${supportSchema}.portal_users SET active=$1,updated=$2 WHERE id=$3`,
-        [parsed.data.active, new Date().toISOString(), params.data.staffId],
-      );
-    }
     if (!parsed.data.active) {
-      await client.query("DELETE FROM smh.portal_sessions WHERE staff_id=$1", [params.data.staffId]);
+      await client.query(`DELETE FROM ${supportSchema}.portal_sessions WHERE staff_id=$1`, [params.data.staffId]);
       const queued = await client.query(
         `UPDATE ${supportSchema}.assistant_support_replies SET status='failed',updated=$1
           WHERE staff_id=$2 AND status='queued' RETURNING case_id`,

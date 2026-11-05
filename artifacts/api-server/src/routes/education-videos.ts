@@ -93,10 +93,6 @@ router.get("/portal/education-videos", async (req, res): Promise<void> => {
 
 router.post("/portal/education-videos", requireSameOrigin, async (req, res): Promise<void> => {
   if (!ownerOnly(req, res)) return;
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: "Sign in before creating an education video draft." });
-    return;
-  }
   if (!videoStorageAvailable) {
     res.status(503).json({ error: "Persistent video storage is not available. No draft or file was saved." });
     return;
@@ -153,10 +149,6 @@ router.post("/portal/education-videos", requireSameOrigin, async (req, res): Pro
 
 router.put("/portal/education-videos/:videoId/file", requireSameOrigin, (req, res): void => {
   if (!ownerOnly(req, res)) return;
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: "Sign in before uploading an education video." });
-    return;
-  }
   res.status(503).json({ error: "Persistent video storage is not available. The file was not accepted." });
 });
 
@@ -167,10 +159,6 @@ router.get("/portal/education-videos/:videoId/file", (req, res): void => {
 
 router.post("/portal/education-videos/:videoId/publish", requireSameOrigin, (req, res): void => {
   if (!ownerOnly(req, res)) return;
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: "Sign in before publishing an education video." });
-    return;
-  }
   res.status(423).json({ error: "Publishing is paused until secure persistent video storage is available. Nothing was sent." });
 });
 

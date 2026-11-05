@@ -17,19 +17,24 @@ import {
   getListStaffTaskNotificationsQueryKey, getListStaffTasksQueryKey,
   useListStaffReportNotifications, useMarkStaffReportNotificationRead,
   getListStaffReportNotificationsQueryKey,
+   getGetMemberSessionQueryKey, getMemberSession,
+   useGetMemberSession, useLinkMemberTelegram,
   useUpdateStaffTask, useListStaffActivityReports, useSubmitStaffActivityReport,
   useReviewStaffActivityReport, useGetStaffPerformance,
   getListStaffActivityReportsQueryKey, getGetStaffPerformanceQueryKey, getListStaffTeamsQueryKey,
   getGetPortalCommandCenterQueryKey,
   useGetPortalCommandCenter,
 } from '@workspace/api-client-react';
-import type { PortalCaseSummary, PortalSession, PortalStaff, StaffPerformanceRow, StaffTask, StaffTeam } from '@workspace/api-client-react';
+import type { MemberSession, PortalCaseSummary, PortalSession, PortalStaff, StaffPerformanceRow, StaffTask, StaffTeam } from '@workspace/api-client-react';
 import {
   Activity, ArrowLeft, ArrowUpRight, Check, CheckCircle2, ChevronRight, CircleHelp,
   Bell, Eye, EyeOff, FileText, KeyRound, LockKeyhole, LogOut, MessageSquareText,
   Plus, Search, ShieldCheck, Users, X, Gauge, RefreshCw, Radio, CircleAlert, Database, History, Bot,
 } from 'lucide-react';
 import { Link, Route, Switch, Router as WouterRouter, useLocation, useParams } from 'wouter';
+import { ClerkProvider, SignUp, useAuth, useClerk, useSignIn } from '@clerk/react';
+import { publishableKeyFromHost } from '@clerk/react/internal';
+import { shadcn } from '@clerk/themes';
 import { useToast } from '@/hooks/use-toast';
 import NotFound from '@/pages/not-found';
 import ProAccessReview from '@/components/pro-access-review';
@@ -41,6 +46,67 @@ import BotControl from '@/pages/bot-control';
 import MemberAccessPage from '@/pages/member-access';
 import { trackEvent } from '@/lib/analytics';
 const brandLogoUrl = `${import.meta.env.BASE_URL}vayda-logo.png`;
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
+const clerkPubKey = publishableKeyFromHost(
+  window.location.hostname,
+  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
+);
+const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
+
+if (!clerkPubKey) throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY for member sign-in.');
+
+function stripClerkBase(path: string): string {
+  return basePath && path.startsWith(basePath) ? path.slice(basePath.length) || '/' : path;
+}
+
+const clerkAppearance = {
+  theme: shadcn,
+  cssLayerName: 'clerk',
+  options: {
+    logoPlacement: 'inside' as const,
+    logoLinkUrl: basePath || '/',
+  logoImageUrl: `${window.location.origin}${basePath}/vayda-logo.png`,
+  },
+  variables: {
+    colorPrimary: '#17634f',
+    colorForeground: '#152c28',
+    colorMutedForeground: '#64746f',
+    colorDanger: '#a12d29',
+    colorBackground: '#ffffff',
+    colorInput: '#ffffff',
+    colorInputForeground: '#152c28',
+    colorNeutral: '#152c28',
+    fontFamily: "'Manrope', sans-serif",
+    borderRadius: '0.75rem',
+  },
+  elements: {
+    rootBox: 'w-full flex justify-center',
+    cardBox: 'bg-white rounded-2xl w-[440px] max-w-full overflow-hidden shadow-xl border border-slate-200',
+    card: '!shadow-none !border-0 !bg-transparent !rounded-none',
+    footer: '!shadow-none !border-0 !bg-transparent !rounded-none',
+    headerTitle: 'text-slate-900 font-semibold',
+    headerSubtitle: 'text-slate-600',
+    socialButtonsBlockButtonText: 'text-slate-800',
+    formFieldLabel: 'text-slate-700',
+    footerActionLink: 'text-emerald-800 font-semibold',
+    footerActionText: 'text-slate-600',
+    dividerText: 'text-slate-500',
+    identityPreviewEditButton: 'text-emerald-800',
+    formFieldSuccessText: 'text-emerald-800',
+    alertText: 'text-rose-800',
+    logoBox: 'mb-2',
+    logoImage: 'max-h-12',
+    socialButtonsBlockButton: 'border-slate-300',
+    formButtonPrimary: 'font-semibold',
+    formFieldInput: 'text-slate-900',
+    footerAction: 'text-slate-600',
+    dividerLine: 'bg-slate-200',
+    alert: 'bg-rose-50 border-rose-200',
+    otpCodeFieldInput: 'text-slate-900',
+    formFieldRow: 'mb-4',
+    main: 'gap-5',
+  },
+};
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -112,49 +178,338 @@ function LoadingRows() {
 }
 
 function Login() {
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [recoveryStep, setRecoveryStep] = useState<'closed' | 'code' | 'new-password'>('closed');
+  const [recoveryCode, setRecoveryCode] = useState('');
+  const [newMemberPassword, setNewMemberPassword] = useState('');
   const [, navigate] = useLocation();
   const client = useQueryClient();
   const login = usePortalLogin();
+  const portalLogout = usePortalLogout();
+  const clerk = useClerk();
+  const { isLoaded: clerkLoaded, isSignedIn } = useAuth();
+  const { signIn } = useSignIn();
+  const staffSession = useGetPortalSession({
+    query: { queryKey: sessionKey, refetchOnMount: 'always', retry: false, staleTime: 0 },
+  });
+  const memberSession = useGetMemberSession({
+    query: {
+      queryKey: getGetMemberSessionQueryKey(),
+      enabled: clerkLoaded && isSignedIn === true,
+      retry: false,
+    },
+  });
   const [error, setError] = useState('');
-  const submit = (event: FormEvent) => {
+  const [notice, setNotice] = useState('');
+
+  useEffect(() => {
+    if (staffSession.data) {
+      navigate(staffSession.data.mustChangePassword ? '/account/password' : staffSession.data.dashboardPath);
+    } else if (memberSession.data) {
+      navigate(memberSession.data.dashboardPath);
+    }
+  }, [staffSession.data, memberSession.data, navigate]);
+
+  const finishMemberSignIn = async () => {
+    await signIn.finalize();
+    const member = await getMemberSession();
+    client.setQueryData(getGetMemberSessionQueryKey(), member);
+    await client.invalidateQueries({ queryKey: getGetMemberSessionQueryKey() });
+    navigate(member.dashboardPath);
+  };
+
+  const submit = async (event: FormEvent) => {
     event.preventDefault();
     setError('');
-    login.mutate({ data: { email: email.trim(), password } }, {
-      onSuccess: async (session) => {
-        trackEvent('staff_login_succeeded', {
-          password_change_required: session.mustChangePassword,
-        });
+    setNotice('');
+    setBusy(true);
+    try {
+      if (isSignedIn) {
+        await clerk.signOut();
+        client.clear();
+      }
+      try {
+        const session = await login.mutateAsync({ data: { identifier: identifier.trim(), password } });
+        trackEvent('staff_login_succeeded', { password_change_required: session.mustChangePassword });
         client.setQueryData(sessionKey, session);
         await client.invalidateQueries({ queryKey: sessionKey });
-        navigate(session.mustChangePassword ? '/account/password' : '/staff/support');
-      },
-      onError: (failure) => setError(errMessage(failure, 'Sign-in failed. Check your details and try again.')),
-    });
+        navigate(session.mustChangePassword ? '/account/password' : session.dashboardPath);
+        return;
+      } catch (staffFailure) {
+        const status = (staffFailure as { status?: number })?.status;
+        if (status !== 400 && status !== 401) throw staffFailure;
+      }
+
+      try {
+        await portalLogout.mutateAsync();
+      } catch {
+        // No existing staff session is expected for member sign-in.
+      }
+      if (!clerkLoaded) throw new Error('Member sign-in is still loading. Try again in a moment.');
+      const attempt = await signIn.password({ identifier: identifier.trim(), password });
+      if (attempt.error || signIn.status !== 'complete') {
+        throw new Error('Email or username and password are incorrect.');
+      }
+      try {
+        await finishMemberSignIn();
+      } catch (memberFailure) {
+        await clerk.signOut().catch(() => undefined);
+        const status = (memberFailure as { status?: number })?.status;
+        if (status === 403) {
+          throw new Error('This account does not have member dashboard access. Staff access must be assigned by the owner, and PRO access is not automatic.');
+        }
+        throw new Error('The member account could not be verified. Try again after your email is verified.');
+      }
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'Sign-in failed. Check your details and try again.');
+    } finally {
+      setBusy(false);
+    }
   };
+
+  const startRecovery = async () => {
+    setError('');
+    setNotice('');
+    if (!identifier.trim()) {
+      setError('Enter your member email or username first.');
+      return;
+    }
+    if (!clerkLoaded) {
+      setError('Member password recovery is still loading. Try again in a moment.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const created = await signIn.create({ identifier: identifier.trim() });
+      if (created.error) throw created.error;
+      const sent = await signIn.resetPasswordEmailCode.sendCode();
+      if (sent.error) throw sent.error;
+      setRecoveryStep('code');
+      setNotice('If this is a member account, a recovery code has been sent. Staff password resets must be handled by the owner.');
+    } catch {
+      setNotice('If this is a verified member account, a recovery code will be sent. Staff password resets must be handled by the owner.');
+      setRecoveryStep('code');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const verifyRecoveryCode = async (event: FormEvent) => {
+    event.preventDefault();
+    setError('');
+    setNotice('');
+    setBusy(true);
+    try {
+      const result = await signIn.resetPasswordEmailCode.verifyCode({ code: recoveryCode.trim() });
+      if (result.error) throw result.error;
+      setRecoveryStep('new-password');
+    } catch {
+      setError('That recovery code could not be verified. Request a new code and try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitMemberPassword = async (event: FormEvent) => {
+    event.preventDefault();
+    setError('');
+    if (newMemberPassword.length < 12) {
+      setError('Use at least 12 characters for the new password.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await signIn.resetPasswordEmailCode.submitPassword({ password: newMemberPassword });
+      if (result.error) throw result.error;
+      await finishMemberSignIn();
+    } catch (failure) {
+      await clerk.signOut().catch(() => undefined);
+      setError(failure instanceof Error ? failure.message : 'The password could not be reset. Request a new code and try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return <main className="login-screen">
     <section className="login-aside">
       <div className="login-brand"><Brand /></div>
-      <div className="login-copy"><div className="eyebrow" style={{ color: '#d5b56f' }}>STAFF SUPPORT PORTAL</div><h1>Clear answers.<br />Thoughtful support.</h1><p>A private workspace for the people who help VAYDA members move forward with confidence.</p></div>
-      <div className="login-foot">INTERNAL OPERATIONS · AUTHORIZED STAFF ONLY</div>
+      <div className="login-copy"><div className="eyebrow" style={{ color: '#d5b56f' }}>VAYDA ACCOUNT ACCESS</div><h1>One sign-in.<br />The right workspace.</h1><p>Sign in with your registered account. Your permissions determine which dashboard opens.</p></div>
+      <div className="login-foot">MEMBERS · LEARNERS · AUTHORIZED STAFF</div>
     </section>
-    <section className="login-panel"><form className="login-form" onSubmit={submit}>
-      <div className="eyebrow">WELCOME BACK</div><h2>Sign in to continue</h2><p>Use the staff account provided by your administrator.</p>
-      {error && <div className={`notice ${login.isError && isUnauthorized(login.error) ? 'notice-error' : 'notice-error'}`} role="alert" data-testid="status-login-error">{error}</div>}
-      <div className="form-field"><label className="form-label" htmlFor="login-email">Work email</label><input id="login-email" className="field-input" type="email" autoComplete="username" required maxLength={254} value={email} onChange={(event) => setEmail(event.target.value)} data-testid="input-email" /></div>
-      <div className="form-field"><label className="form-label" htmlFor="login-password">Password</label><div className="password-wrap"><input id="login-password" className="field-input" type={showPassword ? 'text' : 'password'} autoComplete="current-password" required maxLength={256} value={password} onChange={(event) => setPassword(event.target.value)} data-testid="input-password" /><button type="button" className="password-toggle" aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword(!showPassword)} data-testid="button-toggle-password">{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button></div></div>
-      <button className="btn btn-primary" type="submit" disabled={login.isPending} data-testid="button-sign-in">{login.isPending ? 'Signing in…' : 'Sign in securely'} <ChevronRight size={15} /></button>
-      <div className="login-note"><LockKeyhole size={12} style={{ verticalAlign: 'middle', marginRight: 5 }} />Access is managed by your VAYDA administrator. Self-registration is not available.</div>
-    </form></section>
+    <section className="login-panel"><div className="login-form">
+      <div className="eyebrow">WELCOME BACK</div><h2>Sign in to continue</h2><p>Enter the email or username linked to your account.</p>
+      {error && <div className="notice notice-error" role="alert" data-testid="status-login-error">{error}</div>}
+      {notice && <div className="notice notice-info" role="status" data-testid="status-login-notice">{notice}</div>}
+      {recoveryStep === 'closed' ? <form onSubmit={submit}>
+        <div className="form-field"><label className="form-label" htmlFor="login-identifier">Email or username</label><input id="login-identifier" className="field-input" type="text" autoComplete="username" required maxLength={254} value={identifier} onChange={(event) => setIdentifier(event.target.value)} data-testid="input-identifier" /></div>
+        <div className="form-field"><label className="form-label" htmlFor="login-password">Password</label><div className="password-wrap"><input id="login-password" className="field-input" type={showPassword ? 'text' : 'password'} autoComplete="current-password" required maxLength={256} value={password} onChange={(event) => setPassword(event.target.value)} data-testid="input-password" /><button type="button" className="password-toggle" aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword(!showPassword)} data-testid="button-toggle-password">{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button></div></div>
+        <button className="btn btn-primary" type="submit" disabled={busy || login.isPending} data-testid="button-sign-in">{busy ? 'Signing in…' : 'Sign in securely'} <ChevronRight size={15} /></button>
+        <button className="login-link-button" type="button" onClick={() => void startRecovery()} disabled={busy} data-testid="button-forgot-member-password">Forgot your member password?</button>
+      </form> : recoveryStep === 'code' ? <form onSubmit={verifyRecoveryCode}>
+        <div className="form-field"><label className="form-label" htmlFor="member-reset-code">Email recovery code</label><input id="member-reset-code" className="field-input" inputMode="numeric" autoComplete="one-time-code" required maxLength={12} value={recoveryCode} onChange={(event) => setRecoveryCode(event.target.value)} /></div>
+        <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? 'Checking code…' : 'Verify code'} <ChevronRight size={15} /></button>
+        <button className="login-link-button" type="button" onClick={() => setRecoveryStep('closed')}>Back to sign in</button>
+      </form> : <form onSubmit={submitMemberPassword}>
+        <div className="form-field"><label className="form-label" htmlFor="member-new-password">New member password</label><input id="member-new-password" className="field-input" type="password" autoComplete="new-password" required minLength={12} maxLength={256} value={newMemberPassword} onChange={(event) => setNewMemberPassword(event.target.value)} /></div>
+        <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? 'Updating password…' : 'Update password'} <ChevronRight size={15} /></button>
+        <button className="login-link-button" type="button" onClick={() => setRecoveryStep('closed')}>Back to sign in</button>
+      </form>}
+      <div className="login-note"><LockKeyhole size={12} style={{ verticalAlign: 'middle', marginRight: 5 }} />The server assigns access. Staff accounts are created by the owner; registration never grants PRO access.</div>
+      <div className="login-note">New learner? <Link href="/sign-up" data-testid="link-member-sign-up">Create a member account</Link></div>
+    </div></section>
   </main>;
+}
+
+type TelegramWidgetUser = {
+  id: number;
+  auth_date: number;
+  hash: string;
+  first_name?: string;
+  last_name?: string;
+  username?: string;
+  photo_url?: string;
+};
+
+declare global {
+  interface Window {
+    onTelegramMemberAuth?: (user: TelegramWidgetUser) => void;
+  }
+}
+
+function TelegramLinkWidget({ session }: { session: MemberSession }) {
+  const client = useQueryClient();
+  const link = useLinkMemberTelegram();
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const widgetRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (session.telegramLinked || !widgetRef.current) return;
+    const handleTelegramAuth = async (user: TelegramWidgetUser) => {
+      setError('');
+      setNotice('');
+      try {
+        const result = await link.mutateAsync({
+          data: {
+            id: String(user.id),
+            authDate: user.auth_date,
+            hash: user.hash,
+            firstName: user.first_name,
+            lastName: user.last_name,
+            username: user.username,
+            photoUrl: user.photo_url,
+          },
+        });
+        const current = client.getQueryData<MemberSession>(getGetMemberSessionQueryKey());
+        if (current) {
+          client.setQueryData<MemberSession>(getGetMemberSessionQueryKey(), {
+            ...current,
+            telegramLinked: result.linked,
+            telegramUsername: result.telegramUsername,
+          });
+        }
+        setNotice('Your Telegram identity is linked. This does not grant PRO Signals access.');
+      } catch (failure) {
+        setError(failure instanceof Error ? failure.message : 'Telegram identity could not be linked.');
+      }
+    };
+    window.onTelegramMemberAuth = handleTelegramAuth;
+    const script = document.createElement('script');
+    script.async = true;
+    script.src = 'https://telegram.org/js/telegram-widget.js?22';
+    script.setAttribute('data-telegram-login', 'SmartMoneyHubSignalsBot');
+    script.setAttribute('data-size', 'large');
+    script.setAttribute('data-userpic', 'false');
+    script.setAttribute('data-onauth', 'onTelegramMemberAuth(user)');
+    widgetRef.current.replaceChildren(script);
+    return () => {
+      if (window.onTelegramMemberAuth === handleTelegramAuth) delete window.onTelegramMemberAuth;
+      script.remove();
+    };
+  }, [session.telegramLinked, client, link.mutateAsync]);
+
+  return <div className="member-telegram-link">
+    {session.telegramLinked
+      ? <p>Linked Telegram account: <strong>{session.telegramUsername ? `@${session.telegramUsername}` : 'identity verified'}</strong></p>
+      : <><p>Verify your Telegram identity with Telegram’s signed login widget. A username alone is not accepted as proof.</p><div ref={widgetRef} data-testid="telegram-link-widget" /></>}
+    {error && <div className="notice notice-error" role="alert">{error}</div>}
+    {notice && <div className="notice notice-info" role="status">{notice}</div>}
+    <a href="https://t.me/SmartMoneyHubSignalsBot" target="_blank" rel="noreferrer">Open the Smart Money Hub bot</a>
+  </div>;
+}
+
+function MemberDashboardPage({ session }: { session: MemberSession }) {
+  const clerk = useClerk();
+  const portalLogout = usePortalLogout();
+  const client = useQueryClient();
+  const [, navigate] = useLocation();
+
+  const signOut = async () => {
+    try {
+      await portalLogout.mutateAsync();
+    } catch {
+      // A member normally has no staff session to clear.
+    }
+    await clerk.signOut({ redirectUrl: `${basePath}/` });
+    await client.clear();
+    navigate('/');
+  };
+
+  return <main className="page member-dashboard" data-testid="member-dashboard">
+    <div className="page-heading"><div><div className="eyebrow">MEMBER WORKSPACE</div><h1>Welcome, {session.displayName}</h1><p className="subheading">Your member account is verified and ready.</p></div><button className="btn btn-outline" type="button" onClick={() => void signOut()} data-testid="button-member-sign-out"><LogOut size={14}/> Sign out</button></div>
+    <div className="member-dashboard-grid">
+      <section className="section-panel">
+        <div className="section-head"><div><h2 className="section-title">Account access</h2><p className="section-note">Access is assigned by the server for this account.</p></div><div className="stat-icon"><ShieldCheck size={17}/></div></div>
+        <div className="member-access-list">
+          <div><span>Account</span><strong>Verified member</strong></div>
+          <div><span>Learning dashboard</span><strong>{session.learningDashboard ? 'Available' : 'Not assigned'}</strong></div>
+          <div><span>PRO Signals</span><strong>{session.proSignalsAccess ? 'Authorized' : 'Not assigned'}</strong></div>
+        </div>
+        {!session.proSignalsAccess && <p className="member-access-note">Registration and Telegram identity do not grant PRO Signals access.</p>}
+        <Link className="btn btn-primary" href="/education" data-testid="link-member-learning">Explore the learning approach <ArrowUpRight size={14}/></Link>
+      </section>
+      <section className="section-panel">
+        <div className="section-head"><div><h2 className="section-title">Link Telegram</h2><p className="section-note">Connect the Telegram identity you control.</p></div><div className="stat-icon"><Bot size={17}/></div></div>
+        <div className="member-telegram-body"><TelegramLinkWidget session={session}/></div>
+      </section>
+    </div>
+  </main>;
+}
+
+function MemberRoot() {
+  const [location, navigate] = useLocation();
+  const { isLoaded, isSignedIn } = useAuth();
+  const staff = useGetPortalSession({ query: { queryKey: sessionKey, retry: false, staleTime: 0 } });
+  const member = useGetMemberSession({
+    query: { queryKey: getGetMemberSessionQueryKey(), enabled: isLoaded && isSignedIn === true, retry: false },
+  });
+
+  useEffect(() => {
+    if (staff.data) navigate(staff.data.mustChangePassword ? '/account/password' : staff.data.dashboardPath);
+    else if (isLoaded && isSignedIn !== true) navigate('/login');
+  }, [staff.data, isLoaded, isSignedIn, navigate]);
+
+  if (staff.isLoading || !isLoaded || (isSignedIn && member.isLoading)) {
+    return <main className="page"><div className="skeleton" style={{ width: 260, height: 28 }}/><div className="skeleton" style={{ width: '100%', maxWidth: 560, height: 180, marginTop: 24 }}/></main>;
+  }
+  if (staff.data) return null;
+  if (!isSignedIn) return null;
+  if (member.isError || !member.data) {
+    const message = (member.error as { message?: string } | null)?.message ?? 'This account does not have member dashboard access.';
+    return <main className="page"><div className="unauthorized"><div className="empty-mark"><ShieldCheck size={20}/></div><h1>Member access unavailable</h1><p>{message}</p><Link className="btn btn-outline" href="/" data-testid="link-member-access-home">Return to the public website</Link></div></main>;
+  }
+  if (location !== member.data.dashboardPath) return null;
+  return <MemberDashboardPage session={member.data}/>;
 }
 
 function AppShell({ session, children }: { session: PortalSession; children: ReactNode }) {
   const [location, navigate] = useLocation();
   const client = useQueryClient();
   const logout = usePortalLogout();
+  const clerk = useClerk();
   const { toast } = useToast();
   const knownOpenCases = useRef<Set<string> | null>(null);
   const knownTaskNoticeIds = useRef<Set<string> | null>(null);
@@ -264,7 +619,7 @@ function AppShell({ session, children }: { session: PortalSession; children: Rea
     }
     knownReportNoticeIds.current = unreadIds;
   }, [reportNotificationQuery.data?.notifications, toast]);
-  const signOut = () => logout.mutate(undefined, { onSuccess: () => { client.clear(); navigate('/staff/login'); }, onError: () => client.invalidateQueries({ queryKey: sessionKey }) });
+  const signOut = () => logout.mutate(undefined, { onSuccess: async () => { await clerk.signOut().catch(() => undefined); client.clear(); navigate('/login'); }, onError: () => client.invalidateQueries({ queryKey: sessionKey }) });
    return <div className="portal-shell">
     <aside className="sidebar"><Brand/><div className="nav-label">Main menu</div>{navItems.map((item) => <Link key={item.testId} href={item.href} onClick={() => item.scrollTarget && setScrollTarget(item.scrollTarget)} className={`nav-link ${(item.scrollTarget ? activeScrollTarget === item.scrollTarget : location === item.href) ? 'active' : ''}`} data-testid={item.testId}>{item.icon}{item.label}</Link>)}<div className="sidebar-bottom"><div className="person"><span className="person-avatar">{initials(session.displayName)}</span><div><div className="person-name">{session.displayName}</div><div className="person-role">{session.role === 'owner' ? 'Owner' : session.role === 'manager' ? 'Support Manager' : 'Support Agent'}</div></div></div>{session.role === 'owner' && <><Link className={`account-link owner-command-link ${location === '/command-center' ? 'selected' : ''}`} href="/command-center"><Gauge size={14}/>Command center <span>DEV</span></Link><Link className={`account-link owner-education-link ${location === '/command-center/education-videos' ? 'selected' : ''}`} href="/command-center/education-videos" data-testid="link-owner-education-videos"><FileText size={14}/>Education videos</Link><Link className={`account-link owner-history-link ${location === '/command-center/channel-history' ? 'selected' : ''}`} href="/command-center/channel-history" data-testid="link-owner-channel-history"><History size={14}/>Channel history</Link></>}<Link className="account-link" href="/account/password"><KeyRound size={14}/>Change password</Link><button className="signout" onClick={signOut} disabled={logout.isPending} data-testid="button-sign-out"><LogOut size={13} style={{ verticalAlign: 'middle', marginRight: 6 }} />{logout.isPending ? 'Signing out…' : 'Sign out'}</button></div></aside>
      <div className="main-column"><div className="mobile-top"><Brand/><div className="mobile-actions">{session.role === 'owner' && <><Link href="/bot-control" aria-label="Bot control center" data-testid="mobile-quick-bot-control"><Bot size={17}/></Link><Link href="/command-center" aria-label="Owner command center"><Gauge size={17}/></Link><Link href="/command-center/education-videos" aria-label="Education videos" data-testid="mobile-link-owner-education-videos"><FileText size={17}/></Link><Link href="/command-center/channel-history" aria-label="Channel history" data-testid="mobile-link-owner-channel-history"><History size={17}/></Link><Link href="/trades" aria-label="Trade management" data-testid="mobile-link-owner-trades"><Activity size={17}/></Link></>}<Link href="/account/password" aria-label="Change password"><KeyRound size={17}/></Link><button onClick={signOut} aria-label="Sign out"><LogOut size={17}/></button></div></div><nav className="mobile-nav" aria-label="Portal navigation">{navItems.map((item) => <Link key={item.testId} href={item.href} onClick={() => item.scrollTarget && setScrollTarget(item.scrollTarget)} className={`mobile-nav-link ${(item.scrollTarget ? activeScrollTarget === item.scrollTarget : location === item.href) ? 'active' : ''}`} data-testid={`mobile-${item.testId}`}>{item.icon}<span>{item.label}</span></Link>)}</nav><header className="topbar"><div className="crumb">{location === '/bot-control' ? 'Owner tools / Bot control center' : location.startsWith('/command-center') ? 'Owner tools / Command center' : location === '/trades' ? 'Owner tools / Trade management' : 'Staff Support Portal'}</div><div className="top-right"><span className="secure-label"><span className="secure-dot"/ >Private workspace</span><span>{session.displayName}</span></div></header>{children}</div>
@@ -877,23 +1232,25 @@ function PasswordPage({ session }: { session: PortalSession }) {
   </main>;
 }
 
-function AccessDenied() {
+function AccessDenied({ returnPath = '/staff/support' }: { returnPath?: string }) {
   const [, navigate] = useLocation();
-  return <main className="page"><div className="unauthorized"><div className="empty-mark"><ShieldCheck size={20}/></div><h1>Administrator access required</h1><p>This area is limited to administrator accounts. If you need staff access changed, contact your VAYDA administrator.</p><button className="btn btn-outline" onClick={()=>navigate('/staff/support')} data-testid="button-return-queue"><ArrowLeft size={14}/>Return to support queue</button></div></main>;
+  return <main className="page"><div className="unauthorized"><div className="empty-mark"><ShieldCheck size={20}/></div><h1>Administrator access required</h1><p>This area is limited to administrator accounts. If you need staff access changed, contact your VAYDA administrator.</p><button className="btn btn-outline" onClick={()=>navigate(returnPath)} data-testid="button-return-queue"><ArrowLeft size={14}/>Return to your dashboard</button></div></main>;
 }
 
 function ProtectedRouter({ session }: { session: PortalSession }) {
   const [location, navigate] = useLocation();
-  const shouldReturnToQueue = !session.mustChangePassword
-    && (location === '/' || location === '/support' || location === '/staff/login');
+  const shouldReturnToDashboard = !session.mustChangePassword
+    && (location === '/' || location === '/support' || location === '/login' || location === '/staff/login');
   useEffect(() => {
     if (session.mustChangePassword && location !== '/account/password') navigate('/account/password');
-    else if (shouldReturnToQueue) navigate('/staff/support');
-  }, [session.mustChangePassword, shouldReturnToQueue, location, navigate]);
-  if ((session.mustChangePassword && location !== '/account/password') || shouldReturnToQueue) return <div className="page"><div className="skeleton" style={{width:220,height:24}}/></div>;
+    else if (shouldReturnToDashboard) navigate(session.dashboardPath);
+  }, [session.mustChangePassword, shouldReturnToDashboard, session.dashboardPath, location, navigate]);
+  if ((session.mustChangePassword && location !== '/account/password') || shouldReturnToDashboard) return <div className="page"><div className="skeleton" style={{width:220,height:24}}/></div>;
   if (location === '/operations' || location.startsWith('/operations/')) {
     const routeBase = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/operations`;
-    return <OperationsApp routeBase={routeBase} />;
+    return session.role === 'owner'
+      ? <OperationsApp routeBase={routeBase} />
+      : <AccessDenied returnPath={session.dashboardPath}/>;
   }
   if (!session.mustChangePassword && location === '/account/password') {
     // Password page remains reachable for voluntary changes.
@@ -917,13 +1274,18 @@ function ProtectedRouter({ session }: { session: PortalSession }) {
 }
 
 function PortalRoot() {
+  const [, navigate] = useLocation();
   const session = useGetPortalSession({ query: { queryKey: sessionKey, refetchOnMount: 'always', retry: false, staleTime: 0 } });
+  useEffect(() => {
+    if (session.isError && isUnauthorized(session.error)) navigate('/login');
+    else if (!session.isLoading && !session.isError && !session.data) navigate('/login');
+  }, [session.isError, session.error, session.isLoading, session.data, navigate]);
   if (session.isLoading) return <div className="login-screen"><section className="login-aside"><div className="login-brand"><Brand/></div><div className="login-copy"><div className="eyebrow" style={{color:'#d5b56f'}}>STAFF SUPPORT PORTAL</div><h1>Clear answers.<br/>Thoughtful support.</h1></div></section><section className="login-panel"><div className="login-form"><div className="skeleton" style={{width:90}}/><div className="skeleton" style={{width:250,height:30,marginTop:17}}/><div className="skeleton" style={{width:'100%',height:43,marginTop:28}}/><div className="skeleton" style={{width:'100%',height:43,marginTop:12}}/></div></section></div>;
   if (session.isError) {
-    if (isUnauthorized(session.error)) return <Login/>;
+    if (isUnauthorized(session.error)) return null;
     return <div className="unauthorized"><h1>Portal unavailable</h1><p>{errMessage(session.error)}</p><button className="btn btn-outline" onClick={()=>session.refetch()} data-testid="button-retry-session">Try again</button></div>;
   }
-  if (!session.data) return <Login/>;
+  if (!session.data) return null;
   return <ProtectedRouter session={session.data}/>;
 }
 
@@ -931,6 +1293,56 @@ function RoutedErrorBoundary({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   return <ErrorBoundary resetKey={location}>{children}</ErrorBoundary>;
 }
+
+function HomeRedirect() {
+  const [, navigate] = useLocation();
+  const { isLoaded, isSignedIn } = useAuth();
+  const staff = useGetPortalSession({ query: { queryKey: sessionKey, refetchOnMount: 'always', retry: false, staleTime: 0 } });
+  const member = useGetMemberSession({
+    query: { queryKey: getGetMemberSessionQueryKey(), enabled: isLoaded && isSignedIn === true, retry: false },
+  });
+  useEffect(() => {
+    if (staff.data) navigate(staff.data.mustChangePassword ? '/account/password' : staff.data.dashboardPath);
+    else if (member.data) navigate(member.data.dashboardPath);
+  }, [staff.data, member.data, navigate]);
+  return <PublicSite/>;
+}
+
+function LegacyLoginRedirect() {
+  const [, navigate] = useLocation();
+  useEffect(() => navigate('/login', { replace: true }), [navigate]);
+  return null;
+}
+
+function MemberSignUpPage() {
+  return <main className="member-signup-page">
+    <div className="member-signup-heading"><Brand/><div><div className="eyebrow">MEMBER ACCOUNT</div><h1>Create your learning account</h1><p>Staff tools are not available through public registration.</p></div></div>
+    <div className="member-signup-card">
+      <SignUp
+        routing="path"
+        path={`${basePath}/sign-up`}
+        signInUrl={`${basePath}/login`}
+        forceRedirectUrl={`${basePath}/member/dashboard`}
+      />
+    </div>
+  </main>;
+}
+
+function ClerkQueryClientCacheInvalidator() {
+  const { addListener } = useClerk();
+  const client = useQueryClient();
+  const previousUserId = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    const unsubscribe = addListener(({ user }) => {
+      const userId = user?.id ?? null;
+      if (previousUserId.current !== undefined && previousUserId.current !== userId) client.clear();
+      previousUserId.current = userId;
+    });
+    return unsubscribe;
+  }, [addListener, client]);
+  return null;
+}
+
 function Router() {
   const [location] = useLocation();
   const normalizedPath = location === '/' ? '/' : location.replace(/\/+$/, '');
@@ -949,18 +1361,49 @@ function Router() {
     const robots = document.querySelector<HTMLMetaElement>('meta[name="robots"]');
     if (robots) robots.content = isPublicRoute ? 'index, follow' : 'noindex, nofollow';
     if (!isPublicRoute) {
-      document.title = normalizedPath === '/staff/login'
-        ? 'Staff Sign In | VAYDA Support Portal'
-        : 'VAYDA Support Portal | Staff Workspace';
+      document.title = normalizedPath === '/login' || normalizedPath === '/staff/login' || normalizedPath.startsWith('/sign-in')
+        ? 'Sign In | VAYDA Smart Money Hub'
+        : normalizedPath.startsWith('/sign-up')
+          ? 'Create Member Account | VAYDA Smart Money Hub'
+          : normalizedPath === '/member/dashboard'
+            ? 'Member Dashboard | VAYDA Smart Money Hub'
+            : 'VAYDA Support Portal | Staff Workspace';
       document.querySelector('link[rel="canonical"]')?.remove();
       const description = document.querySelector<HTMLMetaElement>('meta[name="description"]');
-      if (description) description.content = 'Private VAYDA staff workspace. Authorized access only.';
+      if (description) description.content = 'Private VAYDA account workspace. Access is assigned according to verified account permissions.';
     }
   }, [isPublicRoute, normalizedPath]);
 
-  return <RoutedErrorBoundary>{isPublicRoute ? <PublicSite /> : <PortalRoot />}</RoutedErrorBoundary>;
+  return <RoutedErrorBoundary><Switch>
+    <Route path="/sign-in/*?" component={LegacyLoginRedirect}/>
+    <Route path="/sign-up/*?" component={MemberSignUpPage}/>
+    <Route path="/login" component={Login}/>
+    <Route path="/staff/login" component={LegacyLoginRedirect}/>
+    <Route path="/member/dashboard" component={MemberRoot}/>
+    <Route>{() => isPublicRoute ? normalizedPath === '/' ? <HomeRedirect/> : <PublicSite/> : <PortalRoot/>}</Route>
+  </Switch></RoutedErrorBoundary>;
+}
+
+function ClerkProviderWithRoutes() {
+  const [, setLocation] = useLocation();
+  return <ClerkProvider
+    publishableKey={clerkPubKey}
+    proxyUrl={clerkProxyUrl}
+    appearance={clerkAppearance}
+    signInUrl={`${basePath}/login`}
+    signUpUrl={`${basePath}/sign-up`}
+    localization={{
+      signIn: { start: { title: 'Welcome back', subtitle: 'Sign in to access your account.' } },
+      signUp: { start: { title: 'Create a member account', subtitle: 'Verified email is required for member access.' } },
+    }}
+    routerPush={(to) => setLocation(stripClerkBase(to))}
+    routerReplace={(to) => setLocation(stripClerkBase(to), { replace: true })}
+  >
+    <ClerkQueryClientCacheInvalidator/>
+    <Router/>
+  </ClerkProvider>;
 }
 function App() {
-  return <QueryClientProvider client={queryClient}><TooltipProvider><WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><Router/></WouterRouter><Toaster/></TooltipProvider></QueryClientProvider>;
+  return <QueryClientProvider client={queryClient}><TooltipProvider><WouterRouter base={basePath}><ClerkProviderWithRoutes/></WouterRouter><Toaster/></TooltipProvider></QueryClientProvider>;
 }
 export default App;

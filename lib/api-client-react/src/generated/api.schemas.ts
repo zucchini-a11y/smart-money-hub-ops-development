@@ -154,31 +154,6 @@ export interface SupportSession {
   staff: SupportStaff | null;
 }
 
-export interface SupportLogin {
-  /** @maxLength 254 */
-  email: string;
-  /**
-     * @minLength 1
-     * @maxLength 256
-     */
-  password: string;
-}
-
-export interface SupportBootstrap {
-  /** @maxLength 254 */
-  email: string;
-  /**
-     * @minLength 1
-     * @maxLength 100
-     */
-  displayName: string;
-  /**
-     * @minLength 12
-     * @maxLength 256
-     */
-  password: string;
-}
-
 export type SupportCaseSummarySourceBot = typeof SupportCaseSummarySourceBot[keyof typeof SupportCaseSummarySourceBot];
 
 
@@ -467,14 +442,24 @@ export interface ErrorResponse {
 }
 
 export interface PortalLoginInput {
-  /** @maxLength 254 */
-  email: string;
+  /**
+     * @minLength 1
+     * @maxLength 254
+     */
+  identifier: string;
   /**
      * @minLength 1
      * @maxLength 256
      */
   password: string;
 }
+
+export type PortalSessionAccountType = typeof PortalSessionAccountType[keyof typeof PortalSessionAccountType];
+
+
+export const PortalSessionAccountType = {
+  staff: 'staff',
+} as const;
 
 export type PortalSessionRole = typeof PortalSessionRole[keyof typeof PortalSessionRole];
 
@@ -486,11 +471,65 @@ export const PortalSessionRole = {
 } as const;
 
 export interface PortalSession {
+  accountType: PortalSessionAccountType;
   staffId: string;
   email: string;
   displayName: string;
   role: PortalSessionRole;
   mustChangePassword: boolean;
+  dashboardPath: string;
+}
+
+export type MemberSessionAccountType = typeof MemberSessionAccountType[keyof typeof MemberSessionAccountType];
+
+
+export const MemberSessionAccountType = {
+  member: 'member',
+} as const;
+
+export type MemberSessionDashboardPath = typeof MemberSessionDashboardPath[keyof typeof MemberSessionDashboardPath];
+
+
+export const MemberSessionDashboardPath = {
+  '/member/dashboard': '/member/dashboard',
+} as const;
+
+export interface MemberSession {
+  accountType: MemberSessionAccountType;
+  email: string;
+  displayName: string;
+  dashboardPath: MemberSessionDashboardPath;
+  learningDashboard: boolean;
+  proSignalsAccess: false;
+  telegramLinked: boolean;
+  telegramUsername: string | null;
+}
+
+export interface LinkMemberTelegramInput {
+  /**
+     * @minLength 1
+     * @maxLength 30
+     */
+  id: string;
+  /** @maxLength 64 */
+  firstName?: string;
+  /** @maxLength 64 */
+  lastName?: string;
+  /** @maxLength 64 */
+  username?: string;
+  /** @maxLength 2048 */
+  photoUrl?: string;
+  authDate: number;
+  /**
+     * @minLength 64
+     * @maxLength 64
+     */
+  hash: string;
+}
+
+export interface MemberTelegramLink {
+  linked: boolean;
+  telegramUsername: string | null;
 }
 
 export type SignedOutStateStatus = typeof SignedOutStateStatus[keyof typeof SignedOutStateStatus];

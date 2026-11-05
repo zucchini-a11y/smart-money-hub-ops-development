@@ -49,6 +49,7 @@ import type {
   GetPortalChannelHistoryParams,
   HandleBrowserLoginCallbackParams,
   HealthStatus,
+  LinkMemberTelegramInput,
   ListMemberBotCasesParams,
   ListPortalCasesParams,
   ListPortalMemberApplicationsParams,
@@ -58,6 +59,8 @@ import type {
   LogoutBrowserSessionParams,
   LogoutSuccess,
   MemberAccessApplicationList,
+  MemberSession,
+  MemberTelegramLink,
   MobileTokenExchangeRequest,
   MobileTokenExchangeSuccess,
   PortalCaseAssignmentInput,
@@ -110,11 +113,9 @@ import type {
   StaffTeamList,
   StaffTeamMembersInput,
   SupportAssignmentInput,
-  SupportBootstrap,
   SupportCaseDetail,
   SupportCaseList,
   SupportCaseSummary,
-  SupportLogin,
   SupportMessage,
   SupportNote,
   SupportNoteInput,
@@ -1365,182 +1366,6 @@ export function useGetSupportSession<TData = Awaited<ReturnType<typeof getSuppor
 
 
 
-export const getBootstrapSupportOwnerUrl = () => {
-
-
-
-
-  return `/api/support/auth/bootstrap`
-}
-
-/**
- * @summary Create the first development-only support owner
- */
-export const bootstrapSupportOwner = async (supportBootstrap: SupportBootstrap, options?: Parameters<typeof customFetch>[1]): Promise<SupportSession> => {
-
-    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
-    if (!h) return {};
-    if (h instanceof Headers) return Object.fromEntries(h.entries());
-    if (Symbol.iterator in h) {
-      return Object.fromEntries(
-        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
-      );
-    }
-    const headers: Record<string, string | readonly string[]> = {};
-    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
-      if (value !== undefined) headers[name] = value;
-    }
-    return headers;
-  };
-return customFetch<SupportSession>(getBootstrapSupportOwnerUrl(),
-  {
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
-    body: JSON.stringify(supportBootstrap)
-  }
-);}
-
-
-
-
-
-export const getBootstrapSupportOwnerMutationKey = () => ['bootstrapSupportOwner'] as const;
-
-export const getBootstrapSupportOwnerMutationOptions = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bootstrapSupportOwner>>, TError,BootstrapSupportOwnerMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof bootstrapSupportOwner>>, TError,BootstrapSupportOwnerMutationVariables, TContext> => {
-
-const mutationKey = getBootstrapSupportOwnerMutationKey();
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bootstrapSupportOwner>>, BootstrapSupportOwnerMutationVariables> = (props) => {
-          const {data} = props ?? {};
-
-          return  bootstrapSupportOwner(data,requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type BootstrapSupportOwnerMutationResult = NonNullable<Awaited<ReturnType<typeof bootstrapSupportOwner>>>
-    export type BootstrapSupportOwnerMutationBody = BodyType<SupportBootstrap>
-    export type BootstrapSupportOwnerMutationError = ErrorType<void>
-    export type BootstrapSupportOwnerMutationVariables = {data: BodyType<SupportBootstrap>}
-
-    /**
- * @summary Create the first development-only support owner
- */
-export const useBootstrapSupportOwner = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bootstrapSupportOwner>>, TError,BootstrapSupportOwnerMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof bootstrapSupportOwner>>,
-        TError,
-        BootstrapSupportOwnerMutationVariables,
-        TContext
-      > => {
-      return useMutation(getBootstrapSupportOwnerMutationOptions(options));
-    }
-
-export const getLoginSupportStaffUrl = () => {
-
-
-
-
-  return `/api/support/auth/login`
-}
-
-/**
- * @summary Sign in to the support portal
- */
-export const loginSupportStaff = async (supportLogin: SupportLogin, options?: Parameters<typeof customFetch>[1]): Promise<SupportSession> => {
-
-    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
-    if (!h) return {};
-    if (h instanceof Headers) return Object.fromEntries(h.entries());
-    if (Symbol.iterator in h) {
-      return Object.fromEntries(
-        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
-      );
-    }
-    const headers: Record<string, string | readonly string[]> = {};
-    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
-      if (value !== undefined) headers[name] = value;
-    }
-    return headers;
-  };
-return customFetch<SupportSession>(getLoginSupportStaffUrl(),
-  {
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
-    body: JSON.stringify(supportLogin)
-  }
-);}
-
-
-
-
-
-export const getLoginSupportStaffMutationKey = () => ['loginSupportStaff'] as const;
-
-export const getLoginSupportStaffMutationOptions = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof loginSupportStaff>>, TError,LoginSupportStaffMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof loginSupportStaff>>, TError,LoginSupportStaffMutationVariables, TContext> => {
-
-const mutationKey = getLoginSupportStaffMutationKey();
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof loginSupportStaff>>, LoginSupportStaffMutationVariables> = (props) => {
-          const {data} = props ?? {};
-
-          return  loginSupportStaff(data,requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type LoginSupportStaffMutationResult = NonNullable<Awaited<ReturnType<typeof loginSupportStaff>>>
-    export type LoginSupportStaffMutationBody = BodyType<SupportLogin>
-    export type LoginSupportStaffMutationError = ErrorType<void>
-    export type LoginSupportStaffMutationVariables = {data: BodyType<SupportLogin>}
-
-    /**
- * @summary Sign in to the support portal
- */
-export const useLoginSupportStaff = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof loginSupportStaff>>, TError,LoginSupportStaffMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof loginSupportStaff>>,
-        TError,
-        LoginSupportStaffMutationVariables,
-        TContext
-      > => {
-      return useMutation(getLoginSupportStaffMutationOptions(options));
-    }
-
 export const getLogoutSupportStaffUrl = () => {
 
 
@@ -2726,7 +2551,7 @@ export const getPortalLoginUrl = () => {
 }
 
 /**
- * @summary Sign in a staff member
+ * @summary Sign in a staff member using email or username
  */
 export const portalLogin = async (portalLoginInput: PortalLoginInput, options?: Parameters<typeof customFetch>[1]): Promise<PortalSession> => {
 
@@ -2792,7 +2617,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type PortalLoginMutationVariables = {data: BodyType<PortalLoginInput>}
 
     /**
- * @summary Sign in a staff member
+ * @summary Sign in a staff member using email or username
  */
 export const usePortalLogin = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof portalLogin>>, TError,PortalLoginMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -2943,6 +2768,171 @@ export function useGetPortalSession<TData = Awaited<ReturnType<typeof getPortalS
 
 
 
+
+export const getGetMemberSessionUrl = () => {
+
+
+
+
+  return `/api/member/session`
+}
+
+/**
+ * @summary Resolve a verified member account and its available dashboard
+ */
+export const getMemberSession = async ( options?: Parameters<typeof customFetch>[1]): Promise<MemberSession> => {
+
+  return customFetch<MemberSession>(getGetMemberSessionUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMemberSessionQueryKey = () => {
+    return [
+    `/api/member/session`
+    ] as const;
+    }
+
+
+export const getGetMemberSessionQueryOptions = <TData = Awaited<ReturnType<typeof getMemberSession>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMemberSession>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMemberSessionQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMemberSession>>> = ({ signal }) => getMemberSession({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMemberSession>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMemberSessionQueryResult = NonNullable<Awaited<ReturnType<typeof getMemberSession>>>
+export type GetMemberSessionQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Resolve a verified member account and its available dashboard
+ */
+
+export function useGetMemberSession<TData = Awaited<ReturnType<typeof getMemberSession>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMemberSession>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMemberSessionQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getLinkMemberTelegramUrl = () => {
+
+
+
+
+  return `/api/member/telegram/link`
+}
+
+/**
+ * @summary Link a Telegram identity verified by Telegram Login Widget
+ */
+export const linkMemberTelegram = async (linkMemberTelegramInput: LinkMemberTelegramInput, options?: Parameters<typeof customFetch>[1]): Promise<MemberTelegramLink> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<MemberTelegramLink>(getLinkMemberTelegramUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(linkMemberTelegramInput)
+  }
+);}
+
+
+
+
+
+export const getLinkMemberTelegramMutationKey = () => ['linkMemberTelegram'] as const;
+
+export const getLinkMemberTelegramMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof linkMemberTelegram>>, TError,LinkMemberTelegramMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof linkMemberTelegram>>, TError,LinkMemberTelegramMutationVariables, TContext> => {
+
+const mutationKey = getLinkMemberTelegramMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof linkMemberTelegram>>, LinkMemberTelegramMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  linkMemberTelegram(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LinkMemberTelegramMutationResult = NonNullable<Awaited<ReturnType<typeof linkMemberTelegram>>>
+    export type LinkMemberTelegramMutationBody = BodyType<LinkMemberTelegramInput>
+    export type LinkMemberTelegramMutationError = ErrorType<ErrorResponse>
+    export type LinkMemberTelegramMutationVariables = {data: BodyType<LinkMemberTelegramInput>}
+
+    /**
+ * @summary Link a Telegram identity verified by Telegram Login Widget
+ */
+export const useLinkMemberTelegram = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof linkMemberTelegram>>, TError,LinkMemberTelegramMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof linkMemberTelegram>>,
+        TError,
+        LinkMemberTelegramMutationVariables,
+        TContext
+      > => {
+      return useMutation(getLinkMemberTelegramMutationOptions(options));
+    }
 
 export const getGetPortalDashboardUrl = () => {
 

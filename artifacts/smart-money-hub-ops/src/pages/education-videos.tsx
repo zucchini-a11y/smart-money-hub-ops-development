@@ -11,7 +11,6 @@ import type { EducationVideo } from '@workspace/api-client-react';
 import { ArrowLeft, Check, CircleAlert, Clapperboard, FileVideo2, LockKeyhole, RefreshCw, Upload } from 'lucide-react';
 import { Link } from 'wouter';
 import { trackEvent } from '@/lib/analytics';
-import { useAuth } from '@workspace/replit-auth-web';
 
 const MAX_BYTES = 50_000_000;
 const videoStorageAvailable = false;
@@ -58,7 +57,6 @@ function VideoStatus({ status }: { status: string }) {
 
 export default function EducationVideos() {
   const queryClient = useQueryClient();
-  const uploadAuth = useAuth();
   const listKey = getListEducationVideosQueryKey();
   const query = useListEducationVideos({ query: { queryKey: listKey } });
   const createDraft = useCreateEducationVideoDraft();
@@ -86,10 +84,10 @@ export default function EducationVideos() {
   const chooseFile = (event: ChangeEvent<HTMLInputElement>) => {
     const picked = event.target.files?.[0] ?? null;
     setFormError('');
-    if (!videoStorageAvailable || !uploadAuth.isAuthenticated) {
+    if (!videoStorageAvailable) {
       setFile(null);
       event.target.value = '';
-      setFormError('MP4 uploads are paused until secure file storage is available and you are signed in.');
+      setFormError('MP4 uploads are paused until secure file storage is available.');
       return;
     }
     if (!picked) {
@@ -130,7 +128,7 @@ export default function EducationVideos() {
 
   const resumeUpload = (video: EducationVideo) => {
     const selectedFile = resumeFiles[video.videoId];
-    if (!videoStorageAvailable || !uploadAuth.isAuthenticated || !selectedFile || video.status !== 'awaiting_upload') return;
+    if (!videoStorageAvailable || !selectedFile || video.status !== 'awaiting_upload') return;
     setActionError('');
     setActiveVideoId(video.videoId);
     uploadFile.mutate({ videoId: video.videoId, data: selectedFile }, {
@@ -156,8 +154,8 @@ export default function EducationVideos() {
     event.preventDefault();
     setFormError('');
     setActionError('');
-    if (!videoStorageAvailable || !uploadAuth.isAuthenticated) {
-      setFormError('MP4 uploads are paused until secure file storage is available and you are signed in.');
+    if (!videoStorageAvailable) {
+      setFormError('MP4 uploads are paused until secure file storage is available.');
       return;
     }
     if (!file) {
@@ -219,8 +217,8 @@ export default function EducationVideos() {
   };
 
   const publish = (video: EducationVideo) => {
-    if (!videoStorageAvailable || !uploadAuth.isAuthenticated) {
-      setActionError('Publishing is paused until secure video storage is available and you are signed in.');
+    if (!videoStorageAvailable) {
+      setActionError('Publishing is paused until secure video storage is available.');
       return;
     }
     setActionError('');
@@ -263,12 +261,9 @@ export default function EducationVideos() {
       <div className="education-destination-icon"><LockKeyhole size={17}/></div>
       <div className="education-destination-copy">
         <span className="eyebrow">SECURE VIDEO STORAGE</span>
-        <strong>{uploadAuth.isAuthenticated ? 'Signed in for video uploads' : 'Sign in for video uploads'}</strong>
-        <p>MP4 upload, preview, and publishing are paused until persistent file storage is available. No video files are saved on the server.</p>
+          <strong>Owner session active</strong>
+          <p>MP4 upload, preview, and publishing are paused until persistent file storage is available. No video files are saved on the server.</p>
       </div>
-      {!uploadAuth.isLoading && (uploadAuth.isAuthenticated
-        ? <button className="btn btn-outline" onClick={uploadAuth.logout} data-testid="button-video-sign-out">Sign out</button>
-        : <button className="btn btn-outline" onClick={uploadAuth.login} data-testid="button-video-sign-in">Sign in</button>)}
     </section>
 
     {query.isLoading ? <section className="education-loading" aria-label="Loading education videos" data-testid="education-loading">
@@ -297,8 +292,8 @@ export default function EducationVideos() {
           <div className="education-file-input">
             <FileVideo2 size={20}/>
             <div className="education-file-copy"><strong>{file ? file.name : 'Choose an MP4 video'}</strong><span>{file ? `${fileSize(file.size)} · Ready to upload` : 'MP4 only · Maximum file size 50 MB'}</span></div>
-             <label className="btn btn-outline education-choose" htmlFor="education-video-file" aria-disabled={!videoStorageAvailable || !uploadAuth.isAuthenticated} data-testid="button-choose-video"><Upload size={14}/>{file ? 'Change file' : 'Choose file'}</label>
-             <input id="education-video-file" className="education-file-native" type="file" accept="video/mp4,.mp4" onChange={chooseFile} disabled={!videoStorageAvailable || !uploadAuth.isAuthenticated} data-testid="input-education-video-file"/>
+              <label className="btn btn-outline education-choose" htmlFor="education-video-file" aria-disabled={!videoStorageAvailable} data-testid="button-choose-video"><Upload size={14}/>{file ? 'Change file' : 'Choose file'}</label>
+              <input id="education-video-file" className="education-file-native" type="file" accept="video/mp4,.mp4" onChange={chooseFile} disabled={!videoStorageAvailable} data-testid="input-education-video-file"/>
           </div>
           <div className="education-fields">
             <div className="form-field"><label className="form-label" htmlFor="education-title">Lesson title</label><input className="field-input" id="education-title" value={title} maxLength={120} onChange={(event) => setTitle(event.target.value)} placeholder="For example, Reading a price chart" required data-testid="input-education-title"/><span className="education-count">{title.length}/120</span></div>
@@ -306,7 +301,7 @@ export default function EducationVideos() {
           </div>
           {formError && <div className="notice notice-error" role="alert" data-testid="education-form-error">{formError}</div>}
           {actionError && <div className="notice notice-error education-action-error" role="alert" data-testid="education-action-error">{actionError}</div>}
-          <div className="education-form-footer"><p>Creating a draft uploads the selected file. Publishing is always a separate action.</p><button className="btn btn-primary btn-large" type="submit" disabled={busy || !file || !videoStorageAvailable || !uploadAuth.isAuthenticated} data-testid="button-create-education-draft">{createDraft.isPending ? 'Creating draft…' : uploadFile.isPending ? 'Uploading video…' : 'Create draft and upload'}<Upload size={15}/></button></div>
+          <div className="education-form-footer"><p>Creating a draft uploads the selected file. Publishing is always a separate action.</p><button className="btn btn-primary btn-large" type="submit" disabled={busy || !file || !videoStorageAvailable} data-testid="button-create-education-draft">{createDraft.isPending ? 'Creating draft…' : uploadFile.isPending ? 'Uploading video…' : 'Create draft and upload'}<Upload size={15}/></button></div>
         </form>
       </section>
 
@@ -316,7 +311,7 @@ export default function EducationVideos() {
         {videos.length === 0 ? <div className="education-empty" data-testid="education-empty"><div className="education-state-icon"><Clapperboard size={20}/></div><h3>No lessons yet</h3><p>Your created drafts and published lessons will appear here.</p></div> : <div className="education-video-list">
           {videos.map((video) => {
             const uploaded = video.status === 'draft';
-             const canPublish = videoStorageAvailable && uploadAuth.isAuthenticated && uploaded && publishAllowed && !uploadBlockedIds.includes(video.videoId) && !publishBlockedIds.includes(video.videoId);
+              const canPublish = videoStorageAvailable && uploaded && publishAllowed && !uploadBlockedIds.includes(video.videoId) && !publishBlockedIds.includes(video.videoId);
              const hasUploadedFile = videoStorageAvailable && video.status !== 'awaiting_upload' && video.status !== 'failed';
             const previewUrl = `/api/portal/education-videos/${encodeURIComponent(video.videoId)}/file`;
             return <article className={`education-video-card ${activeVideoId === video.videoId ? 'is-current' : ''}`} key={video.videoId} data-testid={`education-video-${video.videoId}`}>
@@ -341,8 +336,8 @@ export default function EducationVideos() {
                 <div className="education-resume-heading"><strong>Resume file upload</strong><span>Choose the original MP4. This does not publish to Telegram.</span></div>
                 <div className="education-resume-controls">
                   <label className="btn btn-outline education-resume-choose" htmlFor={`resume-video-${video.videoId}`} data-testid={`button-choose-resume-video-${video.videoId}`}><FileVideo2 size={14}/>{resumeFiles[video.videoId]?.name ?? 'Choose MP4'}</label>
-                   <input id={`resume-video-${video.videoId}`} className="education-file-native" type="file" accept="video/mp4,.mp4" onChange={(event) => chooseResumeFile(video, event)} disabled={!videoStorageAvailable || !uploadAuth.isAuthenticated} data-testid={`input-resume-video-${video.videoId}`}/>
-                   <button className="btn btn-primary" onClick={() => resumeUpload(video)} disabled={busy || !videoStorageAvailable || !uploadAuth.isAuthenticated || !resumeFiles[video.videoId]} data-testid={`button-resume-upload-${video.videoId}`}>{uploadFile.isPending && activeVideoId === video.videoId ? 'Uploading…' : 'Upload / Resume'}<Upload size={14}/></button>
+                    <input id={`resume-video-${video.videoId}`} className="education-file-native" type="file" accept="video/mp4,.mp4" onChange={(event) => chooseResumeFile(video, event)} disabled={!videoStorageAvailable} data-testid={`input-resume-video-${video.videoId}`}/>
+                    <button className="btn btn-primary" onClick={() => resumeUpload(video)} disabled={busy || !videoStorageAvailable || !resumeFiles[video.videoId]} data-testid={`button-resume-upload-${video.videoId}`}>{uploadFile.isPending && activeVideoId === video.videoId ? 'Uploading…' : 'Upload / Resume'}<Upload size={14}/></button>
                 </div>
                 {resumeErrors[video.videoId] && <p className="education-resume-error" role="alert" data-testid={`resume-upload-error-${video.videoId}`}>{resumeErrors[video.videoId]}</p>}
               </div>}

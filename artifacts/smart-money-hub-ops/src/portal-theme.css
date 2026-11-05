@@ -1086,3 +1086,27 @@ h1 { font:700 clamp(28px,3vw,38px) Manrope,sans-serif;letter-spacing:-.045em;col
   .history-attachment span { flex-basis:100%;margin-left:21px; }
   .history-pagination { padding:12px 14px; }
 }
+.member-signup-page { min-height:100dvh;display:grid;align-content:center;justify-items:center;gap:24px;padding:32px 20px;background:#f4f1e8; }
+.member-signup-heading { width:min(100%,440px);display:grid;gap:22px; }
+.member-signup-heading > .brand { justify-self:start; }
+.member-signup-heading h1 { margin:7px 0;color:#2e4439;font:700 clamp(24px,4vw,32px) Manrope,sans-serif;letter-spacing:-.04em; }
+.member-signup-heading p { margin:0;color:#78847c;font-size:13px;line-height:1.6; }
+.member-signup-card { width:min(100%,440px); }
+.member-dashboard { max-width:1180px;margin-inline:auto; }
+.member-dashboard-grid { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px; }
+.member-dashboard-grid .section-panel { min-width:0;padding:22px;background:#fff;border:1px solid #e8e3d9;border-radius:12px; }
+.member-dashboard-grid .section-head { display:flex;align-items:flex-start;justify-content:space-between;gap:14px; }
+.member-access-list { display:grid;gap:10px;margin:18px 0;padding:15px;border:1px solid #eee9df;border-radius:9px;background:#fbfaf6; }
+.member-access-list > div { display:flex;align-items:center;justify-content:space-between;gap:14px;color:#778279;font-size:12px; }
+.member-access-list strong { color:#34483e;font-size:12px;text-align:right; }
+.member-access-note { margin:0 0 16px;color:#78847c;font-size:11px;line-height:1.55; }
+.member-telegram-body { margin-top:18px; }
+.member-telegram-link { display:grid;gap:12px;color:#66736a;font-size:12px;line-height:1.55; }
+.member-telegram-link p { margin:0; }
+.member-telegram-link a { color:#2c624b;font-weight:700; }
+.member-telegram-link [data-testid="telegram-link-widget"] { min-height:45px; }
+@media(max-width:760px) {
+  .member-dashboard-grid { grid-template-columns:1fr; }
+  .member-dashboard-grid .section-panel { padding:17px; }
+  .member-signup-page { align-content:start;padding-top:38px; }
+}

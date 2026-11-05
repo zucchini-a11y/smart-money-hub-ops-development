@@ -274,48 +274,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SupportSession"
-  /support/auth/bootstrap:
-    post:
-      operationId: bootstrapSupportOwner
-      tags:
-        - support
-      summary: Create the first development-only support owner
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SupportBootstrap"
-      responses:
-        "201":
-          description: Owner account created and signed in
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SupportSession"
-        "409":
-          description: Setup is already complete
-  /support/auth/login:
-    post:
-      operationId: loginSupportStaff
-      tags:
-        - support
-      summary: Sign in to the support portal
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SupportLogin"
-      responses:
-        "200":
-          description: Signed-in staff session
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SupportSession"
-        "401":
-          description: Invalid credentials
   /support/auth/logout:
     post:
       operationId: logoutSupportStaff
@@ -629,7 +587,7 @@ paths:
       operationId: portalLogin
       tags:
         - supportPortal
-      summary: Sign in a staff member
+      summary: Sign in a staff member using email or username
       requestBody:
         required: true
         content:
@@ -679,6 +637,66 @@ paths:
                 $ref: "#/components/schemas/PortalSession"
         "401":
           description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /member/session:
+    get:
+      operationId: getMemberSession
+      tags:
+        - members
+      summary: Resolve a verified member account and its available dashboard
+      security:
+        - clerkSession: []
+      responses:
+        "200":
+          description: Verified member session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberSession"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Email verification or member access is required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /member/telegram/link:
+    post:
+      operationId: linkMemberTelegram
+      tags:
+        - members
+      summary: Link a Telegram identity verified by Telegram Login Widget
+      security:
+        - clerkSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LinkMemberTelegramInput"
+      responses:
+        "200":
+          description: Telegram identity linked to this member account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberTelegramLink"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Telegram identity is already linked to another account
           content:
             application/json:
               schema:
@@ -2446,6 +2464,10 @@ components:
       type: apiKey
       in: cookie
       name: smh_portal_session
+    clerkSession:
+      type: apiKey
+      in: cookie
+      name: __session
   schemas:
     HealthStatus:
       type: object
@@ -2709,39 +2731,6 @@ components:
         - authenticated
         - needsSetup
         - staff
-    SupportLogin:
-      type: object
-      properties:
-        email:
-          type: string
-          format: email
-          maxLength: 254
-        password:
-          type: string
-          minLength: 1
-          maxLength: 256
-      required:
-        - email
-        - password
-    SupportBootstrap:
-      type: object
-      properties:
-        email:
-          type: string
-          format: email
-          maxLength: 254
-        displayName:
-          type: string
-          minLength: 1
-          maxLength: 100
-        password:
-          type: string
-          minLength: 12
-          maxLength: 256
-      required:
-        - email
-        - displayName
-        - password
     SupportStaff:
       type: object
       properties:
@@ -3192,20 +3181,24 @@ components:
     PortalLoginInput:
       type: object
       properties:
-        email:
+        identifier:
           type: string
-          format: email
           maxLength: 254
+          minLength: 1
         password:
           type: string
           minLength: 1
           maxLength: 256
       required:
-        - email
+        - identifier
         - password
     PortalSession:
       type: object
       properties:
+        accountType:
+          type: string
+          enum:
+            - staff
         staffId:
           type: string
         email:
@@ -3221,12 +3214,93 @@ components:
             - agent
         mustChangePassword:
           type: boolean
+        dashboardPath:
+          type: string
       required:
+        - accountType
         - staffId
         - email
         - displayName
         - role
         - mustChangePassword
+        - dashboardPath
+    MemberSession:
+      type: object
+      properties:
+        accountType:
+          type: string
+          enum:
+            - member
+        email:
+          type: string
+          format: email
+        displayName:
+          type: string
+        dashboardPath:
+          type: string
+          enum:
+            - /member/dashboard
+        learningDashboard:
+          type: boolean
+        proSignalsAccess:
+          type: boolean
+          enum:
+            - false
+        telegramLinked:
+          type: boolean
+        telegramUsername:
+          type: string
+          nullable: true
+      required:
+        - accountType
+        - email
+        - displayName
+        - dashboardPath
+        - learningDashboard
+        - proSignalsAccess
+        - telegramLinked
+        - telegramUsername
+    LinkMemberTelegramInput:
+      type: object
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 30
+        firstName:
+          type: string
+          maxLength: 64
+        lastName:
+          type: string
+          maxLength: 64
+        username:
+          type: string
+          maxLength: 64
+        photoUrl:
+          type: string
+          maxLength: 2048
+        authDate:
+          type: integer
+          format: int64
+        hash:
+          type: string
+          minLength: 64
+          maxLength: 64
+      required:
+        - id
+        - authDate
+        - hash
+    MemberTelegramLink:
+      type: object
+      properties:
+        linked:
+          type: boolean
+        telegramUsername:
+          type: string
+          nullable: true
+      required:
+        - linked
+        - telegramUsername
     SignedOutState:
       type: object
       properties:

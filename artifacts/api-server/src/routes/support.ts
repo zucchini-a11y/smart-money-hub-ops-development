@@ -1,7 +1,5 @@
 import {
   createHash,
-  randomBytes,
-  scryptSync,
   timingSafeEqual,
   randomUUID,
 } from "node:crypto";
@@ -17,8 +15,6 @@ import {
   AssignSupportCaseBody,
   AssignSupportCaseParams,
   AssignSupportCaseResponse,
-  BootstrapSupportOwnerBody,
-  BootstrapSupportOwnerResponse,
   ClaimBotSupportRepliesResponse,
   CreateBotSupportCaseBody,
   CreateBotSupportCaseResponse,
@@ -38,9 +34,6 @@ import {
   ListSupportCasesQueryParams,
   ListSupportCasesResponse,
   ListSupportStaffResponse,
-  LoginSupportStaffBody,
-  LoginSupportStaffResponse,
-  LogoutSupportStaffResponse,
   UpdateSupportCaseStatusBody,
   UpdateSupportCaseStatusParams,
   UpdateSupportCaseStatusResponse,
@@ -59,8 +52,7 @@ const developmentSupportEnabled =
   (!requestedSchema || requestedSchema === "smh_test");
 const schema: "smh" | "smh_test" = productionSupportEnabled ? "smh" : "smh_test";
 const SESSION_COOKIE = "smh_support_session";
-const SESSION_HOURS = 8;
-const loginFailures = new Map<string, { count: number; expiresAt: number }>();
+const PORTAL_SESSION_COOKIE = "smh_portal_session";
 const SECRET_LIKE =
   /\b(password|passcode|otp|one[- ]time code|recovery code|api key|access token|private key)\b/i;
 
@@ -100,40 +92,6 @@ function safeText(value: unknown, min: number, max: number): string | null {
   return text;
 }
 
-function hashPassword(password: string): string {
-  const salt = randomBytes(16);
-  const digest = scryptSync(password, salt, 64, { maxmem: 64 * 1024 * 1024 });
-  return `scrypt$${salt.toString("hex")}$${digest.toString("hex")}`;
-}
-
-function verifyPassword(password: string, stored: string): boolean {
-  const parts = stored.split("$");
-  let saltHex: string;
-  let digestHex: string;
-  let N = 16_384;
-  let r = 8;
-  let p = 1;
-
-  if (parts.length === 3 && parts[0] === "scrypt") {
-    [, saltHex, digestHex] = parts;
-  } else if (
-    parts.length === 6 &&
-    parts[0] === "scrypt" &&
-    parts[1] === "16384" &&
-    parts[2] === "8" &&
-    parts[3] === "1"
-  ) {
-    [, , , , saltHex, digestHex] = parts;
-  } else {
-    return false;
-  }
-
-  if (!/^[a-f0-9]{32}$/i.test(saltHex) || !/^[a-f0-9]{128}$/i.test(digestHex)) return false;
-  const expected = Buffer.from(digestHex, "hex");
-  const actual = scryptSync(password, Buffer.from(saltHex, "hex"), 64, { N, r, p, maxmem: 64 * 1024 * 1024 });
-  return timingSafeEqual(expected, actual);
-}
-
 function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
@@ -141,11 +99,6 @@ function hashToken(token: string): string {
 function requestCookie(req: Request, name: string): string | null {
   const cookie = req.headers.cookie?.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${name}=`));
   return cookie ? decodeURIComponent(cookie.slice(name.length + 1)) : null;
-}
-
-function setSessionCookie(req: Request, res: Response, token: string): void {
-  const secure = req.secure || req.get("x-forwarded-proto") === "https" || process.env.NODE_ENV === "production";
-  res.setHeader("Set-Cookie", `${SESSION_COOKIE}=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/api/support; Max-Age=${SESSION_HOURS * 3600}${secure ? "; Secure" : ""}`);
 }
 
 function clearSessionCookie(res: Response): void {
@@ -171,22 +124,26 @@ function sessionView(staff: StaffIdentity | null, needsSetup: boolean) {
 }
 
 async function staffIdentity(req: Request): Promise<StaffIdentity | null> {
-  const token = requestCookie(req, SESSION_COOKIE);
-  if (!token || token.length > 200) return null;
-  const result = await pool.query(
-    `SELECT u.id,u.email,u.display_name,${staffRoleSql("u")} AS role
-       FROM ${schema}.portal_sessions s
-       JOIN ${schema}.portal_users u ON u.id=s.staff_id
-      WHERE s.token_hash=$1 AND s.expires>$2 AND u.active=TRUE`,
-    [hashToken(token), new Date().toISOString()],
-  );
-  const row = result.rows[0];
-  return row ? {
-    id: String(row.id),
-    email: String(row.email),
-    displayName: String(row.display_name),
-    role: row.role as StaffRole,
-  } : null;
+  for (const cookieName of [PORTAL_SESSION_COOKIE, SESSION_COOKIE]) {
+    const token = requestCookie(req, cookieName);
+    if (!token || token.length > 200) continue;
+    const result = await pool.query(
+      `SELECT u.id,u.email,u.display_name,u.must_change_password,${staffRoleSql("u")} AS role
+         FROM ${schema}.portal_sessions s
+         JOIN ${schema}.portal_users u ON u.id=s.staff_id
+        WHERE s.token_hash=$1 AND s.expires>$2 AND u.active=TRUE`,
+      [hashToken(token), new Date().toISOString()],
+    );
+    const row = result.rows[0];
+    if (!row || Boolean(row.must_change_password)) continue;
+    return {
+      id: String(row.id),
+      email: String(row.email),
+      displayName: String(row.display_name),
+      role: row.role as StaffRole,
+    };
+  }
+  return null;
 }
 
 async function requireStaff(req: Request, res: Response): Promise<StaffIdentity | null> {
@@ -205,25 +162,6 @@ function requireSameOrigin(req: Request, res: Response): boolean {
     return false;
   }
   return true;
-}
-
-function loginKey(req: Request, email: string): string {
-  return createHash("sha256").update(`${req.ip ?? "unknown"}:${email}`).digest("hex");
-}
-
-function loginLimited(key: string): boolean {
-  const entry = loginFailures.get(key);
-  if (!entry || entry.expiresAt <= Date.now()) {
-    loginFailures.delete(key);
-    return false;
-  }
-  return entry.count >= 8;
-}
-
-function recordLoginFailure(key: string): void {
-  const current = loginFailures.get(key);
-  if (!current || current.expiresAt <= Date.now()) loginFailures.set(key, { count: 1, expiresAt: Date.now() + 15 * 60_000 });
-  else current.count += 1;
 }
 
 async function botIdentity(req: Request, res: Response): Promise<BotIdentity | null> {
@@ -303,90 +241,12 @@ router.get("/support/auth/session", async (req, res): Promise<void> => {
   res.json(sessionView(await staffIdentity(req), needsSetup));
 });
 
-router.post("/support/auth/bootstrap", async (req, res): Promise<void> => {
-  if (!isDevSchemaEnabled(res) || !requireSameOrigin(req, res)) return;
-  if (process.env.NODE_ENV === "production") {
-    res.status(404).json({ error: "First-owner setup is unavailable." });
-    return;
-  }
-  const parsed = BootstrapSupportOwnerBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: "Enter a valid email, display name, and password of at least 12 characters." });
-    return;
-  }
-  const email = parsed.data.email.trim().toLowerCase();
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    await client.query("SELECT pg_advisory_xact_lock(hashtext('smh_test_support_bootstrap'))");
-    const existing = await client.query(`SELECT id FROM ${schema}.portal_users LIMIT 1`);
-    if (existing.rows.length) {
-      await client.query("ROLLBACK");
-      res.status(409).json({ error: "Support setup is already complete." });
-      return;
-    }
-    const now = new Date().toISOString();
-    const id = randomUUID();
-    await client.query(
-      `INSERT INTO ${schema}.portal_users(id,email,display_name,password_hash,role,created,updated)
-       VALUES($1,$2,$3,$4,'owner',$5,$5)`,
-      [id, email, parsed.data.displayName.trim(), hashPassword(parsed.data.password), now],
-    );
-    const token = randomBytes(32).toString("base64url");
-    await client.query(
-      `INSERT INTO ${schema}.portal_sessions(token_hash,staff_id,created,expires) VALUES($1,$2,$3,$4)`,
-      [hashToken(token), id, now, new Date(Date.now() + SESSION_HOURS * 3600_000).toISOString()],
-    );
-    await client.query("COMMIT");
-    setSessionCookie(req, res, token);
-    res.status(201).json(BootstrapSupportOwnerResponse.parse({
-      authenticated: true, needsSetup: false, staff: { id, displayName: parsed.data.displayName.trim(), role: "owner" },
-    }));
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
-  }
+router.post("/support/auth/bootstrap", (_req, res): void => {
+  res.status(404).json({ error: "Staff accounts can only be created by an authorized owner." });
 });
 
-router.post("/support/auth/login", async (req, res): Promise<void> => {
-  if (!isDevSchemaEnabled(res) || !requireSameOrigin(req, res)) return;
-  const parsed = LoginSupportStaffBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: "Enter a valid email and password." });
-    return;
-  }
-  const email = parsed.data.email.trim().toLowerCase();
-  const key = loginKey(req, email);
-  if (loginLimited(key)) {
-    res.status(429).json({ error: "Too many sign-in attempts. Try again later." });
-    return;
-  }
-  const result = await pool.query(
-    `SELECT u.id,u.email,u.display_name,u.password_hash,${staffRoleSql("u")} AS role,u.active
-       FROM ${schema}.portal_users u WHERE lower(u.email)=$1`,
-    [email],
-  );
-  const row = result.rows[0];
-  if (!row || !row.active || !verifyPassword(parsed.data.password, String(row.password_hash))) {
-    recordLoginFailure(key);
-    res.status(401).json({ error: "Email or password is incorrect." });
-    return;
-  }
-  loginFailures.delete(key);
-  const token = randomBytes(32).toString("base64url");
-  const now = new Date().toISOString();
-  await pool.query(
-    `INSERT INTO ${schema}.portal_sessions(token_hash,staff_id,created,expires) VALUES($1,$2,$3,$4)`,
-    [hashToken(token), row.id, now, new Date(Date.now() + SESSION_HOURS * 3600_000).toISOString()],
-  );
-  await pool.query(`UPDATE ${schema}.portal_users SET last_login=$1,updated=$1 WHERE id=$2`, [now, row.id]);
-  setSessionCookie(req, res, token);
-  res.json(LoginSupportStaffResponse.parse({
-    authenticated: true, needsSetup: false,
-    staff: { id: String(row.id), displayName: String(row.display_name), role: row.role },
-  }));
+router.post("/support/auth/login", (_req, res): void => {
+  res.status(404).json({ error: "Use the shared sign-in page at /login." });
 });
 
 router.post("/support/auth/logout", async (req, res): Promise<void> => {

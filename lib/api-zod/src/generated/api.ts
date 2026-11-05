@@ -265,60 +265,6 @@ export const GetSupportSessionResponse = zod.object({
 
 
 /**
- * @summary Create the first development-only support owner
- */
-export const bootstrapSupportOwnerBodyEmailMax = 254;
-
-export const bootstrapSupportOwnerBodyDisplayNameMax = 100;
-
-export const bootstrapSupportOwnerBodyPasswordMin = 12;
-export const bootstrapSupportOwnerBodyPasswordMax = 256;
-
-
-
-export const BootstrapSupportOwnerBody = zod.object({
-  "email": zod.string().email().max(bootstrapSupportOwnerBodyEmailMax),
-  "displayName": zod.string().min(1).max(bootstrapSupportOwnerBodyDisplayNameMax),
-  "password": zod.string().min(bootstrapSupportOwnerBodyPasswordMin).max(bootstrapSupportOwnerBodyPasswordMax)
-})
-
-export const BootstrapSupportOwnerResponse = zod.object({
-  "authenticated": zod.boolean(),
-  "needsSetup": zod.boolean(),
-  "staff": zod.union([zod.object({
-  "id": zod.string(),
-  "displayName": zod.string(),
-  "role": zod.enum(['owner', 'manager', 'agent'])
-}),zod.null()])
-})
-
-
-/**
- * @summary Sign in to the support portal
- */
-export const loginSupportStaffBodyEmailMax = 254;
-
-export const loginSupportStaffBodyPasswordMax = 256;
-
-
-
-export const LoginSupportStaffBody = zod.object({
-  "email": zod.string().email().max(loginSupportStaffBodyEmailMax),
-  "password": zod.string().min(1).max(loginSupportStaffBodyPasswordMax)
-})
-
-export const LoginSupportStaffResponse = zod.object({
-  "authenticated": zod.boolean(),
-  "needsSetup": zod.boolean(),
-  "staff": zod.union([zod.object({
-  "id": zod.string(),
-  "displayName": zod.string(),
-  "role": zod.enum(['owner', 'manager', 'agent'])
-}),zod.null()])
-})
-
-
-/**
  * @summary Sign out of the support portal
  */
 export const LogoutSupportStaffResponse = zod.void()
@@ -655,25 +601,27 @@ export const AcknowledgeBotSupportReplyResponse = zod.object({
 
 
 /**
- * @summary Sign in a staff member
+ * @summary Sign in a staff member using email or username
  */
-export const portalLoginBodyEmailMax = 254;
+export const portalLoginBodyIdentifierMax = 254;
 
 export const portalLoginBodyPasswordMax = 256;
 
 
 
 export const PortalLoginBody = zod.object({
-  "email": zod.string().email().max(portalLoginBodyEmailMax),
+  "identifier": zod.string().min(1).max(portalLoginBodyIdentifierMax),
   "password": zod.string().min(1).max(portalLoginBodyPasswordMax)
 })
 
 export const PortalLoginResponse = zod.object({
+  "accountType": zod.enum(['staff']),
   "staffId": zod.string(),
   "email": zod.string().email(),
   "displayName": zod.string(),
   "role": zod.enum(['owner', 'manager', 'agent']),
-  "mustChangePassword": zod.boolean()
+  "mustChangePassword": zod.boolean(),
+  "dashboardPath": zod.string()
 })
 
 
@@ -683,11 +631,62 @@ export const PortalLogoutResponse = zod.object({
 
 
 export const GetPortalSessionResponse = zod.object({
+  "accountType": zod.enum(['staff']),
   "staffId": zod.string(),
   "email": zod.string().email(),
   "displayName": zod.string(),
   "role": zod.enum(['owner', 'manager', 'agent']),
-  "mustChangePassword": zod.boolean()
+  "mustChangePassword": zod.boolean(),
+  "dashboardPath": zod.string()
+})
+
+
+/**
+ * @summary Resolve a verified member account and its available dashboard
+ */
+export const GetMemberSessionResponse = zod.object({
+  "accountType": zod.enum(['member']),
+  "email": zod.string().email(),
+  "displayName": zod.string(),
+  "dashboardPath": zod.enum(['/member/dashboard']),
+  "learningDashboard": zod.boolean(),
+  "proSignalsAccess": zod.literal(false),
+  "telegramLinked": zod.boolean(),
+  "telegramUsername": zod.string().nullable()
+})
+
+
+/**
+ * @summary Link a Telegram identity verified by Telegram Login Widget
+ */
+export const linkMemberTelegramBodyIdMax = 30;
+
+export const linkMemberTelegramBodyFirstNameMax = 64;
+
+export const linkMemberTelegramBodyLastNameMax = 64;
+
+export const linkMemberTelegramBodyUsernameMax = 64;
+
+export const linkMemberTelegramBodyPhotoUrlMax = 2048;
+
+export const linkMemberTelegramBodyHashMin = 64;
+export const linkMemberTelegramBodyHashMax = 64;
+
+
+
+export const LinkMemberTelegramBody = zod.object({
+  "id": zod.string().min(1).max(linkMemberTelegramBodyIdMax),
+  "firstName": zod.string().max(linkMemberTelegramBodyFirstNameMax).optional(),
+  "lastName": zod.string().max(linkMemberTelegramBodyLastNameMax).optional(),
+  "username": zod.string().max(linkMemberTelegramBodyUsernameMax).optional(),
+  "photoUrl": zod.string().max(linkMemberTelegramBodyPhotoUrlMax).optional(),
+  "authDate": zod.number().int(),
+  "hash": zod.string().min(linkMemberTelegramBodyHashMin).max(linkMemberTelegramBodyHashMax)
+})
+
+export const LinkMemberTelegramResponse = zod.object({
+  "linked": zod.boolean(),
+  "telegramUsername": zod.string().nullable()
 })
 
 
@@ -2246,11 +2245,13 @@ export const ChangePortalPasswordBody = zod.object({
 })
 
 export const ChangePortalPasswordResponse = zod.object({
+  "accountType": zod.enum(['staff']),
   "staffId": zod.string(),
   "email": zod.string().email(),
   "displayName": zod.string(),
   "role": zod.enum(['owner', 'manager', 'agent']),
-  "mustChangePassword": zod.boolean()
+  "mustChangePassword": zod.boolean(),
+  "dashboardPath": zod.string()
 })
 
 

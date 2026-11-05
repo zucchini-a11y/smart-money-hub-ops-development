@@ -7,8 +7,11 @@
  */
 
 export interface PortalLoginInput {
-  /** @maxLength 254 */
-  email: string;
+  /**
+     * @minLength 1
+     * @maxLength 254
+     */
+  identifier: string;
   /**
      * @minLength 1
      * @maxLength 256

@@ -5,12 +5,15 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { PortalSessionAccountType } from './portalSessionAccountType';
 import type { PortalSessionRole } from './portalSessionRole';
 
 export interface PortalSession {
+  accountType: PortalSessionAccountType;
   staffId: string;
   email: string;
   displayName: string;
   role: PortalSessionRole;
   mustChangePassword: boolean;
+  dashboardPath: string;
 }

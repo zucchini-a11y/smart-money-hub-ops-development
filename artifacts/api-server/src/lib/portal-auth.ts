@@ -4,6 +4,7 @@ import {
   hashSessionToken,
 } from "./portal-crypto";
 import { isAllowedDuringPasswordSetup } from "./portal-auth-policy";
+import { portalDashboardPath } from "./portal-dashboard-policy";
 import type { PortalRole } from "./portal-case-policy";
 import { resolvePortalSupportSchema } from "./portal-support-schema";
 
@@ -51,7 +52,11 @@ export function setPortalSessionCookie(req: Request, res: Response, token: strin
     req.get("x-forwarded-proto")?.split(",")[0].trim() === "https";
   res.setHeader(
     "Set-Cookie",
-    `${COOKIE_NAME}=${encodeURIComponent(token)}; Path=/api/portal; HttpOnly; SameSite=Strict; Max-Age=${SESSION_HOURS * 60 * 60}${secure ? "; Secure" : ""}`,
+    `${COOKIE_NAME}=${encodeURIComponent(token)}; Path=/api; HttpOnly; SameSite=Strict; Max-Age=${SESSION_HOURS * 60 * 60}${secure ? "; Secure" : ""}`,
+  );
+  res.appendHeader(
+    "Set-Cookie",
+    `${COOKIE_NAME}=; Path=/api/portal; HttpOnly; SameSite=Strict; Max-Age=0${secure ? "; Secure" : ""}`,
   );
   res.setHeader("Cache-Control", "no-store");
 }
@@ -60,6 +65,10 @@ export function clearPortalSessionCookie(req: Request, res: Response): void {
   const secure = process.env.NODE_ENV === "production" ||
     req.get("x-forwarded-proto")?.split(",")[0].trim() === "https";
   res.setHeader(
+    "Set-Cookie",
+    `${COOKIE_NAME}=; Path=/api; HttpOnly; SameSite=Strict; Max-Age=0${secure ? "; Secure" : ""}`,
+  );
+  res.appendHeader(
     "Set-Cookie",
     `${COOKIE_NAME}=; Path=/api/portal; HttpOnly; SameSite=Strict; Max-Age=0${secure ? "; Secure" : ""}`,
   );
@@ -102,6 +111,9 @@ export async function requirePortalSession(
     mustChangePassword: Boolean(row.must_change_password),
   };
   req.portalSessionHash = tokenHash;
+  // Move sessions created by the older /api/portal cookie scope to /api so
+  // the same authenticated staff session is available to the shared support API.
+  setPortalSessionCookie(req, res, token);
   res.setHeader("Cache-Control", "no-store");
   next();
 }
@@ -138,10 +150,12 @@ export function requirePasswordReady(req: Request, res: Response, next: NextFunc
 
 export function toPortalSession(identity: PortalIdentity) {
   return {
+    accountType: "staff" as const,
     staffId: identity.id,
     email: identity.email,
     displayName: identity.displayName,
     role: identity.role,
     mustChangePassword: identity.mustChangePassword,
+    dashboardPath: portalDashboardPath(identity.role),
   };
 }

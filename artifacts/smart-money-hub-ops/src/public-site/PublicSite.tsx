@@ -99,7 +99,7 @@ function Header({ location }: { location: string }) {
       <nav className={`vs-nav ${open ? 'is-open' : ''}`} aria-label="Public navigation">
         {pages.slice(1).map((page) => <Link key={page.href} href={page.href} aria-current={location === page.href ? 'page' : undefined} onClick={() => setOpen(false)} data-testid={`link-public-${page.href.slice(1) || 'home'}`}>{page.label}</Link>)}
         {isConfiguredPublicUrl(publicSiteLinks.primaryCommunity) && <ExternalLink href={publicSiteLinks.primaryCommunity} className="vs-nav-cta" data-testid="link-public-community-entry">Enter community <ArrowUpRight size={13} /></ExternalLink>}
-        <Link href="/staff/login" className="vs-staff-link" onClick={() => setOpen(false)} data-testid="link-public-staff-login">Staff Sign In</Link>
+        <Link href="/login" className="vs-staff-link" onClick={() => setOpen(false)} data-testid="link-public-login">Sign in</Link>
       </nav>
     </div>
   </header>;
@@ -120,7 +120,7 @@ function Footer() {
         <Link href="/philosophy" data-testid="link-footer-philosophy">Our philosophy</Link>
         <Link href="/community" data-testid="link-footer-community">Community access</Link>
         <Link href="/education" data-testid="link-footer-education">Learning approach</Link>
-        <Link href="/staff/login" data-testid="link-footer-staff-login">Staff Sign In</Link>
+        <Link href="/login" data-testid="link-footer-login">Sign in</Link>
       </div></div>
     </div>
     <div className="vs-shell vs-footer-bottom"><span>VAYDA SMART MONEY HUB · EDUCATION FIRST</span><span><strong>Trading involves risk.</strong> Education is not financial advice.</span></div>
