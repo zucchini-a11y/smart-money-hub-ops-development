@@ -769,3 +769,271 @@
   .vayda-site.is-home .vs-marquee-track { transform: none !important; }
   .vayda-site.is-home .vs-statement-word { opacity: 1 !important; transform: none !important; }
 }
+
+/* Supporting public pages — the same editorial signal desk as the homepage. */
+.vayda-site.is-public {
+  --ink: #080e12;
+  --ink-raised: #0e171c;
+  --ink-soft: #132127;
+  --line: rgba(175, 213, 211, .12);
+  --line-green: rgba(84, 230, 208, .25);
+  --text: #eaf4f1;
+  --muted: #a0b4b4;
+  --dim: #718686;
+  --gold: #62e1cf;
+  --gold-bright: #a1fff0;
+  --green: #9b8aff;
+  min-height: 100dvh;
+  background: var(--ink);
+  color: var(--text);
+  font-family: 'Space Grotesk', sans-serif;
+}
+.vayda-site.is-public :focus-visible { outline-color: var(--gold-bright); }
+.vayda-site.is-public ::selection { background: rgba(98, 225, 207, .28); }
+.vayda-site.is-public .vs-shell { width: min(1280px, calc(100% - 72px)); }
+.vayda-site.is-public .vs-eyebrow,
+.vayda-site.is-public .vs-index,
+.vayda-site.is-public .vs-meta { font-family: 'JetBrains Mono', monospace; color: var(--gold); }
+.vayda-site.is-public .vs-header {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  padding-top: env(safe-area-inset-top);
+  padding-right: env(safe-area-inset-right);
+  padding-left: env(safe-area-inset-left);
+  border-bottom-color: transparent;
+  background: transparent;
+  backdrop-filter: blur(0);
+  -webkit-backdrop-filter: blur(0);
+  transition: background .28s ease, border-color .28s ease, backdrop-filter .28s ease;
+}
+.vayda-site.is-public .vs-header.is-scrolled {
+  border-bottom-color: var(--line);
+  background: var(--ink);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+.vayda-site.is-public .vs-header-inner { width: min(1380px, calc(100% - 72px)); min-height: 78px; }
+.vayda-site.is-public .vs-header .vs-brand { position: relative; }
+.vayda-site.is-public .vs-header .vs-brand img { box-shadow: none; }
+.vayda-site.is-public .vs-header .vs-brand-word { color: #effbf9; letter-spacing: .18em; }
+.vayda-site.is-public .vs-header .vs-brand-sub { color: #83a19f; }
+.vayda-site.is-public .vs-header .vs-brand::after {
+  position: absolute;
+  top: 4px;
+  left: 38px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--gold);
+  content: '';
+  pointer-events: none;
+}
+.vayda-site.is-public .vs-nav { gap: clamp(13px, 1.65vw, 25px); }
+.vayda-site.is-public .vs-nav a {
+  color: #aec0be;
+  font: 10px 'JetBrains Mono', monospace;
+  letter-spacing: .11em;
+  text-transform: uppercase;
+}
+.vayda-site.is-public .vs-nav a::after { background: var(--gold); }
+.vayda-site.is-public .vs-nav .vs-staff-link { color: #c2baff; }
+.vayda-site.is-public .vs-nav .vs-staff-link::after { background: #a395ff; }
+.vayda-site.is-public .vs-nav-cta,
+.vayda-site.is-public .vs-create-account,
+.vayda-site.is-public .vs-menu-toggle { border-radius: 999px; }
+.vayda-site.is-public .vs-nav-cta { border-color: rgba(98,225,207,.42); color: var(--gold-bright) !important; }
+.vayda-site.is-public .vs-nav-cta:hover { background: var(--gold); color: #071012 !important; }
+.vayda-site.is-public .vs-nav .vs-create-account { border-color: rgba(98,225,207,.45); color: var(--gold-bright); }
+.vayda-site.is-public .vs-nav .vs-create-account:hover { border-color: var(--gold); background: rgba(98,225,207,.1); }
+.vayda-site.is-public .vs-menu-toggle { border-color: var(--line); }
+.vayda-site.is-public .vs-menu-toggle span { background: var(--gold); }
+
+.vayda-site.is-public .vs-page-transition { animation: vs-page-enter .42s both cubic-bezier(.22,.75,.28,1); }
+.vayda-site.is-public .vs-page-hero {
+  position: relative;
+  isolation: isolate;
+  min-height: clamp(410px, 54vw, 620px);
+  display: flex;
+  align-items: end;
+  overflow: hidden;
+  padding: 98px 0 76px;
+  border-bottom-color: var(--line);
+  background:
+    radial-gradient(ellipse at 81% 45%, rgba(31,112,108,.17), transparent 39%),
+    linear-gradient(120deg, #080e12 5%, #0a1216 58%, #0b1318);
+}
+.vayda-site.is-public .vs-page-hero::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background-image: linear-gradient(rgba(98,225,207,.04) 1px, transparent 1px), linear-gradient(90deg, rgba(98,225,207,.04) 1px, transparent 1px);
+  background-size: 72px 72px;
+  mask-image: linear-gradient(90deg, transparent 4%, rgba(0,0,0,.8) 65%, black);
+  content: '';
+  pointer-events: none;
+}
+.vayda-site.is-public .vs-page-hero::after {
+  position: absolute;
+  z-index: -1;
+  right: 5%;
+  bottom: -170px;
+  width: min(42vw, 520px);
+  aspect-ratio: 1;
+  border: 1px solid rgba(98,225,207,.17);
+  border-radius: 50%;
+  box-shadow: 0 0 0 28px rgba(98,225,207,.025), 0 0 0 58px rgba(163,149,255,.025);
+  content: '';
+  pointer-events: none;
+}
+.vayda-site.is-public .vs-page-hero > .vs-shell { position: relative; z-index: 1; }
+.vayda-site.is-public .vs-page-hero h1 {
+  max-width: 1050px;
+  margin: 23px 0 22px;
+  color: var(--text);
+  font: 600 clamp(56px, 9vw, 118px)/.94 'Space Grotesk', sans-serif;
+  letter-spacing: -.085em;
+}
+.vayda-site.is-public .vs-page-hero > .vs-shell > p {
+  max-width: 590px;
+  margin: 0;
+  color: #b1c4c2;
+  font-size: clamp(15px, 1.25vw, 17px);
+  line-height: 1.8;
+}
+.vayda-site.is-public .vs-page-content { padding: clamp(58px, 8vw, 112px) 0 clamp(80px, 10vw, 140px); }
+.vayda-site.is-public .vs-reading-grid { grid-template-columns: minmax(190px, .58fr) minmax(0, 1.42fr); gap: clamp(44px, 9vw, 136px); }
+.vayda-site.is-public .vs-side-note {
+  position: sticky;
+  top: 112px;
+  align-self: start;
+  padding: 18px 0 18px 20px;
+  border-left: 1px solid var(--gold);
+  color: #a3b7b5;
+  font: 10px/1.9 'JetBrains Mono', monospace;
+  letter-spacing: .08em;
+}
+.vayda-site.is-public .vs-reading { max-width: 760px; }
+.vayda-site.is-public .vs-reading h2 {
+  margin: 0 0 18px;
+  color: var(--text);
+  font: 500 clamp(26px, 3vw, 38px)/1.16 'Space Grotesk', sans-serif;
+  letter-spacing: -.055em;
+}
+.vayda-site.is-public .vs-reading h2:not(:first-child) { margin-top: 55px; }
+.vayda-site.is-public .vs-reading p { color: var(--muted); line-height: 1.9; }
+.vayda-site.is-public .vs-reading strong { color: var(--text); }
+.vayda-site.is-public .vs-reading-list { border-color: var(--line); }
+.vayda-site.is-public .vs-reading-list li { border-color: var(--line); color: var(--muted); }
+.vayda-site.is-public .vs-method-grid {
+  gap: 14px;
+  border: 0;
+  background: transparent;
+}
+.vayda-site.is-public .vs-method {
+  position: relative;
+  min-height: 236px;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--ink-raised);
+  transition: transform .22s ease, border-color .22s ease, background .22s ease;
+}
+.vayda-site.is-public .vs-method:hover { transform: translateY(-3px); border-color: rgba(98,225,207,.44); background: var(--ink-soft); box-shadow: none; }
+.vayda-site.is-public .vs-method .vs-index { margin-bottom: 38px; }
+.vayda-site.is-public .vs-method h3 { font: 500 clamp(22px, 2.5vw, 31px)/1.12 'Space Grotesk', sans-serif; letter-spacing: -.05em; }
+.vayda-site.is-public .vs-method p { color: var(--muted); font-size: 13px; }
+.vayda-site.is-public .vs-community-option {
+  margin-top: 18px;
+  padding: 23px 25px;
+  border-color: var(--line);
+  border-radius: 14px;
+  background: var(--ink-raised);
+}
+.vayda-site.is-public .vs-community-option:hover { border-color: rgba(98,225,207,.44); background: var(--ink-soft); }
+.vayda-site.is-public .vs-community-option h2 { font: 500 20px 'Space Grotesk', sans-serif; letter-spacing: -.035em; }
+.vayda-site.is-public .vs-community-option .vs-button {
+  min-height: 46px;
+  border-color: rgba(98,225,207,.42);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--gold-bright) !important;
+}
+.vayda-site.is-public .vs-community-option .vs-button:hover { background: rgba(98,225,207,.1); box-shadow: none; }
+.vayda-site.is-public .vs-placeholder {
+  border-color: var(--line);
+  border-radius: 14px;
+  background: var(--ink-raised);
+}
+.vayda-site.is-public .vs-placeholder-mark { border-color: rgba(98,225,207,.36); color: var(--gold); }
+.vayda-site.is-public .vs-placeholder h2 { font: 500 19px 'Space Grotesk', sans-serif; }
+.vayda-site.is-public .vs-placeholder em { color: var(--gold); }
+.vayda-site.is-public .vs-disclaimer {
+  border-left-color: var(--gold);
+  background: rgba(98,225,207,.055);
+  color: #a9bcba;
+}
+.vayda-site.is-public .vs-quote-band {
+  padding: clamp(72px, 10vw, 132px) 0;
+  border-color: rgba(98,225,207,.18);
+  background:
+    radial-gradient(ellipse at 50% 112%, rgba(39,111,103,.23), transparent 57%),
+    linear-gradient(120deg, #0d181c, #10171f 50%, #111822);
+}
+.vayda-site.is-public .vs-quote-band::before { border-color: rgba(98,225,207,.11); box-shadow: 0 0 0 28px rgba(98,225,207,.025), 0 0 0 58px rgba(163,149,255,.025); }
+.vayda-site.is-public .vs-quote-band blockquote { color: #b6fff3; font: 600 clamp(38px, 7vw, 88px)/.98 'Space Grotesk', sans-serif; letter-spacing: -.075em; text-shadow: none; }
+.vayda-site.is-public .vs-quote-band p { color: #a3b7b5; }
+.vayda-site.is-public .vs-footer { background: var(--ink-raised); }
+.vayda-site.is-public .vs-footer-top { padding-top: 62px; }
+.vayda-site.is-public .vs-footer-links a { transition: color .2s ease, opacity .2s ease; }
+.vayda-site.is-public .vs-footer-links a:hover { color: var(--gold); }
+.vayda-site.is-public .vs-footer-bottom { border-top-color: var(--line); }
+.vayda-site.is-public .vs-button { border-radius: 999px; }
+.vayda-site.is-public .vs-button:focus-visible,
+.vayda-site.is-public .vs-nav a:focus-visible,
+.vayda-site.is-public .vs-footer a:focus-visible { outline: 2px solid var(--gold-bright); outline-offset: 4px; }
+@media (max-width: 980px) {
+  .vayda-site.is-public .vs-nav { gap: 12px; }
+  .vayda-site.is-public .vs-nav a { font-size: 9px; }
+}
+@media (max-width: 760px) {
+  .vayda-site.is-public .vs-shell,
+  .vayda-site.is-public .vs-header-inner { width: min(100% - 40px, 620px); }
+  .vayda-site.is-public .vs-header-inner { min-height: 70px; }
+  .vayda-site.is-public .vs-nav { background: rgba(8,15,19,.97); border-color: rgba(175,213,211,.14); }
+  .vayda-site.is-public .vs-nav.is-open { border-color: rgba(175,213,211,.17); }
+  .vayda-site.is-public .vs-nav a { font-size: 13px; }
+  .vayda-site.is-public .vs-page-hero { min-height: 430px; padding: 76px 0 58px; }
+  .vayda-site.is-public .vs-page-hero h1 { font-size: clamp(50px, 11vw, 82px); }
+  .vayda-site.is-public .vs-page-content { padding: 50px 0 78px; }
+  .vayda-site.is-public .vs-reading-grid { grid-template-columns: 1fr; gap: 32px; }
+  .vayda-site.is-public .vs-side-note { position: static; }
+  .vayda-site.is-public .vs-method-grid { grid-template-columns: 1fr 1fr; }
+  .vayda-site.is-public .vs-footer-top { grid-template-columns: 1fr 1fr; gap: 34px 22px; }
+  .vayda-site.is-public .vs-footer-brand { grid-column: 1 / -1; }
+}
+@media (max-width: 480px) {
+  .vayda-site.is-public .vs-shell,
+  .vayda-site.is-public .vs-header-inner { width: calc(100% - 36px); }
+  .vayda-site.is-public .vs-header .vs-brand::after { left: 34px; }
+  .vayda-site.is-public .vs-page-hero { min-height: 390px; padding: 66px 0 48px; }
+  .vayda-site.is-public .vs-page-hero h1 { font-size: clamp(45px, 13vw, 62px); }
+  .vayda-site.is-public .vs-page-hero > .vs-shell > p { font-size: 14px; }
+  .vayda-site.is-public .vs-method-grid { grid-template-columns: 1fr; }
+  .vayda-site.is-public .vs-method { min-height: 196px; padding: 23px; }
+  .vayda-site.is-public .vs-community-option { align-items: stretch; flex-direction: column; padding: 19px; }
+  .vayda-site.is-public .vs-footer-top { grid-template-columns: 1fr; }
+  .vayda-site.is-public .vs-footer-brand { grid-column: auto; }
+  .vayda-site.is-public .vs-footer-bottom { flex-direction: column; gap: 8px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vayda-site.is-public .vs-page-transition { animation: none; }
+  .vayda-site.is-public .vs-header,
+  .vayda-site.is-public .vs-nav,
+  .vayda-site.is-public .vs-method,
+  .vayda-site.is-public .vs-community-option,
+  .vayda-site.is-public .vs-footer-links a { transition: none !important; }
+  .vayda-site.is-public .vs-motion-ready [data-reveal],
+  .vayda-site.is-public .vs-motion-ready [data-reveal].is-visible,
+  .vayda-site.is-public .vs-motion-ready .vs-stagger > * { opacity: 1 !important; transform: none !important; }
+}
