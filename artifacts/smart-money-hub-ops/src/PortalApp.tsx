@@ -55,6 +55,7 @@ import BotControl from '@/pages/bot-control';
 import MemberAccessPage from '@/pages/member-access';
 import { trackEvent } from '@/lib/analytics';
 import { WebsiteChats } from './WebsiteSupport';
+import { publicSiteLinks } from './public-site/config';
 const brandLogoUrl = `${import.meta.env.BASE_URL}vayda-logo.png`;
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
 const clerkPubKey = publishableKeyFromHost(
@@ -535,7 +536,7 @@ function TelegramLinkWidget({ session }: { session: MemberSession }) {
       : <><p>Verify your Telegram identity with Telegram’s signed login widget. A username alone is not accepted as proof.</p><div ref={widgetRef} data-testid="telegram-link-widget" /></>}
     {error && <div className="notice notice-error" role="alert">{error}</div>}
     {notice && <div className="notice notice-info" role="status">{notice}</div>}
-    <a className="mx-button mx-button-quiet mx-telegram-bot-button" href="https://t.me/SmartMoneyHubSignalsBot" target="_blank" rel="noreferrer">Open Smart Money Hub bot <ArrowUpRight size={14} /></a>
+    <a className="mx-button mx-button-quiet mx-telegram-bot-button" href={publicSiteLinks.proSignalsAssistant} target="_blank" rel="noreferrer">Open PRO Signals bot <ArrowUpRight size={14} /></a>
   </div>;
 }
 

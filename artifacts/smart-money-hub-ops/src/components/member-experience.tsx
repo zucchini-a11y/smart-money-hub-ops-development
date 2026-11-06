@@ -233,9 +233,9 @@ export function MemberDashboardExperience({
               <span>Member status</span><strong className="mx-status-verified"><i /> Verified</strong>
             </div>
             <div className="mx-access-row">
-              <span>PRO Signals</span><strong className={session.proSignalsAccess ? 'mx-status-authorized' : 'mx-status-unassigned'}>{session.proSignalsAccess ? 'Authorized' : 'Not assigned'}</strong>
+              <span>PRO Signals bot</span><strong className={session.proSignalsAccess ? 'mx-status-authorized' : 'mx-status-unassigned'}>{session.proSignalsAccess ? 'Authorized' : 'Not assigned'}</strong>
             </div>
-            <p className="mx-access-note">PRO Signals access is assigned separately by the service. Registration and Telegram identity do not grant access.</p>
+            <p className="mx-access-note">Access to the separate PRO Signals bot is assigned by the service. Registration and Telegram identity do not grant it.</p>
             {session.proSignalsAccess && <Link className="mx-button mx-button-quiet mx-pro-open-button" href="/member/pro-signals" data-testid="link-member-pro-signals">
               Open PRO Signals <ArrowRight size={14} />
             </Link>}
@@ -245,10 +245,10 @@ export function MemberDashboardExperience({
 
           <section className="mx-card mx-telegram-card" aria-labelledby="mx-telegram-title">
             <div className="mx-card-heading">
-              <div><span className="mx-card-kicker">OPTIONAL / PRO ELIGIBILITY</span><h2 id="mx-telegram-title">Telegram connection</h2></div>
+              <div><span className="mx-card-kicker">OPTIONAL / PRO SIGNALS ACCESS</span><h2 id="mx-telegram-title">Telegram connection</h2></div>
               <span className="mx-icon-stamp"><CheckCircle2 size={17} /></span>
             </div>
-            <p className="mx-card-description">Optional for your member dashboard. If you request PRO Signals access, link the Telegram account you control so the service can verify your identity and current channel membership. Linking does not grant PRO access.</p>
+            <p className="mx-card-description">Optional for your member dashboard. The signed Telegram check verifies the account used for PRO Signals access checks. It is separate from the in-app AI Coach; linking alone does not grant PRO access.</p>
             <div className="mx-telegram-widget">{telegramIdentityWidget}</div>
           </section>
 
@@ -264,13 +264,14 @@ export function MemberDashboardExperience({
             </div>
           </section>
 
-          <section className="mx-card mx-unavailable-card" aria-labelledby="mx-tools-title">
-            <div className="mx-card-heading">
-              <div><span className="mx-card-kicker">PRACTICE TOOLS</span><h2 id="mx-tools-title">A place to reflect</h2></div>
-              <Sparkles size={18} aria-hidden="true" />
+          <section className="mx-card mx-coach-preview-card" aria-labelledby="mx-coach-preview-title">
+            <div className="mx-coach-preview-copy">
+              <span className="mx-card-kicker">IN-APP AI COACH</span>
+              <h2 id="mx-coach-preview-title">Study with your Coach</h2>
+              <p>Ask about trading concepts, market structure, or your decision process. This learning assistant is separate from the PRO Signals bot.</p>
+              <Link className="mx-button mx-button-quiet" href="/member/coach" data-testid="button-open-member-coach">Open AI Coach <ArrowRight size={14} /></Link>
             </div>
-            <p className="mx-card-description">Use these private tools to observe scheduled events, record your own decisions, and study concepts at your pace.</p>
-            <p className="mx-access-note">Your journal is yours to maintain. Nothing here connects to a broker or executes trades.</p>
+            <CoachBotAnimation />
           </section>
         </div>
 
@@ -286,6 +287,28 @@ export function MemberDashboardExperience({
       </div>
     </main>
   );
+}
+
+function CoachBotAnimation({ compact = false }: { compact?: boolean }) {
+  return <span className={`mx-coach-bot${compact ? ' is-compact' : ''}`} aria-hidden="true">
+    <span className="mx-coach-bot-halo" />
+    <span className="mx-coach-bot-orbit"><i /></span>
+    <svg className="mx-coach-bot-art" viewBox="0 0 128 128" fill="none">
+      <path className="mx-coach-bot-antenna" d="M64 19v12" />
+      <circle className="mx-coach-bot-signal" cx="64" cy="15" r="4" />
+      <path className="mx-coach-bot-ear" d="M25 54h-9v22h9m78-22h9v22h-9" />
+      <rect className="mx-coach-bot-shell" x="25" y="31" width="78" height="67" rx="22" />
+      <rect className="mx-coach-bot-face" x="34" y="41" width="60" height="45" rx="15" />
+      <circle className="mx-coach-bot-eye" cx="50" cy="60" r="4" />
+      <circle className="mx-coach-bot-eye" cx="78" cy="60" r="4" />
+      <path className="mx-coach-bot-smile" d="M53 72q11 10 22 0" />
+      <path className="mx-coach-bot-neck" d="M64 98v7" />
+      <rect className="mx-coach-bot-base" x="43" y="103" width="42" height="12" rx="6" />
+      <circle className="mx-coach-bot-light" cx="52" cy="109" r="2" />
+      <circle className="mx-coach-bot-light" cx="64" cy="109" r="2" />
+      <circle className="mx-coach-bot-light" cx="76" cy="109" r="2" />
+    </svg>
+  </span>;
 }
 
 type MemberFeaturePath = '/member/calendar' | '/member/journal' | '/member/coach' | '/member/pro-signals';
@@ -667,7 +690,7 @@ export function MemberCoachExperience() {
             stickToBottomRef.current = node.scrollHeight - node.scrollTop - node.clientHeight < 48;
           }}
         >
-          {!history.length && <div className="mx-chat-welcome"><span className="mx-chat-symbol"><Sparkles size={18} /></span><h2>Bring a question, not a trade call.</h2><p>Try asking how to distinguish a market structure shift from a liquidity sweep, or how to review confirmation in a written plan.</p></div>}
+          {!history.length && <div className="mx-chat-welcome"><CoachBotAnimation compact /><span className="mx-card-kicker">IN-APP AI COACH</span><h2>Bring a question, not a trade call.</h2><p>Ask about a trading concept or your decision process. The Coach teaches; the separate PRO Signals bot delivers authorized signals.</p></div>}
           {history.map((line, index) => {
             const isTyping = typingIndex === index;
             const visibleText = isTyping ? line.content.slice(0, typedLength) : line.content;
