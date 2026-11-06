@@ -32,6 +32,8 @@ node_modules
 /connect.lock
 /coverage
 /generated-artifacts/
+/smh-portal-development-build-20261106.zip
+/smh-portal-complete-source-development-20261106.zip
 /libpeerconnection.log
 npm-debug.log
 yarn-error.log

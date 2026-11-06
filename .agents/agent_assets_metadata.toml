@@ -266,3 +266,17 @@ mtime_ms = 1793976610945
 storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/d12abb2d-e291-4c92-bfda-68d827e61533/cf95a2f0-a462-4143-a578-7fb20fa19ab3"
 storage_version_token = "1793976618798181"
 content_type = "text/html"
+
+[[outputs]]
+id = "_ll14CgG4U9QAgJdJq7Zb"
+uri = "file://generated-artifacts/smh-portal-complete-source-download.html"
+type = "html"
+title = "Download the Complete Smart Money Hub Portal Source"
+description = "Open this download page and tap its button to save the full Development source ZIP, including the frontend, API server, shared packages, migrations, tests, and build notes. SHA-256: 6542cc83b765555abbe08e1bf80c0b6dd2b4f42d295afe979631cd55809be54f."
+logical_id = "6aa9c30b-1dd1-445e-a38c-a5e3513d55da"
+content_hash = "sha256:a3607770c506206e77f012e6fbcfacb692e0e31ce42bc1e1f801777a62801edd"
+size = 1945543
+mtime_ms = 1793977643930
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/6aa9c30b-1dd1-445e-a38c-a5e3513d55da/a0f24d1f-2019-45de-98dd-7cb8cccbc332"
+storage_version_token = "1793977657249485"
+content_type = "text/html"
