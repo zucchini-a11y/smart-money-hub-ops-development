@@ -414,8 +414,13 @@ function isSafeSourceDestination(value: string) {
 }
 
 function CalendarEventRow({ event }: { event: MemberCalendarEvent }) {
-  const eventDate = new Date(`${event.eventDate}T00:00:00`);
-  const dateLabel = Number.isNaN(eventDate.getTime()) ? event.eventDate : new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' }).format(eventDate);
+  const datePart = event.eventDate?.slice(0, 10);
+  const eventDate = /^\d{4}-\d{2}-\d{2}$/.test(datePart ?? '')
+    ? new Date(`${datePart}T00:00:00`)
+    : new Date(event.eventDate);
+  const dateLabel = Number.isNaN(eventDate.getTime())
+    ? null
+    : new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' }).format(eventDate);
   const verifiedTime = event.eventAt && event.timeLabel && !/unverified|unavailable/i.test(event.timeLabel)
     ? event.timeLabel
     : null;
@@ -431,10 +436,10 @@ function CalendarEventRow({ event }: { event: MemberCalendarEvent }) {
   const hasSourceButton = isSafeSourceDestination(event.sourceUrl);
 
   return <article className="mx-calendar-row" data-testid={`calendar-event-${event.id}`}>
-    <div className="mx-event-date">
-      <strong>{dateLabel}</strong>
+    {(dateLabel || verifiedTime) && <div className="mx-event-date">
+      {dateLabel && <strong>{dateLabel}</strong>}
       {verifiedTime && <span><Clock3 size={12} /> {verifiedTime}</span>}
-    </div>
+    </div>}
     <div className="mx-event-main">
       <div className="mx-event-title-line">
         <h3>{event.title}</h3>
