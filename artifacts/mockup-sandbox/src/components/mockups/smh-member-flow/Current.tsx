@@ -1,10 +1,9 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   Activity,
   ArrowRight,
   ArrowUpRight,
   BookOpen,
-  Check,
   CheckCircle2,
   ChevronRight,
   CircleHelp,
@@ -12,7 +11,6 @@ import {
   GraduationCap,
   LayoutDashboard,
   LogOut,
-  MessageCircle,
   Play,
   Radio,
   Send,
@@ -25,6 +23,7 @@ import {
 import "./_group.css";
 
 type VaydaState = "idle" | "blinking" | "breathing" | "listening" | "thinking" | "speaking";
+type ConversationMessage = { role: "member" | "vayda"; text: string };
 
 const states: { id: VaydaState; label: string }[] = [
   { id: "idle", label: "Idle" },
@@ -84,13 +83,56 @@ function IconButton({ label, children }: { label: string; children: ReactNode })
 export function Current() {
   const [assistantState, setAssistantState] = useState<VaydaState>("idle");
   const [message, setMessage] = useState("");
-  const [previewNotice, setPreviewNotice] = useState("");
+  const [isTyping, setIsTyping] = useState(false);
+  const [conversation, setConversation] = useState<ConversationMessage[]>([
+    { role: "vayda" as const, text: "Hi, I’m Vayda. This is a scripted demo; no live AI is connected and nothing you type leaves this preview." },
+  ]);
+  const chatLogRef = useRef<HTMLDivElement>(null);
+  const replyTimer = useRef<number | null>(null);
+  const stateTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (chatLogRef.current) chatLogRef.current.scrollTop = chatLogRef.current.scrollHeight;
+  }, [conversation, isTyping]);
+
+  useEffect(() => () => {
+    if (replyTimer.current !== null) window.clearTimeout(replyTimer.current);
+    if (stateTimer.current !== null) window.clearTimeout(stateTimer.current);
+  }, []);
+
+  const scriptedReply = (prompt: string) => {
+    if (/progress|lesson|learn|academy/i.test(prompt)) {
+      return "This preview has no real lesson-progress data, so it won’t mark lessons complete. Learning progress can appear when actual tracking is available.";
+    }
+    if (/pro|access|entitlement/i.test(prompt)) {
+      return "PRO Signals access is separate and is not assigned in this sample. Registering or opening Telegram does not grant PRO access.";
+    }
+    if (/signal|telegram|bot/i.test(prompt)) {
+      return "The button opens the verified PRO Signals assistant. Opening it does not grant access to PRO content.";
+    }
+    return "This is a visual preview with scripted replies. No live AI service is connected, and your message stays in this page.";
+  };
+
+  const sendPrompt = (prompt: string) => {
+    const trimmed = prompt.trim();
+    if (!trimmed || isTyping) return;
+    if (replyTimer.current !== null) window.clearTimeout(replyTimer.current);
+    if (stateTimer.current !== null) window.clearTimeout(stateTimer.current);
+    setConversation((current) => [...current, { role: "member", text: trimmed }]);
+    setMessage("");
+    setIsTyping(true);
+    setAssistantState("thinking");
+    replyTimer.current = window.setTimeout(() => {
+      setConversation((current) => [...current, { role: "vayda", text: scriptedReply(trimmed) }]);
+      setIsTyping(false);
+      setAssistantState("speaking");
+      stateTimer.current = window.setTimeout(() => setAssistantState("idle"), 1200);
+    }, 850);
+  };
 
   const submitPreview = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!message.trim()) return;
-    setPreviewNotice("Visual prototype only — no message was sent and Vayda is not connected to an AI service.");
-    setMessage("");
+    sendPrompt(message);
   };
 
   return (
@@ -114,9 +156,9 @@ export function Current() {
           </nav>
           <div className="member-sidebar-rule" />
           <div className="member-sidebar-status">
-            <div className="member-sidebar-status-icon"><ShieldCheck size={17} /></div>
-            <span><strong>Member account</strong><small>Verified access</small></span>
-            <CheckCircle2 className="member-sidebar-check" size={15} />
+              <div className="member-sidebar-status-icon"><ShieldCheck size={17} /></div>
+              <span><strong>Member preview</strong><small>Sample account data</small></span>
+              <CheckCircle2 className="member-sidebar-check" size={15} />
           </div>
           <div className="member-sidebar-bottom">
             <button className="member-nav-item" type="button" data-testid="button-prototype-settings"><Settings2 size={17} /><span>Account settings</span></button>
@@ -146,7 +188,7 @@ export function Current() {
                 <h1 id="member-welcome-title">Welcome back,<br /><span>Alex.</span></h1>
                 <p>A clear place to learn, review, and build your trading process—one decision at a time.</p>
                 <div className="member-welcome-pills">
-                  <span className="member-status-pill"><ShieldCheck size={14} /> Verified member</span>
+                  <span className="member-status-pill"><ShieldCheck size={14} /> Member preview</span>
                   <span className="member-status-pill member-status-pill-muted"><span className="member-status-dot" /> PRO access not assigned</span>
                 </div>
               </div>
@@ -212,21 +254,30 @@ export function Current() {
                   </div>
                   <span className={`member-coach-state state-label-${assistantState}`}><i />{assistantState}</span>
                 </div>
-                <div className="member-coach-message">
-                  <span className="member-coach-message-mark"><Sparkles size={13} /></span>
-                  <p>What trading concept would you like to understand more clearly?</p>
-                </div>
                 <div className="member-state-heading"><span>PREVIEW ANIMATION</span><span>Choose a state</span></div>
                 <div className="member-state-controls" role="group" aria-label="Preview Vayda animation states">
                   {states.map((item) => <button key={item.id} className={assistantState === item.id ? "is-selected" : ""} type="button" onClick={() => setAssistantState(item.id)} aria-pressed={assistantState === item.id} data-testid={`button-vayda-state-${item.id}`}>{item.label}</button>)}
                 </div>
+                <div className="member-chat-log" ref={chatLogRef} role="log" aria-live="polite" aria-label="Scripted Vayda preview conversation">
+                  {conversation.map((entry, index) => (
+                    <div className={`member-chat-message ${entry.role === "member" ? "is-member" : "is-vayda"}`} key={`${entry.role}-${index}`}>
+                      {entry.role === "vayda" && <span className="member-chat-mark"><Sparkles size={12} /></span>}
+                      <p>{entry.text}</p>
+                    </div>
+                  ))}
+                  {isTyping && <div className="member-chat-message is-vayda member-typing" role="status" aria-label="Vayda is typing"><span className="member-chat-mark"><Sparkles size={12} /></span><p><i /><i /><i /></p></div>}
+                </div>
+                <div className="member-suggested-prompts" aria-label="Example questions">
+                  <button type="button" onClick={() => sendPrompt("How does learning progress work?")} disabled={isTyping} data-testid="button-ask-progress">Learning progress</button>
+                  <button type="button" onClick={() => sendPrompt("How is PRO access assigned?")} disabled={isTyping} data-testid="button-ask-pro">PRO access</button>
+                  <button type="button" onClick={() => sendPrompt("What does Signal Bot do?")} disabled={isTyping} data-testid="button-ask-bot">Signal Bot</button>
+                </div>
                 <form className="member-ask-form" onSubmit={submitPreview}>
                   <label className="visually-hidden" htmlFor="ask-vayda-input">Type a question for Vayda</label>
-                  <input id="ask-vayda-input" value={message} onChange={(event) => setMessage(event.currentTarget.value)} placeholder="Ask about a trading concept…" maxLength={500} data-testid="input-ask-vayda" />
-                  <button type="submit" aria-label="Send preview question" disabled={!message.trim()} data-testid="button-send-preview-question"><Send size={16} /></button>
+                  <input id="ask-vayda-input" value={message} onChange={(event) => setMessage(event.currentTarget.value)} placeholder="Ask about this preview…" maxLength={500} data-testid="input-ask-vayda" />
+                  <button type="submit" aria-label="Send preview question" disabled={!message.trim() || isTyping} data-testid="button-send-preview-question"><Send size={16} /></button>
                 </form>
-                <div className="member-ask-disclaimer"><ShieldCheck size={13} /><span>Education only · No trade signals · AI not connected in this prototype</span></div>
-                {previewNotice && <div className="member-preview-notice" role="status">{previewNotice}</div>}
+                <div className="member-ask-disclaimer"><ShieldCheck size={13} /><span>Scripted demo · No live AI · Nothing leaves this preview</span></div>
               </article>
 
               <article className="member-signal-panel" data-testid="card-signal-bot">
