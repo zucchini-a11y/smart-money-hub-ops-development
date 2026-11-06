@@ -3,11 +3,11 @@ type ModuleMap = Record<string, () => Promise<Record<string, unknown>>>;
 export const modules: ModuleMap = {
   "./components/mockups/smh-coach-chat/ChatFocused.tsx": () => import("../components/mockups/smh-coach-chat/ChatFocused.tsx"),
   "./components/mockups/smh-coach-chat/Current.tsx": () => import("../components/mockups/smh-coach-chat/Current.tsx"),
-  "./components/mockups/smh-economic-calendar/ClearView.tsx": () => import("../components/mockups/smh-economic-calendar/ClearView.tsx"),
-  "./components/mockups/smh-economic-calendar/Current.tsx": () => import("../components/mockups/smh-economic-calendar/Current.tsx"),
   "./components/mockups/smh-member-flow/Current.tsx": () => import("../components/mockups/smh-member-flow/Current.tsx"),
   "./components/mockups/smh-ops-connections/Current.tsx": () => import("../components/mockups/smh-ops-connections/Current.tsx"),
   "./components/mockups/smh-ops-connections/DevelopmentNetwork.tsx": () => import("../components/mockups/smh-ops-connections/DevelopmentNetwork.tsx"),
+  "./components/mockups/smh-economic-calendar/ClearView.tsx": () => import("../components/mockups/smh-economic-calendar/ClearView.tsx"),
+  "./components/mockups/smh-economic-calendar/Current.tsx": () => import("../components/mockups/smh-economic-calendar/Current.tsx"),
   "./components/mockups/smh-public-site/Current.tsx": () => import("../components/mockups/smh-public-site/Current.tsx"),
   "./components/mockups/smh-public-site-latest/Current.tsx": () => import("../components/mockups/smh-public-site-latest/Current.tsx"),
   "./components/mockups/smh-support/Current.tsx": () => import("../components/mockups/smh-support/Current.tsx"),
