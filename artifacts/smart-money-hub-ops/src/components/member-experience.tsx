@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link } from 'wouter';
 import {
   getGetMemberCalendarQueryKey,
@@ -188,48 +188,104 @@ interface MemberDashboardExperienceProps {
   onSettings: () => void;
 }
 
+function memberDisplayName(session: MemberSession) {
+  const displayed = session.displayName.trim();
+  if (displayed && !displayed.includes('@')) return displayed;
+  const localPart = session.email.split('@')[0]?.split('+')[0] ?? '';
+  const words = localPart.replace(/[._-]+/g, ' ').trim().split(/\s+/).filter(Boolean);
+  const derived = words.map((word) => `${word.charAt(0).toLocaleUpperCase()}${word.slice(1)}`).join(' ');
+  return derived || 'Member';
+}
+
+function memberInitials(name: string) {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part.charAt(0).toLocaleUpperCase()).join('') || 'M';
+}
+
+function homeEventDate(event: MemberCalendarEvent) {
+  const datePart = event.eventDate.slice(0, 10);
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(datePart) ? new Date(`${datePart}T00:00:00`) : new Date(event.eventDate);
+  return Number.isNaN(date.getTime())
+    ? ''
+    : new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' }).format(date);
+}
+
+function homeEventTime(event: MemberCalendarEvent) {
+  if (event.timeLabel && !/unverified|unavailable/i.test(event.timeLabel)) return event.timeLabel;
+  if (!event.eventAt) return '';
+  const instant = new Date(event.eventAt);
+  if (Number.isNaN(instant.getTime())) return '';
+  return `${new Intl.DateTimeFormat('en-NG', {
+    timeZone: 'Africa/Lagos',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(instant)} WAT`;
+}
+
 export function MemberDashboardExperience({
   session,
   onSignOut,
   onSettings,
 }: MemberDashboardExperienceProps) {
+  const name = memberDisplayName(session);
+  const firstName = name.split(/\s+/)[0] || 'Member';
+  const calendarParams = useMemo<GetMemberCalendarParams>(() => ({ currency: 'USD' }), []);
+  const calendar = useGetMemberCalendar(calendarParams, {
+    query: { queryKey: getGetMemberCalendarQueryKey(calendarParams), staleTime: 60_000 },
+  });
+  const journalParams = useMemo<ListMemberJournalTradesParams>(() => ({}), []);
+  const journal = useListMemberJournalTrades(journalParams, {
+    query: { queryKey: getListMemberJournalTradesQueryKey(journalParams), staleTime: 30_000 },
+  });
+  const calendarEvents = calendar.data?.events.slice(0, 3) ?? [];
+  const latestTrade = journal.data?.trades[0];
+
   return (
-    <main className="member-experience mx-dashboard" data-testid="member-dashboard">
+    <main className="member-experience mx-dashboard mx-member-home" data-testid="member-dashboard">
       <div className="mx-dashboard-shell">
-        <header className="mx-dashboard-header">
+        <header className="mx-dashboard-header mx-home-header">
           <Link className="mx-wordmark" href="/" aria-label="Smart Money Hub home">
             <img className="mx-wordmark-image" src={`${import.meta.env.BASE_URL}vayda-logo.png`} alt="" aria-hidden="true" />
             <span><strong>VAYDA</strong><small>SMART MONEY HUB</small></span>
           </Link>
+          <nav className="mx-home-nav" aria-label="Member navigation">
+            <Link className="is-current" href="/member/dashboard">Home</Link>
+            <Link href="/member/calendar">Calendar</Link>
+            <Link href="/member/journal">Journal</Link>
+            <Link href="/member/coach">AI Coach</Link>
+            {session.proSignalsAccess && <Link href="/member/pro-signals">PRO Signals</Link>}
+          </nav>
           <div className="mx-header-actions">
-            <button className="mx-header-icon-button" type="button" onClick={onSettings} aria-label="Account settings" title="Account settings"><Settings2 size={17} /></button>
+            <button className="mx-home-account" type="button" onClick={onSettings} aria-label={`Account settings for ${name}`} title="Account settings">
+              <span className="mx-home-avatar" aria-hidden="true">{memberInitials(name)}</span><span>{name}</span><Settings2 size={15} />
+            </button>
             <button className="mx-header-icon-button" type="button" onClick={onSignOut} aria-label="Sign out" title="Sign out"><LogOut size={17} /></button>
           </div>
         </header>
 
-        <section className="mx-welcome" aria-label="Member welcome">
-          <aside className="mx-coach-greeting" aria-label="Welcome from your AI Coach">
-            <div className="mx-coach-greeting-art"><CoachBotAnimation /></div>
-            <div className="mx-coach-greeting-copy">
-              <div className="mx-coach-greeting-topline"><span className="mx-card-kicker">IN-APP AI COACH</span><span className="mx-coach-study-label">STUDY MODE</span></div>
-              <h1>Welcome, {session.displayName}.</h1>
-              <p>I’m here to help you study trading concepts and review your decision process. I don’t send signals or place trades.</p>
-              <div className="mx-coach-greeting-actions">
-                <Link className="mx-button mx-button-gold" href="/member/coach" data-testid="button-chat-with-coach">Chat with AI Coach <ArrowRight size={14} /></Link>
-                <button
-                  className="mx-button mx-button-quiet mx-coach-telegram-button"
-                  type="button"
-                  onClick={() => window.open(publicSiteLinks.primaryCommunity, '_blank', 'noopener,noreferrer')}
-                  aria-label="Chat with the Smart Money Hub Coach on Telegram"
-                  data-testid="button-coach-telegram"
-                >
-                  <Send size={14} /> Chat with Coach on Telegram <ArrowUpRight size={13} />
-                </button>
-              </div>
-              <div className="mx-welcome-status">
-                <span><ShieldCheck size={13} /> Verified member</span>
-                <span><Radio size={13} /> PRO Signals {session.proSignalsAccess ? 'authorized' : 'not assigned'}</span>
-              </div>
+        <section className="mx-home-hero" aria-label="Member welcome">
+          <div className="mx-home-hero-copy">
+            <div className="mx-home-kicker"><span className="mx-live-mark" /> PRIVATE MEMBER SPACE</div>
+            <h1>Welcome, {firstName}.</h1>
+            <p>Keep your learning, market context, and trade reviews in one clear workspace.</p>
+            <div className="mx-home-hero-actions">
+              <Link className="mx-button mx-button-gold" href="/member/coach" data-testid="button-chat-with-coach"><Sparkles size={15} /> Ask Vayda <ArrowRight size={14} /></Link>
+              <Link className="mx-button mx-button-quiet" href="/member/calendar" data-testid="button-open-member-calendar"><CalendarDays size={15} /> View calendar</Link>
+            </div>
+            <div className="mx-home-status-row">
+              <span><ShieldCheck size={14} /> Member access active</span>
+              <span className={session.proSignalsAccess ? 'is-authorized' : 'is-unassigned'}><Radio size={14} /> PRO Signals {session.proSignalsAccess ? 'authorized' : 'not assigned'}</span>
+            </div>
+          </div>
+          <aside className="mx-home-vayda-card" aria-label="Vayda educational coach">
+            <div className="mx-home-vayda-art"><VaydaPortrait state="idle" /></div>
+            <div className="mx-home-vayda-copy">
+              <div className="mx-home-vayda-name"><Sparkles size={14} /> VAYDA <span>STUDY MODE</span></div>
+              <p>Let’s focus on what you observed and what you want to understand next.</p>
+              <small>Educational support · not a signal service</small>
+              <a className="mx-button mx-button-quiet mx-home-telegram" href={publicSiteLinks.primaryCommunity} target="_blank" rel="noreferrer" data-testid="button-coach-telegram">
+                <Send size={13} /> Chat with Coach on Telegram <ArrowUpRight size={12} />
+              </a>
             </div>
           </aside>
         </section>
@@ -240,37 +296,89 @@ export function MemberDashboardExperience({
         </section>
 
         <section className="mx-tools-section" aria-labelledby="mx-tools-section-title">
-          <div className="mx-tools-heading"><h2 id="mx-tools-section-title">Your tools</h2></div>
+          <div className="mx-tools-heading"><div><h2 id="mx-tools-section-title">Your workspace</h2><p>Choose a tool to continue.</p></div></div>
           <MemberFeatureDashboardLinks proSignalsAccess={session.proSignalsAccess} />
         </section>
 
+        <section className="mx-home-overview" aria-label="Member account overview">
+          <article className="mx-home-panel mx-home-calendar">
+            <div className="mx-home-panel-head"><div><span className="mx-card-kicker">USD EVENTS</span><h2>Economic calendar</h2></div><Link className="mx-home-panel-link" href="/member/calendar">Open calendar <ArrowUpRight size={14} /></Link></div>
+            {calendar.isLoading ? <div className="mx-home-loading" role="status">Loading calendar…</div>
+              : calendar.isError ? <div className="mx-home-empty" role="alert"><span>Calendar data could not be loaded.</span><button type="button" onClick={() => void calendar.refetch()} disabled={calendar.isFetching}>Try again</button></div>
+                : calendarEvents.length ? <div className="mx-home-event-list">{calendarEvents.map((event) => {
+                  const time = homeEventTime(event);
+                  return <article className="mx-home-event" key={event.id}>
+                    <div className="mx-home-event-time"><strong>{homeEventDate(event) || 'Scheduled'}</strong>{time && <small><Clock3 size={12} /> {time}</small>}</div>
+                    <div className="mx-home-event-title"><strong>{event.title}</strong><small>USD{event.impact !== 'unavailable' ? ` · ${event.impact} impact` : ''}</small></div>
+                  </article>;
+                })}</div>
+                  : <div className="mx-home-empty"><CalendarDays size={17} /><span>No releases are listed in the current calendar feed.</span></div>}
+          </article>
+
+          <article className="mx-home-panel mx-home-journal">
+            <div className="mx-home-panel-head"><div><span className="mx-card-kicker">YOUR RECORDS</span><h2>Trading journal</h2></div><Link className="mx-home-panel-link" href="/member/journal">Open journal <ArrowUpRight size={14} /></Link></div>
+            {journal.isLoading ? <div className="mx-home-loading" role="status">Loading your journal…</div>
+              : journal.isError ? <div className="mx-home-empty" role="alert"><span>Your journal could not be loaded.</span><button type="button" onClick={() => void journal.refetch()} disabled={journal.isFetching}>Try again</button></div>
+                : <div className="mx-home-journal-content">
+                  <div className="mx-home-journal-stats"><span><small>SAVED RECORDS</small><strong>{journal.data?.summary.totalTrades ?? 0}</strong></span><span><small>OPEN</small><strong>{journal.data?.summary.openTrades ?? 0}</strong></span></div>
+                  {latestTrade ? <div className="mx-home-latest-trade"><span>RECENT ENTRY</span><strong>{latestTrade.instrument} <i className={`mx-home-outcome is-${latestTrade.outcome}`} /> {latestTrade.outcome}</strong><small>{prettyStamp(latestTrade.entryAt)}</small></div>
+                    : <div className="mx-home-empty"><FileText size={17} /><span>No trade records saved yet.</span></div>}
+                </div>}
+          </article>
+
+          <article className="mx-home-panel mx-home-pro">
+            <div className="mx-home-panel-head"><div><span className="mx-card-kicker">SEPARATE ENTITLEMENT</span><h2>PRO Signals</h2></div><Radio size={19} aria-hidden="true" /></div>
+            <p>{session.proSignalsAccess ? 'This account is authorized to view the PRO Signals area.' : 'PRO access is not assigned to this account. Website registration does not grant signal access.'}</p>
+            {session.proSignalsAccess
+              ? <a className="mx-button mx-button-gold" href={publicSiteLinks.proSignalsAssistant} target="_blank" rel="noreferrer" data-testid="button-open-pro-signals-bot">Open PRO Signals Bot <ArrowUpRight size={14} /></a>
+              : <Link className="mx-button mx-button-quiet" href="/member/pro-signals" data-testid="button-review-pro-access">Review access requirements <ArrowRight size={14} /></Link>}
+          </article>
+
+          <article className="mx-home-panel mx-home-learning">
+            <div className="mx-home-panel-head"><div><span className="mx-card-kicker">LEARNING</span><h2>Learning progress</h2></div><Activity size={19} aria-hidden="true" /></div>
+            <p>Lesson completion is not tracked in this dashboard, so no progress percentage is shown.</p>
+            <Link className="mx-button mx-button-quiet" href="/education" data-testid="button-explore-trading-academy">Explore Trading Academy <ArrowRight size={14} /></Link>
+          </article>
+        </section>
+
         <footer className="mx-dashboard-footer">
-          <span>Trading involves risk. Education is not financial advice.</span>
+          <span>VAYDA SMART MONEY HUB <i /> PROCESS OVER PREDICTION</span><span>Trading involves risk. Education is not financial advice.</span>
         </footer>
       </div>
     </main>
   );
 }
 
-function CoachBotAnimation({ compact = false }: { compact?: boolean }) {
-  return <span className={`mx-coach-bot${compact ? ' is-compact' : ''}`} aria-hidden="true">
-    <span className="mx-coach-bot-halo" />
-    <span className="mx-coach-bot-orbit"><i /></span>
-    <svg className="mx-coach-bot-art" viewBox="0 0 128 128" fill="none">
-      <path className="mx-coach-bot-antenna" d="M64 19v12" />
-      <circle className="mx-coach-bot-signal" cx="64" cy="15" r="4" />
-      <path className="mx-coach-bot-ear" d="M25 54h-9v22h9m78-22h9v22h-9" />
-      <rect className="mx-coach-bot-shell" x="25" y="31" width="78" height="67" rx="22" />
-      <rect className="mx-coach-bot-face" x="34" y="41" width="60" height="45" rx="15" />
-      <circle className="mx-coach-bot-eye" cx="50" cy="60" r="4" />
-      <circle className="mx-coach-bot-eye" cx="78" cy="60" r="4" />
-      <path className="mx-coach-bot-smile" d="M53 72q11 10 22 0" />
-      <path className="mx-coach-bot-neck" d="M64 98v7" />
-      <rect className="mx-coach-bot-base" x="43" y="103" width="42" height="12" rx="6" />
-      <circle className="mx-coach-bot-light" cx="52" cy="109" r="2" />
-      <circle className="mx-coach-bot-light" cx="64" cy="109" r="2" />
-      <circle className="mx-coach-bot-light" cx="76" cy="109" r="2" />
+type VaydaState = 'idle' | 'blinking' | 'breathing' | 'listening' | 'thinking' | 'speaking';
+
+function VaydaPortrait({ state = 'idle', compact = false }: { state?: VaydaState; compact?: boolean }) {
+  const id = useId().replace(/:/g, '');
+  return <span className={`mx-vayda-portrait state-${state}${compact ? ' is-compact' : ''}`} aria-hidden="true">
+    <span className="mx-vayda-glow" />
+    <span className="mx-vayda-orbit mx-vayda-orbit-one" />
+    <span className="mx-vayda-orbit mx-vayda-orbit-two" />
+    <svg className="mx-vayda-face" viewBox="0 0 220 250" fill="none">
+      <defs>
+        <linearGradient id={`${id}-hair`} x1="54" y1="42" x2="174" y2="140" gradientUnits="userSpaceOnUse"><stop stopColor="#C59B49" /><stop offset="1" stopColor="#293448" /></linearGradient>
+        <linearGradient id={`${id}-skin`} x1="78" y1="76" x2="155" y2="166" gradientUnits="userSpaceOnUse"><stop stopColor="#F2D9BE" /><stop offset="1" stopColor="#C79B7A" /></linearGradient>
+        <linearGradient id={`${id}-jacket`} x1="53" y1="177" x2="172" y2="245" gradientUnits="userSpaceOnUse"><stop stopColor="#344158" /><stop offset="1" stopColor="#C59B49" /></linearGradient>
+      </defs>
+      <path d="M28 239c7-38 34-61 82-61s75 23 82 61" fill={`url(#${id}-jacket)`} />
+      <path d="M91 167h38v28c-5 12-33 12-38 0v-28Z" fill="#C7B5E9" />
+      <path d="m79 189 31 28 31-28" stroke="#E8D7B0" strokeWidth="4" strokeLinecap="round" />
+      <path d="M60 97c0-37 23-63 53-63 32 0 55 24 55 63v26c0 34-24 60-55 60-31 0-53-26-53-60V97Z" fill={`url(#${id}-skin)`} />
+      <path d="M53 107c-9-42 7-78 36-91 35-16 84 1 91 42 4 20-2 40-6 49-7-22-17-39-33-49-22 19-50 27-85 25l-3 24Z" fill={`url(#${id}-hair)`} />
+      <path d="M56 113c-8-5-13 1-10 14 2 9 7 14 14 14m101-28c8-5 13 1 10 14-2 9-7 14-14 14" stroke="#C59B49" strokeWidth="4" strokeLinecap="round" />
+      <path className="mx-vayda-eye mx-vayda-eye-left" d="M78 118c5-5 12-5 17 0" stroke="#1E2755" strokeWidth="4" strokeLinecap="round" />
+      <path className="mx-vayda-eye mx-vayda-eye-right" d="M126 118c5-5 12-5 17 0" stroke="#1E2755" strokeWidth="4" strokeLinecap="round" />
+      <path d="M109 123v15" stroke="#8A71B8" strokeWidth="3" strokeLinecap="round" />
+      <path className="mx-vayda-mouth" d="M95 150c8 9 21 9 29 0" stroke="#725A9D" strokeWidth="3.5" strokeLinecap="round" />
+      <path d="M55 126h8m102 0h8" stroke="#20B889" strokeWidth="4" strokeLinecap="round" />
+      <circle cx="78" cy="139" r="6" fill="#E45C65" opacity=".18" /><circle cx="143" cy="139" r="6" fill="#E45C65" opacity=".18" />
+      <path d="M83 207h54" stroke="#E0D8FF" strokeOpacity=".55" strokeWidth="2" strokeLinecap="round" />
     </svg>
+    <span className="mx-vayda-speaking-bars"><i /><i /><i /><i /><i /></span>
+    <span className="mx-vayda-thinking-dots"><i /><i /><i /></span>
   </span>;
 }
 
@@ -614,6 +722,7 @@ export function MemberCoachExperience() {
   const [history, setHistory] = useState<CoachLine[]>([]);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [inputFocused, setInputFocused] = useState(false);
   const [topic, setTopic] = useState('');
   const [responseDisclaimer, setResponseDisclaimer] = useState('');
   const [typingIndex, setTypingIndex] = useState<number | null>(null);
@@ -621,6 +730,8 @@ export function MemberCoachExperience() {
   const threadRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
   const assistantBusy = coach.isPending || typingIndex !== null;
+  const vaydaState: VaydaState = coach.isPending ? 'thinking' : typingIndex !== null ? 'speaking' : inputFocused ? 'listening' : 'idle';
+  const vaydaStateLabel = { idle: 'Ready', blinking: 'Ready', breathing: 'Ready', listening: 'Listening', thinking: 'Thinking', speaking: 'Speaking' }[vaydaState];
 
   useEffect(() => {
     if (typingIndex === null) return;
@@ -657,7 +768,7 @@ export function MemberCoachExperience() {
     event.preventDefault();
     const text = message.trim();
     if (!text || assistantBusy) return;
-    setError(''); setMessage('');
+    setError(''); setMessage(''); setInputFocused(false);
     stickToBottomRef.current = true;
     const previous = history.slice(-12) as MemberCoachMessage[];
     setHistory((items) => [...items, { role: 'user', content: text }]);
@@ -672,13 +783,13 @@ export function MemberCoachExperience() {
       setError(failure instanceof Error ? failure.message : 'The Coach could not respond. Please try again.');
     }
   };
-  const clear = () => { setHistory([]); setTopic(''); setResponseDisclaimer(''); setError(''); setMessage(''); setTypingIndex(null); setTypedLength(0); stickToBottomRef.current = true; };
+  const clear = () => { setHistory([]); setTopic(''); setResponseDisclaimer(''); setError(''); setMessage(''); setTypingIndex(null); setTypedLength(0); setInputFocused(false); stickToBottomRef.current = true; };
   return <FeatureShell active="/member/coach" eyebrow="MEMBER CHAT" title="AI Coach" intro="Ask about a trading concept or reflect on your decision process.">
     <section className="mx-chat-workspace" aria-label="Educational Coach conversation" data-testid="member-coach-chat">
       <header className="mx-conversation-head">
         <div className="mx-conversation-title">
-          <CoachBotAnimation compact />
-          <div><strong>VAYDA Coach</strong><small>Learning mode · Temporary chat</small></div>
+          <VaydaPortrait state={vaydaState} compact />
+          <div><strong>VAYDA Coach</strong><small>Learning mode · Temporary chat · {vaydaStateLabel}</small></div>
         </div>
         <button className="mx-chat-clear" type="button" onClick={clear} disabled={!history.length || assistantBusy} aria-label="Clear chat" title="Clear chat" data-testid="button-clear-coach">
           <Trash2 size={15} />
@@ -693,7 +804,7 @@ export function MemberCoachExperience() {
         }}
       >
         {!history.length && <div className="mx-chat-welcome">
-          <span className="mx-chat-welcome-avatar"><CoachBotAnimation compact /></span>
+          <span className="mx-chat-welcome-avatar"><VaydaPortrait state="idle" compact /></span>
           <div className="mx-chat-welcome-content">
             <div className="mx-chat-message-meta">VAYDA Coach</div>
             <div className="mx-chat-bubble"><p>Welcome. Ask me about a trading concept or a decision you’re reviewing. I can help you think it through—not tell you when to trade.</p></div>
@@ -704,14 +815,14 @@ export function MemberCoachExperience() {
           const visibleText = isTyping ? line.content.slice(0, typedLength) : line.content;
           return <article className={`mx-chat-line mx-chat-${line.role}`} key={`${index}-${line.role}`} data-testid={`coach-message-${index}`}>
             <div className="mx-chat-message-meta">
-              {line.role === 'assistant' && <span className="mx-chat-message-avatar"><CoachBotAnimation compact /></span>}
+              {line.role === 'assistant' && <span className="mx-chat-message-avatar"><VaydaPortrait state={isTyping ? 'speaking' : 'idle'} compact /></span>}
               <span>{line.role === 'user' ? 'You' : 'VAYDA Coach'}</span>
             </div>
             <div className="mx-chat-bubble"><p>{visibleText}{isTyping && <span className="mx-chat-caret" aria-hidden="true" />}</p></div>
           </article>;
         })}
         {assistantBusy && <div className="mx-chat-pending" role="status" aria-label="Coach is typing">
-          <span className="mx-chat-message-avatar"><CoachBotAnimation compact /></span>
+          <span className="mx-chat-message-avatar"><VaydaPortrait state={coach.isPending ? 'thinking' : 'speaking'} compact /></span>
           <div className="mx-chat-pending-bubble"><span>VAYDA Coach is typing</span><i /><i /><i /></div>
         </div>}
       </div>
@@ -720,7 +831,7 @@ export function MemberCoachExperience() {
       <form className="mx-chat-form" onSubmit={(event) => void send(event)}>
         <label className="mx-visually-hidden" htmlFor="coach-message">Message the AI Coach</label>
         <div className="mx-chat-input-wrap">
-          <textarea id="coach-message" value={message} onChange={(event) => setMessage(event.currentTarget.value)} rows={2} maxLength={1200} placeholder="Message the Coach…" required disabled={assistantBusy} data-testid="input-coach-message" />
+          <textarea id="coach-message" value={message} onChange={(event) => setMessage(event.currentTarget.value)} onFocus={() => setInputFocused(true)} onBlur={() => setInputFocused(false)} rows={2} maxLength={1200} placeholder="Message the Coach…" required disabled={assistantBusy} data-testid="input-coach-message" />
           <button className="mx-chat-send" type="submit" disabled={assistantBusy || !message.trim()} aria-label="Send message" title={coach.isPending ? 'Waiting for the Coach' : 'Send message'} data-testid="button-send-coach">
             <Send size={16} />
           </button>
@@ -740,15 +851,16 @@ export function MemberCoachExperience() {
 
 export function MemberFeatureDashboardLinks({ proSignalsAccess = false }: { proSignalsAccess?: boolean }) {
   const quickLinks = [
-    { href: '/member/calendar', title: 'Calendar', icon: <CalendarDays size={18} /> },
-    { href: '/member/journal', title: 'Journal', icon: <FileText size={18} /> },
-    { href: '/education', title: 'Trading Academy', icon: <Sparkles size={18} /> },
-    { href: '/market-analysis', title: 'Market Analysis', icon: <Activity size={18} /> },
-    ...(proSignalsAccess ? [{ href: '/member/pro-signals', title: 'PRO Signals', icon: <Radio size={18} /> }] : []),
+    { href: '/member/calendar', title: 'Economic calendar', detail: 'Verified USD events', icon: <CalendarDays size={18} /> },
+    { href: '/member/journal', title: 'Trading journal', detail: 'Your saved decisions', icon: <FileText size={18} /> },
+    { href: '/member/coach', title: 'Ask Vayda', detail: 'Learn and reflect', icon: <MessageCircle size={18} /> },
+    { href: '/education', title: 'Trading Academy', detail: 'Explore the curriculum', icon: <Sparkles size={18} /> },
+    { href: '/market-analysis', title: 'Market Analysis', detail: 'Read market context', icon: <Activity size={18} /> },
+    ...(proSignalsAccess ? [{ href: '/member/pro-signals', title: 'PRO Signals', detail: 'Authorized member feed', icon: <Radio size={18} /> }] : []),
   ];
   return <div className="mx-feature-dashboard-links">
     {quickLinks.map((item) => <Link className="mx-tool-card" href={item.href} key={item.href} aria-label={item.title} data-testid={`card-feature-${item.href.split('/').pop()}`}>
-      <span className="mx-tool-icon">{item.icon}</span><span className="mx-tool-title">{item.title}</span><ArrowRight size={14} className="mx-tool-arrow" />
+      <span className="mx-tool-icon">{item.icon}</span><span className="mx-tool-copy"><strong>{item.title}</strong><small>{item.detail}</small></span><ArrowRight size={14} className="mx-tool-arrow" />
     </Link>)}
   </div>;
 }
