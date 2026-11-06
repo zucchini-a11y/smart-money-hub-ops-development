@@ -308,3 +308,17 @@ mtime_ms = 1793982009558
 storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/cda34973-e21a-4279-b0ab-ed8adfcf8dd6/871584c4-232a-43b8-86ef-889c510609b8"
 storage_version_token = "1793982018853033"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "xIDBPTqCaRxFlSPfPWv8N"
+uri = "file://generated-artifacts/smh-website-support-api-review-20261106.zip"
+type = "unspecified"
+title = "Website support API source review bundle"
+description = "Current Replit support API source, Production opt-in gate, Development-only migration, and tests. Review-only; it is not a drop-in VPS replacement and includes no Production migration or secrets."
+logical_id = "2a7f94c1-68c5-41dc-b815-515faf69e68e"
+content_hash = "sha256:c9698ad83d0ce26bdc8d1691f1ea18a758a8c73f023a842220ce537c5dc1df3d"
+size = 320920
+mtime_ms = 1793984127522
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/2a7f94c1-68c5-41dc-b815-515faf69e68e/339fa202-8eff-4f21-8556-a3aad0a1f8ee"
+storage_version_token = "1793984138504531"
+content_type = "application/octet-stream"

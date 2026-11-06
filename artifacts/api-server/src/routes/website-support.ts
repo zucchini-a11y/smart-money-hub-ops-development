@@ -54,6 +54,7 @@ import {
   type PortalIdentity,
 } from "../lib/portal-auth";
 import { resolvePortalSupportSchema } from "../lib/portal-support-schema";
+import { isWebsiteSupportEnabled } from "../lib/website-support-policy";
 
 const router: IRouter = Router();
 const supportSchema = resolvePortalSupportSchema(
@@ -77,8 +78,12 @@ function noStore(_req: Request, res: Response, next: NextFunction): void {
   next();
 }
 
-function developmentOnly(_req: Request, res: Response, next: NextFunction): void {
-  if (process.env.NODE_ENV === "production" || supportSchema !== "smh_test") {
+function websiteSupportGate(_req: Request, res: Response, next: NextFunction): void {
+  if (!isWebsiteSupportEnabled(
+    process.env.NODE_ENV,
+    supportSchema,
+    process.env.WEBSITE_SUPPORT_ENABLED,
+  )) {
     res.status(404).json({ error: "Website support is not enabled in this environment." });
     return;
   }
@@ -579,7 +584,7 @@ async function getStaffSettings(identity: PortalIdentity) {
   });
 }
 
-router.use(noStore, developmentOnly);
+router.use(noStore, websiteSupportGate);
 router.use("/portal/website-support", requirePortalSession, requirePasswordReady);
 
 router.get("/public-support/availability", async (_req, res): Promise<void> => {
