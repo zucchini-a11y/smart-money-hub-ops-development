@@ -1176,3 +1176,130 @@
   .vayda-site.is-public .vs-motion-ready [data-reveal].is-visible,
   .vayda-site.is-public .vs-motion-ready .vs-stagger > * { opacity: 1 !important; transform: none !important; }
 }
+
+/* The VAYDA hero animation adapts the supplied wordmark treatment to the site's palette. */
+.vayda-site.is-home .vs-home-hero {
+  overflow: hidden;
+  isolation: isolate;
+}
+.vayda-site.is-home .vs-hero-animation {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.vayda-site.is-home .vs-hero-animation-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.vayda-site.is-home .vs-hero-animation::after {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(8,14,18,.25), rgba(8,14,18,.06) 58%, rgba(8,14,18,.24)),
+    linear-gradient(180deg, rgba(8,14,18,.08), transparent 58%, rgba(8,14,18,.2));
+  content: '';
+}
+.vayda-site.is-home .vs-hero-layout {
+  position: relative;
+  z-index: 1;
+}
+.vayda-site.is-home .vs-hero-brand-lockup {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  width: max-content;
+  margin-bottom: 24px;
+}
+.vayda-site.is-home .vs-hero-wordmark {
+  display: flex;
+  gap: .13em;
+  margin-right: -.13em;
+  color: var(--text);
+  font: 300 clamp(34px, 4.2vw, 52px)/1 'Manrope', sans-serif;
+  letter-spacing: .14em;
+}
+.vayda-site.is-home .vs-hero-wordmark > span {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(.32em);
+  filter: blur(8px);
+  animation: vs-vayda-letter-in .95s cubic-bezier(.2,.7,.2,1) forwards;
+}
+.vayda-site.is-home .vs-hero-wordmark > span:nth-child(5) { color: var(--gold); }
+.vayda-site.is-home .vs-hero-brand-meta {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 9px;
+  color: var(--muted);
+  font: 8px 'JetBrains Mono', monospace;
+  letter-spacing: .18em;
+}
+.vayda-site.is-home .vs-hero-brand-line {
+  width: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  animation: vs-vayda-line-in 1.1s ease 1.05s forwards;
+}
+.vayda-site.is-home .vs-hero-brand-label {
+  opacity: 0;
+  animation: vs-vayda-meta-in .7s ease 1.35s forwards;
+}
+.vayda-site.is-home .vs-hero-brand-dots {
+  display: flex;
+  gap: 5px;
+  opacity: 0;
+  animation: vs-vayda-meta-in .6s ease 1.5s forwards;
+}
+.vayda-site.is-home .vs-hero-brand-dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--green);
+  animation: vs-vayda-dot-pulse 2.4s ease-in-out 1.8s infinite;
+}
+.vayda-site.is-home .vs-hero-brand-dots i:nth-child(2) {
+  background: var(--gold);
+  animation-delay: 2.1s;
+}
+.vayda-site.is-home .vs-hero-brand-dots i:nth-child(3) { animation-delay: 2.4s; }
+@keyframes vs-vayda-letter-in {
+  to { opacity: 1; transform: none; filter: blur(0); }
+}
+@keyframes vs-vayda-line-in {
+  to { width: 54px; }
+}
+@keyframes vs-vayda-meta-in {
+  to { opacity: 1; }
+}
+@keyframes vs-vayda-dot-pulse {
+  50% { opacity: .25; transform: scale(.72); }
+}
+@media (max-width: 760px) {
+  .vayda-site.is-home .vs-hero-brand-lockup { gap: 8px; margin-bottom: 20px; }
+  .vayda-site.is-home .vs-hero-wordmark { font-size: clamp(32px, 8vw, 46px); }
+}
+@media (max-width: 480px) {
+  .vayda-site.is-home .vs-hero-wordmark { font-size: clamp(30px, 9vw, 40px); }
+  .vayda-site.is-home .vs-hero-brand-meta { font-size: 7px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vayda-site.is-home .vs-hero-wordmark > span,
+  .vayda-site.is-home .vs-hero-brand-line,
+  .vayda-site.is-home .vs-hero-brand-label,
+  .vayda-site.is-home .vs-hero-brand-dots,
+  .vayda-site.is-home .vs-hero-brand-dots i {
+    opacity: 1;
+    transform: none;
+    filter: none;
+    animation: none;
+  }
+  .vayda-site.is-home .vs-hero-brand-line { width: 54px; }
+}

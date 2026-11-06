@@ -4,6 +4,7 @@ import { ArrowDownRight, ArrowRight, ArrowUpRight, BookOpen, Compass, Mail, X } 
 import { isConfiguredPublicUrl, publicSiteLinks } from './config';
 import { PublicSupportWidget } from '../WebsiteSupport';
 import { XauusdTradeAnimation } from './XauusdTradeAnimation';
+import { VaydaHeroAnimation } from './VaydaHeroAnimation';
 import './public-site.css';
 
 const pages = [
@@ -284,9 +285,19 @@ function Home() {
   return <>
     <main>
       <section className="vs-home-hero">
+        <VaydaHeroAnimation />
         <div className="vs-hero-layout">
           <div className="vs-hero-copy">
-          <div className="vs-hero-mark">[ Trading education ]</div>
+            <div className="vs-hero-brand-lockup">
+              <span className="vs-hero-wordmark">
+                {'VAYDA'.split('').map((letter, index) => <span key={`${letter}-${index}`} style={{ animationDelay: `${0.12 + index * 0.12}s` }}>{letter}</span>)}
+              </span>
+              <span className="vs-hero-brand-meta">
+                <span className="vs-hero-brand-line" aria-hidden="true" />
+                <span className="vs-hero-brand-label">TRADING EDUCATION</span>
+                <span className="vs-hero-brand-dots" aria-hidden="true"><i /><i /><i /></span>
+              </span>
+            </div>
             <h1>Learn how<br />price really <span>moves.</span></h1>
             <p>Market education for people who would rather understand the conditions than chase the call.</p>
             <div className="vs-hero-actions">
