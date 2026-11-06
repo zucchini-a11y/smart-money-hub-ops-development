@@ -252,3 +252,17 @@ mtime_ms = 1793976319221
 storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/5dab3cc7-8a21-4a63-98b8-fef62783771a/2f11ae98-3cf1-4d4d-9aa6-de471c3283b0"
 storage_version_token = "1793976467567494"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "sLcmOeYoUY1dBfB2hr_73"
+uri = "file://generated-artifacts/smh-portal-development-download.html"
+type = "html"
+title = "Download the Smart Money Hub Development ZIP"
+description = "Open this self-contained page and tap Download Development ZIP. It contains the verified ZIP and its SHA-256; Development-only, not for Production."
+logical_id = "d12abb2d-e291-4c92-bfda-68d827e61533"
+content_hash = "sha256:dab9ea1e0e36879e84482063179626c666b158131c1a7573e5300bc495bf62fa"
+size = 708027
+mtime_ms = 1793976610945
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/d12abb2d-e291-4c92-bfda-68d827e61533/cf95a2f0-a462-4143-a578-7fb20fa19ab3"
+storage_version_token = "1793976618798181"
+content_type = "text/html"
