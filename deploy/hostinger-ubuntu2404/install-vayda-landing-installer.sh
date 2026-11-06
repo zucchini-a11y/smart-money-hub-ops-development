@@ -4,7 +4,7 @@
 set -Eeuo pipefail
 
 PAYLOAD_MARKER="__SMH_VAYDA_LANDING_PAYLOAD__"
-INSTALLER_VERSION="landing-v4-internal-route"
+INSTALLER_VERSION="landing-v5-root-mapping"
 SCRIPT_PATH="$(readlink -f "$0")"
 PAYLOAD_LINE="$(awk -v marker="$PAYLOAD_MARKER" '$0 == marker { print NR; exit }' "$SCRIPT_PATH")"
 
@@ -20,13 +20,20 @@ BACKUP=""
 NGINX_REAL=""
 LANDING_BASE="/var/www/smh-vayda-landing"
 CURRENT="${LANDING_BASE}/current"
-RELEASE_DIR=""
+LANDING_DIR="/var/www/_vayda_landing"
+STAGING_DIR=""
+PREVIOUS_DIR=""
 NGINX_CHANGED=0
-RELEASE_CREATED=0
+STAGING_CREATED=0
+ASSETS_INSTALLED=0
+PREVIOUS_ASSETS=0
 ROLLBACK_ENABLED=1
 
 cleanup() {
   [[ -z "$NGINX_TMP" ]] || rm -f "$NGINX_TMP"
+  if [[ "$STAGING_CREATED" == "1" && -n "$STAGING_DIR" && -d "$STAGING_DIR" ]]; then
+    rm -rf "$STAGING_DIR"
+  fi
   [[ -z "$WORK_DIR" ]] || rm -rf "$WORK_DIR"
 }
 
@@ -41,9 +48,17 @@ rollback() {
       systemctl reload nginx
     NGINX_CHANGED=0
   fi
-  if [[ "$RELEASE_CREATED" == "1" && -n "$RELEASE_DIR" && -d "$RELEASE_DIR" ]]; then
-    rm -rf "$RELEASE_DIR"
-    RELEASE_CREATED=0
+  if [[ "$ASSETS_INSTALLED" == "1" && -d "$LANDING_DIR" ]]; then
+    rm -rf "$LANDING_DIR"
+    ASSETS_INSTALLED=0
+  fi
+  if [[ "$PREVIOUS_ASSETS" == "1" && -d "$PREVIOUS_DIR" && ! -e "$LANDING_DIR" ]]; then
+    mv "$PREVIOUS_DIR" "$LANDING_DIR"
+    PREVIOUS_ASSETS=0
+  fi
+  if [[ "$STAGING_CREATED" == "1" && -n "$STAGING_DIR" && -d "$STAGING_DIR" ]]; then
+    rm -rf "$STAGING_DIR"
+    STAGING_CREATED=0
   fi
   set -e
 }
@@ -166,21 +181,40 @@ read -r -p 'Type INSTALL VAYDA LANDING to continue: ' confirmation
 
 TIMESTAMP="$(date -u +%Y%m%d-%H%M%S)"
 BACKUP="/var/backups/smh-vayda-landing/${TIMESTAMP}"
-RELEASE_DIR="${LANDING_BASE}/releases/${TIMESTAMP}"
-mkdir -p "$BACKUP" "${LANDING_BASE}/releases"
+STAGING_DIR="/var/www/.smh-vayda-landing-${TIMESTAMP}"
+PREVIOUS_DIR="/var/www/_vayda_landing.previous-${TIMESTAMP}"
+mkdir -p "$BACKUP"
 chmod 700 "$BACKUP"
 cp -a "$NGINX_REAL" "$BACKUP/nginx-site.conf"
 chmod 600 "$BACKUP/nginx-site.conf"
 
-[[ ! -e "$RELEASE_DIR" ]] || fail "The release directory already exists."
-mkdir -m 755 "$RELEASE_DIR"
-RELEASE_CREATED=1
-cp -a "$WORK_DIR/site/." "$RELEASE_DIR/"
-find "$RELEASE_DIR" -type d -exec chmod 755 {} +
-find "$RELEASE_DIR" -type f -exec chmod 644 {} +
+[[ ! -e "$STAGING_DIR" ]] || fail "The temporary landing directory already exists."
+[[ ! -e "$PREVIOUS_DIR" ]] || fail "The previous landing backup directory already exists."
+if [[ -L "$LANDING_DIR" ]]; then
+  fail "The static landing path is a symlink; refusing to replace an unreviewed target."
+fi
+if [[ -e "$LANDING_DIR" && ! -d "$LANDING_DIR" ]]; then
+  fail "The static landing path exists but is not a directory."
+fi
+mkdir -m 755 "$STAGING_DIR"
+STAGING_CREATED=1
+cp -a "$WORK_DIR/site/." "$STAGING_DIR/"
+find "$STAGING_DIR" -type d -exec chmod 755 {} +
+find "$STAGING_DIR" -type f -exec chmod 644 {} +
+[[ -s "$STAGING_DIR/index.html" ]] || fail "The staged landing index is missing."
+grep -q "VAYDA Smart Money Hub" "$STAGING_DIR/index.html" ||
+  fail "The staged landing index does not contain the expected site title."
+
+if [[ -d "$LANDING_DIR" ]]; then
+  mv "$LANDING_DIR" "$PREVIOUS_DIR"
+  PREVIOUS_ASSETS=1
+fi
+mv "$STAGING_DIR" "$LANDING_DIR"
+STAGING_CREATED=0
+ASSETS_INSTALLED=1
 
 NGINX_TMP="$(mktemp "${NGINX_REAL}.landing.XXXXXX")"
-python3 "$WORK_DIR/patch-vayda-landing-nginx.py" "$NGINX_REAL" "$NGINX_TMP" "$RELEASE_DIR" ||
+python3 "$WORK_DIR/patch-vayda-landing-nginx.py" "$NGINX_REAL" "$NGINX_TMP" ||
   fail "The active HTTPS configuration differs from the reviewed layout; no route was changed."
 chown --reference="$NGINX_REAL" "$NGINX_TMP"
 chmod --reference="$NGINX_REAL" "$NGINX_TMP"
@@ -191,7 +225,7 @@ NGINX_CHANGED=1
 nginx -t >/dev/null || fail "Nginx validation failed after the route update."
 nginx -T > "$WORK_DIR/nginx-effective.conf" 2>&1 ||
   fail "Nginx could not print its active configuration after the route update."
-grep -Fq "$RELEASE_DIR" "$WORK_DIR/nginx-effective.conf" ||
+grep -Fq "$LANDING_DIR" "$WORK_DIR/nginx-effective.conf" ||
   fail "The updated landing routes are not present in Nginx's loaded configuration."
 systemctl reload nginx || fail "Nginx reload failed."
 
@@ -259,7 +293,8 @@ fi
 
 ROLLBACK_ENABLED=0
 NGINX_CHANGED=0
-RELEASE_CREATED=0
+ASSETS_INSTALLED=0
+PREVIOUS_ASSETS=0
 if [[ -L "$CURRENT" ]] && [[ "$(readlink "$CURRENT")" == "$CURRENT" ]]; then
   printf '%s\n' "$(readlink "$CURRENT")" > "$BACKUP/stale-current-link.txt"
   chmod 600 "$BACKUP/stale-current-link.txt"
@@ -271,7 +306,9 @@ echo "Verified: landing assets load; /login is unchanged; /sign-up is closed."
 echo "Verified: /operations protection and the anonymous Support API session response are unchanged."
 echo "No DNS, database, bot, Support API, or Production authentication settings were changed."
 echo "Nginx backup: ${BACKUP}/nginx-site.conf"
-echo "Landing release: ${RELEASE_DIR}"
+if [[ -d "$PREVIOUS_DIR" ]]; then
+  echo "Previous landing files backed up at: ${PREVIOUS_DIR}"
+fi
 exit 0
 
 __SMH_VAYDA_LANDING_PAYLOAD__
