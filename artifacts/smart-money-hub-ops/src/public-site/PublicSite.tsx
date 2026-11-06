@@ -251,7 +251,7 @@ function Header({ location }: { location: string }) {
           <a href="#curriculum" onClick={() => setOpen(false)} data-testid="link-public-curriculum">Curriculum</a>
           <a href="#principles" onClick={() => setOpen(false)} data-testid="link-public-principles">Principles</a>
         </> : pages.slice(1).map((page) => <Link key={page.href} href={page.href} aria-current={location === page.href ? 'page' : undefined} onClick={() => setOpen(false)} data-testid={`link-public-${page.href.slice(1) || 'home'}`}>{page.label}</Link>)}
-        {isConfiguredPublicUrl(publicSiteLinks.primaryCommunity) && <ExternalLink href={publicSiteLinks.primaryCommunity} className="vs-nav-cta" data-testid="link-public-community-entry">{isHome ? 'Join' : 'Enter community'} <ArrowUpRight size={13} /></ExternalLink>}
+        {isConfiguredPublicUrl(publicSiteLinks.primaryCommunity) && <ExternalLink href={publicSiteLinks.primaryCommunity} className="vs-nav-cta" data-testid="link-public-community-entry">{isHome ? 'Coach Bot' : 'Open Coach'} <ArrowUpRight size={13} /></ExternalLink>}
         <button className="vs-create-account is-paused" type="button" disabled aria-label="Member sign-up is temporarily paused" data-testid="button-public-signup-paused">Sign-up paused</button>
         <Link href="/login" className="vs-staff-link" onClick={() => setOpen(false)} data-testid="link-public-login">Sign in</Link>
       </nav>
@@ -269,11 +269,15 @@ function Footer() {
         </Link>
         <p>Market education built around observation, confirmation, and deliberate execution.</p>
       </div>
-      <div className="vs-footer-col"><h2>Explore</h2><div className="vs-footer-links">{pages.slice(1).map((page) => <Link key={page.href} href={page.href} data-testid={`link-footer-${page.href.slice(1)}`}>{page.label}</Link>)}</div></div>
+      <div className="vs-footer-col"><h2>Explore</h2><div className="vs-footer-links">
+        <a href="#approach" data-testid="link-footer-approach">Approach</a>
+        <a href="#curriculum" data-testid="link-footer-curriculum">Curriculum</a>
+        <a href="#principles" data-testid="link-footer-principles">Principles</a>
+      </div></div>
       <div className="vs-footer-col"><h2>Start here</h2><div className="vs-footer-links">
-        <Link href="/philosophy" data-testid="link-footer-philosophy">Our philosophy</Link>
-        <Link href="/community" data-testid="link-footer-community">Community access</Link>
-        <Link href="/education" data-testid="link-footer-education">Learning approach</Link>
+        {isConfiguredPublicUrl(publicSiteLinks.primaryCommunity) && <ExternalLink href={publicSiteLinks.primaryCommunity} data-testid="link-footer-coach">Coach Bot</ExternalLink>}
+        {isConfiguredPublicUrl(publicSiteLinks.proSignalsAssistant) && <ExternalLink href={publicSiteLinks.proSignalsAssistant} data-testid="link-footer-pro-signals">Signal Bot</ExternalLink>}
+        {isConfiguredPublicUrl(publicSiteLinks.marketAnalysisChannel) && <ExternalLink href={publicSiteLinks.marketAnalysisChannel} data-testid="link-footer-market-analysis">Market Analysis</ExternalLink>}
         <Link href="/login" data-testid="link-footer-login">Sign in</Link>
       </div></div>
     </div>
@@ -301,7 +305,7 @@ function Home() {
             <h1>Learn how<br />price really <span>moves.</span></h1>
             <p>Market education for people who would rather understand the conditions than chase the call.</p>
             <div className="vs-hero-actions">
-              {isConfiguredPublicUrl(publicSiteLinks.primaryCommunity) && <ExternalLink href={publicSiteLinks.primaryCommunity} className="vs-button" data-testid="link-home-community">Join the community <ArrowRight /></ExternalLink>}
+              {isConfiguredPublicUrl(publicSiteLinks.primaryCommunity) && <ExternalLink href={publicSiteLinks.primaryCommunity} className="vs-button" data-testid="link-home-community">Chat with Coach <ArrowRight /></ExternalLink>}
               <a href="#approach" className="vs-button vs-button-quiet" data-testid="link-home-approach">Explore the approach <ArrowDownRight /></a>
             </div>
             <div className="vs-hero-footnote">NO CONFIRMATION, NO ENTRY</div>
@@ -311,57 +315,6 @@ function Home() {
       </section>
       <section className="vs-marquee" aria-label="Learning themes">
         <div className="vs-marquee-track"><span>STRUCTURE</span><i>·</i><span>LIQUIDITY</span><i>·</i><span>RISK</span><i>·</i><span>PROCESS</span><i>·</i><span>STRUCTURE</span><i>·</i><span>LIQUIDITY</span><i>·</i><span>RISK</span><i>·</i><span>PROCESS</span><i>·</i></div>
-      </section>
-
-      <section className="vs-home-tools vs-section" id="destinations">
-        <div className="vs-shell">
-          <div className="vs-section-heading" data-reveal>
-            <div><div className="vs-eyebrow">04 / DESTINATIONS</div><h2>Choose where<br />you want to go.</h2></div>
-            <p>Public learning pages stay open. Member tools keep their sign-in checks, and PRO Signals still requires separate approval.</p>
-          </div>
-          <div className="vs-home-tools-grid" data-reveal>
-            <article className="vs-home-tool-card">
-              <span className="vs-index">PUBLIC / ANALYSIS</span>
-              <h3>Market Analysis</h3>
-              <p>Explore market context, learning notes, and the verified analysis destination.</p>
-              <Link href="/market-analysis" className="vs-button vs-home-tool-button" data-testid="button-home-market-analysis">Open Market Analysis <ArrowUpRight size={15} /></Link>
-            </article>
-            <article className="vs-home-tool-card">
-              <span className="vs-index">MEMBER / PRO</span>
-              <h3>Signal Board</h3>
-              <p>Sign-in and active PRO Signals permission are required.</p>
-              <Link href="/member/pro-signals" className="vs-button vs-home-tool-button" data-testid="button-home-signal-board">Open Signal Board <ArrowUpRight size={15} /></Link>
-            </article>
-            <article className="vs-home-tool-card">
-              <span className="vs-index">MEMBER / COACH</span>
-              <h3>AI Coach</h3>
-              <p>Continue to the private learning conversation after member sign-in.</p>
-              <Link href="/member/coach" className="vs-button vs-home-tool-button" data-testid="button-home-coach">Open Coach Board <ArrowUpRight size={15} /></Link>
-            </article>
-            <article className="vs-home-tool-card">
-              <span className="vs-index">PUBLIC / LEARNING</span>
-              <h3>Trading Academy</h3>
-              <p>Browse the public education overview and the learning approach.</p>
-              <Link href="/education" className="vs-button vs-home-tool-button" data-testid="button-home-academy">Open Academy <ArrowUpRight size={15} /></Link>
-            </article>
-            <article className="vs-home-tool-card">
-              <span className="vs-index">MEMBER / EVENTS</span>
-              <h3>Economic Calendar</h3>
-              <p>Review verified USD releases in your member workspace.</p>
-              <Link href="/member/calendar" className="vs-button vs-home-tool-button" data-testid="button-home-calendar">Open Calendar <ArrowUpRight size={15} /></Link>
-            </article>
-            <article className="vs-home-tool-card">
-              <span className="vs-index">MEMBER / REVIEW</span>
-              <h3>Trading Journal</h3>
-              <p>Keep your trading notes private in your member workspace.</p>
-              <Link href="/member/journal" className="vs-button vs-home-tool-button" data-testid="button-home-journal">Open Journal <ArrowUpRight size={15} /></Link>
-            </article>
-          </div>
-          <div className="vs-home-tools-footer">
-            <span>Already a member?</span>
-            <Link href="/member/dashboard" className="vs-button vs-button-quiet" data-testid="button-home-member-dashboard">Open Member Dashboard <ArrowRight size={15} /></Link>
-          </div>
-        </div>
       </section>
 
       <section className="vs-approach vs-section" id="approach">
@@ -405,7 +358,10 @@ function Home() {
 
       <section className="vs-home-cta" data-reveal>
         <div className="vs-home-cta-inner"><div><div className="vs-eyebrow">KEEP LEARNING, AT YOUR PACE</div><h2>Build a process<br />you can explain.</h2><p>Start with the principles. Stay curious. Decide for yourself.</p></div>
-          {isConfiguredPublicUrl(publicSiteLinks.primaryCommunity) && <ExternalLink href={publicSiteLinks.primaryCommunity} className="vs-button" data-testid="link-home-cta-community">Join the Smart Money Hub <ArrowUpRight /></ExternalLink>}
+          <div className="vs-home-cta-actions">
+            {isConfiguredPublicUrl(publicSiteLinks.marketAnalysisChannel) && <ExternalLink href={publicSiteLinks.marketAnalysisChannel} className="vs-button vs-button-quiet" data-testid="link-home-market-analysis">Market Analysis <ArrowUpRight /></ExternalLink>}
+            {isConfiguredPublicUrl(publicSiteLinks.proSignalsAssistant) && <ExternalLink href={publicSiteLinks.proSignalsAssistant} className="vs-button vs-button-quiet" data-testid="link-home-signal-bot">Signal Bot <ArrowUpRight /></ExternalLink>}
+          </div>
         </div>
       </section>
     </main>
@@ -505,12 +461,14 @@ function Contact() {
 }
 
 export default function PublicSite() {
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
   const path = location.replace(/\/+$/, '') || '/';
   usePageMetadata(path);
   usePublicPageMotion(path);
   const exactPublicPath = pages.some((page) => page.href === path);
-  if (!exactPublicPath) return null;
-  const page = path === '/' ? <Home /> : path === '/about' ? <About /> : path === '/education' ? <Education /> : path === '/market-analysis' ? <MarketAnalysis /> : path === '/philosophy' ? <Philosophy /> : path === '/community' ? <Community /> : <Contact />;
-  return <div className={`vayda-site${path === '/' ? ' is-home' : ' is-public'}`}><Header location={path} /><div className="vs-page-transition" key={path}>{page}</div><Footer /><PublicSupportWidget /></div>;
+  useEffect(() => {
+    if (exactPublicPath && path !== '/') navigate('/', { replace: true });
+  }, [exactPublicPath, path, navigate]);
+  if (!exactPublicPath || path !== '/') return null;
+  return <div className="vayda-site is-home"><Header location="/" /><div className="vs-page-transition" key="/"><Home /></div><Footer /><PublicSupportWidget /></div>;
 }

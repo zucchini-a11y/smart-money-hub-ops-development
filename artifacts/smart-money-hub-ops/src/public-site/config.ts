@@ -8,7 +8,7 @@ export const publicSiteLinks = {
   primaryCommunity: "https://t.me/SmartMoneyHubSignalsBot",
   proSignalsAssistant: "https://t.me/SMHProSignalsassistantbot",
   educationChannel: configured(import.meta.env.VITE_PUBLIC_EDUCATION_URL),
-  marketAnalysisChannel: configured(import.meta.env.VITE_PUBLIC_MARKET_ANALYSIS_URL),
+  marketAnalysisChannel: "https://t.me/+yjTp_wTC6lY2MzJk",
   generalCommunity: configured(import.meta.env.VITE_PUBLIC_GENERAL_COMMUNITY_URL),
   contactUrl: configured(import.meta.env.VITE_PUBLIC_CONTACT_URL),
   contactEmail: configured(import.meta.env.VITE_PUBLIC_CONTACT_EMAIL),

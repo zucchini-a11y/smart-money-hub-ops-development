@@ -803,6 +803,13 @@
   justify-content: space-between;
   gap: 36px;
 }
+.vayda-site.is-home .vs-home-cta-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
 .vayda-site.is-home .vs-home-cta .vs-eyebrow { color: var(--ink); }
 .vayda-site.is-home .vs-home-cta h2 { margin: 17px 0 12px; color: var(--ink); font: 600 clamp(43px, 7vw, 84px)/.98 'Space Grotesk', sans-serif; letter-spacing: -.075em; }
 .vayda-site.is-home .vs-home-cta p { margin: 0; color: var(--ink); }
@@ -1320,67 +1327,4 @@
   text-transform: uppercase;
   opacity: .68;
   cursor: not-allowed;
-}
-.vayda-site.is-home .vs-home-tools {
-  padding: clamp(66px, 8vw, 108px) 0;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  background: radial-gradient(ellipse at 80% 20%, rgba(98,225,207,.045), transparent 42%);
-}
-.vayda-site.is-home .vs-home-tools .vs-section-heading { margin-bottom: 34px; }
-.vayda-site.is-home .vs-home-tools-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-}
-.vayda-site.is-home .vs-home-tool-card {
-  display: flex;
-  min-height: 236px;
-  flex-direction: column;
-  align-items: flex-start;
-  padding: 23px;
-  border: 1px solid var(--line);
-  background: linear-gradient(145deg, rgba(15,31,35,.72), rgba(8,17,21,.62));
-  transition: border-color .2s ease, transform .2s ease, background .2s ease;
-}
-.vayda-site.is-home .vs-home-tool-card:hover {
-  transform: translateY(-3px);
-  border-color: var(--line-green);
-  background: linear-gradient(145deg, rgba(15,31,35,.9), rgba(8,17,21,.78));
-}
-.vayda-site.is-home .vs-home-tool-card h3 {
-  margin: 18px 0 9px;
-  color: var(--text);
-  font: 600 19px/1.2 'Manrope', sans-serif;
-  letter-spacing: -.035em;
-}
-.vayda-site.is-home .vs-home-tool-card p {
-  margin: 0 0 20px;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.7;
-}
-.vayda-site.is-home .vs-home-tool-button {
-  min-height: 40px;
-  margin-top: auto;
-  padding: 0 13px;
-  font-size: 9px !important;
-}
-.vayda-site.is-home .vs-home-tools-footer {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 15px;
-  margin-top: 28px;
-  color: var(--muted);
-  font-size: 12px;
-}
-@media (max-width: 760px) {
-  .vayda-site.is-home .vs-home-tools-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .vayda-site.is-home .vs-home-tool-card { min-height: 224px; padding: 19px; }
-}
-@media (max-width: 480px) {
-  .vayda-site.is-home .vs-home-tools-grid { grid-template-columns: 1fr; }
-  .vayda-site.is-home .vs-home-tool-card { min-height: 0; }
-  .vayda-site.is-home .vs-home-tools-footer { align-items: stretch; flex-direction: column; }
 }

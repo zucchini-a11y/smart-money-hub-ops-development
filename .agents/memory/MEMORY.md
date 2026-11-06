@@ -25,5 +25,5 @@
 - [Cloudflare CLI setup](cloudflare-cli-setup.md) — install the Cloudflare CLI globally in this pnpm workspace; validate any `.replit` cleanup through its config tool.
 - [Hostinger VPS deployment](hostinger-vps-deployment.md) — bot and Operations Center use the Hostinger VPS; transfer web updates manually, preserve mail DNS, keep one poller, and prefer IPv4 for Telegram.
 - [Shared support portal](shared-support-portal.md) — keep bot cases and replies behind one authenticated API; isolate Development data and require approval before production cutover.
-- [Public registration pause](public-registration-pause.md) — keep self-sign-up closed until owner approval while preserving sign-in and protected member/staff access.
+- [Public landing-page scope](public-registration-pause.md) — keep the public site to one uncluttered landing page with official action buttons; keep self-sign-up paused.
 - [Vite React optimizer cache](vite-react-optimizer-cache.md) — if runtime React versions mismatch despite matching dependencies, clear the artifact's stale optimized dependency cache.
