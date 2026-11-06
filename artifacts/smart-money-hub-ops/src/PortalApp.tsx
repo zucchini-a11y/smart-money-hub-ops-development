@@ -559,7 +559,6 @@ function MemberDashboardPage({ session }: { session: MemberSession }) {
 
   return <MemberDashboardExperience
     session={session}
-    telegramIdentityWidget={<TelegramLinkWidget session={session}/>}
     onSignOut={() => void signOut()}
     onSettings={() => navigate('/member/settings')}
   />;
@@ -1673,6 +1672,7 @@ function MemberSignUpPage() {
 
 function MemberAccountSettingsPage({ session }: { session: MemberSession }) {
   const [, navigate] = useLocation();
+  const [telegramSettingsOpen, setTelegramSettingsOpen] = useState(false);
   return <main className="member-experience mx-settings-page">
     <div className="mx-settings-shell">
       <header className="mx-dashboard-header">
@@ -1690,6 +1690,11 @@ function MemberAccountSettingsPage({ session }: { session: MemberSession }) {
       <div className="mx-clerk-profile">
         <UserProfile routing="hash"/>
       </div>
+      <details className="mx-settings-telegram" onToggle={(event) => setTelegramSettingsOpen(event.currentTarget.open)}>
+        <summary>Optional Telegram link for PRO Signals</summary>
+        <p>This is not needed for your member dashboard. It verifies the Telegram account used for PRO Signals checks; linking does not grant access.</p>
+        {telegramSettingsOpen && <TelegramLinkWidget session={session}/>}
+      </details>
     </div>
   </main>;
 }

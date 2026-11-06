@@ -183,14 +183,12 @@ export function MemberSignupExperience({
 
 interface MemberDashboardExperienceProps {
   session: MemberSession;
-  telegramIdentityWidget: ReactNode;
   onSignOut: () => void;
   onSettings: () => void;
 }
 
 export function MemberDashboardExperience({
   session,
-  telegramIdentityWidget,
   onSignOut,
   onSettings,
 }: MemberDashboardExperienceProps) {
@@ -203,93 +201,38 @@ export function MemberDashboardExperience({
             <span><strong>VAYDA</strong><small>SMART MONEY HUB</small></span>
           </Link>
           <div className="mx-header-actions">
-            <button className="mx-button mx-button-quiet" type="button" onClick={onSettings}><Settings2 size={15} /> Account settings</button>
-            <button className="mx-button mx-button-quiet" type="button" onClick={onSignOut}><LogOut size={15} /> Sign out</button>
+            <button className="mx-header-icon-button" type="button" onClick={onSettings} aria-label="Account settings" title="Account settings"><Settings2 size={17} /></button>
+            <button className="mx-header-icon-button" type="button" onClick={onSignOut} aria-label="Sign out" title="Sign out"><LogOut size={17} /></button>
           </div>
         </header>
 
-        <section className="mx-welcome">
-          <div className="mx-welcome-copy">
-            <div className="mx-overline"><span className="mx-live-mark" /> MEMBER WORKSPACE</div>
-            <h1>Your learning space</h1>
-            <p>{session.email}<br/>A learning space for clearer thinking, careful observation, and deliberate decisions.</p>
-            <div className="mx-member-seal"><ShieldCheck size={19} /><span><strong>VERIFIED MEMBER</strong><small>Identity confirmed</small></span></div>
-          </div>
+        <section className="mx-welcome" aria-label="Member welcome">
           <aside className="mx-coach-greeting" aria-label="Welcome from your AI Coach">
             <div className="mx-coach-greeting-art"><CoachBotAnimation /></div>
             <div className="mx-coach-greeting-copy">
-              <div className="mx-coach-greeting-topline"><span className="mx-card-kicker">YOUR IN-APP AI COACH</span><span className="mx-coach-study-label">STUDY MODE</span></div>
-              <p><strong>Welcome, {session.displayName}.</strong> I’m your AI Coach, separate from the PRO Signals bot. Ask me about trading concepts, market structure, or reviewing your decision process.</p>
-              <Link className="mx-button mx-button-quiet" href="/member/coach" data-testid="button-chat-with-coach">Chat with AI Coach <ArrowRight size={14} /></Link>
+              <div className="mx-coach-greeting-topline"><span className="mx-card-kicker">IN-APP AI COACH</span><span className="mx-coach-study-label">STUDY MODE</span></div>
+              <h1>Welcome, {session.displayName}.</h1>
+              <p>I’m here to help you study trading concepts and review your decision process. I don’t send signals or place trades.</p>
+              <Link className="mx-button mx-button-gold" href="/member/coach" data-testid="button-chat-with-coach">Chat with AI Coach <ArrowRight size={14} /></Link>
+              <div className="mx-welcome-status">
+                <span><ShieldCheck size={13} /> Verified member</span>
+                <span><Radio size={13} /> PRO Signals {session.proSignalsAccess ? 'authorized' : 'not assigned'}</span>
+              </div>
             </div>
           </aside>
         </section>
 
         <section className="mx-principle-banner" aria-label="Smart Money Hub philosophy">
-          <div className="mx-principle-label"><span>OUR PHILOSOPHY</span><i /></div>
-          <p>NO CONFIRMATION,<br className="mx-mobile-break" /> NO ENTRY.</p>
-          <span className="mx-principle-caption">Process over prediction. Every time.</span>
+          <span className="mx-card-kicker">OUR RULE</span>
+          <p>NO CONFIRMATION, NO ENTRY.</p>
         </section>
 
-        <div className="mx-dashboard-grid">
-          <section className="mx-card mx-access-card" aria-labelledby="mx-access-title">
-            <div className="mx-card-heading">
-              <div><span className="mx-card-kicker">ACCOUNT</span><h2 id="mx-access-title">Your access</h2></div>
-              <ShieldCheck size={18} aria-hidden="true" />
-            </div>
-            <div className="mx-access-row">
-              <span>Member status</span><strong className="mx-status-verified"><i /> Verified</strong>
-            </div>
-            <div className="mx-access-row">
-              <span>PRO Signals bot</span><strong className={session.proSignalsAccess ? 'mx-status-authorized' : 'mx-status-unassigned'}>{session.proSignalsAccess ? 'Authorized' : 'Not assigned'}</strong>
-            </div>
-            <p className="mx-access-note">Access to the separate PRO Signals bot is assigned by the service. Registration and Telegram identity do not grant it.</p>
-            {session.proSignalsAccess && <Link className="mx-button mx-button-quiet mx-pro-open-button" href="/member/pro-signals" data-testid="link-member-pro-signals">
-              Open PRO Signals <ArrowRight size={14} />
-            </Link>}
-            <div className="mx-card-divider" />
-            <button className="mx-inline-action" type="button" onClick={onSettings}>Manage account settings <ArrowRight size={15} /></button>
-          </section>
-
-          <section className="mx-card mx-telegram-card" aria-labelledby="mx-telegram-title">
-            <div className="mx-card-heading">
-              <div><span className="mx-card-kicker">OPTIONAL / PRO SIGNALS ACCESS</span><h2 id="mx-telegram-title">Telegram connection</h2></div>
-              <span className="mx-icon-stamp"><CheckCircle2 size={17} /></span>
-            </div>
-            <p className="mx-card-description">Optional for your member dashboard. The signed Telegram check verifies the account used for PRO Signals access checks. It is separate from the in-app AI Coach; linking alone does not grant PRO access.</p>
-            <div className="mx-telegram-widget">{telegramIdentityWidget}</div>
-          </section>
-
-          <section className="mx-card mx-learning-card" aria-labelledby="mx-learning-title">
-            <div className="mx-card-heading">
-              <div><span className="mx-card-kicker">LEARNING SPACE</span><h2 id="mx-learning-title">Start with the method</h2></div>
-              <Sparkles size={18} aria-hidden="true" />
-            </div>
-            <p className="mx-card-description">Study context, price action, confirmation, and disciplined execution—without promises or shortcuts.</p>
-            <div className="mx-link-list">
-               <Link className="mx-destination-link" href="/education"><span><small>01 / LEARN</small><strong>Trading Academy</strong></span><ArrowUpRight size={16} /></Link>
-              <Link className="mx-destination-link" href="/market-analysis"><span><small>02 / OBSERVE</small><strong>Market analysis</strong></span><ArrowUpRight size={16} /></Link>
-            </div>
-          </section>
-
-          <section className="mx-card mx-coach-preview-card" aria-labelledby="mx-coach-preview-title">
-            <div className="mx-coach-preview-copy">
-              <span className="mx-card-kicker">IN-APP AI COACH</span>
-              <h2 id="mx-coach-preview-title">Study with your Coach</h2>
-              <p>Ask about trading concepts, market structure, or your decision process. This learning assistant is separate from the PRO Signals bot.</p>
-              <Link className="mx-button mx-button-quiet" href="/member/coach" data-testid="button-open-member-coach">Open AI Coach <ArrowRight size={14} /></Link>
-            </div>
-            <CoachBotAnimation />
-          </section>
-        </div>
-
         <section className="mx-tools-section" aria-labelledby="mx-tools-section-title">
-          <div className="mx-tools-heading"><div><span className="mx-card-kicker">MEMBER WORKSPACE / DEVELOPMENT</span><h2 id="mx-tools-section-title">Choose a study path</h2></div><span>{session.proSignalsAccess ? 'Four tools. One deliberate process.' : 'Three tools. One deliberate process.'}</span></div>
+          <div className="mx-tools-heading"><h2 id="mx-tools-section-title">Your tools</h2></div>
           <MemberFeatureDashboardLinks proSignalsAccess={session.proSignalsAccess} />
         </section>
 
         <footer className="mx-dashboard-footer">
-          <span>VAYDA SMART MONEY HUB <i /> EDUCATION FIRST</span>
           <span>Trading involves risk. Education is not financial advice.</span>
         </footer>
       </div>
@@ -728,10 +671,16 @@ export function MemberCoachExperience() {
 }
 
 export function MemberFeatureDashboardLinks({ proSignalsAccess = false }: { proSignalsAccess?: boolean }) {
-  const visibleLinks = proSignalsAccess ? [...featureLinks, proSignalsFeatureLink] : featureLinks;
+  const quickLinks = [
+    { href: '/member/calendar', title: 'Calendar', icon: <CalendarDays size={18} /> },
+    { href: '/member/journal', title: 'Journal', icon: <FileText size={18} /> },
+    { href: '/education', title: 'Trading Academy', icon: <Sparkles size={18} /> },
+    { href: '/market-analysis', title: 'Market Analysis', icon: <Activity size={18} /> },
+    ...(proSignalsAccess ? [{ href: '/member/pro-signals', title: 'PRO Signals', icon: <Radio size={18} /> }] : []),
+  ];
   return <div className="mx-feature-dashboard-links">
-    {visibleLinks.map((item) => <Link className="mx-tool-card" href={item.href} key={item.href} data-testid={`card-feature-${item.href.split('/').pop()}`}>
-      <span className="mx-tool-icon">{item.icon}</span><span className="mx-tool-number">{item.number}</span><h3>{item.title}</h3><p>{item.description}</p><span className="mx-tool-action">Open workspace <ArrowRight size={14} /></span>
+    {quickLinks.map((item) => <Link className="mx-tool-card" href={item.href} key={item.href} aria-label={item.title} data-testid={`card-feature-${item.href.split('/').pop()}`}>
+      <span className="mx-tool-icon">{item.icon}</span><span className="mx-tool-title">{item.title}</span><ArrowRight size={14} className="mx-tool-arrow" />
     </Link>)}
   </div>;
 }
