@@ -8,9 +8,9 @@ export function portalDashboardPath(role: PortalRole): string {
   return "/staff/support";
 }
 
-export function memberDashboardEntitlements() {
+export function memberDashboardEntitlements(proSignalsAccess = false) {
   return {
     learningDashboard: true,
-    proSignalsAccess: false,
-  } as const;
+    proSignalsAccess,
+  };
 }

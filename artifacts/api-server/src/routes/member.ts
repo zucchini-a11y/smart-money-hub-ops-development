@@ -4,6 +4,7 @@ import { clerkClient, getAuth } from "@clerk/express";
 import { pool } from "@workspace/db";
 import {
   GetMemberSessionResponse,
+  GetMemberProSignalsResponse,
   LinkMemberTelegramBody,
   LinkMemberTelegramResponse,
 } from "@workspace/api-zod";
@@ -11,6 +12,10 @@ import { MEMBER_DASHBOARD_PATH, memberDashboardEntitlements } from "../lib/porta
 import { requireSameOrigin } from "../lib/portal-auth";
 import { resolvePortalSupportSchema } from "../lib/portal-support-schema";
 import { memberDisplayName } from "../lib/member-display-name";
+import {
+  developmentProSignalsChannelId,
+  hasActiveProSignalsEntitlement,
+} from "../lib/pro-signals-entitlement";
 
 const router: IRouter = Router();
 const schema = resolvePortalSupportSchema(process.env.NODE_ENV, process.env.PORTAL_SUPPORT_SCHEMA);
@@ -69,14 +74,58 @@ export async function requireMemberIdentity(req: Request, res: Response): Promis
   };
 }
 
-function sessionPayload(identity: MemberIdentity, telegramUsername: string | null) {
+async function getProSignalsEntitlement(clerkUserId: string, telegramUserId: string | null): Promise<boolean> {
+  const channelId = developmentProSignalsChannelId(
+    process.env.NODE_ENV,
+    schema,
+    process.env.SMH_TEST_PRO_SIGNALS_CHANNEL_ID,
+  );
+  if (!channelId || !telegramUserId) return false;
+
+  const result = await pool.query(
+    `SELECT latest.status AS request_status,
+            latest.registration_status,
+            latest.funding_status,
+            active_access.status AS telegram_access_status
+       FROM ${schema}.member_telegram_links AS link
+       LEFT JOIN LATERAL (
+         SELECT request.status, request.registration_status, request.funding_status
+           FROM ${schema}.member_requests AS request
+          WHERE request.user_id::text=link.telegram_user_id
+            AND request.destination='pro'
+          ORDER BY request.updated DESC, request.created DESC, request.id DESC
+          LIMIT 1
+       ) AS latest ON TRUE
+       LEFT JOIN ${schema}.access AS active_access
+         ON active_access.user_id::text=link.telegram_user_id
+        AND active_access.channel=$3::bigint
+      WHERE link.clerk_user_id=$1
+        AND link.telegram_user_id=$2
+      LIMIT 1`,
+    [clerkUserId, telegramUserId, channelId],
+  );
+  const row = result.rows[0];
+  return hasActiveProSignalsEntitlement({
+    requestStatus: row?.request_status == null ? null : String(row.request_status),
+    registrationStatus: row?.registration_status == null ? null : String(row.registration_status),
+    fundingStatus: row?.funding_status == null ? null : String(row.funding_status),
+    telegramAccessStatus: row?.telegram_access_status == null ? null : String(row.telegram_access_status),
+  });
+}
+
+function sessionPayload(
+  identity: MemberIdentity,
+  telegramLinked: boolean,
+  telegramUsername: string | null,
+  proSignalsAccess: boolean,
+) {
   return GetMemberSessionResponse.parse({
     accountType: "member",
     email: identity.email,
     displayName: identity.displayName,
     dashboardPath: MEMBER_DASHBOARD_PATH,
-    ...memberDashboardEntitlements(),
-    telegramLinked: telegramUsername !== null,
+    ...memberDashboardEntitlements(proSignalsAccess),
+    telegramLinked,
     telegramUsername,
   });
 }
@@ -86,11 +135,42 @@ router.get("/member/session", async (req, res): Promise<void> => {
   const identity = await requireMemberIdentity(req, res);
   if (!identity) return;
   const link = await pool.query(
-    `SELECT telegram_username FROM ${schema}.member_telegram_links WHERE clerk_user_id=$1 LIMIT 1`,
+    `SELECT telegram_user_id,telegram_username FROM ${schema}.member_telegram_links WHERE clerk_user_id=$1 LIMIT 1`,
     [identity.clerkUserId],
   );
-  res.json(sessionPayload(identity, link.rows[0]?.telegram_username == null
-    ? null : String(link.rows[0].telegram_username)));
+  const linkedTelegramId = link.rows[0]?.telegram_user_id == null
+    ? null : String(link.rows[0].telegram_user_id);
+  const telegramUsername = link.rows[0]?.telegram_username == null
+    ? null : String(link.rows[0].telegram_username);
+  const proSignalsAccess = await getProSignalsEntitlement(identity.clerkUserId, linkedTelegramId);
+  res.json(sessionPayload(identity, linkedTelegramId !== null, telegramUsername, proSignalsAccess));
+});
+
+router.get("/member/pro-signals", async (req, res): Promise<void> => {
+  res.setHeader("Cache-Control", "no-store");
+  if (process.env.NODE_ENV !== "development" || schema !== "smh_test") {
+    res.status(404).json({ error: "The PRO Signals feed is unavailable outside Development." });
+    return;
+  }
+
+  const identity = await requireMemberIdentity(req, res);
+  if (!identity) return;
+  const link = await pool.query(
+    `SELECT telegram_user_id FROM ${schema}.member_telegram_links WHERE clerk_user_id=$1 LIMIT 1`,
+    [identity.clerkUserId],
+  );
+  const telegramUserId = link.rows[0]?.telegram_user_id == null
+    ? null : String(link.rows[0].telegram_user_id);
+  const proSignalsAccess = await getProSignalsEntitlement(identity.clerkUserId, telegramUserId);
+  if (!proSignalsAccess) {
+    res.status(403).json({ error: "Active, verified PRO Signals access is required." });
+    return;
+  }
+
+  res.json(GetMemberProSignalsResponse.parse({
+    feedStatus: "not_connected",
+    lastHeartbeatAt: null,
+  }));
 });
 
 router.post("/member/telegram/link", requireSameOrigin, async (req, res): Promise<void> => {

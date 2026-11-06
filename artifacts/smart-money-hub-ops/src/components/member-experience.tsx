@@ -2,10 +2,12 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } 
 import { Link } from 'wouter';
 import {
   getGetMemberCalendarQueryKey,
+  getGetMemberProSignalsQueryKey,
   getListMemberJournalTradesQueryKey,
   useCreateMemberJournalTrade,
   useDeleteMemberJournalTrade,
   useGetMemberCalendar,
+  useGetMemberProSignals,
   useListMemberJournalTrades,
   useSendMemberCoachMessage,
   useUpdateMemberJournalTrade,
@@ -26,6 +28,7 @@ import {
   ArrowRight,
   ArrowUpRight,
   ArrowLeft,
+  Activity,
   CalendarDays,
   Check,
   CheckCircle2,
@@ -34,10 +37,12 @@ import {
   Clock3,
   ExternalLink,
   FileText,
+  History,
   MessageCircle,
   Pencil,
   Plus,
   RefreshCw,
+  Radio,
   Send,
   ShieldCheck,
   Trash2,
@@ -231,6 +236,9 @@ export function MemberDashboardExperience({
               <span>PRO Signals</span><strong className={session.proSignalsAccess ? 'mx-status-authorized' : 'mx-status-unassigned'}>{session.proSignalsAccess ? 'Authorized' : 'Not assigned'}</strong>
             </div>
             <p className="mx-access-note">PRO Signals access is assigned separately by the service. Registration and Telegram identity do not grant access.</p>
+            {session.proSignalsAccess && <Link className="mx-button mx-button-quiet mx-pro-open-button" href="/member/pro-signals" data-testid="link-member-pro-signals">
+              Open PRO Signals <ArrowRight size={14} />
+            </Link>}
             <div className="mx-card-divider" />
             <button className="mx-inline-action" type="button" onClick={onSettings}>Manage account settings <ArrowRight size={15} /></button>
           </section>
@@ -267,8 +275,8 @@ export function MemberDashboardExperience({
         </div>
 
         <section className="mx-tools-section" aria-labelledby="mx-tools-section-title">
-          <div className="mx-tools-heading"><div><span className="mx-card-kicker">MEMBER WORKSPACE / DEVELOPMENT</span><h2 id="mx-tools-section-title">Choose a study path</h2></div><span>Three tools. One deliberate process.</span></div>
-          <MemberFeatureDashboardLinks />
+          <div className="mx-tools-heading"><div><span className="mx-card-kicker">MEMBER WORKSPACE / DEVELOPMENT</span><h2 id="mx-tools-section-title">Choose a study path</h2></div><span>{session.proSignalsAccess ? 'Four tools. One deliberate process.' : 'Three tools. One deliberate process.'}</span></div>
+          <MemberFeatureDashboardLinks proSignalsAccess={session.proSignalsAccess} />
         </section>
 
         <footer className="mx-dashboard-footer">
@@ -280,18 +288,27 @@ export function MemberDashboardExperience({
   );
 }
 
-type MemberFeaturePath = '/member/calendar' | '/member/journal' | '/member/coach';
+type MemberFeaturePath = '/member/calendar' | '/member/journal' | '/member/coach' | '/member/pro-signals';
 
-const featureLinks: Array<{ href: MemberFeaturePath; title: string; description: string; number: string; icon: ReactNode }> = [
+const featureLinks: Array<{ href: Exclude<MemberFeaturePath, '/member/pro-signals'>; title: string; description: string; number: string; icon: ReactNode }> = [
   { href: '/member/calendar', title: 'Economic calendar', description: 'Review verified USD events with source and timing context.', number: '01 / OBSERVE', icon: <CalendarDays size={17} /> },
   { href: '/member/journal', title: 'Trade journal', description: 'Record your own decisions and reflect on saved outcomes.', number: '02 / REVIEW', icon: <FileText size={17} /> },
   { href: '/member/coach', title: 'AI Coach', description: 'Explore trading concepts through an educational conversation.', number: '03 / STUDY', icon: <MessageCircle size={17} /> },
 ];
 
-function MemberFeatureNav({ active }: { active: MemberFeaturePath }) {
+const proSignalsFeatureLink = {
+  href: '/member/pro-signals' as const,
+  title: 'PRO Signals',
+  description: 'View member signal updates when the authorized feed is connected.',
+  number: '04 / MONITOR',
+  icon: <Radio size={17} />,
+};
+
+function MemberFeatureNav({ active, proSignalsAccess = false }: { active: MemberFeaturePath; proSignalsAccess?: boolean }) {
+  const visibleLinks = proSignalsAccess ? [...featureLinks, proSignalsFeatureLink] : featureLinks;
   return <nav className="mx-feature-nav" aria-label="Member learning tools">
     <Link className="mx-feature-back" href="/member/dashboard"><ArrowLeft size={14} /> Workspace</Link>
-    <div className="mx-feature-nav-links">{featureLinks.map((item) =>
+    <div className="mx-feature-nav-links">{visibleLinks.map((item) =>
       <Link key={item.href} className={`mx-feature-nav-link${item.href === active ? ' is-active' : ''}`} href={item.href} data-testid={`link-member-${item.href.split('/').pop()}`}>
         {item.icon}<span>{item.title}</span>
       </Link>,
@@ -299,7 +316,7 @@ function MemberFeatureNav({ active }: { active: MemberFeaturePath }) {
   </nav>;
 }
 
-function FeatureShell({ active, title, eyebrow, intro, children }: { active: MemberFeaturePath; title: string; eyebrow: string; intro: string; children: ReactNode }) {
+function FeatureShell({ active, title, eyebrow, intro, children, proSignalsAccess = false }: { active: MemberFeaturePath; title: string; eyebrow: string; intro: string; children: ReactNode; proSignalsAccess?: boolean }) {
   return <main className="member-experience mx-dashboard mx-feature-page">
     <div className="mx-dashboard-shell">
       <header className="mx-dashboard-header">
@@ -309,7 +326,7 @@ function FeatureShell({ active, title, eyebrow, intro, children }: { active: Mem
         </Link>
         <span className="mx-feature-private"><ShieldCheck size={14} /> PRIVATE LEARNING SPACE</span>
       </header>
-      <MemberFeatureNav active={active} />
+      <MemberFeatureNav active={active} proSignalsAccess={proSignalsAccess} />
       <section className="mx-feature-heading">
         <div className="mx-overline"><span className="mx-live-mark" /> {eyebrow}</div>
         <h1>{title}</h1>
@@ -319,6 +336,82 @@ function FeatureShell({ active, title, eyebrow, intro, children }: { active: Mem
       <footer className="mx-dashboard-footer"><span>VAYDA SMART MONEY HUB <i /> PROCESS OVER PREDICTION</span><span>Learning only. Trading involves risk.</span></footer>
     </div>
   </main>;
+}
+
+export function MemberProSignalsAccessUnavailable() {
+  return <FeatureShell active="/member/pro-signals" eyebrow="ACCESS / PRO SIGNALS" title="PRO access not active" intro="This member account does not currently have active PRO Signals access.">
+    <section className="mx-feature-panel mx-pro-access-panel" role="status" data-testid="pro-signals-access-unavailable">
+      <div className="mx-empty-panel">
+        <ShieldCheck size={24} />
+        <h2>Access is checked securely</h2>
+        <p>Access requires an approved PRO registration, verified funded-account status, and current active Telegram membership. Linking Telegram or creating a website account alone does not grant PRO access.</p>
+        <Link className="mx-button mx-button-quiet" href="/member/dashboard">Return to your workspace <ArrowLeft size={14} /></Link>
+      </div>
+    </section>
+  </FeatureShell>;
+}
+
+export function MemberProSignalsExperience() {
+  const feed = useGetMemberProSignals({
+    query: {
+      queryKey: getGetMemberProSignalsQueryKey(),
+      retry: false,
+    },
+  });
+  const feedStatus = feed.data?.feedStatus ?? 'not_connected';
+  const heartbeat = feed.data?.lastHeartbeatAt;
+
+  return <FeatureShell active="/member/pro-signals" proSignalsAccess eyebrow="MEMBER / PRO SIGNALS" title="PRO Signals" intro="A private view of authorized signal updates. This page displays information only; it does not place or manage broker orders.">
+    <section className="mx-feature-panel mx-pro-signals-panel" data-testid="member-pro-signals">
+      <div className="mx-panel-toolbar">
+        <div>
+          <span className="mx-card-kicker">SIGNAL FEED STATUS</span>
+          <p>Only server-verified, currently active PRO members can view this page and its API.</p>
+        </div>
+        <button className="mx-button mx-button-quiet" type="button" onClick={() => void feed.refetch()} disabled={feed.isFetching} data-testid="button-refresh-pro-signals">
+          <RefreshCw size={14} className={feed.isFetching ? 'mx-spin' : ''} /> Refresh status
+        </button>
+      </div>
+
+      {feed.isError ? (
+        <div className="mx-pro-feed-error" role="alert">
+          <Activity size={18} />
+          <div><strong>Feed status unavailable</strong><p>{(feed.error as { message?: string } | null)?.message ?? 'The status request did not complete.'}</p></div>
+        </div>
+      ) : (
+        <div className="mx-pro-status-grid">
+          <article className="mx-pro-status-card">
+            <span className="mx-card-kicker">CONNECTION</span>
+            <strong className="mx-pro-status-value"><i className={feedStatus === 'not_connected' ? 'is-idle' : ''} />{feed.isLoading ? 'Checking…' : 'Not connected'}</strong>
+            <p>The Development EA feed has not been connected, so no live or historical signals are shown.</p>
+          </article>
+          <article className="mx-pro-status-card">
+            <span className="mx-card-kicker">LAST HEARTBEAT</span>
+            <strong className="mx-pro-status-value">{heartbeat ? prettyStamp(heartbeat) : 'No heartbeat'}</strong>
+            <p>A heartbeat will appear after the authorized Development feed is connected.</p>
+          </article>
+        </div>
+      )}
+
+      <div className="mx-pro-feed-sections">
+        <section className="mx-pro-feed-list" aria-labelledby="mx-pro-active-heading">
+          <div className="mx-panel-toolbar">
+            <div><span className="mx-card-kicker">CURRENT</span><h2 id="mx-pro-active-heading">Active signals</h2></div>
+            <span className="mx-pro-count">{feed.isLoading ? '…' : feed.isError ? '—' : '0'}</span>
+          </div>
+          <div className="mx-empty-panel"><Radio size={21} /><h2>{feed.isLoading ? 'Checking feed status' : feed.isError ? 'Unable to confirm signals' : 'No active signals'}</h2><p>{feed.isError ? 'Signal data could not be checked. Refresh the status before relying on this page.' : 'There is no connected Development signal feed. Signal content will not be invented or filled with sample data.'}</p></div>
+        </section>
+        <section className="mx-pro-feed-list" aria-labelledby="mx-pro-history-heading">
+          <div className="mx-panel-toolbar">
+            <div><span className="mx-card-kicker">ARCHIVE</span><h2 id="mx-pro-history-heading">Signal history</h2></div>
+            <History size={16} aria-hidden="true" />
+          </div>
+          <div className="mx-empty-panel"><History size={21} /><h2>{feed.isLoading ? 'Checking signal history' : feed.isError ? 'History unavailable' : 'No history available'}</h2><p>{feed.isError ? 'Signal history could not be checked. Refresh the status before relying on this page.' : 'Historical updates will appear only after a real signal feed is connected.'}</p></div>
+        </section>
+      </div>
+      <p className="mx-feature-footnote">PRO eligibility and feed authorization are checked by the server. Registration alone does not provide PRO access.</p>
+    </section>
+  </FeatureShell>;
 }
 
 function prettyStamp(value?: string | null) {
@@ -603,9 +696,10 @@ export function MemberCoachExperience() {
   </FeatureShell>;
 }
 
-export function MemberFeatureDashboardLinks() {
+export function MemberFeatureDashboardLinks({ proSignalsAccess = false }: { proSignalsAccess?: boolean }) {
+  const visibleLinks = proSignalsAccess ? [...featureLinks, proSignalsFeatureLink] : featureLinks;
   return <div className="mx-feature-dashboard-links">
-    {featureLinks.map((item) => <Link className="mx-tool-card" href={item.href} key={item.href} data-testid={`card-feature-${item.href.split('/').pop()}`}>
+    {visibleLinks.map((item) => <Link className="mx-tool-card" href={item.href} key={item.href} data-testid={`card-feature-${item.href.split('/').pop()}`}>
       <span className="mx-tool-icon">{item.icon}</span><span className="mx-tool-number">{item.number}</span><h3>{item.title}</h3><p>{item.description}</p><span className="mx-tool-action">Open workspace <ArrowRight size={14} /></span>
     </Link>)}
   </div>;

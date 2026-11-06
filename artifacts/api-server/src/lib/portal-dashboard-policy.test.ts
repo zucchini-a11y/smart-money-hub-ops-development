@@ -8,10 +8,14 @@ test("staff roles receive only their server-assigned landing route", () => {
   assert.equal(portalDashboardPath("agent"), "/staff/support");
 });
 
-test("member registration grants learning dashboard only, never PRO Signals", () => {
+test("member registration grants learning dashboard only, never PRO Signals by default", () => {
   assert.equal(MEMBER_DASHBOARD_PATH, "/member/dashboard");
   assert.deepEqual(memberDashboardEntitlements(), {
     learningDashboard: true,
     proSignalsAccess: false,
+  });
+  assert.deepEqual(memberDashboardEntitlements(true), {
+    learningDashboard: true,
+    proSignalsAccess: true,
   });
 });

@@ -14,7 +14,7 @@ export interface MemberSession {
   displayName: string;
   dashboardPath: MemberSessionDashboardPath;
   learningDashboard: boolean;
-  proSignalsAccess: false;
+  proSignalsAccess: boolean;
   telegramLinked: boolean;
   telegramUsername: string | null;
 }

@@ -670,6 +670,39 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /member/pro-signals:
+    get:
+      operationId: getMemberProSignals
+      tags:
+        - members
+      summary: Read the Development PRO Signals feed for an entitled member
+      security:
+        - clerkSession: []
+      responses:
+        "200":
+          description: Member PRO Signals feed connection status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberProSignalsResponse"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Active verified PRO access is required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: PRO Signals feed is unavailable outside Development
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /member/telegram/link:
     post:
       operationId: linkMemberTelegram
@@ -3972,8 +4005,6 @@ components:
           type: boolean
         proSignalsAccess:
           type: boolean
-          enum:
-            - false
         telegramLinked:
           type: boolean
         telegramUsername:
@@ -3988,6 +4019,20 @@ components:
         - proSignalsAccess
         - telegramLinked
         - telegramUsername
+    MemberProSignalsResponse:
+      type: object
+      properties:
+        feedStatus:
+          type: string
+          enum:
+            - not_connected
+        lastHeartbeatAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+        - feedStatus
+        - lastHeartbeatAt
     MemberCalendarEvent:
       type: object
       properties:

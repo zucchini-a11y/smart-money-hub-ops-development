@@ -500,9 +500,21 @@ export interface MemberSession {
   displayName: string;
   dashboardPath: MemberSessionDashboardPath;
   learningDashboard: boolean;
-  proSignalsAccess: false;
+  proSignalsAccess: boolean;
   telegramLinked: boolean;
   telegramUsername: string | null;
+}
+
+export type MemberProSignalsResponseFeedStatus = typeof MemberProSignalsResponseFeedStatus[keyof typeof MemberProSignalsResponseFeedStatus];
+
+
+export const MemberProSignalsResponseFeedStatus = {
+  not_connected: 'not_connected',
+} as const;
+
+export interface MemberProSignalsResponse {
+  feedStatus: MemberProSignalsResponseFeedStatus;
+  lastHeartbeatAt: string | null;
 }
 
 export type MemberCalendarEventCurrency = typeof MemberCalendarEventCurrency[keyof typeof MemberCalendarEventCurrency];

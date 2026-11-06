@@ -650,9 +650,18 @@ export const GetMemberSessionResponse = zod.object({
   "displayName": zod.string(),
   "dashboardPath": zod.enum(['/member/dashboard']),
   "learningDashboard": zod.boolean(),
-  "proSignalsAccess": zod.literal(false),
+  "proSignalsAccess": zod.boolean(),
   "telegramLinked": zod.boolean(),
   "telegramUsername": zod.string().nullable()
+})
+
+
+/**
+ * @summary Read the Development PRO Signals feed for an entitled member
+ */
+export const GetMemberProSignalsResponse = zod.object({
+  "feedStatus": zod.enum(['not_connected']),
+  "lastHeartbeatAt": zod.coerce.date().nullable()
 })
 
 

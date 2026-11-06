@@ -69,6 +69,7 @@ import type {
   MemberJournalDeleteResponse,
   MemberJournalResponse,
   MemberJournalTrade,
+  MemberProSignalsResponse,
   MemberSession,
   MemberTelegramLink,
   MobileTokenExchangeRequest,
@@ -2862,6 +2863,83 @@ export function useGetMemberSession<TData = Awaited<ReturnType<typeof getMemberS
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetMemberSessionQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetMemberProSignalsUrl = () => {
+
+
+
+
+  return `/api/member/pro-signals`
+}
+
+/**
+ * @summary Read the Development PRO Signals feed for an entitled member
+ */
+export const getMemberProSignals = async ( options?: Parameters<typeof customFetch>[1]): Promise<MemberProSignalsResponse> => {
+
+  return customFetch<MemberProSignalsResponse>(getGetMemberProSignalsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMemberProSignalsQueryKey = () => {
+    return [
+    `/api/member/pro-signals`
+    ] as const;
+    }
+
+
+export const getGetMemberProSignalsQueryOptions = <TData = Awaited<ReturnType<typeof getMemberProSignals>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMemberProSignals>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMemberProSignalsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMemberProSignals>>> = ({ signal }) => getMemberProSignals({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMemberProSignals>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMemberProSignalsQueryResult = NonNullable<Awaited<ReturnType<typeof getMemberProSignals>>>
+export type GetMemberProSignalsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Read the Development PRO Signals feed for an entitled member
+ */
+
+export function useGetMemberProSignals<TData = Awaited<ReturnType<typeof getMemberProSignals>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMemberProSignals>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMemberProSignalsQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

@@ -93,6 +93,8 @@ export * from './memberJournalDeleteResponse';
 export * from './memberJournalResponse';
 export * from './memberJournalSummary';
 export * from './memberJournalTrade';
+export * from './memberProSignalsResponse';
+export * from './memberProSignalsResponseFeedStatus';
 export * from './memberSession';
 export * from './memberSessionAccountType';
 export * from './memberSessionDashboardPath';

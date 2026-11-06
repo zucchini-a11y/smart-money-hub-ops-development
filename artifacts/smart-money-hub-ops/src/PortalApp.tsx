@@ -43,6 +43,8 @@ import {
   MemberCoachExperience,
   MemberDashboardExperience,
   MemberJournalExperience,
+  MemberProSignalsAccessUnavailable,
+  MemberProSignalsExperience,
   MemberSignupExperience,
 } from '@/components/member-experience';
 import EducationVideos from '@/pages/education-videos';
@@ -157,7 +159,7 @@ function taskNoticeLabel(type: string) {
 function isUnauthorized(error: unknown) {
   return Boolean(error && typeof error === 'object' && [401, 403].includes((error as { status?: number }).status ?? 0));
 }
-const memberFeaturePaths = new Set(['/member/dashboard', '/member/calendar', '/member/journal', '/member/coach', '/member/settings']);
+const memberFeaturePaths = new Set(['/member/dashboard', '/member/calendar', '/member/journal', '/member/coach', '/member/pro-signals', '/member/settings']);
 function safeMemberReturnTo(value: string | null | undefined) {
   return value && memberFeaturePaths.has(value) ? value : null;
 }
@@ -611,6 +613,11 @@ function MemberRoot() {
   if (location === '/member/calendar') return <MemberCalendarExperience />;
   if (location === '/member/journal') return <MemberJournalExperience />;
   if (location === '/member/coach') return <MemberCoachExperience />;
+  if (location === '/member/pro-signals') {
+    return member.data.proSignalsAccess
+      ? <MemberProSignalsExperience />
+      : <MemberProSignalsAccessUnavailable />;
+  }
   if (location !== member.data.dashboardPath) return null;
   return <MemberDashboardPage session={member.data}/>;
 }
@@ -1715,6 +1722,8 @@ function Router() {
               ? 'Trade Journal | VAYDA Smart Money Hub'
               : normalizedPath === '/member/coach'
                 ? 'AI Coach | VAYDA Smart Money Hub'
+                : normalizedPath === '/member/pro-signals'
+                  ? 'PRO Signals | VAYDA Smart Money Hub'
           : normalizedPath === '/member/settings'
             ? 'Member Account Settings | VAYDA Smart Money Hub'
             : 'VAYDA Support Portal | Staff Workspace';
@@ -1733,6 +1742,7 @@ function Router() {
     <Route path="/member/calendar" component={MemberRoot}/>
     <Route path="/member/journal" component={MemberRoot}/>
     <Route path="/member/coach" component={MemberRoot}/>
+    <Route path="/member/pro-signals" component={MemberRoot}/>
     <Route path="/member/settings" component={MemberRoot}/>
     <Route>{() => isPublicRoute ? normalizedPath === '/' ? <HomeRedirect/> : <PublicSite/> : <PortalRoot/>}</Route>
   </Switch></RoutedErrorBoundary>;
