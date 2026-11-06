@@ -723,7 +723,7 @@
   pointer-events: none;
   background:
     radial-gradient(ellipse at 54% 53%, rgba(139,185,154,.055), transparent 62%),
-    linear-gradient(180deg, rgba(12,17,18,.48), transparent 24%, transparent 83%, rgba(12,17,18,.44));
+    linear-gradient(180deg, rgba(12,17,18,.16), transparent 16%, transparent 84%, rgba(12,17,18,.28));
 }
 .vayda-site.is-home .vs-chart-orbit { display: none; }
 .vayda-site.is-home .vs-statement {

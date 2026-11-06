@@ -38,11 +38,6 @@ function clamp(value: number) {
   return Math.max(0, Math.min(1, value));
 }
 
-function ease(value: number) {
-  const bounded = clamp(value);
-  return bounded * bounded * (3 - 2 * bounded);
-}
-
 export function XauusdTradeAnimation() {
   const stageRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -65,29 +60,35 @@ export function XauusdTradeAnimation() {
     let viewportWidth = 0;
     let viewportHeight = 0;
     let pixelRatio = 1;
-    let lastProgress = 0;
+    let cycleProgress = 0;
+    let scrollBias = 0;
+    let lastFrameTime = 0;
+    let stageVisible = false;
     let animationFrame = 0;
+    let scrollFrame = 0;
 
-    const draw = (scrollProgress: number) => {
+    const draw = (progress: number) => {
       if (!viewportWidth || !viewportHeight) return;
-      lastProgress = clamp(scrollProgress);
+      cycleProgress = clamp(progress);
 
       const width = viewportWidth;
       const height = viewportHeight;
       const compactLayout = width < 520;
-      const left = compactLayout ? 18 : 34;
-      const right = compactLayout ? 68 : 94;
-      const top = compactLayout ? Math.min(250, height * 0.28) : Math.max(100, height * 0.12);
-      const bottom = height - (compactLayout ? Math.min(40, height * 0.12) : 52);
+      const left = compactLayout ? 16 : 30;
+      const right = compactLayout ? 58 : 78;
+      const top = compactLayout ? Math.max(92, height * 0.09) : Math.max(72, height * 0.075);
+      const bottom = height - (compactLayout ? 32 : 42);
       const minPrice = 4002;
       const maxPrice = 4035;
       const candleWidth = (width - left - right) / candles.length;
       const yForPrice = (price: number) => top + ((maxPrice - price) / (maxPrice - minPrice)) * (bottom - top);
       const xForCandle = (index: number) => left + index * candleWidth + candleWidth / 2;
-      const playhead = lastProgress * candles.length;
-      const complete = playhead >= candles.length;
-      const currentIndex = Math.min(Math.floor(Math.min(playhead, candles.length - 0.001)), candles.length - 1);
-      const fraction = complete ? 1 : playhead - currentIndex;
+      const phase = (cycleProgress + scrollBias * 0.1) % 1;
+      const sweepProgress = reducedMotion ? 0.5 : 0.5 - 0.5 * Math.cos(phase * Math.PI * 2);
+      const playhead = candles.length;
+      const activePlayhead = sweepProgress * candles.length;
+      const currentIndex = Math.min(Math.floor(activePlayhead), candles.length - 1);
+      const fraction = activePlayhead - currentIndex;
 
       context.clearRect(0, 0, width, height);
       context.fillStyle = ink;
@@ -109,29 +110,21 @@ export function XauusdTradeAnimation() {
       }
 
       if (playhead >= ENTRY_INDEX) {
-        const reveal = ease((playhead - ENTRY_INDEX) / 1.5);
         const startX = xForCandle(ENTRY_INDEX) - candleWidth / 2;
-        const endIndex = playhead >= TARGET_INDEX
-          ? TARGET_INDEX + 1
-          : Math.max(playhead, ENTRY_INDEX + 1);
+        const endIndex = TARGET_INDEX + 1;
         const endX = left + Math.min(endIndex, TARGET_INDEX + 1) * candleWidth;
         const entryY = yForPrice(ENTRY);
         const stopY = yForPrice(STOP);
-        const visiblePeak = playhead >= TARGET_INDEX
-          ? TARGET
-          : Math.min(
-            TARGET,
-            Math.max(...candles.slice(ENTRY_INDEX, currentIndex + 1).map((candle) => candle.high)) + 3,
-          );
+        const visiblePeak = TARGET;
         const profitTopY = yForPrice(Math.max(visiblePeak, ENTRY + 4));
 
-        context.globalAlpha = 0.2 * reveal;
+        context.globalAlpha = 0.12;
         context.fillStyle = green;
         context.fillRect(startX, profitTopY, endX - startX, entryY - profitTopY);
-        context.globalAlpha = 0.18 * reveal;
+        context.globalAlpha = 0.13;
         context.fillStyle = gold;
         context.fillRect(startX, entryY, endX - startX, stopY - entryY);
-        context.globalAlpha = reveal;
+        context.globalAlpha = 1;
 
         context.strokeStyle = 'rgba(243,240,231,.65)';
         context.setLineDash([6, 6]);
@@ -153,33 +146,24 @@ export function XauusdTradeAnimation() {
 
         drawTag(ENTRY, ENTRY.toFixed(2), 'rgba(28,36,32,.96)');
         drawTag(STOP, STOP.toFixed(2), gold, ink);
-        if (playhead >= TARGET_INDEX - 6) {
-          context.globalAlpha = ease((playhead - (TARGET_INDEX - 6)) / 6);
-          drawTag(TARGET, TARGET.toFixed(2), 'rgba(28,36,32,.96)');
-        }
+        drawTag(TARGET, TARGET.toFixed(2), 'rgba(28,36,32,.96)');
         context.globalAlpha = 1;
 
-        const lineProgress = ease((playhead - ENTRY_INDEX) / (TARGET_INDEX - ENTRY_INDEX));
-        if (lineProgress > 0) {
-          const startY = entryY;
-          const targetX = xForCandle(TARGET_INDEX);
-          const targetY = yForPrice(candles[TARGET_INDEX].high);
-          context.strokeStyle = 'rgba(243,240,231,.82)';
-          context.lineWidth = 1.5;
-          context.setLineDash([7, 6]);
-          context.beginPath();
-          context.moveTo(xForCandle(ENTRY_INDEX), startY);
-          context.lineTo(
-            xForCandle(ENTRY_INDEX) + (targetX - xForCandle(ENTRY_INDEX)) * lineProgress,
-            startY + (targetY - startY) * lineProgress,
-          );
-          context.stroke();
-          context.setLineDash([]);
-          context.lineWidth = 1;
-        }
+        const startY = entryY;
+        const targetX = xForCandle(TARGET_INDEX);
+        const targetY = yForPrice(candles[TARGET_INDEX].high);
+        context.strokeStyle = 'rgba(243,240,231,.58)';
+        context.lineWidth = 1.5;
+        context.setLineDash([7, 6]);
+        context.beginPath();
+        context.moveTo(xForCandle(ENTRY_INDEX), startY);
+        context.lineTo(targetX, targetY);
+        context.stroke();
+        context.setLineDash([]);
+        context.lineWidth = 1;
       }
 
-      for (let index = 0; index <= currentIndex && index < candles.length; index += 1) {
+      for (let index = 0; index < candles.length; index += 1) {
         const candle = candles[index];
         const candleFraction = index === currentIndex ? fraction : 1;
         const currentClose = candle.open + (candle.close - candle.open) * candleFraction;
@@ -207,12 +191,36 @@ export function XauusdTradeAnimation() {
 
       const currentCandle = candles[currentIndex];
       const lastPrice = currentCandle.open + (currentCandle.close - currentCandle.open) * fraction;
+      const lastPriceY = yForPrice(lastPrice);
+      if (!reducedMotion) {
+        const scanX = left + sweepProgress * (width - left - right);
+        context.globalAlpha = 0.08;
+        context.fillStyle = green;
+        context.fillRect(scanX - 12, top, 24, bottom - top);
+        context.globalAlpha = 0.72;
+        context.strokeStyle = green;
+        context.beginPath();
+        context.moveTo(scanX, top);
+        context.lineTo(scanX, bottom);
+        context.stroke();
+        context.globalAlpha = 0.85;
+        context.beginPath();
+        context.arc(scanX, lastPriceY, 4.5, 0, Math.PI * 2);
+        context.fillStyle = currentCandle.close >= currentCandle.open ? green : gold;
+        context.fill();
+        context.globalAlpha = 0.4;
+        context.beginPath();
+        context.arc(scanX, lastPriceY, 10, 0, Math.PI * 2);
+        context.strokeStyle = currentCandle.close >= currentCandle.open ? green : gold;
+        context.stroke();
+        context.globalAlpha = 1;
+      }
       context.fillStyle = currentCandle.close >= currentCandle.open ? green : gold;
-      context.fillRect(width - right + 3, yForPrice(lastPrice) - 10, right - 6, 20);
+      context.fillRect(width - right + 3, lastPriceY - 10, right - 6, 20);
       context.fillStyle = ink;
       context.font = `600 ${compactLayout ? 9 : 11}px "JetBrains Mono", monospace`;
       context.textAlign = 'center';
-      context.fillText(lastPrice.toFixed(2), width - right / 2, yForPrice(lastPrice) + 3.5);
+      context.fillText(lastPrice.toFixed(2), width - right / 2, lastPriceY + 3.5);
 
     };
 
@@ -225,38 +233,77 @@ export function XauusdTradeAnimation() {
       canvas.width = Math.round(viewportWidth * pixelRatio);
       canvas.height = Math.round(viewportHeight * pixelRatio);
       context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-      draw(reducedMotion ? 1 : lastProgress);
+      draw(cycleProgress);
     };
 
-    const updateFromScroll = () => {
-      if (reducedMotion || animationFrame) return;
-      animationFrame = window.requestAnimationFrame(() => {
-        animationFrame = 0;
+    const updateScrollBias = () => {
+      if (scrollFrame) return;
+      scrollFrame = window.requestAnimationFrame(() => {
+        scrollFrame = 0;
         const rect = stage.getBoundingClientRect();
         const travel = window.innerHeight + rect.height;
-        draw((window.innerHeight - rect.top) / travel);
+        scrollBias = clamp((window.innerHeight - rect.top) / travel);
       });
     };
 
+    const animate = (time: number) => {
+      animationFrame = 0;
+      if (!stageVisible || reducedMotion) {
+        lastFrameTime = 0;
+        return;
+      }
+      if (lastFrameTime) {
+        const elapsed = Math.min(time - lastFrameTime, 50);
+        cycleProgress = (cycleProgress + elapsed / 24000) % 1;
+      }
+      lastFrameTime = time;
+      draw(cycleProgress);
+      animationFrame = window.requestAnimationFrame(animate);
+    };
+
+    const startAnimation = () => {
+      if (reducedMotion || animationFrame || !stageVisible) return;
+      lastFrameTime = 0;
+      animationFrame = window.requestAnimationFrame(animate);
+    };
+
+    const stopAnimation = () => {
+      if (animationFrame) window.cancelAnimationFrame(animationFrame);
+      animationFrame = 0;
+      lastFrameTime = 0;
+    };
+
     resizeCanvas();
-    updateFromScroll();
+    updateScrollBias();
 
     const resizeObserver = typeof ResizeObserver !== 'undefined'
       ? new ResizeObserver(resizeCanvas)
       : null;
     resizeObserver?.observe(stage);
     window.addEventListener('resize', resizeCanvas);
-    if (!reducedMotion) {
-      window.addEventListener('scroll', updateFromScroll, { passive: true });
+    if (!reducedMotion) window.addEventListener('scroll', updateScrollBias, { passive: true });
+
+    const visibilityObserver = typeof IntersectionObserver !== 'undefined'
+      ? new IntersectionObserver(([entry]) => {
+        stageVisible = entry.isIntersecting;
+        if (stageVisible) startAnimation();
+        else stopAnimation();
+      }, { rootMargin: '120px 0px' })
+      : null;
+    if (visibilityObserver) {
+      visibilityObserver.observe(stage);
     } else {
-      draw(1);
+      stageVisible = true;
+      startAnimation();
     }
 
     return () => {
-      if (animationFrame) window.cancelAnimationFrame(animationFrame);
+      stopAnimation();
+      if (scrollFrame) window.cancelAnimationFrame(scrollFrame);
       resizeObserver?.disconnect();
+      visibilityObserver?.disconnect();
       window.removeEventListener('resize', resizeCanvas);
-      window.removeEventListener('scroll', updateFromScroll);
+      window.removeEventListener('scroll', updateScrollBias);
     };
   }, []);
 
