@@ -276,7 +276,7 @@ function Footer() {
       </div></div>
       <div className="vs-footer-col"><h2>Start here</h2><div className="vs-footer-links">
         {isConfiguredPublicUrl(publicSiteLinks.primaryCommunity) && <ExternalLink href={publicSiteLinks.primaryCommunity} data-testid="link-footer-coach">Coach Bot</ExternalLink>}
-        {isConfiguredPublicUrl(publicSiteLinks.proSignalsAssistant) && <ExternalLink href={publicSiteLinks.proSignalsAssistant} data-testid="link-footer-pro-signals">Signal Bot</ExternalLink>}
+        {isConfiguredPublicUrl(publicSiteLinks.proSignalsAssistant) && <ExternalLink href={publicSiteLinks.proSignalsAssistant} data-testid="link-footer-pro-signals">PRO SIGNALS</ExternalLink>}
         {isConfiguredPublicUrl(publicSiteLinks.marketAnalysisChannel) && <ExternalLink href={publicSiteLinks.marketAnalysisChannel} data-testid="link-footer-market-analysis">Market Analysis</ExternalLink>}
         <a href="/login" data-testid="link-footer-login">Sign in</a>
       </div></div>
@@ -360,7 +360,7 @@ function Home() {
         <div className="vs-home-cta-inner"><div><div className="vs-eyebrow">KEEP LEARNING, AT YOUR PACE</div><h2>Build a process<br />you can explain.</h2><p>Start with the principles. Stay curious. Decide for yourself.</p></div>
           <div className="vs-home-cta-actions">
             {isConfiguredPublicUrl(publicSiteLinks.marketAnalysisChannel) && <ExternalLink href={publicSiteLinks.marketAnalysisChannel} className="vs-button vs-button-quiet" data-testid="link-home-market-analysis">Market Analysis <ArrowUpRight /></ExternalLink>}
-            {isConfiguredPublicUrl(publicSiteLinks.proSignalsAssistant) && <ExternalLink href={publicSiteLinks.proSignalsAssistant} className="vs-button vs-button-quiet" data-testid="link-home-signal-bot">Signal Bot <ArrowUpRight /></ExternalLink>}
+            {isConfiguredPublicUrl(publicSiteLinks.proSignalsAssistant) && <ExternalLink href={publicSiteLinks.proSignalsAssistant} className="vs-button vs-button-quiet" data-testid="link-home-signal-bot">PRO SIGNALS <ArrowUpRight /></ExternalLink>}
           </div>
         </div>
       </section>
