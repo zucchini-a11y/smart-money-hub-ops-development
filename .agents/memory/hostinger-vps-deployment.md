@@ -33,6 +33,14 @@ On this Hostinger VPS, prefer IPv4 for outbound Telegram Bot API calls while lea
 
 **How to apply:** When Telegram sends are slow, compare forced IPv4 and IPv6 and inspect the resolver's address order. Back up `/etc/gai.conf` before preferring IPv4, restart the bot, and verify an actual Bot API send; do not disable IPv6.
 
+### Direct VPS access
+
+The owner reports that SSH is reachable on port 22, but no public SSH keys are configured and there is no VPS control panel. Replit cannot connect directly until an authorized key-based deployment path is established.
+
+**Why:** The owner wants live changes handled without repeatedly running deployment commands, but the current workspace has no Hostinger/SSH connection.
+
+**How to apply:** Verify access before preparing a live deployment. Do not ask for or use the root password; a restricted, explicitly authorized key must be installed through an approved setup step.
+
 ### Mobile terminal transfer reliability
 
 When the owner operates Replit Shell and Termius on a phone, multiline pastes can be flattened and clipboard input can include terminal escape sequences. This can cause a public key to be run as a shell command or written incorrectly to `authorized_keys`.
