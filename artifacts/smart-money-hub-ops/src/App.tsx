@@ -1,6 +1,11 @@
 import { useRef, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useHealthCheck, getHealthCheckQueryKey } from '@workspace/api-client-react';
+import {
+  useHealthCheck,
+  getHealthCheckQueryKey,
+  useGetPortalCommandCenter,
+  getGetPortalCommandCenterQueryKey,
+} from '@workspace/api-client-react';
 import { Link, Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
 import {
   Activity, AlertCircle, Bot, BrainCircuit, CalendarClock, Check, ChevronRight, MessageCircle,
@@ -377,21 +382,151 @@ function ContentPage() {
   </main>;
 }
 
+type ConnectionState = 'healthy' | 'degraded' | 'offline' | 'unhealthy' | 'running' | 'not_connected' | 'unknown';
+
+function connectionLabel(state: string | undefined) {
+  switch (state) {
+    case 'healthy': return 'Healthy';
+    case 'running': return 'Recent heartbeat';
+    case 'degraded': return 'Degraded';
+    case 'offline': return 'Offline';
+    case 'unhealthy': return 'Unhealthy';
+    case 'not_connected': return 'Not connected';
+    default: return 'Unknown';
+  }
+}
+
+function connectionTone(state: ConnectionState | undefined) {
+  if (state === 'healthy' || state === 'running') return 'connection-tone-good';
+  if (state === 'degraded' || state === 'unhealthy' || state === 'offline') return 'connection-tone-warning';
+  return 'connection-tone-unknown';
+}
+
+function ConnectionStatus({ state, label }: { state: ConnectionState | undefined; label?: string }) {
+  return <span className={`connection-status ${connectionTone(state)}`}><span className="connection-status-dot" />{label ?? connectionLabel(state)}</span>;
+}
+
 function ConnectionsPage() {
+  const api = useHealthCheck({
+    query: { queryKey: getHealthCheckQueryKey(), refetchInterval: 15000 },
+  });
+  const snapshot = useGetPortalCommandCenter({
+    query: {
+      queryKey: getGetPortalCommandCenterQueryKey(),
+      staleTime: 15000,
+      refetchOnMount: 'always',
+      refetchInterval: 30000,
+    },
+  });
+  const [refreshing, setRefreshing] = useState(false);
+  const privateTestBot = snapshot.data?.bots.find((bot) => bot.id === 'isolated_test');
+  const productionBot = snapshot.data?.bots.find((bot) => bot.id === 'production');
+  const apiState: ConnectionState = api.isError ? 'offline' : api.data ? 'healthy' : 'unknown';
+  const heartbeatState: ConnectionState = privateTestBot?.processStatus === 'running'
+    ? 'running'
+    : privateTestBot?.healthStatus === 'unhealthy'
+      ? 'unhealthy'
+      : 'unknown';
+  const refresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([api.refetch(), snapshot.refetch()]);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+  const healthTime = privateTestBot?.healthCheckedAt
+    ? new Date(privateTestBot.healthCheckedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    : 'No recent check';
+  const telegramStatus: ConnectionState = privateTestBot?.telegramStatus ?? 'unknown';
+  const databaseStatus: ConnectionState = privateTestBot?.databaseStatus ?? 'unknown';
+  const pollingStatus: ConnectionState = privateTestBot?.pollingStatus ?? 'unknown';
+
   return <main className="fade-up mx-auto max-w-[1440px] px-4 py-7 md:px-8 md:py-9">
-    <SectionHeading eyebrow="SYSTEM / INFRASTRUCTURE" title="Connections" description="Service edges and connection states will be rendered only from verified telemetry." />
-    <div className="mb-5 rounded-xl border border-cyan-300/10 bg-cyan-300/[.035] p-4 sm:p-5">
-      <div className="flex gap-3"><div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-cyan-300/15 bg-cyan-300/[.07] text-cyan-200"><Link2 size={16} /></div><div><h2 className="text-[12px] font-semibold text-slate-200">Connection visibility is not live yet</h2><p className="mt-1 max-w-3xl text-[11px] leading-5 text-slate-500">Only the API health endpoint is currently connected. A health response does not indicate Telegram availability or prove the bot process is running.</p></div></div>
-    </div>
-    <section className="panel overflow-hidden rounded-xl">
-      <div className="grid grid-cols-[1fr_1fr_1fr] gap-3 border-b border-white/[.07] bg-white/[.02] px-5 py-3 mono text-[9px] tracking-[.14em] text-slate-500 max-sm:hidden"><span>SOURCE</span><span>DESTINATION</span><span>STATE</span></div>
-      <EmptyState icon={Link2} tag="CONNECTION TELEMETRY UNAVAILABLE" title="No connection edges observed" description="Bot, Telegram, and service connection data are not connected. No connection states are simulated." />
+    <SectionHeading eyebrow="SYSTEM / DEVELOPMENT TELEMETRY" title="Connections" description="A read-only view of the API and the latest isolated Development bot heartbeat." />
+    <section className="network-panel panel overflow-hidden rounded-2xl" data-testid="development-connection-map">
+      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-white/[.07] px-5 py-5 md:px-7">
+        <div>
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <span className="network-scope-tag">DEVELOPMENT ONLY</span>
+            <span className="network-readonly-tag"><ShieldCheck size={11} /> READ-ONLY</span>
+          </div>
+          <h2 className="text-base font-semibold text-slate-100">System signal map</h2>
+          <p className="mt-1 max-w-2xl text-[11px] leading-5 text-slate-500">Motion appears only while this dashboard checks a real endpoint. The bot node is a stored heartbeat snapshot, not a direct Telegram delivery monitor.</p>
+        </div>
+        <button type="button" onClick={refresh} disabled={refreshing || api.isFetching || snapshot.isFetching} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-white/10 bg-white/[.035] px-3 text-[11px] font-medium text-slate-300 transition hover:border-emerald-300/25 hover:text-emerald-100 disabled:opacity-50" aria-label="Refresh connection status" data-testid="button-refresh-connections">
+          <RefreshCw size={13} className={refreshing || api.isFetching || snapshot.isFetching ? 'animate-spin' : ''} /> Refresh
+        </button>
+      </div>
+
+      <div className="network-map-stage">
+        <div className="network-map-web" aria-hidden="true" />
+        <svg className="network-map-lines" viewBox="0 0 1000 360" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M 246 180 C 300 180 333 180 385 180" className={`network-link ${apiState === 'healthy' ? 'network-link-observed' : ''}`} />
+          <path d="M 615 180 C 666 180 699 180 754 180" className={`network-link ${snapshot.data && !snapshot.isError ? 'network-link-observed' : ''}`} />
+          {apiState === 'healthy' && <circle r="5" className={`network-packet ${api.isFetching ? 'network-packet-active' : ''}`}><animateMotion dur="1.8s" repeatCount="indefinite" path="M 246 180 C 300 180 333 180 385 180" /></circle>}
+          {snapshot.data && !snapshot.isError && <circle r="4.5" className={`network-packet network-packet-cyan ${snapshot.isFetching ? 'network-packet-active' : ''}`}><animateMotion dur="2.3s" repeatCount="indefinite" path="M 615 180 C 666 180 699 180 754 180" /></circle>}
+        </svg>
+        <div className="network-map-nodes">
+          <article className="network-node network-node-dashboard">
+            <span className="network-node-icon"><Command size={16} /></span>
+            <div className="network-node-copy"><span className="network-node-kicker">MONITORING SURFACE</span><strong>Operations Center</strong><small>Owner-only Development view</small></div>
+            <span className="network-node-presence" aria-label="Current page" />
+          </article>
+          <article className="network-node network-node-api">
+            <span className="network-node-icon network-node-icon-api"><Signal size={16} /></span>
+            <div className="network-node-copy"><span className="network-node-kicker">LIVE CHECK · EVERY 15S</span><strong>API health endpoint</strong><small>GET /api/healthz · {api.data?.status ?? (api.isError ? 'no response' : 'checking')}</small></div>
+            <ConnectionStatus state={apiState} />
+          </article>
+          <article className="network-node network-node-heartbeat">
+            <span className="network-node-icon network-node-icon-bot"><Bot size={16} /></span>
+            <div className="network-node-copy"><span className="network-node-kicker">ISOLATED TEST BOT</span><strong>Heartbeat snapshot</strong><small>Last check · {healthTime}</small></div>
+            <ConnectionStatus state={heartbeatState} label={heartbeatState === 'running' ? 'Recent' : connectionLabel(heartbeatState)} />
+          </article>
+        </div>
+        <div className="network-map-captions" aria-hidden="true">
+          <span>HEALTH PROBE</span><span>READ-ONLY SNAPSHOT QUERY</span>
+        </div>
+      </div>
+
+      <div className="grid gap-0 border-t border-white/[.07] md:grid-cols-[1.15fr_1fr]">
+        <div className="border-b border-white/[.07] p-5 md:border-b-0 md:border-r md:px-7 md:py-6">
+          <div className="flex items-center justify-between gap-3">
+            <div><p className="mono text-[9px] tracking-[.16em] text-slate-500">PRIVATE TEST BOT · DEVELOPMENT</p><h3 className="mt-1 text-[13px] font-semibold text-slate-200">Latest reported signals</h3></div>
+            <ConnectionStatus state={heartbeatState} label={heartbeatState === 'running' ? 'Heartbeat recent' : 'Heartbeat unknown'} />
+          </div>
+          <p className="mt-3 text-[10px] leading-5 text-slate-500">
+            {privateTestBot?.processStatus === 'running'
+              ? 'A recent isolated-test heartbeat is available. This does not confirm that a Telegram channel accepted a post.'
+              : snapshot.isError
+                ? 'The Development command-center snapshot could not be checked. Bot and Telegram status are left unknown.'
+                : 'No fresh isolated-test heartbeat is available. Bot and Telegram status remain unknown.'}
+          </p>
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {[
+              ['Bot health', privateTestBot?.healthStatus],
+              ['Telegram reachability', privateTestBot?.telegramStatus],
+              ['Database', privateTestBot?.databaseStatus],
+              ['Polling', privateTestBot?.pollingStatus],
+              ['Workflow control', privateTestBot?.workflowStatus],
+              ['Channel delivery', 'unknown'],
+            ].map(([label, value]) => <div className="network-signal" key={label}>
+              <span>{label}</span>
+              <ConnectionStatus state={value as ConnectionState | undefined} />
+            </div>)}
+          </div>
+        </div>
+        <div className="p-5 md:px-7 md:py-6">
+          <div className="flex items-center gap-2 text-[12px] font-semibold text-slate-200"><Server size={14} className="text-amber-200" /> Production services</div>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/[.07] bg-white/[.02] px-4 py-3">
+            <div><strong className="block text-[11px] text-slate-300">Production bot</strong><span className="mt-1 block text-[10px] text-slate-500">Not connected to this Development monitor</span></div>
+            <ConnectionStatus state={productionBot?.processStatus ?? 'not_connected'} label="Not connected" />
+          </div>
+          <p className="mt-3 text-[10px] leading-5 text-slate-500">No Production bot, channel, VPS service, or message-delivery telemetry is read or controlled here. This page cannot restart services or publish posts.</p>
+        </div>
+      </div>
     </section>
-    <div className="mt-5 grid gap-4 md:grid-cols-2">
-      <div className="panel rounded-xl p-5"><div className="flex items-center gap-2 text-[12px] font-semibold text-slate-200"><Signal size={15} className="text-emerald-300" /> API health endpoint</div><div className="mt-3"><HealthQuery /></div><p className="mt-3 text-[10px] leading-5 text-slate-500">Live source · GET /api/healthz · refreshed every 15 seconds. Scope is limited to the API endpoint.</p></div>
-      <div className="panel rounded-xl p-5"><div className="flex items-center gap-2 text-[12px] font-semibold text-slate-200"><Bot size={15} className="text-amber-200" /> Bot and Telegram</div><div className="mono mt-3 inline-flex rounded-md border border-amber-200/15 bg-amber-100/[.04] px-2.5 py-1.5 text-[9px] tracking-[.12em] text-amber-200">NOT CONNECTED</div><p className="mt-3 text-[10px] leading-5 text-slate-500">No bot runtime or Telegram connection telemetry is available to this console.</p></div>
-    </div>
-    <div className="mt-5 max-w-xl"><DisabledAction>Connection controls are unavailable. No connect, restart, or Telegram actions are wired in this pass.</DisabledAction></div>
+    <p className="mt-4 flex items-start gap-2 text-[10px] leading-5 text-slate-500"><CircleHelp size={13} className="mt-0.5 shrink-0 text-cyan-200" /> A green heartbeat means the isolated test bot reported recently. It is not proof of channel access or successful delivery.</p>
   </main>;
 }
 

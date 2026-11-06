@@ -1,0 +1,32 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+
+:root,
+.dark {
+  --background: 220 27% 7%;
+  --foreground: 210 22% 91%;
+  --border: 215 18% 19%;
+  --card: 219 25% 10%;
+  --card-foreground: 210 22% 91%;
+  --sidebar: 222 29% 8%;
+  --sidebar-foreground: 210 18% 76%;
+  --primary: 152 75% 48%;
+  --primary-foreground: 220 27% 7%;
+  --secondary: 215 20% 14%;
+  --secondary-foreground: 210 22% 91%;
+  --muted: 215 20% 14%;
+  --muted-foreground: 213 12% 56%;
+  --accent: 190 82% 52%;
+  --accent-foreground: 220 27% 7%;
+  --app-font-sans: "Manrope", sans-serif;
+  --app-font-serif: "Space Grotesk", sans-serif;
+  --app-font-mono: "DM Mono", monospace;
+  color-scheme: dark;
+}
+
+.smh-ops-extract {
+  min-height: 100vh;
+  color: #d7e0e7;
+  background: #0b1017;
+  font-family: "Manrope", sans-serif;
+}

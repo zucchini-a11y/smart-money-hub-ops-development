@@ -24,6 +24,7 @@ import type {
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'wouter';
+import { publicSiteLinks } from '../public-site/config';
 import {
   ArrowRight,
   ArrowUpRight,
@@ -213,7 +214,18 @@ export function MemberDashboardExperience({
               <div className="mx-coach-greeting-topline"><span className="mx-card-kicker">IN-APP AI COACH</span><span className="mx-coach-study-label">STUDY MODE</span></div>
               <h1>Welcome, {session.displayName}.</h1>
               <p>I’m here to help you study trading concepts and review your decision process. I don’t send signals or place trades.</p>
-              <Link className="mx-button mx-button-gold" href="/member/coach" data-testid="button-chat-with-coach">Chat with AI Coach <ArrowRight size={14} /></Link>
+              <div className="mx-coach-greeting-actions">
+                <Link className="mx-button mx-button-gold" href="/member/coach" data-testid="button-chat-with-coach">Chat with AI Coach <ArrowRight size={14} /></Link>
+                <button
+                  className="mx-button mx-button-quiet mx-coach-telegram-button"
+                  type="button"
+                  onClick={() => window.open(publicSiteLinks.primaryCommunity, '_blank', 'noopener,noreferrer')}
+                  aria-label="Chat with the Smart Money Hub Coach on Telegram"
+                  data-testid="button-coach-telegram"
+                >
+                  <Send size={14} /> Chat with Coach on Telegram <ArrowUpRight size={13} />
+                </button>
+              </div>
               <div className="mx-welcome-status">
                 <span><ShieldCheck size={13} /> Verified member</span>
                 <span><Radio size={13} /> PRO Signals {session.proSignalsAccess ? 'authorized' : 'not assigned'}</span>
@@ -404,13 +416,38 @@ function isSafeSourceDestination(value: string) {
 function CalendarEventRow({ event }: { event: MemberCalendarEvent }) {
   const eventDate = new Date(`${event.eventDate}T00:00:00`);
   const dateLabel = Number.isNaN(eventDate.getTime()) ? event.eventDate : new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' }).format(eventDate);
+  const verifiedTime = event.eventAt && event.timeLabel && !/unverified|unavailable/i.test(event.timeLabel)
+    ? event.timeLabel
+    : null;
+  const reportedValues = [
+    { label: 'Previous', value: event.previous },
+    { label: 'Forecast', value: event.forecast },
+    { label: 'Actual', value: event.actual },
+  ].filter((item): item is { label: string; value: string } => Boolean(item.value?.trim()));
+  const impactLabel = event.impact === 'unavailable'
+    ? null
+    : `${event.impact.charAt(0).toUpperCase()}${event.impact.slice(1)} impact`;
+  const hasSource = Boolean(event.sourceName?.trim());
+  const hasSourceButton = isSafeSourceDestination(event.sourceUrl);
+
   return <article className="mx-calendar-row" data-testid={`calendar-event-${event.id}`}>
-    <div className="mx-event-date"><strong>{dateLabel}</strong><span><Clock3 size={12} /> {event.timeLabel || 'Time unavailable'}</span></div>
-    <div className="mx-event-main"><div className="mx-event-title-line"><h3>{event.title}</h3><span className={`mx-impact mx-impact-${event.impact}`}>{event.impact === 'unavailable' ? 'Impact unavailable' : `${event.impact} impact`}</span></div>
-      <div className="mx-event-meta"><span>{event.currency} · {event.impactBasis.replaceAll('_', ' ')}</span><span>{event.verificationStatus.replaceAll('_', ' ')}</span><span>{event.timezoneStatus.replaceAll('_', ' ')}</span></div>
+    <div className="mx-event-date">
+      <strong>{dateLabel}</strong>
+      {verifiedTime && <span><Clock3 size={12} /> {verifiedTime}</span>}
     </div>
-    <div className="mx-event-values"><span><small>PREVIOUS</small><strong>{event.previous ?? '—'}</strong></span><span><small>FORECAST</small><strong>{event.forecast ?? '—'}</strong></span><span><small>ACTUAL</small><strong>{event.actual ?? '—'}</strong></span></div>
-    <div className="mx-event-source"><small>Source · {event.sourceName || 'Unavailable'} · Retrieved {prettyStamp(event.lastRetrievedAt)}</small><button className="mx-button mx-button-quiet" type="button" onClick={() => { if (isSafeSourceDestination(event.sourceUrl)) window.open(event.sourceUrl, '_blank', 'noopener,noreferrer'); }} disabled={!isSafeSourceDestination(event.sourceUrl)} data-testid={`button-source-${event.id}`}>View source <ExternalLink size={13} /></button></div>
+    <div className="mx-event-main">
+      <div className="mx-event-title-line">
+        <h3>{event.title}</h3>
+        {impactLabel && <span className={`mx-impact mx-impact-${event.impact}`}>{impactLabel}</span>}
+      </div>
+    </div>
+    {reportedValues.length > 0 && <div className="mx-event-values" aria-label="Reported event values">
+      {reportedValues.map((item) => <span key={item.label}><small>{item.label}</small><strong>{item.value}</strong></span>)}
+    </div>}
+    {(hasSource || hasSourceButton) && <div className="mx-event-source">
+      {hasSource && <small><strong>{event.sourceName}</strong></small>}
+      {hasSourceButton && <button className="mx-button mx-button-quiet" type="button" onClick={() => { if (isSafeSourceDestination(event.sourceUrl)) window.open(event.sourceUrl, '_blank', 'noopener,noreferrer'); }} data-testid={`button-source-${event.id}`}>Official source <ExternalLink size={13} /></button>}
+    </div>}
   </article>;
 }
 
@@ -423,31 +460,25 @@ export function MemberCalendarExperience() {
     currency: 'USD' as const,
   }), [filters.from, filters.to, filters.impact]);
   const calendar = useGetMemberCalendar(params, { query: { queryKey: getGetMemberCalendarQueryKey(params) } });
-  return <FeatureShell active="/member/calendar" eyebrow="STUDY / USD EVENTS" title="Economic calendar" intro="A source-aware view of scheduled USD releases relevant to USD and gold study. Timing and reported values are shown as supplied; this is not a trade signal.">
-    <section className="mx-feature-panel">
+  return <FeatureShell active="/member/calendar" eyebrow="USD EVENTS" title="Economic calendar" intro="Upcoming U.S. releases for USD. Dates, verified release times, impact, and reported values.">
+    <section className="mx-feature-panel mx-calendar-panel" aria-label="USD economic calendar">
       <div className="mx-panel-toolbar">
-        <div><span className="mx-card-kicker">OFFICIAL USD CALENDAR</span><p>Source status and retrieval time stay visible so you can judge context.</p></div>
+        <div><span className="mx-card-kicker">USD RELEASES</span><p>Check the event, timing, impact, and reported values.</p></div>
         <button className="mx-button mx-button-quiet" type="button" onClick={() => void calendar.refetch()} disabled={calendar.isFetching} data-testid="button-refresh-calendar"><RefreshCw size={14} className={calendar.isFetching ? 'mx-spin' : ''} /> Refresh</button>
       </div>
       <div className="mx-filter-row">
         <label className="mx-filter-field">From<input type="date" value={filters.from} onChange={(event) => setFilters((old) => ({ ...old, from: event.currentTarget.value }))} data-testid="input-calendar-from" /></label>
         <label className="mx-filter-field">Through<input type="date" value={filters.to} onChange={(event) => setFilters((old) => ({ ...old, to: event.currentTarget.value }))} data-testid="input-calendar-to" /></label>
-        <label className="mx-filter-field">Impact<select value={filters.impact} onChange={(event) => setFilters((old) => ({ ...old, impact: event.currentTarget.value as GetMemberCalendarParams['impact'] | '' }))} data-testid="select-calendar-impact"><option value="">All impacts</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="unavailable">Unavailable</option></select></label>
-        <span className="mx-calendar-clock"><Clock3 size={14} /> Times shown in source timezone where available</span>
+        <label className="mx-filter-field">Impact<select value={filters.impact} onChange={(event) => setFilters((old) => ({ ...old, impact: event.currentTarget.value as GetMemberCalendarParams['impact'] | '' }))} data-testid="select-calendar-impact"><option value="">All impacts</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label>
       </div>
       {calendar.isLoading ? <div className="mx-skeleton-stack" aria-label="Loading calendar">{[0, 1, 2].map((item) => <div className="mx-skeleton-card" key={item}><i /><span /><span /></div>)}</div>
-        : calendar.isError ? <div className="mx-empty-panel" role="alert"><CircleHelp size={20} /><h2>Calendar unavailable</h2><p>We could not retrieve the official event feed. No event values are being substituted.</p><button className="mx-button mx-button-quiet" type="button" onClick={() => void calendar.refetch()}>Try again</button></div>
+        : calendar.isError ? <div className="mx-empty-panel" role="alert"><CircleHelp size={20} /><h2>Calendar didn’t load</h2><p>Please try again in a moment.</p><button className="mx-button mx-button-quiet" type="button" onClick={() => void calendar.refetch()}>Try again</button></div>
           : <>
-            <div className={`mx-source-status mx-source-${calendar.data?.stale ? 'stale' : 'current'}`}>
-              <span><i /> {calendar.data?.stale ? 'Feed may be stale' : 'Feed status'}</span>
-              <span>{calendar.data?.refreshedAt ? `Refreshed ${prettyStamp(calendar.data.refreshedAt)}` : 'Refresh time unavailable'}</span>
-            </div>
-            {calendar.data?.sources?.length ? <div className="mx-source-list">{calendar.data.sources.map((source) => <div className="mx-source-item" key={source.id}><strong>{source.sourceName}</strong><span className={`mx-source-badge mx-source-badge-${source.status}`}>{source.status.replaceAll('_', ' ')}</span><small>{source.message}{source.checkedAt ? ` · Checked ${prettyStamp(source.checkedAt)}` : ''}</small></div>)}</div> : <p className="mx-inline-note">Source status has not been provided.</p>}
             {calendar.data?.events?.length ? <div className="mx-calendar-list">{calendar.data.events.map((event) => <CalendarEventRow key={event.id} event={event} />)}</div>
-              : <div className="mx-empty-panel"><CalendarDays size={21} /><h2>No events in this view</h2><p>The feed returned no matching events for the selected dates.</p></div>}
+              : <div className="mx-empty-panel"><CalendarDays size={21} /><h2>No events in this date range</h2><p>Try changing the dates or impact filter.</p></div>}
           </>}
     </section>
-    <p className="mx-feature-footnote">XAUUSD study context only. Market schedules may change; confirm details with the named source before relying on them.</p>
+    <p className="mx-feature-footnote">For learning only—not financial advice or a trade signal.</p>
   </FeatureShell>;
 }
 
@@ -628,45 +659,68 @@ export function MemberCoachExperience() {
     }
   };
   const clear = () => { setHistory([]); setTopic(''); setResponseDisclaimer(''); setError(''); setMessage(''); setTypingIndex(null); setTypedLength(0); stickToBottomRef.current = true; };
-  return <FeatureShell active="/member/coach" eyebrow="STUDY / GUIDED REFLECTION" title="AI Coach" intro="A learning conversation for concepts, context, and disciplined decision-making—not a source of trade instructions.">
-    <div className="mx-coach-layout">
-      <section className="mx-feature-panel mx-chat-panel" aria-label="Educational coach conversation">
-        <div className="mx-chat-topline"><div><span className="mx-card-kicker">CONVERSATION</span><p>{topic ? `Current topic · ${topic}` : 'Ask about a trading concept or your decision process.'}</p></div><button className="mx-button mx-button-quiet" type="button" onClick={clear} disabled={!history.length || assistantBusy} data-testid="button-clear-coach">Clear chat</button></div>
-        <div
-          ref={threadRef}
-          className="mx-chat-thread"
-          aria-live="off"
-          onScroll={(event) => {
-            const node = event.currentTarget;
-            stickToBottomRef.current = node.scrollHeight - node.scrollTop - node.clientHeight < 48;
-          }}
-        >
-          {!history.length && <div className="mx-chat-welcome"><CoachBotAnimation compact /><span className="mx-card-kicker">IN-APP AI COACH</span><h2>Bring a question, not a trade call.</h2><p>Ask about a trading concept or your decision process. The Coach teaches; the separate PRO Signals bot delivers authorized signals.</p></div>}
-          {history.map((line, index) => {
-            const isTyping = typingIndex === index;
-            const visibleText = isTyping ? line.content.slice(0, typedLength) : line.content;
-            return <article className={`mx-chat-line mx-chat-${line.role}`} key={`${index}-${line.role}`} data-testid={`coach-message-${index}`}>
-              <span className="mx-chat-role">{line.role === 'user' ? 'YOU' : 'COACH'}</span>
-              <p>{visibleText}{isTyping && <span className="mx-chat-caret" aria-hidden="true" />}</p>
-            </article>;
-          })}
-          {assistantBusy && <div className="mx-chat-pending" role="status" aria-label="Coach is typing"><i /><i /><i /><span>Coach is typing…</span></div>}
+  return <FeatureShell active="/member/coach" eyebrow="MEMBER CHAT" title="AI Coach" intro="Ask about a trading concept or reflect on your decision process.">
+    <section className="mx-chat-workspace" aria-label="Educational Coach conversation" data-testid="member-coach-chat">
+      <header className="mx-conversation-head">
+        <div className="mx-conversation-title">
+          <CoachBotAnimation compact />
+          <div><strong>VAYDA Coach</strong><small>Learning mode · Temporary chat</small></div>
         </div>
-        {responseDisclaimer && <p className="mx-response-disclaimer" role="note">{responseDisclaimer}</p>}
-        {error && <div className="mx-inline-error" role="alert">{error}</div>}
-        <form className="mx-chat-form" onSubmit={(event) => void send(event)}>
-          <label className="mx-field" htmlFor="coach-message">Your question</label>
-          <div className="mx-chat-input-wrap"><textarea id="coach-message" value={message} onChange={(event) => setMessage(event.currentTarget.value)} rows={3} maxLength={1200} placeholder="Ask a focused learning question…" required disabled={assistantBusy} data-testid="input-coach-message" /><button className="mx-button mx-button-gold" type="submit" disabled={assistantBusy || !message.trim()} data-testid="button-send-coach">{coach.isPending ? 'Thinking…' : typingIndex !== null ? 'Typing…' : 'Send'} <Send size={14} /></button></div>
-          <small>{message.length}/1200 · Do not include personal account details.</small>
-        </form>
-      </section>
-      <aside className="mx-coach-aside">
-        <section className="mx-coach-notice"><span className="mx-card-kicker">IMPORTANT CONTEXT</span><h2>Education, not advice.</h2><p>The Coach is not financial advice and cannot verify live prices, market conditions, or entry confirmations. It does not decide whether you should trade.</p></section>
-        <section className="mx-coach-notice mx-coach-privacy"><span className="mx-card-kicker">PRIVACY NOTE</span><h2>Keep details general.</h2><p>Do not send personal account details. Free-tier messages may be processed by Google. This conversation is temporary and is not saved by this interface.</p></section>
-        <div className="mx-coach-disclaimer"><ShieldCheck size={16} /><span>Use your own judgment, verify information independently, and keep risk controls in your own hands.</span></div>
-      </aside>
+        <button className="mx-chat-clear" type="button" onClick={clear} disabled={!history.length || assistantBusy} aria-label="Clear chat" title="Clear chat" data-testid="button-clear-coach">
+          <Trash2 size={15} />
+        </button>
+      </header>
+      <div className="mx-chat-thread"
+        ref={threadRef}
+        aria-live="off"
+        onScroll={(event) => {
+          const node = event.currentTarget;
+          stickToBottomRef.current = node.scrollHeight - node.scrollTop - node.clientHeight < 48;
+        }}
+      >
+        {!history.length && <div className="mx-chat-welcome">
+          <span className="mx-chat-welcome-avatar"><CoachBotAnimation compact /></span>
+          <div className="mx-chat-welcome-content">
+            <div className="mx-chat-message-meta">VAYDA Coach</div>
+            <div className="mx-chat-bubble"><p>Welcome. Ask me about a trading concept or a decision you’re reviewing. I can help you think it through—not tell you when to trade.</p></div>
+          </div>
+        </div>}
+        {history.map((line, index) => {
+          const isTyping = typingIndex === index;
+          const visibleText = isTyping ? line.content.slice(0, typedLength) : line.content;
+          return <article className={`mx-chat-line mx-chat-${line.role}`} key={`${index}-${line.role}`} data-testid={`coach-message-${index}`}>
+            <div className="mx-chat-message-meta">
+              {line.role === 'assistant' && <span className="mx-chat-message-avatar"><CoachBotAnimation compact /></span>}
+              <span>{line.role === 'user' ? 'You' : 'VAYDA Coach'}</span>
+            </div>
+            <div className="mx-chat-bubble"><p>{visibleText}{isTyping && <span className="mx-chat-caret" aria-hidden="true" />}</p></div>
+          </article>;
+        })}
+        {assistantBusy && <div className="mx-chat-pending" role="status" aria-label="Coach is typing">
+          <span className="mx-chat-message-avatar"><CoachBotAnimation compact /></span>
+          <div className="mx-chat-pending-bubble"><span>VAYDA Coach is typing</span><i /><i /><i /></div>
+        </div>}
+      </div>
+      {responseDisclaimer && <p className="mx-response-disclaimer" role="note">{responseDisclaimer}</p>}
+      {error && <div className="mx-inline-error" role="alert">{error}</div>}
+      <form className="mx-chat-form" onSubmit={(event) => void send(event)}>
+        <label className="mx-visually-hidden" htmlFor="coach-message">Message the AI Coach</label>
+        <div className="mx-chat-input-wrap">
+          <textarea id="coach-message" value={message} onChange={(event) => setMessage(event.currentTarget.value)} rows={2} maxLength={1200} placeholder="Message the Coach…" required disabled={assistantBusy} data-testid="input-coach-message" />
+          <button className="mx-chat-send" type="submit" disabled={assistantBusy || !message.trim()} aria-label="Send message" title={coach.isPending ? 'Waiting for the Coach' : 'Send message'} data-testid="button-send-coach">
+            <Send size={16} />
+          </button>
+        </div>
+        <div className="mx-chat-input-meta"><small>{message.length}/1200</small><small>Keep account details private</small></div>
+      </form>
+    </section>
+    <div className="mx-chat-assurance">
+      <span><ShieldCheck size={13} /> Educational support only · Not financial advice</span>
+      <details className="mx-chat-privacy">
+        <summary><LockKeyhole size={13} /> Privacy</summary>
+        <p>This conversation is temporary and is not saved by this interface. Free-tier messages may be processed by Google. Avoid personal account details.</p>
+      </details>
     </div>
-    {history.length > 0 && <p className="mx-feature-footnote">Chat history exists only in this page session and is sent as bounded context with your next message.</p>}
   </FeatureShell>;
 }
 

@@ -4,6 +4,7 @@
 - [Smart Money Hub Coach rules](smart-money-hub-coach-rules.md) — treat H1/M5, 2% risk, 1:3 planned R:R, 3% daily loss, and 1:1 break-even as preferences, not proof of validity.
 - [Coach chat reactions](coach-chat-reactions.md) — use restrained emoji reactions for reported learning progress and disciplined process in private chats and the Education group.
 - [Private Coach replies](coach-tagged-replies.md) — reply to incoming private Coach messages without displaying the sender's name or username.
+- [Member Telegram buttons](member-telegram-buttons.md) — show Telegram destinations as buttons and keep Coach and PRO bot actions separate.
 - [Verify Telegram command delivery](telegram-command-verification.md) — test new commands through the update handler before reporting them active.
 - [Telegram polling cleanup](telegram-polling-cleanup.md) — check for a leftover poller before treating a Telegram getUpdates conflict as a credential problem.
 - [Market Analysis editorial style](weekend-post-originality.md) — match channel context, keep posts fresh, and remove unrelated promotion claims before rerunning every validator.

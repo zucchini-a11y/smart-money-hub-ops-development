@@ -133,12 +133,18 @@ export default function SupportPage() {
   }
 
   if (!signedIn) {
-    return <div className="sp-page sp-auth-page"><main className="sp-login-card">
-      <div className="sp-eyebrow">SHARED ACCOUNT ACCESS</div><h2>Sign in to continue</h2>
-      <p className="sp-login-intro">Support tools use the same staff account as the rest of the portal.</p>
-      {session.isError && <div className="sp-error" role="alert">Support access is unavailable. Try again from the shared sign-in page.</div>}
-      <Link className="sp-primary-button" href="/login" data-testid="link-support-shared-login">Go to shared sign-in <ArrowUpRight size={15}/></Link>
-    </main></div>;
+    return <div className="sp-page sp-auth-page">
+      <div className="sp-topbar">
+        <div className="sp-brand"><div className="sp-brand-mark"><ShieldCheck size={19} /></div><div><div className="sp-brand-name">VAYDA</div><div className="sp-brand-sub">SMART MONEY HUB · SUPPORT</div></div></div>
+        <Link className="sp-operations-link" href="/operations" data-testid="link-support-return-operations"><ArrowUpRight size={14} /> Back to Operations Center</Link>
+      </div>
+      <main className="sp-login-card">
+        <div className="sp-eyebrow">SHARED ACCOUNT ACCESS</div><h2>Sign in to continue</h2>
+        <p className="sp-login-intro">Support tools use the same staff account as the rest of the portal.</p>
+        {session.isError && <div className="sp-error" role="alert">Support access is unavailable. Try again from the shared sign-in page.</div>}
+        <Link className="sp-primary-button" href="/login" data-testid="link-support-shared-login">Go to shared sign-in <ArrowUpRight size={15}/></Link>
+      </main>
+    </div>;
   }
 
   const selected = detail.data?.case;

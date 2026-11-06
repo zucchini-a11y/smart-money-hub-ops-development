@@ -457,3 +457,52 @@ button:focus-visible, a:focus-visible { outline: 2px solid #52d6a0; outline-offs
 .workspace-card-selected { border-color: rgba(101,224,170,.32); background: rgba(101,224,170,.045); }
 .workspace-card:focus-visible { outline: 2px solid #52d6a0; outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; } }
+
+.network-panel { background: linear-gradient(145deg, rgba(21, 29, 40, .97), rgba(12, 18, 27, .98)); }
+.network-scope-tag,
+.network-readonly-tag { display: inline-flex; align-items: center; gap: 5px; border: 1px solid rgba(86, 214, 160, .18); border-radius: 5px; background: rgba(86, 214, 160, .045); padding: 4px 7px; color: #9de8c5; font: 8px var(--app-font-mono); letter-spacing: .11em; }
+.network-readonly-tag { border-color: rgba(83, 200, 213, .17); background: rgba(83, 200, 213, .04); color: #8fd8e0; }
+.network-map-stage { position: relative; min-height: 360px; overflow: hidden; background: radial-gradient(ellipse at 50% 48%, rgba(44, 102, 89, .1), transparent 58%), #0c131b; }
+.network-map-web { position: absolute; inset: 0; opacity: .6; background-image: radial-gradient(circle at 50% 50%, transparent 0 86px, rgba(105, 153, 166, .06) 87px, transparent 88px), radial-gradient(circle at 50% 50%, transparent 0 132px, rgba(105, 153, 166, .045) 133px, transparent 134px), repeating-radial-gradient(circle at 50% 50%, transparent 0 27px, rgba(105, 153, 166, .035) 28px, transparent 29px), linear-gradient(rgba(130, 163, 177, .025) 1px, transparent 1px), linear-gradient(90deg, rgba(130, 163, 177, .025) 1px, transparent 1px); background-size: auto, auto, auto, 32px 32px, 32px 32px; mask-image: linear-gradient(to bottom, black, transparent 100%); }
+.network-map-lines { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.network-link { fill: none; stroke: rgba(132, 154, 170, .2); stroke-width: 1.4; stroke-dasharray: 4 7; }
+.network-link-observed { stroke: rgba(86, 214, 160, .55); }
+.network-map-nodes { position: relative; z-index: 2; display: grid; min-height: 360px; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: center; gap: 14px; padding: 28px 20px 52px; }
+.network-node { display: flex; min-width: 0; max-width: 320px; min-height: 94px; align-items: center; gap: 12px; justify-self: center; border: 1px solid rgba(150, 173, 192, .16); border-radius: 13px; background: linear-gradient(145deg, rgba(20, 30, 41, .98), rgba(14, 21, 30, .98)); padding: 14px; box-shadow: 0 16px 42px rgba(0, 0, 0, .24), inset 0 1px rgba(255, 255, 255, .03); }
+.network-node-dashboard { border-color: rgba(83, 200, 213, .22); }
+.network-node-api { border-color: rgba(86, 214, 160, .28); box-shadow: 0 0 30px rgba(86, 214, 160, .055), 0 16px 42px rgba(0, 0, 0, .24), inset 0 1px rgba(255, 255, 255, .03); }
+.network-node-heartbeat { border-color: rgba(231, 189, 112, .2); }
+.network-node-icon { display: grid; width: 36px; height: 36px; flex: 0 0 36px; place-items: center; border: 1px solid rgba(83, 200, 213, .23); border-radius: 10px; background: rgba(83, 200, 213, .06); color: #8ee2e6; }
+.network-node-icon-api { border-color: rgba(86, 214, 160, .22); background: rgba(86, 214, 160, .06); color: #8be4b9; }
+.network-node-icon-bot { border-color: rgba(231, 189, 112, .2); background: rgba(231, 189, 112, .05); color: #ebc981; }
+.network-node-copy { min-width: 0; flex: 1; }
+.network-node-kicker { display: block; overflow: hidden; color: #728391; font: 7px var(--app-font-mono); letter-spacing: .11em; text-overflow: ellipsis; white-space: nowrap; }
+.network-node-copy strong { display: block; margin-top: 5px; color: #dbe4e9; font-size: 11px; font-weight: 650; line-height: 1.35; }
+.network-node-copy small { display: block; margin-top: 4px; overflow: hidden; color: #758390; font-size: 8px; line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
+.network-status-pill { max-width: 125px; }
+.connection-status { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 6px; border: 1px solid rgba(150, 173, 192, .15); border-radius: 999px; background: rgba(255, 255, 255, .025); padding: 4px 7px; color: #9aa8b2; font: 8px var(--app-font-mono); white-space: nowrap; }
+.connection-status-dot { width: 5px; height: 5px; flex: 0 0 5px; border-radius: 50%; background: #8794a1; }
+.connection-tone-good { border-color: rgba(86, 214, 160, .2); color: #9de8c5; }
+.connection-tone-good .connection-status-dot { background: #56d6a0; }
+.connection-tone-warning { border-color: rgba(231, 189, 112, .2); color: #ebc981; }
+.connection-tone-warning .connection-status-dot { background: #e7bd70; }
+.connection-tone-unknown { border-color: rgba(150, 173, 192, .15); color: #9aa8b2; }
+.connection-tone-unknown .connection-status-dot { background: #82909b; }
+.network-packet { opacity: 0; fill: #8be4b9; filter: drop-shadow(0 0 5px rgba(86, 214, 160, .8)); }
+.network-packet-cyan { fill: #8ee2e6; filter: drop-shadow(0 0 5px rgba(83, 200, 213, .8)); }
+.network-packet-active { opacity: 1; }
+.network-map-captions { position: absolute; right: 0; bottom: 14px; left: 0; z-index: 2; display: flex; justify-content: space-evenly; color: #647583; font: 7px var(--app-font-mono); letter-spacing: .12em; pointer-events: none; }
+.network-signal { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 7px; border: 1px solid rgba(150, 173, 192, .1); border-radius: 8px; background: rgba(255, 255, 255, .018); padding: 8px; }
+.network-signal > span:first-child { color: #82909b; font-size: 9px; line-height: 1.35; }
+@media (max-width: 767px) {
+  .network-map-stage { min-height: auto; }
+  .network-map-stage::after { position: absolute; top: 38px; bottom: 38px; left: 50%; width: 1px; background: linear-gradient(to bottom, transparent, rgba(86, 214, 160, .28) 15%, rgba(83, 200, 213, .25) 78%, transparent); content: ""; }
+  .network-map-lines, .network-map-captions { display: none; }
+  .network-map-nodes { min-height: auto; grid-template-columns: minmax(0, 1fr); gap: 14px; padding: 24px 14px; }
+  .network-node { width: min(100%, 440px); max-width: none; min-height: 84px; }
+  .network-signal { align-items: flex-start; flex-direction: column; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .network-packet { display: none; }
+  .network-link { stroke-dasharray: none; }
+}
