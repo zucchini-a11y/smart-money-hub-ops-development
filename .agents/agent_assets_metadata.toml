@@ -294,3 +294,17 @@ mtime_ms = 1793980798571
 storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/b92137b4-8452-403e-b8bb-1c7d0e41b276/7e21d524-979e-4ad8-a5ef-ed803dab58aa"
 storage_version_token = "1793980805844318"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "8OFTLEouwhhL2Fssr3CNg"
+uri = "file://generated-artifacts/vayda-landing-development-inspection-20261106.zip"
+type = "unspecified"
+title = "VAYDA Development landing inspection ZIP"
+description = "Inspection-only static landing assets from the current Development build. Includes PRO SIGNALS and the enabled support widget frontend, but not its API/database; do not install on the live domain until backend support is ready and tested."
+logical_id = "cda34973-e21a-4279-b0ab-ed8adfcf8dd6"
+content_hash = "sha256:22dc2fa16a0ef7c24bf7178fdf708477a09dc431f4bd15dbab74e58a8a907533"
+size = 319290
+mtime_ms = 1793982009558
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/cda34973-e21a-4279-b0ab-ed8adfcf8dd6/871584c4-232a-43b8-86ef-889c510609b8"
+storage_version_token = "1793982018853033"
+content_type = "application/octet-stream"
