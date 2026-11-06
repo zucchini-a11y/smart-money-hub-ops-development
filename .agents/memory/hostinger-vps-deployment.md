@@ -17,6 +17,14 @@ The owner chose the Hostinger VPS for the Operations Center at `smartmoneyhub.te
 
 **How to apply:** Serve the Operations Center from the VPS, keep HTTPS renewal enabled, and change only the apex website A record during future migrations. Do not imply the Operations Center has live bot telemetry unless that integration is built and verified.
 
+### Replit changes intended for the VPS
+
+The owner wants Replit changes that are applicable to the live product to be carried through to the VPS, rather than left only in Development. This is an end goal, not standing permission to deploy every change directly: test and package changes through a controlled release, keep Development-only settings and data isolated, and obtain explicit approval for each Production cutover.
+
+**Why:** the owner expected changes made in Replit to appear on the live VPS and asked for that outcome.
+
+**How to apply:** state clearly whether a change is workspace-only or deployed. Use the authorized VPS release process when available; never claim a VPS update without evidence, and do not copy Development secrets, auth settings, or data into Production.
+
 ### Public landing page isolation
 
 Deploy the public landing page as a separate static release and route only `/` and its dedicated asset path to it. Keep existing `/login`, `/operations`, and `/api` handling in place; do not replace the shared Operations Center web root.
