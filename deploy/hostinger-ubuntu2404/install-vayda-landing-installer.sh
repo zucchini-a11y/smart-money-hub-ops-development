@@ -4,6 +4,7 @@
 set -Eeuo pipefail
 
 PAYLOAD_MARKER="__SMH_VAYDA_LANDING_PAYLOAD__"
+INSTALLER_VERSION="landing-v2-anonymous-session"
 SCRIPT_PATH="$(readlink -f "$0")"
 PAYLOAD_LINE="$(awk -v marker="$PAYLOAD_MARKER" '$0 == marker { print NR; exit }' "$SCRIPT_PATH")"
 
@@ -11,6 +12,7 @@ if [[ -z "$PAYLOAD_LINE" ]]; then
   echo "ERROR: Embedded landing package is missing. Use the generated installer file." >&2
   exit 1
 fi
+echo "Installer version: ${INSTALLER_VERSION}"
 
 WORK_DIR="$(mktemp -d /tmp/smh-vayda-landing.XXXXXX)"
 NGINX_TMP=""
