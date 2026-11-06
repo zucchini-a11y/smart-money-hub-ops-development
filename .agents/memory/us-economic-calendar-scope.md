@@ -40,3 +40,9 @@ As of 2026-10-25, direct requests in this Replit environment to both the officia
 **Why:** the environment blocked both official endpoints, so the bot must not represent parsed fixture support as current BLS coverage.
 
 **How to apply:** keep BLS marked unavailable until an actual official-source fetch succeeds; do not bypass the block with proxies or alternate unapproved sources.
+
+For the member calendar, keep editorial article headlines unconnected unless the user approves a separate verified headline source. The Forex Factory weekly CSV and XML endpoints supplied on 2026-11-06 contain scheduled economic events, not article stories.
+
+**Why:** the user asked to leave article headlines unconnected, and the supplied feeds contain event schedules rather than article content.
+
+**How to apply:** keep scheduled releases and editorial headlines as separate data types; never present a release event as a news article.

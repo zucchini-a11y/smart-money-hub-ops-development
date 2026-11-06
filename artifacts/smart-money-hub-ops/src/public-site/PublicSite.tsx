@@ -202,27 +202,6 @@ function usePublicPageMotion(path: string) {
                 scrollTrigger: { trigger: statementTrigger, start: 'top 76%', end: 'bottom 52%', scrub: 0.7 },
               });
             }
-            const media = engine.matchMedia();
-            media.add('(min-width: 761px)', () => {
-              const stage = root.querySelector<HTMLElement>('.vs-approach-stage');
-              const steps = root.querySelectorAll<HTMLElement>('.vs-learning-step');
-              if (!stage || !steps.length) return;
-              const timeline = engine.timeline({
-                scrollTrigger: {
-                  trigger: stage,
-                  start: 'top top+=78',
-                  end: `+=${steps.length * 72}%`,
-                  pin: true,
-                  scrub: 0.7,
-                  anticipatePin: 1,
-                },
-              });
-              steps.forEach((step: HTMLElement, index: number) => {
-                timeline.fromTo(step, { opacity: 0.35, y: 12 }, { opacity: 1, y: 0, duration: 0.7 }, index);
-              });
-              return () => timeline.scrollTrigger?.kill();
-            });
-            return () => media.revert();
           }, root);
         } catch {
           gsapContext?.revert();
@@ -326,15 +305,13 @@ function Home() {
       <section className="vs-approach vs-section" id="approach">
         <div className="vs-shell">
           <div className="vs-section-heading" data-reveal><div><div className="vs-eyebrow">01 / APPROACH</div><h2>Read the conditions.<br />Then make a decision.</h2></div><p>There is no shortcut around uncertainty. A useful framework helps you see what is happening, define what matters, and choose whether to act.</p></div>
-          <div className="vs-approach-stage">
-            <div className="vs-learning-steps">
-              <article className="vs-learning-step"><span className="vs-index">01 / STRUCTURE</span><h3>Start with structure</h3><p>Place price in context. Notice the shape of the move before deciding what it might mean.</p></article>
-              <article className="vs-learning-step"><span className="vs-index">02 / LIQUIDITY</span><h3>Let liquidity inform the picture</h3><p>Study where attention gathers and what price does around those areas. A level is context, not a promise.</p></article>
-              <article className="vs-learning-step"><span className="vs-index">03 / RISK</span><h3>Put risk before entry</h3><p>Consider exposure and sizing before acting. Require confirmation, define what you are willing to risk, and stay willing to stand aside.</p></article>
-            </div>
-            <div className="vs-approach-visual"><XauusdTradeAnimation /></div>
-          </div>
         </div>
+        <div className="vs-learning-steps vs-shell">
+          <article className="vs-learning-step" data-reveal><span className="vs-index">01 / STRUCTURE</span><h3>Start with structure</h3><p>Place price in context. Notice the shape of the move before deciding what it might mean.</p></article>
+          <article className="vs-learning-step" data-reveal><span className="vs-index">02 / LIQUIDITY</span><h3>Let liquidity inform the picture</h3><p>Study where attention gathers and what price does around those areas. A level is context, not a promise.</p></article>
+          <article className="vs-learning-step" data-reveal><span className="vs-index">03 / RISK</span><h3>Put risk before entry</h3><p>Consider exposure and sizing before acting. Require confirmation, define what you are willing to risk, and stay willing to stand aside.</p></article>
+        </div>
+        <XauusdTradeAnimation />
       </section>
 
       <section className="vs-statement" data-reveal>
