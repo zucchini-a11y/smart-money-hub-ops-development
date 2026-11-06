@@ -192,6 +192,11 @@ function LoadingRows() {
   return <div className="loading-list" aria-label="Loading cases" data-testid="state-loading">{[0, 1, 2, 3].map((item) => <div className="loading-row" key={item}><div className="skeleton" /><div className="skeleton" /><div className="skeleton" /></div>)}</div>;
 }
 
+function isConnectionFailure(failure: unknown): boolean {
+  return failure instanceof TypeError
+    || (failure instanceof Error && /load failed|failed to fetch|network error|network request failed/i.test(failure.message));
+}
+
 function Login() {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -274,6 +279,7 @@ function Login() {
     setError('');
     setNotice('');
     setBusy(true);
+    let staffSignInUnavailable = false;
     try {
       if (isSignedIn) {
         await clerk.signOut();
@@ -288,7 +294,13 @@ function Login() {
         return;
       } catch (staffFailure) {
         const status = (staffFailure as { status?: number })?.status;
-        if (status !== 400 && status !== 401) throw staffFailure;
+        if (status !== 400 && status !== 401) {
+          if (isConnectionFailure(staffFailure) || (typeof status === 'number' && status >= 500)) {
+            staffSignInUnavailable = true;
+          } else {
+            throw staffFailure;
+          }
+        }
       }
 
       try {
@@ -297,30 +309,40 @@ function Login() {
         // No existing staff session is expected for member sign-in.
       }
       if (!clerkLoaded) throw new Error('Member sign-in is still loading. Try again in a moment.');
-      const attempt = await signIn.password({ identifier: identifier.trim(), password });
+      const attempt = await signIn.password({ identifier: identifier.trim(), password }).catch((memberFailure) => {
+        if (isConnectionFailure(memberFailure)) {
+          throw new Error('We could not connect to sign-in. Check your connection and try again.');
+        }
+        throw memberFailure;
+      });
       if (attempt.error) {
-        throw new Error('We could not sign you in. Members must use the email they registered with; staff may use their email or username. If you are unsure of the member password, use “Forgot your member password?”');
+        if (staffSignInUnavailable) {
+          throw new Error('Sign-in is temporarily unavailable. Please try again shortly.');
+        }
+        throw new Error('The email or password is incorrect. Use the email connected to your account, or choose “Forgot password?”');
       }
       if (signIn.status === 'needs_first_factor') {
         if (signIn.supportedFirstFactors.some((factor) => factor.strategy === 'email_code')) {
           await sendMemberSignInCode();
           return;
         }
-        throw new Error('This account needs another verification step before sign-in can continue. Check the registered email or contact the owner.');
+        throw new Error('This account needs another verification step. Check your email or contact support.');
       }
       if (signIn.status === 'needs_second_factor') {
         if (signIn.supportedSecondFactors.some((factor) => factor.strategy === 'email_code')) {
           await sendMemberSignInCode(true);
           return;
         }
-        throw new Error('This account requires an additional security check that is not available in this sign-in flow. Contact the owner.');
+        throw new Error('This account requires an additional security check. Contact support for help.');
       }
       if (signIn.status !== 'complete') {
-        throw new Error('This account needs another verification step. Use the registered member email and try again.');
+        throw new Error('This account needs another verification step. Check your account email and try again.');
       }
       await completeMemberAccess();
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : 'Sign-in failed. Check your details and try again.');
+      setError(isConnectionFailure(failure)
+        ? 'We could not connect to sign-in. Check your connection and try again.'
+        : failure instanceof Error ? failure.message : 'Sign-in failed. Check your details and try again.');
     } finally {
       setBusy(false);
     }
@@ -368,7 +390,7 @@ function Login() {
     setError('');
     setNotice('');
     if (!identifier.trim()) {
-      setError('Enter your member email or username first.');
+      setError('Enter your account email or username first.');
       return;
     }
     if (!clerkLoaded) {
@@ -382,9 +404,9 @@ function Login() {
       const sent = await signIn.resetPasswordEmailCode.sendCode();
       if (sent.error) throw sent.error;
       setRecoveryStep('code');
-      setNotice('If this is a member account, a recovery code has been sent. Staff password resets must be handled by the owner.');
+      setNotice('If password recovery is available for this account, a code has been sent to its registered email.');
     } catch {
-      setNotice('If this is a verified member account, a recovery code will be sent. Staff password resets must be handled by the owner.');
+      setNotice('If password recovery is available for this account, a code will be sent to its registered email.');
       setRecoveryStep('code');
     } finally {
       setBusy(false);
@@ -430,11 +452,10 @@ function Login() {
   return <main className="login-screen">
     <section className="login-aside">
       <div className="login-brand"><Brand /></div>
-      <div className="login-copy"><div className="eyebrow" style={{ color: '#d5b56f' }}>VAYDA ACCOUNT ACCESS</div><h1>One sign-in.<br />The right workspace.</h1><p>Sign in with your registered account. Your permissions determine which dashboard opens.</p></div>
-      <div className="login-foot">MEMBERS · LEARNERS · AUTHORIZED STAFF</div>
+      <div className="login-copy"><div className="eyebrow" style={{ color: '#d5b56f' }}>SMART MONEY HUB</div><h1>Welcome back.</h1><p>Sign in to continue to your account.</p></div>
     </section>
     <section className="login-panel"><div className="login-form">
-      <div className="eyebrow">WELCOME BACK</div><h2>Sign in to continue</h2><p>Members use their registered email. Staff may use their email or username.</p>
+      <div className="eyebrow">WELCOME BACK</div><h2>Sign in</h2><p>Enter the email or username and password connected to your account.</p>
       {error && <div className="notice notice-error" role="alert" data-testid="status-login-error">{error}</div>}
       {notice && <div className="notice notice-info" role="status" data-testid="status-login-notice">{notice}</div>}
       {memberLoginStep !== 'credentials' ? <form onSubmit={verifyMemberSignInCode}>
@@ -443,21 +464,20 @@ function Login() {
         <button className="login-link-button" type="button" onClick={() => void resendMemberSignInCode()} disabled={busy}>Resend code</button>
         <button className="login-link-button" type="button" onClick={() => { setMemberLoginStep('credentials'); setMemberLoginCode(''); setNotice(''); }} disabled={busy}>Back to sign in</button>
       </form> : recoveryStep === 'closed' ? <form onSubmit={submit}>
-        <div className="form-field"><label className="form-label" htmlFor="login-identifier">Email or staff username</label><input id="login-identifier" className="field-input" type="text" autoComplete="username" required maxLength={254} value={identifier} onChange={(event) => setIdentifier(event.target.value)} data-testid="input-identifier" /></div>
+        <div className="form-field"><label className="form-label" htmlFor="login-identifier">Email or username</label><input id="login-identifier" className="field-input" type="text" autoComplete="username" required maxLength={254} value={identifier} onChange={(event) => setIdentifier(event.target.value)} data-testid="input-identifier" /></div>
         <div className="form-field"><label className="form-label" htmlFor="login-password">Password</label><div className="password-wrap"><input id="login-password" className="field-input" type={showPassword ? 'text' : 'password'} autoComplete="current-password" required maxLength={256} value={password} onChange={(event) => setPassword(event.target.value)} data-testid="input-password" /><button type="button" className="password-toggle" aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword(!showPassword)} data-testid="button-toggle-password">{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button></div></div>
-        <button className="btn btn-primary" type="submit" disabled={busy || login.isPending} data-testid="button-sign-in">{busy ? 'Signing in…' : 'Sign in securely'} <ChevronRight size={15} /></button>
-        <button className="login-link-button" type="button" onClick={() => void startRecovery()} disabled={busy} data-testid="button-forgot-member-password">Forgot your member password?</button>
+        <button className="btn btn-primary" type="submit" disabled={busy || login.isPending} data-testid="button-sign-in">{busy ? 'Signing in…' : 'Sign in'} <ChevronRight size={15} /></button>
+        <button className="login-link-button" type="button" onClick={() => void startRecovery()} disabled={busy} data-testid="button-forgot-member-password">Forgot password?</button>
       </form> : recoveryStep === 'code' ? <form onSubmit={verifyRecoveryCode}>
         <div className="form-field"><label className="form-label" htmlFor="member-reset-code">Email recovery code</label><input id="member-reset-code" className="field-input" inputMode="numeric" autoComplete="one-time-code" required maxLength={12} value={recoveryCode} onChange={(event) => setRecoveryCode(event.target.value)} /></div>
         <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? 'Checking code…' : 'Verify code'} <ChevronRight size={15} /></button>
         <button className="login-link-button" type="button" onClick={() => setRecoveryStep('closed')}>Back to sign in</button>
       </form> : <form onSubmit={submitMemberPassword}>
-        <div className="form-field"><label className="form-label" htmlFor="member-new-password">New member password</label><input id="member-new-password" className="field-input" type="password" autoComplete="new-password" required minLength={12} maxLength={256} value={newMemberPassword} onChange={(event) => setNewMemberPassword(event.target.value)} /></div>
+        <div className="form-field"><label className="form-label" htmlFor="member-new-password">New password</label><input id="member-new-password" className="field-input" type="password" autoComplete="new-password" required minLength={12} maxLength={256} value={newMemberPassword} onChange={(event) => setNewMemberPassword(event.target.value)} /></div>
         <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? 'Updating password…' : 'Update password'} <ChevronRight size={15} /></button>
         <button className="login-link-button" type="button" onClick={() => setRecoveryStep('closed')}>Back to sign in</button>
       </form>}
-      <div className="login-note"><LockKeyhole size={12} style={{ verticalAlign: 'middle', marginRight: 5 }} />The server assigns access. Staff accounts are created by the owner; registration never grants PRO access.</div>
-      <div className="login-note">New learner? <Link href="/sign-up" data-testid="link-member-sign-up">Create a member account</Link></div>
+      <div className="login-note">New to Smart Money Hub? <Link href="/sign-up" data-testid="link-member-sign-up">Create an account</Link></div>
     </div></section>
   </main>;
 }
