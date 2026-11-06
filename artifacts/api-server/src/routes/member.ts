@@ -12,6 +12,7 @@ import { MEMBER_DASHBOARD_PATH, memberDashboardEntitlements } from "../lib/porta
 import { requireSameOrigin } from "../lib/portal-auth";
 import { resolvePortalSupportSchema } from "../lib/portal-support-schema";
 import { memberDisplayName } from "../lib/member-display-name";
+import { memberTelegramBotToken } from "../lib/member-telegram-auth";
 import {
   developmentProSignalsChannelId,
   hasActiveProSignalsEntitlement,
@@ -182,9 +183,9 @@ router.post("/member/telegram/link", requireSameOrigin, async (req, res): Promis
     res.status(400).json({ error: "Telegram did not return a valid identity proof." });
     return;
   }
-  const botToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
+  const botToken = memberTelegramBotToken(process.env.NODE_ENV);
   if (!botToken) {
-    res.status(503).json({ error: "Telegram identity linking is not configured." });
+    res.status(503).json({ error: "Telegram identity linking is not configured in this environment." });
     return;
   }
 

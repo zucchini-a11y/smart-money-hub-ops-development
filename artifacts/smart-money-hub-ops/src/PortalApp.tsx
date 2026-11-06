@@ -519,7 +519,7 @@ function TelegramLinkWidget({ session }: { session: MemberSession }) {
     const script = document.createElement('script');
     script.async = true;
     script.src = 'https://telegram.org/js/telegram-widget.js?22';
-    script.setAttribute('data-telegram-login', 'SmartMoneyHubSignalsBot');
+    script.setAttribute('data-telegram-login', import.meta.env.DEV ? 'SMHProSignalsassistantbot' : 'SmartMoneyHubSignalsBot');
     script.setAttribute('data-size', 'large');
     script.setAttribute('data-userpic', 'false');
     script.setAttribute('data-onauth', 'onTelegramMemberAuth(user)');
