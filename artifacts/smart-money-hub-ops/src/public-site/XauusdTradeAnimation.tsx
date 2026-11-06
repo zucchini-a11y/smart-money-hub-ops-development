@@ -44,16 +44,14 @@ function ease(value: number) {
 }
 
 export function XauusdTradeAnimation() {
-  const storyRef = useRef<HTMLElement>(null);
-  const stageRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    const story = storyRef.current;
     const stage = stageRef.current;
     const canvas = canvasRef.current;
     const context = canvas?.getContext('2d');
-    if (!story || !stage || !canvas || !context) return;
+    if (!stage || !canvas || !context) return;
 
     const site = stage.closest('.vayda-site') ?? stage;
     const palette = getComputedStyle(site);
@@ -79,8 +77,8 @@ export function XauusdTradeAnimation() {
       const compactLayout = width < 520;
       const left = compactLayout ? 18 : 34;
       const right = compactLayout ? 68 : 94;
-      const top = compactLayout ? Math.min(250, height * 0.34) : Math.max(120, height * 0.16);
-      const bottom = height - (compactLayout ? 132 : 138);
+      const top = compactLayout ? Math.min(250, height * 0.28) : Math.max(100, height * 0.12);
+      const bottom = height - (compactLayout ? Math.min(40, height * 0.12) : 52);
       const minPrice = 4002;
       const maxPrice = 4035;
       const candleWidth = (width - left - right) / candles.length;
@@ -159,18 +157,6 @@ export function XauusdTradeAnimation() {
           context.globalAlpha = ease((playhead - (TARGET_INDEX - 6)) / 6);
           drawTag(TARGET, TARGET.toFixed(2), 'rgba(28,36,32,.96)');
         }
-        if (playhead >= TARGET_INDEX) {
-          context.globalAlpha = ease((playhead - TARGET_INDEX) / 1.2);
-          context.fillStyle = gold;
-          const badgeWidth = compactLayout ? 54 : 70;
-          const badgeHeight = compactLayout ? 24 : 28;
-          const badgeX = (startX + endX) / 2 - badgeWidth / 2;
-          context.fillRect(badgeX, yForPrice(TARGET) + 10, badgeWidth, badgeHeight);
-          context.fillStyle = ink;
-          context.font = `800 ${compactLayout ? 11 : 14}px Manrope, sans-serif`;
-          context.textAlign = 'center';
-          context.fillText('TP 7', badgeX + badgeWidth / 2, yForPrice(TARGET) + badgeHeight + 2);
-        }
         context.globalAlpha = 1;
 
         const lineProgress = ease((playhead - ENTRY_INDEX) / (TARGET_INDEX - ENTRY_INDEX));
@@ -228,24 +214,6 @@ export function XauusdTradeAnimation() {
       context.textAlign = 'center';
       context.fillText(lastPrice.toFixed(2), width - right / 2, yForPrice(lastPrice) + 3.5);
 
-      const metrics: Array<[string, string]> = [
-        ['ENTRY', ENTRY.toFixed(2)],
-        ['STOP', STOP.toFixed(2)],
-        ['TARGET', TARGET.toFixed(2)],
-        ['R:R', '1 : 7.1'],
-      ];
-      const statsWidth = width - left - right;
-      metrics.forEach(([label, value], index) => {
-        const x = left + index * (statsWidth / metrics.length) + 4;
-        context.textAlign = 'left';
-        context.fillStyle = muted;
-        context.font = `${compactLayout ? 8 : 10}px "JetBrains Mono", monospace`;
-        context.fillText(label, x, height - 70);
-        context.fillStyle = text;
-        context.font = `600 ${compactLayout ? 10 : 12}px "JetBrains Mono", monospace`;
-        context.fillText(value, x, height - 48);
-      });
-
     };
 
     const resizeCanvas = () => {
@@ -264,14 +232,9 @@ export function XauusdTradeAnimation() {
       if (reducedMotion || animationFrame) return;
       animationFrame = window.requestAnimationFrame(() => {
         animationFrame = 0;
-        const range = story.offsetHeight - stage.offsetHeight;
-        if (range <= 0) {
-          draw(0);
-          return;
-        }
-        const stickyTop = Number.parseFloat(getComputedStyle(stage).top) || 0;
-        const storyTop = story.getBoundingClientRect().top;
-        draw((stickyTop - storyTop) / range);
+        const rect = stage.getBoundingClientRect();
+        const travel = window.innerHeight + rect.height;
+        draw((window.innerHeight - rect.top) / travel);
       });
     };
 
@@ -297,23 +260,18 @@ export function XauusdTradeAnimation() {
     };
   }, []);
 
-  return <section id="chart-study" className="vs-chart-scroll-story" ref={storyRef} aria-label="Scroll-driven XAUUSD trade example">
-    <div className="vs-chart-stage" ref={stageRef}>
-      <canvas
-        className="vs-chart-canvas"
-        ref={canvasRef}
-        role="img"
-        aria-label="Scroll-driven illustrative XAUUSD long setup: entry 4007.16, stop 4003.48, target 4033.27, and a 1 to 7.1 reward-to-risk example. Not live market data or financial advice."
-      />
-      <div className="vs-chart-glow" aria-hidden="true" />
-      <header className="vs-chart-head">
-        <div>
-          <div className="vs-chart-title">XAUUSD · Gold long example</div>
-          <div className="vs-chart-caption">SCROLL TO TRACE THE SETUP</div>
-        </div>
-        <span className="vs-chart-tag">ILLUSTRATIVE · NOT LIVE</span>
-      </header>
-      <p className="vs-chart-foot">Simulated example · not live market data or financial advice.</p>
-    </div>
+  return <section
+    id="chart-study"
+    className="vs-chart-scroll-story"
+    ref={stageRef}
+    aria-label="Illustrative XAUUSD chart animation, not live market data"
+  >
+    <canvas
+      className="vs-chart-canvas"
+      ref={canvasRef}
+      role="img"
+      aria-label="Illustrative XAUUSD chart animation showing a sample long setup. Not live market data or financial advice."
+    />
+    <div className="vs-chart-glow" aria-hidden="true" />
   </section>;
 }

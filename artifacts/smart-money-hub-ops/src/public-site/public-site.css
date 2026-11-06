@@ -701,18 +701,8 @@
 .vayda-site.is-home .vs-chart-scroll-story {
   position: relative;
   width: 100vw;
-  height: 280svh;
-  margin-left: calc(50% - 50vw);
-  background: var(--ink);
-}
-.vayda-site.is-home .vs-chart-stage {
-  position: sticky;
-  top: 78px;
-  display: block;
-  width: 100%;
   height: calc(100svh - 78px);
-  min-height: 420px;
-  animation: none;
+  margin-left: calc(50% - 50vw);
   overflow: hidden;
   isolation: isolate;
   background: var(--ink);
@@ -734,50 +724,6 @@
   background:
     radial-gradient(ellipse at 54% 53%, rgba(139,185,154,.055), transparent 62%),
     linear-gradient(180deg, rgba(12,17,18,.48), transparent 24%, transparent 83%, rgba(12,17,18,.44));
-}
-.vayda-site.is-home .vs-chart-head {
-  position: absolute;
-  z-index: 2;
-  top: clamp(18px, 3.5vh, 38px);
-  right: clamp(20px, 5vw, 72px);
-  left: clamp(20px, 5vw, 72px);
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 18px;
-  margin: 0;
-  pointer-events: none;
-}
-.vayda-site.is-home .vs-chart-title {
-  color: var(--text);
-  font: 500 clamp(17px, 2vw, 24px)/1.2 'Space Grotesk', sans-serif;
-  letter-spacing: -.025em;
-}
-.vayda-site.is-home .vs-chart-caption {
-  margin-top: 7px;
-  color: var(--muted);
-  font: 9px 'DM Mono', monospace;
-  letter-spacing: .12em;
-}
-.vayda-site.is-home .vs-chart-tag {
-  padding: 4px 0 0;
-  border: 0;
-  color: var(--gold);
-  font: 9px 'DM Mono', monospace;
-  letter-spacing: .1em;
-  white-space: nowrap;
-}
-.vayda-site.is-home .vs-chart-foot {
-  position: absolute;
-  z-index: 2;
-  right: clamp(20px, 5vw, 72px);
-  bottom: max(12px, env(safe-area-inset-bottom));
-  left: clamp(20px, 5vw, 72px);
-  margin: 0;
-  color: var(--muted);
-  font: 9px 'DM Mono', monospace;
-  letter-spacing: .04em;
-  pointer-events: none;
 }
 .vayda-site.is-home .vs-chart-orbit { display: none; }
 .vayda-site.is-home .vs-statement {
@@ -884,11 +830,7 @@
   .vayda-site.is-home .vs-approach { padding-top: 78px; }
   .vayda-site.is-home .vs-learning-steps { grid-template-columns: 1fr; gap: 25px; margin-top: 30px; margin-bottom: 58px; }
   .vayda-site.is-home .vs-learning-step { padding-top: 17px; }
-  .vayda-site.is-home .vs-chart-scroll-story { height: 260svh; }
-  .vayda-site.is-home .vs-chart-stage { top: 70px; height: calc(100svh - 70px); }
-  .vayda-site.is-home .vs-chart-head { top: 18px; right: 18px; left: 18px; }
-  .vayda-site.is-home .vs-chart-tag { max-width: 105px; text-align: right; font-size: 8px; white-space: normal; }
-  .vayda-site.is-home .vs-chart-foot { right: 18px; bottom: max(10px, env(safe-area-inset-bottom)); left: 18px; font-size: 8px; }
+  .vayda-site.is-home .vs-chart-scroll-story { height: calc(100svh - 70px); }
   .vayda-site.is-home .vs-curriculum { padding: 78px 0; }
   .vayda-site.is-home .vs-curriculum-item { min-height: 220px; padding: 24px; }
   .vayda-site.is-home .vs-principles { padding: 50px 0 78px; }
