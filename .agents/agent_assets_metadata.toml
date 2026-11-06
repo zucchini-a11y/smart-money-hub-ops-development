@@ -196,3 +196,17 @@ mtime_ms = 1793967283585
 storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/7fbeef72-0758-41fe-9f59-0afd69712548/4d690a3d-1969-45a6-be47-63667919e0db"
 storage_version_token = "1793967289988891"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "T-oaw7cDd1hcca8cUWmUA"
+uri = "file://vayda-landing-release.zip"
+type = "unspecified"
+title = "VAYDA Landing Page Release"
+description = "Download this ZIP, or find the same file at the top level of the Replit Files panel. It contains the static landing page only."
+logical_id = "d1305226-2a24-4ca3-abd3-5b6ad562cc39"
+content_hash = "sha256:7cf72182e2031ea8a567cecfb851e13c6d2af1de01dd37873b3b2c53f09bb500"
+size = 318390
+mtime_ms = 1793968292456
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/d1305226-2a24-4ca3-abd3-5b6ad562cc39/81a86c00-356e-4982-9806-bff87ae374e1"
+storage_version_token = "1793968303803730"
+content_type = "application/octet-stream"
