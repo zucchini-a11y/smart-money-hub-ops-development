@@ -421,8 +421,17 @@ function CalendarEventRow({ event }: { event: MemberCalendarEvent }) {
   const dateLabel = Number.isNaN(eventDate.getTime())
     ? null
     : new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' }).format(eventDate);
-  const verifiedTime = event.eventAt && event.timeLabel && !/unverified|unavailable/i.test(event.timeLabel)
-    ? event.timeLabel
+  const eventInstant = event.eventAt ? new Date(event.eventAt) : null;
+  const hasVerifiedInstant = Boolean(eventInstant && !Number.isNaN(eventInstant.getTime()));
+  const verifiedTime = hasVerifiedInstant
+    ? event.timeLabel && !/unverified|unavailable/i.test(event.timeLabel)
+      ? event.timeLabel
+      : `${new Intl.DateTimeFormat('en-NG', {
+          timeZone: 'Africa/Lagos',
+          hour: '2-digit',
+          minute: '2-digit',
+          hourCycle: 'h23',
+        }).format(eventInstant!)} WAT`
     : null;
   const reportedValues = [
     { label: 'Previous', value: event.previous },
