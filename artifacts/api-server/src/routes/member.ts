@@ -10,6 +10,7 @@ import {
 import { MEMBER_DASHBOARD_PATH, memberDashboardEntitlements } from "../lib/portal-dashboard-policy";
 import { requireSameOrigin } from "../lib/portal-auth";
 import { resolvePortalSupportSchema } from "../lib/portal-support-schema";
+import { memberDisplayName } from "../lib/member-display-name";
 
 const router: IRouter = Router();
 const schema = resolvePortalSupportSchema(process.env.NODE_ENV, process.env.PORTAL_SUPPORT_SCHEMA);
@@ -61,14 +62,10 @@ export async function requireMemberIdentity(req: Request, res: Response): Promis
     return null;
   }
 
-  const profileName = typeof user.unsafeMetadata?.fullName === "string"
-    ? user.unsafeMetadata.fullName.trim().slice(0, 120)
-    : "";
-  const name = [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || profileName;
   return {
     clerkUserId,
     email,
-    displayName: name || user.username || email,
+    displayName: memberDisplayName({ ...user, email }),
   };
 }
 
