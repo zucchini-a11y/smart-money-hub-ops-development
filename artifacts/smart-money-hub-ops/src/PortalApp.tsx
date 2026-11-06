@@ -1538,12 +1538,9 @@ function MemberSignUpPage() {
     setBusy(true);
     try {
       if (signUp.id) await signUp.reset();
-      const [firstName, ...restOfName] = nameParts;
       const result = await signUp.password({
         emailAddress: submittedEmail,
         password: submittedPassword,
-        firstName,
-        lastName: restOfName.join(' ') || undefined,
         unsafeMetadata: { fullName: submittedName },
       });
       if (result.error) throw result.error;
