@@ -4,7 +4,7 @@
 set -Eeuo pipefail
 
 PAYLOAD_MARKER="__SMH_VAYDA_LANDING_PAYLOAD__"
-INSTALLER_VERSION="landing-v3-direct-release"
+INSTALLER_VERSION="landing-v4-internal-route"
 SCRIPT_PATH="$(readlink -f "$0")"
 PAYLOAD_LINE="$(awk -v marker="$PAYLOAD_MARKER" '$0 == marker { print NR; exit }' "$SCRIPT_PATH")"
 
@@ -189,15 +189,38 @@ mv -f "$NGINX_TMP" "$NGINX_REAL"
 NGINX_TMP=""
 NGINX_CHANGED=1
 nginx -t >/dev/null || fail "Nginx validation failed after the route update."
+nginx -T > "$WORK_DIR/nginx-effective.conf" 2>&1 ||
+  fail "Nginx could not print its active configuration after the route update."
+grep -Fq "$RELEASE_DIR" "$WORK_DIR/nginx-effective.conf" ||
+  fail "The updated landing routes are not present in Nginx's loaded configuration."
 systemctl reload nginx || fail "Nginx reload failed."
+
+ASSET_INDEX="${WORK_DIR}/asset-index.html"
+curl --silent --show-error --fail --max-time 10 --insecure \
+  --resolve smartmoneyhub.tech:443:127.0.0.1 \
+  "https://smartmoneyhub.tech/_vayda_landing/index.html" -o "$ASSET_INDEX" ||
+  fail "Nginx did not serve the versioned landing files at /_vayda_landing/."
+grep -q "VAYDA Smart Money Hub" "$ASSET_INDEX" ||
+  fail "The static asset route did not return the VAYDA landing HTML."
 
 for host in smartmoneyhub.tech www.smartmoneyhub.tech; do
   root_file="${WORK_DIR}/${host}.html"
-  curl --silent --show-error --fail --max-time 10 --insecure \
-    --resolve "${host}:443:127.0.0.1" "https://${host}/" -o "$root_file" ||
-    fail "The landing page did not load locally for ${host}."
-  grep -q "VAYDA Smart Money Hub" "$root_file" ||
-    fail "The served homepage is not the VAYDA landing page for ${host}."
+  ROOT_OK=0
+  for attempt in 1 2 3 4 5 6 7 8; do
+    if curl --silent --show-error --fail --max-time 10 --insecure \
+      --resolve "${host}:443:127.0.0.1" "https://${host}/" -o "$root_file" 2>/dev/null &&
+      grep -q "VAYDA Smart Money Hub" "$root_file"; then
+      ROOT_OK=1
+      break
+    fi
+    sleep 1
+  done
+  if [[ "$ROOT_OK" != "1" ]]; then
+    echo "Homepage response title: $(grep -o '<title>[^<]*</title>' "$root_file" 2>/dev/null | head -n 1 || true)" >&2
+    echo "Loaded landing routes:" >&2
+    grep -n -A8 -B2 'SMH VAYDA LANDING' "$WORK_DIR/nginx-effective.conf" | head -n 30 >&2 || true
+    fail "Nginx served the static landing file but did not route / to it for ${host}."
+  fi
 done
 
 ASSET_PATH="$(grep -oE 'src="/_vayda_landing/[^"]+\.js"' "$WORK_DIR/site/index.html" |

@@ -75,9 +75,7 @@ def render_locations(indent: str, landing_root: str) -> str:
             f"{inner}alias {landing_root}/sitemap.xml;",
             f"{indent}}}",
             f"{indent}location = / {{",
-            f"{inner}alias {landing_root}/index.html;",
-            f"{inner}default_type text/html;",
-            f'{inner}add_header Cache-Control "no-cache";',
+            f"{inner}rewrite ^ /_vayda_landing/index.html last;",
             f"{indent}}}",
             f"{indent}location ~ ^/(about|education|market-analysis|philosophy|community|contact)(/|$) {{",
             f"{inner}return 302 /;",
@@ -196,7 +194,8 @@ server {
     assert "proxy_pass http://127.0.0.1:23827;" in patched
     assert "location = /sign-up {" in patched
     assert "location = /robots.txt {" in patched
-    assert f"alias {release}/index.html;" in patched
+    assert f"alias {release}/;" in patched
+    assert "rewrite ^ /_vayda_landing/index.html last;" in patched
     assert "location / {" in patched
     assert patch_text(patched, release) == patched
 
