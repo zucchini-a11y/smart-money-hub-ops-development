@@ -7,6 +7,7 @@
 - [Member Telegram buttons](member-telegram-buttons.md) — show Telegram destinations as buttons and keep Coach and PRO bot actions separate.
 - [Verify Telegram command delivery](telegram-command-verification.md) — test new commands through the update handler before reporting them active.
 - [Telegram polling cleanup](telegram-polling-cleanup.md) — check for a leftover poller before treating a Telegram getUpdates conflict as a credential problem.
+- [Replit bot workflow scope](replit-bot-workflows.md) — keep Replit bot workflows stopped unless the user explicitly asks to run them; this does not stop VPS bots.
 - [Market Analysis editorial style](weekend-post-originality.md) — match channel context, keep posts fresh, and remove unrelated promotion claims before rerunning every validator.
 - [U.S. economic calendar scope](us-economic-calendar-scope.md) — use official U.S. sources, include DOL and Census, exclude ISM and geopolitical news.
 - [Gemini free-tier policy](gemini-free-tier-policy.md) — member text/history may go to Google's free tier; keep billing off and never silently use paid models.
