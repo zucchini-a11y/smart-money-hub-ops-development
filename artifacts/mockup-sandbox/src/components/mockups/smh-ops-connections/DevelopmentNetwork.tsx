@@ -47,21 +47,38 @@ export function DevelopmentNetwork() {
             var(--net-bg);
         }
         .smh-network .network-grid {
-          background-image: radial-gradient(rgba(166, 193, 203, .16) .7px, transparent .7px);
-          background-size: 21px 21px;
-          mask-image: linear-gradient(to bottom, black, transparent 96%);
+          background-image:
+            linear-gradient(rgba(166, 193, 203, .025) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(166, 193, 203, .025) 1px, transparent 1px),
+            radial-gradient(rgba(166, 193, 203, .2) .8px, transparent .8px);
+          background-size: 56px 56px, 56px 56px, 24px 24px;
+          mask-image: radial-gradient(ellipse at center, black 20%, transparent 92%);
         }
         .smh-network .signal-dash {
           stroke-dasharray: 5 8;
-          animation: smh-dash 7s linear infinite;
+          animation: smh-dash 5.5s linear infinite;
         }
         .smh-network .crawler {
           offset-path: path("M 194 260 C 302 260, 344 218, 445 196");
-          animation: smh-crawl 8s linear infinite;
+          animation: smh-crawl 6.5s linear infinite;
+        }
+        .smh-network .crawler-api {
+          offset-path: path("M 194 130 C 300 130, 334 174, 445 192");
+          animation: smh-crawl 7.5s linear infinite;
+          animation-delay: -2.4s;
         }
         .smh-network .crawler-orbit {
           transform-origin: 555px 238px;
-          animation: smh-orbit 16s linear infinite;
+          animation: smh-orbit 24s linear infinite;
+        }
+        .smh-network .node-pulse {
+          transform-box: fill-box;
+          transform-origin: center;
+          animation: smh-node-pulse 3.4s ease-out infinite;
+        }
+        .smh-network .unknown-link {
+          stroke-dasharray: 2 9;
+          animation: smh-dash 11s linear infinite;
         }
         .smh-network.motion-paused *,
         .smh-network.motion-paused *::before,
@@ -71,6 +88,10 @@ export function DevelopmentNetwork() {
         @keyframes smh-dash { to { stroke-dashoffset: -104; } }
         @keyframes smh-crawl { to { offset-distance: 100%; } }
         @keyframes smh-orbit { to { transform: rotate(360deg); } }
+        @keyframes smh-node-pulse {
+          0% { opacity: .42; transform: scale(.72); }
+          72%, 100% { opacity: 0; transform: scale(1.8); }
+        }
         @media (prefers-reduced-motion: reduce) {
           .smh-network *,
           .smh-network *::before,
@@ -79,6 +100,9 @@ export function DevelopmentNetwork() {
             animation-iteration-count: 1 !important;
             scroll-behavior: auto !important;
           }
+          .smh-network .crawler,
+          .smh-network .crawler-api,
+          .smh-network .node-pulse { display: none; }
         }
       `}</style>
 
@@ -92,10 +116,10 @@ export function DevelopmentNetwork() {
               OPERATIONS CENTER
             </div>
             <h1 className="mt-3 text-[30px] font-semibold leading-tight tracking-[-.04em] text-slate-100 sm:text-[38px]">
-              Connections
+              Development network
             </h1>
             <p className="mt-2 max-w-2xl text-[13px] leading-6 text-slate-400">
-              A bounded view of what this owner-only Development console can actually observe.
+              Follow what this console can observe—and what remains unverified.
             </p>
           </div>
           <div className="flex items-center gap-2 self-start rounded-lg border border-amber-200/15 bg-amber-100/[.04] px-3 py-2 sm:self-auto">
@@ -110,11 +134,11 @@ export function DevelopmentNetwork() {
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-[13px] font-semibold text-slate-100">Preview mode · sample states only</h2>
-              <span className="rounded border border-cyan-100/10 px-1.5 py-0.5 font-mono text-[8px] tracking-[.12em] text-cyan-100/65">NOT LIVE</span>
+              <h2 className="text-[13px] font-semibold text-slate-100">Illustrative network · not live telemetry</h2>
+              <span className="rounded border border-cyan-100/10 px-1.5 py-0.5 font-mono text-[8px] tracking-[.12em] text-cyan-100/65">PREVIEW</span>
             </div>
             <p className="mt-1 max-w-4xl text-[11px] leading-5 text-slate-400">
-              This mockup has no backend. The labels and moving trace are illustrative, not telemetry. In the actual console, the only verified inputs are the API health endpoint and an owner-only Development snapshot of the isolated test-bot heartbeat.
+              The moving paths are examples only. This preview is not connected to servers, Telegram, or channel delivery.
             </p>
           </div>
           <div className="shrink-0 rounded-md border border-white/[.07] bg-black/10 p-1">
@@ -146,9 +170,9 @@ export function DevelopmentNetwork() {
                 <div>
                   <div className="flex items-center gap-2">
                     <Waypoints size={15} className="text-emerald-200" />
-                    <h2 className="text-sm font-semibold text-slate-100">Development observation map</h2>
+                    <h2 className="text-sm font-semibold text-slate-100">Connection map</h2>
                   </div>
-                  <p className="mt-1 pl-[23px] text-[10px] text-slate-500">Evidence paths · not a service topology or delivery trace</p>
+                  <p className="mt-1 pl-[23px] text-[10px] text-slate-500">Example paths · no production connection</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <button
@@ -157,7 +181,7 @@ export function DevelopmentNetwork() {
                     className="inline-flex items-center gap-1.5 rounded-md border border-white/[.09] bg-white/[.025] px-2.5 py-2 text-[10px] font-medium text-slate-300 transition hover:border-white/[.16] hover:bg-white/[.05]"
                   >
                     <RefreshCw size={12} />
-                    Replay sample
+                    Replay animation
                   </button>
                   <button
                     type="button"
@@ -198,9 +222,13 @@ export function DevelopmentNetwork() {
                     <path d="M194 130 C300 130 334 174 445 192" fill="none" stroke="url(#signalLine)" strokeWidth="1.5" className="signal-dash" />
                     <path d="M194 260 C302 260 344 218 445 196" fill="none" stroke="url(#signalLine)" strokeWidth="1.5" className="signal-dash" />
                     <path d="M194 260 C302 260 344 218 445 196" fill="none" stroke="#6bd9ae" strokeOpacity=".12" strokeWidth="11" />
+                    <path d="M515 190 C600 166 650 130 736 130" fill="none" stroke="#e7bd70" strokeOpacity=".3" strokeWidth="1.2" className="unknown-link" />
                     <circle cx="480" cy="192" r="82" fill="none" stroke="#5ed5aa" strokeOpacity=".1" strokeDasharray="2 9" className="crawler-orbit" />
                     <circle cx="480" cy="192" r="61" fill="none" stroke="#5ed5aa" strokeOpacity=".08" strokeDasharray="1 8" className="crawler-orbit" />
                     <circle className="crawler" r="3.5" fill="#a9f2d1" filter="url(#softDot)" />
+                    <circle className="crawler-api" r="3" fill="#a9f2d1" filter="url(#softDot)" />
+                    <circle cx="170" cy="130" r="28" fill="none" stroke="#53c8d5" strokeOpacity=".45" className="node-pulse" />
+                    <circle cx="170" cy="260" r="28" fill="none" stroke="#56d6a0" strokeOpacity=".42" className="node-pulse" style={{ animationDelay: "-1.4s" }} />
                     <circle cx="170" cy="130" r="23" fill="#14303a" stroke="#53c8d5" strokeOpacity=".65" />
                     <circle cx="170" cy="130" r="4" fill="#68d7df" />
                     <circle cx="170" cy="260" r="23" fill="#18332e" stroke="#56d6a0" strokeOpacity=".55" />
@@ -209,17 +237,17 @@ export function DevelopmentNetwork() {
                     <path d="M472 192h16M480 184v16" stroke="#b6c8d1" strokeWidth="1.3" strokeLinecap="round" />
                     <circle cx="760" cy="130" r="23" fill="#2d271c" stroke="#e7bd70" strokeOpacity=".55" />
                     <path d="M754 130h12M760 124v12" stroke="#e7bd70" strokeOpacity=".8" strokeWidth="1.4" strokeLinecap="round" />
-                    <text x="170" y="82" textAnchor="middle" fill="#9bb0bd" fontSize="10" fontFamily="DM Mono">API HEALTH</text>
-                    <text x="170" y="174" textAnchor="middle" fill="#667987" fontSize="9" fontFamily="DM Mono">endpoint response</text>
+                    <text x="170" y="82" textAnchor="middle" fill="#9bb0bd" fontSize="10" fontFamily="DM Mono">API HEALTH CHECK</text>
+                    <text x="170" y="174" textAnchor="middle" fill="#667987" fontSize="9" fontFamily="DM Mono">sample response · ok</text>
                     <text x="170" y="306" textAnchor="middle" fill="#d7e0e7" fontSize="10" fontFamily="DM Mono">DEV TEST BOT</text>
-                    <text x="170" y="323" textAnchor="middle" fill="#74858e" fontSize="9" fontFamily="DM Mono">heartbeat snapshot</text>
+                    <text x="170" y="323" textAnchor="middle" fill="#74858e" fontSize="9" fontFamily="DM Mono">sample heartbeat · recent</text>
                     <text x="480" y="150" textAnchor="middle" fill="#c5d0d6" fontSize="9" fontFamily="DM Mono">OWNER VIEW</text>
                     <text x="480" y="238" textAnchor="middle" fill="#74858e" fontSize="9" fontFamily="DM Mono">source visibility</text>
                     <text x="760" y="82" textAnchor="middle" fill="#9bb0bd" fontSize="10" fontFamily="DM Mono">TELEGRAM</text>
-                    <text x="760" y="174" textAnchor="middle" fill="#a58a58" fontSize="9" fontFamily="DM Mono">ACCESS UNKNOWN</text>
+                    <text x="760" y="174" textAnchor="middle" fill="#a58a58" fontSize="9" fontFamily="DM Mono">NOT VERIFIED</text>
                     <rect x="285" y="207" width="132" height="21" rx="10" fill="#111922" stroke="#ffffff" strokeOpacity=".09" />
                     <text x="351" y="221" textAnchor="middle" fill="#9aabb4" fontSize="8" fontFamily="DM Mono">SNAPSHOT OBSERVATION</text>
-                    <text x="760" y="194" textAnchor="middle" fill="#697680" fontSize="8" fontFamily="DM Mono">NOT OBSERVED HERE</text>
+                    <text x="760" y="194" textAnchor="middle" fill="#697680" fontSize="8" fontFamily="DM Mono">DELIVERY UNKNOWN</text>
                   </svg>
 
                   <div className="grid gap-3 py-3 sm:hidden">
@@ -251,51 +279,26 @@ export function DevelopmentNetwork() {
                     </div>
                   </div>
                   <div className="mt-1 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 border-t border-white/[.06] pt-3 text-[9px] text-slate-500 sm:mt-0">
-                    <span className="inline-flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-cyan-200" /> Verified source scope</span>
-                    <span className="inline-flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-amber-200" /> Unknown / not observed</span>
+                    <span className="inline-flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-cyan-200" /> Sample input</span>
+                    <span className="inline-flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-amber-200" /> Unverified</span>
                     <span className="text-slate-600">Moving trace is illustrative only</span>
                   </div>
                 </div>
               </div>
             </section>
 
-            <section className="mt-4 grid gap-3 md:grid-cols-[1fr_1fr_1.15fr]">
-              <article className="rounded-xl border border-white/[.08] bg-[#101720] p-4 sm:p-5">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2 text-[12px] font-semibold text-slate-200"><Cloud size={15} className="text-cyan-200" /> API health</div>
-                  <span className="rounded-full border border-cyan-200/15 bg-cyan-200/[.05] px-2 py-1 font-mono text-[8px] tracking-[.09em] text-cyan-100">SAMPLE · OK</span>
-                </div>
-                <p className="mt-4 font-mono text-[10px] text-slate-400">GET /api/healthz</p>
-                <p className="mt-2 text-[10px] leading-5 text-slate-500">Endpoint response only. This does not establish bot runtime, Telegram access, or a published message.</p>
-              </article>
-
-              <article className="rounded-xl border border-white/[.08] bg-[#101720] p-4 sm:p-5">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2 text-[12px] font-semibold text-slate-200"><Bot size={15} className="text-emerald-200" /> Test-bot heartbeat</div>
-                  <span className="rounded-full border border-emerald-200/15 bg-emerald-200/[.05] px-2 py-1 font-mono text-[8px] tracking-[.09em] text-emerald-100">SAMPLE · RECENT</span>
-                </div>
-                <p className="mt-4 font-mono text-[10px] text-slate-400">Owner-only Development snapshot</p>
-                <p className="mt-2 text-[10px] leading-5 text-slate-500">A recent heartbeat is not proof of Telegram channel access or a successful post.</p>
-              </article>
-
-              <article className="rounded-xl border border-amber-100/[.11] bg-[#151811] p-4 sm:p-5">
-                <div className="flex items-center gap-2 text-[12px] font-semibold text-slate-200"><ShieldCheck size={15} className="text-amber-200" /> Production boundary</div>
-                <div className="mt-3 inline-flex rounded-md border border-amber-100/15 bg-amber-100/[.04] px-2.5 py-1.5 font-mono text-[9px] tracking-[.11em] text-amber-100">DELIBERATELY DISCONNECTED</div>
-                <p className="mt-2 text-[10px] leading-5 text-slate-500">Production bot and channel state are not connected to this Development view.</p>
-              </article>
-            </section>
           </>
         ) : (
           <section className="mt-5 overflow-hidden rounded-xl border border-amber-100/[.13] bg-[#111711]">
             <div className="border-b border-white/[.06] px-5 py-4">
               <div className="flex items-center gap-2 text-sm font-semibold text-slate-100"><ShieldCheck size={16} className="text-amber-200" /> Production stays disconnected</div>
-              <p className="mt-1 text-[11px] text-slate-500">No Production bot, channel, or delivery telemetry is connected to this mockup.</p>
+              <p className="mt-1 text-[11px] text-slate-500">Production data is not connected to this preview.</p>
             </div>
             <div className="flex flex-col items-center px-5 py-14 text-center">
               <div className="grid h-14 w-14 place-items-center rounded-full border border-amber-100/15 bg-amber-100/[.04] text-amber-100/70"><Radio size={21} /></div>
-              <div className="mt-5 font-mono text-[9px] tracking-[.16em] text-amber-100/75">NO PRODUCTION SOURCES</div>
-              <h2 className="mt-2 text-lg font-semibold text-slate-200">Nothing is being observed here.</h2>
-              <p className="mt-2 max-w-md text-[11px] leading-5 text-slate-500">This is an intentional boundary, not a service failure. Switch back to Development to view the explicitly scoped sample states.</p>
+              <div className="mt-5 font-mono text-[9px] tracking-[.16em] text-amber-100/75">DISCONNECTED</div>
+              <h2 className="mt-2 text-lg font-semibold text-slate-200">Production is not connected.</h2>
+              <p className="mt-2 max-w-md text-[11px] leading-5 text-slate-500">Switch back to Development to view the illustrative network map.</p>
               <button
                 type="button"
                 onClick={() => setEnvironment("development")}
