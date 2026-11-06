@@ -1506,9 +1506,28 @@ function MemberSignUpPage() {
     setError('');
     setNotice('');
 
-    const nameParts = fullName.trim().split(/\s+/).filter(Boolean);
+    // Reading the submitted controls also captures browser/mobile autofill values
+    // that may not have triggered React's controlled-input change handler.
+    const formData = new FormData(event.currentTarget);
+    const submittedName = String(formData.get('name') ?? '').trim();
+    const submittedEmail = String(formData.get('email') ?? '').trim().toLowerCase();
+    const submittedPassword = String(formData.get('password') ?? '');
+    setFullName(submittedName);
+    setEmail(submittedEmail);
+    setPassword(submittedPassword);
+
+    const nameParts = submittedName.split(/\s+/).filter(Boolean);
     if (nameParts.length === 0) {
       setError('Enter your full name to continue.');
+      return;
+    }
+    const emailInput = event.currentTarget.elements.namedItem('email');
+    if (!submittedEmail || !(emailInput instanceof HTMLInputElement) || !emailInput.checkValidity()) {
+      setError('Enter a valid email address to continue.');
+      return;
+    }
+    if (!submittedPassword) {
+      setError('Enter a password to create your member account.');
       return;
     }
     if (!isLoaded || fetchStatus === 'fetching') {
@@ -1521,11 +1540,11 @@ function MemberSignUpPage() {
       if (signUp.id) await signUp.reset();
       const [firstName, ...restOfName] = nameParts;
       const result = await signUp.password({
-        emailAddress: email.trim().toLowerCase(),
-        password,
+        emailAddress: submittedEmail,
+        password: submittedPassword,
         firstName,
         lastName: restOfName.join(' ') || undefined,
-        unsafeMetadata: { fullName: fullName.trim() },
+        unsafeMetadata: { fullName: submittedName },
       });
       if (result.error) throw result.error;
 
