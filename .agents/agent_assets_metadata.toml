@@ -280,3 +280,17 @@ mtime_ms = 1793977643930
 storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/6aa9c30b-1dd1-445e-a38c-a5e3513d55da/a0f24d1f-2019-45de-98dd-7cb8cccbc332"
 storage_version_token = "1793977657249485"
 content_type = "text/html"
+
+[[outputs]]
+id = "4s8VElNGcrPaT2cK0X_jp"
+uri = "file://generated-artifacts/vayda-landing-assets-20261106.zip"
+type = "unspecified"
+title = "VAYDA landing-page update — PRO SIGNALS"
+description = "Static landing assets only. The PRO SIGNALS label is updated; the verified PRO Signals Assistant button destination is unchanged. No VPS or Production deployment was performed."
+logical_id = "b92137b4-8452-403e-b8bb-1c7d0e41b276"
+content_hash = "sha256:4679dd410ef2677b9a73cff3c1e261a6b31f0effcf493e44349944d969220fb8"
+size = 319142
+mtime_ms = 1793980798571
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/b92137b4-8452-403e-b8bb-1c7d0e41b276/7e21d524-979e-4ad8-a5ef-ed803dab58aa"
+storage_version_token = "1793980805844318"
+content_type = "application/octet-stream"
