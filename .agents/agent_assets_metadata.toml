@@ -224,3 +224,17 @@ mtime_ms = 1793968490270
 storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/d23b0103-2c91-4b09-ba6c-71b380289c15/ca0825af-81fa-4f4c-8f67-bd3c59d1935e"
 storage_version_token = "1793968497853228"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "e0KOobJeJRQgb-k2GUEO1"
+uri = "file://generated-artifacts/download-vayda-landing.html"
+type = "html"
+title = "Download the VAYDA ZIP"
+description = "Open this one-file download page and tap its button to save the website ZIP to your device."
+logical_id = "a510c8c3-9474-49ab-8ff3-aaace9956907"
+content_hash = "sha256:6290b0490cb980b23fa3d2933d745e02581a9a4ef1a5eac233db5632d7817779"
+size = 425895
+mtime_ms = 1793968638626
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/a510c8c3-9474-49ab-8ff3-aaace9956907/b206f51b-ef80-44bf-8968-9f3a08603dac"
+storage_version_token = "1793968657213618"
+content_type = "text/html"
