@@ -322,3 +322,17 @@ mtime_ms = 1793984127522
 storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/2a7f94c1-68c5-41dc-b815-515faf69e68e/cccf55fe-dd8d-4283-a9a6-92a962ec26fc"
 storage_version_token = "1793990728613512"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "feCXlnpXNdyMzvGvsrQIM"
+uri = "file://zapline-hero.html"
+type = "html"
+title = "Zapline Hero — Standalone Visual Concept"
+description = "A self-contained, responsive single-screen HTML concept with the supplied planet video and dashboard glow embedded. All figures and account details are illustrative; no wallet or trading service is connected."
+logical_id = "7befb6ed-54c1-4957-ab25-c736ea75cca0"
+content_hash = "sha256:ef826c230294e47f66fdd6b206f55f3207e0efefef0303f0855c789cd1d5f6e9"
+size = 582421
+mtime_ms = 1793998204185
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/7befb6ed-54c1-4957-ab25-c736ea75cca0/bc471d2e-11ba-4696-b0f7-e280239e74a3"
+storage_version_token = "1793998238328782"
+content_type = "text/html"
