@@ -34,7 +34,6 @@ node_modules
 /generated-artifacts/
 /vayda-landing-release.zip
 /vayda-landing-release-20261106.zip
-/artifacts/smart-money-hub-ops/public/vayda-landing-release-20261106.zip
 /libpeerconnection.log
 npm-debug.log
 yarn-error.log
