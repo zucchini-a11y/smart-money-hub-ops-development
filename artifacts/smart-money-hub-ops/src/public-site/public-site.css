@@ -688,6 +688,30 @@
   background: var(--ink-raised);
   box-shadow: none;
 }
+.vayda-site.is-home .vs-chart-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  border: 1px solid rgba(215,189,123,.12);
+  background: var(--ink);
+}
+.vayda-site.is-home .vs-chart-replay {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 0 4px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--gold);
+  cursor: pointer;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: uppercase;
+  transition: color .18s ease, transform .18s ease;
+}
+.vayda-site.is-home .vs-chart-replay:hover { color: var(--gold-bright); transform: translateY(-1px); }
+.vayda-site.is-home .vs-chart-replay:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
 .vayda-site.is-home .vs-learning-steps { display: grid; }
 .vayda-site.is-home .vs-learning-step { padding: 28px 0 31px; border-bottom: 1px solid var(--line); }
 .vayda-site.is-home .vs-learning-step:last-child { border-bottom: 0; }
@@ -823,6 +847,7 @@
 @media (prefers-reduced-motion: reduce) {
   .vayda-site.is-home .vs-marquee-track { transform: none !important; }
   .vayda-site.is-home .vs-statement-word { opacity: 1 !important; transform: none !important; }
+  .vayda-site.is-home .vs-chart-replay { display: none; }
 }
 
 /* Supporting public pages — the same editorial signal desk as the homepage. */

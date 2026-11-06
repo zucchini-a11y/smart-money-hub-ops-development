@@ -3,6 +3,7 @@ import { Link, useLocation } from 'wouter';
 import { ArrowDownRight, ArrowRight, ArrowUpRight, BookOpen, Compass, Mail, X } from 'lucide-react';
 import { isConfiguredPublicUrl, publicSiteLinks } from './config';
 import { PublicSupportWidget } from '../WebsiteSupport';
+import { XauusdTradeAnimation } from './XauusdTradeAnimation';
 import './public-site.css';
 
 const pages = [
@@ -300,44 +301,6 @@ function Footer() {
   </footer>;
 }
 
-function ChartIllustration() {
-  const candles = [
-    [42, 183, 25, 45, 'down'], [75, 167, 34, 54, 'up'], [108, 177, 28, 44, 'down'],
-    [141, 144, 38, 62, 'up'], [174, 151, 28, 48, 'down'], [207, 121, 37, 64, 'up'],
-    [240, 135, 25, 44, 'down'], [273, 110, 40, 67, 'up'], [306, 117, 26, 46, 'down'],
-    [339, 86, 39, 69, 'up'], [372, 98, 27, 47, 'down'], [405, 66, 37, 64, 'up'],
-  ] as const;
-  return <div className="vs-chart-stage" aria-label="Illustrative price-action diagram, not live market data">
-    <div className="vs-chart-orbit" aria-hidden="true" />
-    <figure className="vs-chart-frame">
-      <div className="vs-chart-head"><div><div className="vs-chart-title">Structure before signal</div><div className="vs-chart-caption">CONCEPTUAL PRICE-ACTION STUDY</div></div><span className="vs-chart-tag">ILLUSTRATIVE</span></div>
-      <svg className="vs-chart-svg" viewBox="0 0 460 260" role="img" aria-labelledby="vayda-chart-title vayda-chart-desc">
-        <title id="vayda-chart-title">Illustrative price action diagram</title>
-        <desc id="vayda-chart-desc">A schematic sequence of candles, a marked area, and a confirmation path. This is not live market data.</desc>
-        <defs>
-          <pattern id="vs-grid" width="46" height="43" patternUnits="userSpaceOnUse"><path d="M 46 0 L 0 0 0 43" fill="none" stroke="rgba(205,214,198,.1)" strokeWidth="1" /></pattern>
-        </defs>
-        <rect x="0" y="0" width="460" height="230" fill="url(#vs-grid)" />
-        <rect x="240" y="104" width="149" height="43" fill="none" stroke="rgba(215,189,123,.34)" strokeDasharray="4 5" />
-        <text x="247" y="99" fill="#c8b576" fontSize="8" letterSpacing="1.2" fontFamily="DM Mono, monospace">AREA OF INTEREST</text>
-        <line className="vs-chart-scanline" x1="20" y1="20" x2="20" y2="222" stroke="#58e6d0" strokeOpacity=".68" strokeWidth="1" />
-        <path className="vs-chart-trend" d="M20 210 C65 191 73 178 110 184 S151 154 179 164 S210 133 239 142 S267 112 300 120 S336 85 363 91 S397 53 433 41" fill="none" stroke="rgba(139,185,154,.56)" strokeWidth="1.3" strokeDasharray="4 6" />
-        {candles.map(([x, y, h, wick, type], index) => <g key={index} className="vs-chart-candle" style={{ animationDelay: `${index * 55}ms` }}>
-          <line x1={x + 7} y1={y - wick / 2} x2={x + 7} y2={y + wick / 2} stroke={type === 'up' ? '#8bb99a' : '#bb9d62'} strokeOpacity=".85" />
-          <rect x={x} y={y} width="14" height={h} fill={type === 'up' ? '#8bb99a' : '#bb9d62'} fillOpacity={type === 'up' ? '.78' : '.6'} />
-        </g>)}
-        <path className="vs-chart-confirmation" d="M270 162 L289 150 L307 156 L325 133 L343 137 L359 110 L377 115 L394 89" fill="none" stroke="#e1c77f" strokeWidth="2" />
-        <circle className="vs-chart-confirmation-dot" cx="394" cy="89" r="4" fill="#e1c77f" />
-        <path d="M20 230H440" stroke="rgba(235,220,181,.15)" />
-        <text x="20" y="248" fill="#77817a" fontSize="8" letterSpacing="1" fontFamily="DM Mono, monospace">OBSERVE</text>
-        <text x="190" y="248" fill="#77817a" fontSize="8" letterSpacing="1" fontFamily="DM Mono, monospace">WAIT FOR CONFIRMATION</text>
-        <text x="385" y="248" fill="#77817a" fontSize="8" letterSpacing="1" fontFamily="DM Mono, monospace">DECIDE</text>
-      </svg>
-      <figcaption className="vs-chart-foot"><span>Illustrative example · not market data.</span><span>FOR EDUCATION ONLY</span></figcaption>
-    </figure>
-  </div>;
-}
-
 function Home() {
   return <>
     <main>
@@ -369,7 +332,7 @@ function Home() {
               <article className="vs-learning-step"><span className="vs-index">02 / LIQUIDITY</span><h3>Let liquidity inform the picture</h3><p>Study where attention gathers and what price does around those areas. A level is context, not a promise.</p></article>
               <article className="vs-learning-step"><span className="vs-index">03 / RISK</span><h3>Put risk before entry</h3><p>Consider exposure and sizing before acting. Require confirmation, define what you are willing to risk, and stay willing to stand aside.</p></article>
             </div>
-            <div className="vs-approach-visual"><ChartIllustration /></div>
+            <div className="vs-approach-visual"><XauusdTradeAnimation /></div>
           </div>
         </div>
       </section>
