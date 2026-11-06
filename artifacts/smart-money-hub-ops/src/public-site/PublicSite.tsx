@@ -253,7 +253,7 @@ function Header({ location }: { location: string }) {
         </> : pages.slice(1).map((page) => <Link key={page.href} href={page.href} aria-current={location === page.href ? 'page' : undefined} onClick={() => setOpen(false)} data-testid={`link-public-${page.href.slice(1) || 'home'}`}>{page.label}</Link>)}
         {isConfiguredPublicUrl(publicSiteLinks.primaryCommunity) && <ExternalLink href={publicSiteLinks.primaryCommunity} className="vs-nav-cta" data-testid="link-public-community-entry">{isHome ? 'Coach Bot' : 'Open Coach'} <ArrowUpRight size={13} /></ExternalLink>}
         <button className="vs-create-account is-paused" type="button" disabled aria-label="Member sign-up is temporarily paused" data-testid="button-public-signup-paused">Sign-up paused</button>
-        <Link href="/login" className="vs-staff-link" onClick={() => setOpen(false)} data-testid="link-public-login">Sign in</Link>
+        <a href="/login" className="vs-staff-link" onClick={() => setOpen(false)} data-testid="link-public-login">Sign in</a>
       </nav>
     </div>
   </header>;
@@ -278,7 +278,7 @@ function Footer() {
         {isConfiguredPublicUrl(publicSiteLinks.primaryCommunity) && <ExternalLink href={publicSiteLinks.primaryCommunity} data-testid="link-footer-coach">Coach Bot</ExternalLink>}
         {isConfiguredPublicUrl(publicSiteLinks.proSignalsAssistant) && <ExternalLink href={publicSiteLinks.proSignalsAssistant} data-testid="link-footer-pro-signals">Signal Bot</ExternalLink>}
         {isConfiguredPublicUrl(publicSiteLinks.marketAnalysisChannel) && <ExternalLink href={publicSiteLinks.marketAnalysisChannel} data-testid="link-footer-market-analysis">Market Analysis</ExternalLink>}
-        <Link href="/login" data-testid="link-footer-login">Sign in</Link>
+        <a href="/login" data-testid="link-footer-login">Sign in</a>
       </div></div>
     </div>
     <div className="vs-shell vs-footer-bottom"><span>VAYDA SMART MONEY HUB · EDUCATION FIRST</span><span><strong>Trading involves risk.</strong> Education is not financial advice.</span></div>
@@ -460,7 +460,7 @@ function Contact() {
   </main>;
 }
 
-export default function PublicSite() {
+export default function PublicSite({ showSupportWidget = true }: { showSupportWidget?: boolean }) {
   const [location, navigate] = useLocation();
   const path = location.replace(/\/+$/, '') || '/';
   usePageMetadata(path);
@@ -470,5 +470,5 @@ export default function PublicSite() {
     if (exactPublicPath && path !== '/') navigate('/', { replace: true });
   }, [exactPublicPath, path, navigate]);
   if (!exactPublicPath || path !== '/') return null;
-  return <div className="vayda-site is-home"><Header location="/" /><div className="vs-page-transition" key="/"><Home /></div><Footer /><PublicSupportWidget /></div>;
+  return <div className="vayda-site is-home"><Header location="/" /><div className="vs-page-transition" key="/"><Home /></div><Footer />{showSupportWidget && <PublicSupportWidget />}</div>;
 }

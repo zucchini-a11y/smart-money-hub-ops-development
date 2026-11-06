@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /login
+Disallow: /sign-up
+Disallow: /operations
+Disallow: /api/
+Disallow: /member/
+Disallow: /staff/
+Sitemap: https://smartmoneyhub.tech/sitemap.xml

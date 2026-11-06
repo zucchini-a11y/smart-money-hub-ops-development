@@ -17,6 +17,14 @@ The owner chose the Hostinger VPS for the Operations Center at `smartmoneyhub.te
 
 **How to apply:** Serve the Operations Center from the VPS, keep HTTPS renewal enabled, and change only the apex website A record during future migrations. Do not imply the Operations Center has live bot telemetry unless that integration is built and verified.
 
+### Public landing page isolation
+
+Deploy the public landing page as a separate static release and route only `/` and its dedicated asset path to it. Keep existing `/login`, `/operations`, and `/api` handling in place; do not replace the shared Operations Center web root.
+
+**Why:** The VPS domain also hosts the authenticated Support Portal and API, so replacing the shared site root can disrupt existing services.
+
+**How to apply:** Back up the active Nginx site, verify Operations Basic Auth and an unauthenticated Support API response before and after the change, and reload Nginx only. Do not touch DNS, bot services, the database, or Production auth settings for a landing-page update.
+
 ### Telegram API address-family preference
 
 On this Hostinger VPS, prefer IPv4 for outbound Telegram Bot API calls while leaving IPv6 enabled. Forced IPv4 reached `api.telegram.org` quickly, while IPv6 timed out; Python's Telegram send request consequently took about 20 seconds. The owner reported faster replies after the VPS began preferring IPv4.
