@@ -211,10 +211,18 @@ export function MemberDashboardExperience({
         <section className="mx-welcome">
           <div className="mx-welcome-copy">
             <div className="mx-overline"><span className="mx-live-mark" /> MEMBER WORKSPACE</div>
-            <h1>Welcome, <span>{session.displayName}</span></h1>
+            <h1>Your learning space</h1>
             <p>{session.email}<br/>A learning space for clearer thinking, careful observation, and deliberate decisions.</p>
+            <div className="mx-member-seal"><ShieldCheck size={19} /><span><strong>VERIFIED MEMBER</strong><small>Identity confirmed</small></span></div>
           </div>
-          <div className="mx-member-seal"><ShieldCheck size={19} /><span><strong>VERIFIED MEMBER</strong><small>Identity confirmed</small></span></div>
+          <aside className="mx-coach-greeting" aria-label="Welcome from your AI Coach">
+            <div className="mx-coach-greeting-art"><CoachBotAnimation /></div>
+            <div className="mx-coach-greeting-copy">
+              <div className="mx-coach-greeting-topline"><span className="mx-card-kicker">YOUR IN-APP AI COACH</span><span className="mx-coach-study-label">STUDY MODE</span></div>
+              <p><strong>Welcome, {session.displayName}.</strong> I’m your AI Coach, separate from the PRO Signals bot. Ask me about trading concepts, market structure, or reviewing your decision process.</p>
+              <Link className="mx-button mx-button-quiet" href="/member/coach" data-testid="button-chat-with-coach">Chat with AI Coach <ArrowRight size={14} /></Link>
+            </div>
+          </aside>
         </section>
 
         <section className="mx-principle-banner" aria-label="Smart Money Hub philosophy">

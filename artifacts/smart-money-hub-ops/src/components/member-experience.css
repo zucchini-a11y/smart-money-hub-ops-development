@@ -97,14 +97,24 @@
 .mx-header-actions { display: flex; flex-wrap: wrap; gap: 9px; }
 .mx-button-quiet { border-color: var(--mx-border); background: rgba(255,255,255,.015); color: #c5c9bf !important; }
 .mx-button-quiet:hover { border-color: rgba(210,185,120,.48); background: rgba(210,185,120,.06); color: var(--mx-gold-light) !important; }
-.mx-welcome { display: flex; align-items: flex-end; justify-content: space-between; gap: 25px; padding: 52px 0 34px; }
+.mx-welcome { display: grid; grid-template-columns: minmax(0,.8fr) minmax(0,1.2fr); align-items: center; gap: 25px; padding: 42px 0 34px; }
 .mx-welcome h1 { margin: 13px 0 8px; color: var(--mx-text); font: 600 clamp(34px, 5.4vw, 60px)/1.05 'Manrope', sans-serif; letter-spacing: -.065em; }
 .mx-welcome h1 span { color: var(--mx-gold-light); }
 .mx-welcome-copy > p { max-width: 520px; margin: 0; color: var(--mx-muted); font-size: 13px; }
-.mx-member-seal { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; padding: 11px 14px; border: 1px solid var(--mx-border-green); background: rgba(84,123,93,.09); color: var(--mx-green); }
+.mx-member-seal { display: flex; width: fit-content; align-items: center; gap: 10px; margin-top: 17px; padding: 11px 14px; border: 1px solid var(--mx-border-green); background: rgba(84,123,93,.09); color: var(--mx-green); }
 .mx-member-seal strong, .mx-member-seal small { display: block; }
 .mx-member-seal strong { font: 9px 'DM Mono', monospace; letter-spacing: .07em; }
 .mx-member-seal small { margin-top: 3px; color: #899a8c; font-size: 9px; }
+.mx-coach-greeting { position: relative; display: grid; grid-template-columns: 126px minmax(0,1fr); align-items: center; gap: 13px; min-height: 172px; padding: 16px 19px; overflow: hidden; border: 1px solid var(--mx-border-green); background: radial-gradient(ellipse at 15% 50%, rgba(138,179,154,.11), transparent 38%), linear-gradient(120deg, rgba(23,30,28,.97), rgba(18,25,22,.92)); animation: mx-enter .72s .1s both cubic-bezier(.22,.75,.28,1); }
+.mx-coach-greeting::after { position: absolute; z-index: 0; top: -74px; right: -42px; width: 185px; aspect-ratio: 1; border: 1px solid rgba(210,185,120,.1); border-radius: 50%; content: ''; pointer-events: none; }
+.mx-coach-greeting-art, .mx-coach-greeting-copy { position: relative; z-index: 1; min-width: 0; }
+.mx-coach-greeting-art { display: grid; place-items: center; }
+.mx-coach-greeting-art .mx-coach-bot { width: 126px; }
+.mx-coach-greeting-topline { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mx-coach-study-label { padding: 3px 6px; border: 1px solid rgba(138,179,154,.22); color: var(--mx-green); font: 7px 'DM Mono', monospace; letter-spacing: .08em; white-space: nowrap; }
+.mx-coach-greeting-copy > p { margin: 10px 0 12px; color: var(--mx-muted); font-size: 11px; line-height: 1.7; }
+.mx-coach-greeting-copy > p strong { color: var(--mx-text); font-weight: 600; }
+.mx-coach-greeting-copy .mx-button { min-height: 38px; }
 
 .mx-principle-banner { position: relative; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 25px; min-height: 148px; margin: 0 0 22px; padding: 24px 32px; overflow: hidden; border: 1px solid rgba(210,185,120,.2); background: radial-gradient(ellipse at 50% 130%, rgba(67,104,78,.25), transparent 65%), linear-gradient(105deg, #19201d, #151b19); }
 .mx-principle-banner::after { position: absolute; top: 50%; left: 50%; width: 280px; aspect-ratio: 1; border: 1px solid rgba(210,185,120,.08); border-radius: 50%; content: ''; transform: translate(-50%,-50%); pointer-events: none; }
@@ -198,6 +208,7 @@
   .mx-signup-layout { grid-template-columns: minmax(0, .85fr) minmax(340px, 1fr); gap: 35px; padding-inline: 0; }
   .mx-aside-statement { font-size: 43px; }
   .mx-dashboard-shell { width: min(100% - 40px, 680px); }
+  .mx-welcome { grid-template-columns: 1fr; gap: 18px; padding-top: 36px; }
   .mx-dashboard-grid { grid-template-columns: 1fr; }
   .mx-coach-preview-card { min-height: 180px; }
   .mx-principle-banner { grid-template-columns: 1fr auto; gap: 10px 20px; }
@@ -226,10 +237,14 @@
   .mx-wordmark-image { width: 37px; height: 37px; }
   .mx-header-actions { gap: 6px; }
   .mx-header-actions .mx-button { min-height: 38px; padding: 0 9px; font-size: 10px !important; }
-  .mx-welcome { align-items: flex-start; flex-direction: column; padding: 36px 0 25px; }
+  .mx-welcome { grid-template-columns: 1fr; gap: 18px; padding: 36px 0 25px; }
   .mx-welcome h1 { font-size: clamp(34px, 10vw, 48px); }
   .mx-welcome-copy > p { font-size: 12px; }
   .mx-member-seal { padding: 8px 11px; }
+  .mx-coach-greeting { grid-template-columns: 88px minmax(0,1fr); gap: 9px; min-height: 0; padding: 13px 14px; }
+  .mx-coach-greeting-art .mx-coach-bot { width: 90px; }
+  .mx-coach-greeting-copy > p { font-size: 10px; }
+  .mx-coach-greeting-copy .mx-button { min-height: 36px; padding: 0 10px; }
   .mx-principle-banner { min-height: auto; grid-template-columns: 1fr; padding: 22px; }
   .mx-principle-banner > p { grid-column: auto; grid-row: auto; font-size: 27px; }
   .mx-mobile-break { display: initial; }
@@ -245,6 +260,10 @@
   .mx-dashboard-shell { width: calc(100% - 28px); }
   .mx-header-actions .mx-button { gap: 5px; padding: 0 7px; }
   .mx-header-actions .mx-button svg { width: 13px; }
+  .mx-coach-greeting { grid-template-columns: 74px minmax(0,1fr); padding: 11px; }
+  .mx-coach-greeting-art .mx-coach-bot { width: 76px; }
+  .mx-coach-study-label { font-size: 6px; }
+  .mx-coach-greeting-copy .mx-button { font-size: 10px !important; }
   .mx-link-list { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {
