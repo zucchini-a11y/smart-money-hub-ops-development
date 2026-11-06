@@ -535,7 +535,7 @@ function TelegramLinkWidget({ session }: { session: MemberSession }) {
       : <><p>Verify your Telegram identity with Telegram’s signed login widget. A username alone is not accepted as proof.</p><div ref={widgetRef} data-testid="telegram-link-widget" /></>}
     {error && <div className="notice notice-error" role="alert">{error}</div>}
     {notice && <div className="notice notice-info" role="status">{notice}</div>}
-    <a href="https://t.me/SmartMoneyHubSignalsBot" target="_blank" rel="noreferrer">Open the Smart Money Hub bot</a>
+    <a className="mx-button mx-button-quiet mx-telegram-bot-button" href="https://t.me/SmartMoneyHubSignalsBot" target="_blank" rel="noreferrer">Open Smart Money Hub bot <ArrowUpRight size={14} /></a>
   </div>;
 }
 

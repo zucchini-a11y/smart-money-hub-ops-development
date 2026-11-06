@@ -245,10 +245,10 @@ export function MemberDashboardExperience({
 
           <section className="mx-card mx-telegram-card" aria-labelledby="mx-telegram-title">
             <div className="mx-card-heading">
-              <div><span className="mx-card-kicker">IDENTITY</span><h2 id="mx-telegram-title">Telegram connection</h2></div>
+              <div><span className="mx-card-kicker">OPTIONAL / PRO ELIGIBILITY</span><h2 id="mx-telegram-title">Telegram connection</h2></div>
               <span className="mx-icon-stamp"><CheckCircle2 size={17} /></span>
             </div>
-            <p className="mx-card-description">Connect the Telegram identity you control to complete the member identity check.</p>
+            <p className="mx-card-description">Optional for your member dashboard. If you request PRO Signals access, link the Telegram account you control so the service can verify your identity and current channel membership. Linking does not grant PRO access.</p>
             <div className="mx-telegram-widget">{telegramIdentityWidget}</div>
           </section>
 

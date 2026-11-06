@@ -137,7 +137,8 @@
 .mx-telegram-widget { min-height: 46px; }
 .mx-telegram-widget .member-telegram-link { display: grid; gap: 10px; color: var(--mx-muted); font-size: 11px; line-height: 1.7; }
 .mx-telegram-widget .member-telegram-link p { margin: 0; }
-.mx-telegram-widget .member-telegram-link a { color: var(--mx-gold-light); font-weight: 600; }
+.mx-telegram-widget .member-telegram-link a:not(.mx-button) { color: var(--mx-gold-light); font-weight: 600; }
+.mx-telegram-bot-button { justify-self: start; text-decoration: none; }
 .mx-telegram-widget [data-testid="telegram-link-widget"] { min-height: 45px; }
 .mx-link-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
 .mx-destination-link { display: flex; min-height: 74px; align-items: center; justify-content: space-between; gap: 10px; padding: 13px; border: 1px solid rgba(226,211,170,.13); background: rgba(9,14,12,.24); transition: border-color .18s ease, background .18s ease, transform .18s ease; }
