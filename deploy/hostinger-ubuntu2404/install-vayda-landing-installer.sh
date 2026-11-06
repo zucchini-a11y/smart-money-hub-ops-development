@@ -4,7 +4,7 @@
 set -Eeuo pipefail
 
 PAYLOAD_MARKER="__SMH_VAYDA_LANDING_PAYLOAD__"
-INSTALLER_VERSION="landing-v2-anonymous-session"
+INSTALLER_VERSION="landing-v3-direct-release"
 SCRIPT_PATH="$(readlink -f "$0")"
 PAYLOAD_LINE="$(awk -v marker="$PAYLOAD_MARKER" '$0 == marker { print NR; exit }' "$SCRIPT_PATH")"
 
@@ -21,9 +21,8 @@ NGINX_REAL=""
 LANDING_BASE="/var/www/smh-vayda-landing"
 CURRENT="${LANDING_BASE}/current"
 RELEASE_DIR=""
-PREVIOUS_TARGET=""
 NGINX_CHANGED=0
-LINK_CHANGED=0
+RELEASE_CREATED=0
 ROLLBACK_ENABLED=1
 
 cleanup() {
@@ -33,17 +32,6 @@ cleanup() {
 
 rollback() {
   set +e
-  if [[ "$LINK_CHANGED" == "1" ]]; then
-    if [[ -n "$PREVIOUS_TARGET" ]]; then
-      local rollback_link="${LANDING_BASE}/current.rollback"
-      rm -f "$rollback_link"
-      ln -s "$PREVIOUS_TARGET" "$rollback_link" &&
-        mv -Tf "$rollback_link" "$CURRENT"
-    else
-      rm -f "$CURRENT"
-    fi
-    LINK_CHANGED=0
-  fi
   if [[ "$NGINX_CHANGED" == "1" && -n "$BACKUP" && -n "$NGINX_REAL" ]]; then
     local restore_tmp
     restore_tmp="$(mktemp "${NGINX_REAL}.restore.XXXXXX")"
@@ -53,8 +41,9 @@ rollback() {
       systemctl reload nginx
     NGINX_CHANGED=0
   fi
-  if [[ -n "$RELEASE_DIR" && -d "$RELEASE_DIR" ]]; then
+  if [[ "$RELEASE_CREATED" == "1" && -n "$RELEASE_DIR" && -d "$RELEASE_DIR" ]]; then
     rm -rf "$RELEASE_DIR"
+    RELEASE_CREATED=0
   fi
   set -e
 }
@@ -183,27 +172,18 @@ chmod 700 "$BACKUP"
 cp -a "$NGINX_REAL" "$BACKUP/nginx-site.conf"
 chmod 600 "$BACKUP/nginx-site.conf"
 
-if [[ -e "$CURRENT" && ! -L "$CURRENT" ]]; then
-  fail "The landing current path exists but is not a symlink; no files were replaced."
-fi
-PREVIOUS_TARGET="$(readlink -f "$CURRENT" 2>/dev/null || true)"
 [[ ! -e "$RELEASE_DIR" ]] || fail "The release directory already exists."
 mkdir -m 755 "$RELEASE_DIR"
+RELEASE_CREATED=1
 cp -a "$WORK_DIR/site/." "$RELEASE_DIR/"
 find "$RELEASE_DIR" -type d -exec chmod 755 {} +
 find "$RELEASE_DIR" -type f -exec chmod 644 {} +
 
 NGINX_TMP="$(mktemp "${NGINX_REAL}.landing.XXXXXX")"
-python3 "$WORK_DIR/patch-vayda-landing-nginx.py" "$NGINX_REAL" "$NGINX_TMP" ||
+python3 "$WORK_DIR/patch-vayda-landing-nginx.py" "$NGINX_REAL" "$NGINX_TMP" "$RELEASE_DIR" ||
   fail "The active HTTPS configuration differs from the reviewed layout; no route was changed."
 chown --reference="$NGINX_REAL" "$NGINX_TMP"
 chmod --reference="$NGINX_REAL" "$NGINX_TMP"
-
-NEXT_LINK="${LANDING_BASE}/current.next"
-rm -f "$NEXT_LINK"
-ln -s "$RELEASE_DIR" "$NEXT_LINK"
-mv -Tf "$NEXT_LINK" "$CURRENT"
-LINK_CHANGED=1
 
 mv -f "$NGINX_TMP" "$NGINX_REAL"
 NGINX_TMP=""
@@ -256,13 +236,19 @@ fi
 
 ROLLBACK_ENABLED=0
 NGINX_CHANGED=0
-LINK_CHANGED=0
+RELEASE_CREATED=0
+if [[ -L "$CURRENT" ]] && [[ "$(readlink "$CURRENT")" == "$CURRENT" ]]; then
+  printf '%s\n' "$(readlink "$CURRENT")" > "$BACKUP/stale-current-link.txt"
+  chmod 600 "$BACKUP/stale-current-link.txt"
+  rm -f "$CURRENT"
+  echo "Removed the stale self-referential landing symlink."
+fi
 echo "Landing page installed at https://smartmoneyhub.tech and https://www.smartmoneyhub.tech."
 echo "Verified: landing assets load; /login is unchanged; /sign-up is closed."
 echo "Verified: /operations protection and the anonymous Support API session response are unchanged."
 echo "No DNS, database, bot, Support API, or Production authentication settings were changed."
 echo "Nginx backup: ${BACKUP}/nginx-site.conf"
-echo "To roll back manually, restore that Nginx file and point ${CURRENT} back to: ${PREVIOUS_TARGET:-no previous release}"
+echo "Landing release: ${RELEASE_DIR}"
 exit 0
 
 __SMH_VAYDA_LANDING_PAYLOAD__

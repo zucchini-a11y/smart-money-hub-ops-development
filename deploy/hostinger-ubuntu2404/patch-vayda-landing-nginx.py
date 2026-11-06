@@ -11,7 +11,7 @@ BEGIN_MARKER = "# BEGIN SMH VAYDA LANDING"
 END_MARKER = "# END SMH VAYDA LANDING"
 DOMAIN = "smartmoneyhub.tech"
 WEB_ROOT = "/var/www/smartmoneyhub-ops"
-LANDING_ROOT = "/var/www/smh-vayda-landing/current"
+LANDING_RELEASES_ROOT = "/var/www/smh-vayda-landing/releases/"
 
 
 class ConfigError(RuntimeError):
@@ -59,26 +59,24 @@ def server_blocks(text: str) -> list[tuple[int, int, str]]:
     return blocks
 
 
-def render_locations(indent: str) -> str:
+def render_locations(indent: str, landing_root: str) -> str:
     inner = f"{indent}    "
     return "\n".join(
         [
             f"{indent}{BEGIN_MARKER}",
             f"{indent}location ^~ /_vayda_landing/ {{",
-            f"{inner}alias {LANDING_ROOT}/;",
+            f"{inner}alias {landing_root}/;",
             f'{inner}add_header Cache-Control "public, max-age=31536000, immutable";',
             f"{indent}}}",
             f"{indent}location = /robots.txt {{",
-            f"{inner}root {LANDING_ROOT};",
-            f"{inner}try_files /robots.txt =404;",
+            f"{inner}alias {landing_root}/robots.txt;",
             f"{indent}}}",
             f"{indent}location = /sitemap.xml {{",
-            f"{inner}root {LANDING_ROOT};",
-            f"{inner}try_files /sitemap.xml =404;",
+            f"{inner}alias {landing_root}/sitemap.xml;",
             f"{indent}}}",
             f"{indent}location = / {{",
-            f"{inner}root {LANDING_ROOT};",
-            f"{inner}try_files /index.html =404;",
+            f"{inner}alias {landing_root}/index.html;",
+            f"{inner}default_type text/html;",
             f'{inner}add_header Cache-Control "no-cache";',
             f"{indent}}}",
             f"{indent}location ~ ^/(about|education|market-analysis|philosophy|community|contact)(/|$) {{",
@@ -96,7 +94,13 @@ def render_locations(indent: str) -> str:
     )
 
 
-def patch_text(text: str) -> str:
+def patch_text(text: str, landing_root: str) -> str:
+    if not re.fullmatch(
+        rf"{re.escape(LANDING_RELEASES_ROOT)}[A-Za-z0-9._-]+",
+        landing_root,
+    ):
+        raise ConfigError("The landing release path is outside the approved release directory.")
+
     candidates = []
     for start, end, block in server_blocks(text):
         has_domain = re.search(
@@ -132,7 +136,7 @@ def patch_text(text: str) -> str:
         end_line = len(block) if end_line < 0 else end_line + 1
         indent_match = re.match(r"[ \t]*", block[begin_line:])
         indent = indent_match.group(0) if indent_match else "    "
-        updated_block = block[:begin_line] + render_locations(indent) + block[end_line:]
+        updated_block = block[:begin_line] + render_locations(indent, landing_root) + block[end_line:]
     else:
         if re.search(r"(?m)^[ \t]*location[ \t]+=[ \t]+/[ \t]*\{", block):
             raise ConfigError("The HTTPS site already has a root-only location; no changes made.")
@@ -149,7 +153,11 @@ def patch_text(text: str) -> str:
         if not fallback:
             raise ConfigError("The expected catch-all location / was not found; no changes made.")
         indent = fallback.group("indent")
-        updated_block = block[: fallback.start()] + render_locations(indent) + block[fallback.start() :]
+        updated_block = (
+            block[: fallback.start()]
+            + render_locations(indent, landing_root)
+            + block[fallback.start() :]
+        )
 
     return text[:start] + updated_block + text[end:]
 
@@ -181,14 +189,16 @@ server {
     return 301 https://$host$request_uri;
 }
 """
-    patched = patch_text(sample)
+    release = "/var/www/smh-vayda-landing/releases/self-test"
+    patched = patch_text(sample, release)
     assert patched.count(BEGIN_MARKER) == 1
     assert "auth_basic_user_file /etc/nginx/.smh-ops-users;" in patched
     assert "proxy_pass http://127.0.0.1:23827;" in patched
     assert "location = /sign-up {" in patched
     assert "location = /robots.txt {" in patched
+    assert f"alias {release}/index.html;" in patched
     assert "location / {" in patched
-    assert patch_text(patched) == patched
+    assert patch_text(patched, release) == patched
 
 
 def main() -> int:
@@ -196,12 +206,16 @@ def main() -> int:
         self_test()
         print("Nginx patch self-test passed.")
         return 0
-    if len(sys.argv) != 3:
-        print(f"Usage: {Path(sys.argv[0]).name} INPUT.conf OUTPUT.conf", file=sys.stderr)
+    if len(sys.argv) != 4:
+        print(
+            f"Usage: {Path(sys.argv[0]).name} INPUT.conf OUTPUT.conf RELEASE_DIR",
+            file=sys.stderr,
+        )
         return 2
-    source, destination = map(Path, sys.argv[1:])
+    source, destination = map(Path, sys.argv[1:3])
+    landing_root = sys.argv[3]
     try:
-        updated = patch_text(source.read_text())
+        updated = patch_text(source.read_text(), landing_root)
         destination.write_text(updated)
     except (OSError, ConfigError) as error:
         print(f"ERROR: {error}", file=sys.stderr)
