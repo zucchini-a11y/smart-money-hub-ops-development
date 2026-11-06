@@ -4,6 +4,6 @@ import PublicSite from './public-site/PublicSite';
 
 createRoot(document.getElementById('root')!).render(
   <Router>
-    <PublicSite showSupportWidget={false} />
+    <PublicSite />
   </Router>,
 );
