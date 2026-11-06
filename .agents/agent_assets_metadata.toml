@@ -238,3 +238,17 @@ mtime_ms = 1793968638626
 storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/a510c8c3-9474-49ab-8ff3-aaace9956907/b206f51b-ef80-44bf-8968-9f3a08603dac"
 storage_version_token = "1793968657213618"
 content_type = "text/html"
+
+[[outputs]]
+id = "Cved28EW-3mepi6p7qeW1"
+uri = "file://smh-portal-development-build-20261106.zip"
+type = "unspecified"
+title = "Smart Money Hub Development Portal Build"
+description = "Development-only frontend archive. SHA-256: f7e34ec34baa5ca5390dcc916e75e6a727765e2dff583774192f58e9c8d1e9c4. Includes BUILD-NOTES.txt; do not use for Production."
+logical_id = "5dab3cc7-8a21-4a63-98b8-fef62783771a"
+content_hash = "sha256:f7e34ec34baa5ca5390dcc916e75e6a727765e2dff583774192f58e9c8d1e9c4"
+size = 529994
+mtime_ms = 1793976319221
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/5dab3cc7-8a21-4a63-98b8-fef62783771a/2f11ae98-3cf1-4d4d-9aa6-de471c3283b0"
+storage_version_token = "1793976467567494"
+content_type = "application/octet-stream"
