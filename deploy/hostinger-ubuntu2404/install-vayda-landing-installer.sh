@@ -123,13 +123,41 @@ request_code() {
   printf '%s' "$response"
 }
 
+api_session_request() {
+  local body_path="$1" response
+  response="$(curl --silent --show-error --max-time 8 --insecure \
+    --resolve "smartmoneyhub.tech:443:127.0.0.1" --output "$body_path" --write-out '%{http_code}' \
+    "https://smartmoneyhub.tech/api/support/auth/session" 2>/dev/null || true)"
+  [[ "$response" =~ ^[0-9]{3}$ ]] || response="000"
+  printf '%s' "$response"
+}
+
+validate_anonymous_session() {
+  python3 - "$1" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+try:
+    response = json.loads(Path(sys.argv[1]).read_text())
+except Exception as error:
+    raise SystemExit(f"Support API returned HTTP 200 but not a valid session response: {error}")
+if response.get("authenticated") is not False or response.get("staff") is not None:
+    raise SystemExit("Support API returned an authenticated staff identity without credentials.")
+PY
+}
+
 OPS_BEFORE="$(request_code smartmoneyhub.tech /operations)"
-API_BEFORE="$(request_code smartmoneyhub.tech /api/support/auth/session)"
+API_BEFORE="$(api_session_request "$WORK_DIR/api-session-before.json")"
 LOGIN_BEFORE="$(request_code smartmoneyhub.tech /login)"
 [[ "$OPS_BEFORE" == "401" || "$OPS_BEFORE" == "403" ]] ||
   fail "The existing /operations Basic Auth check did not return 401/403 (got ${OPS_BEFORE}); no changes made."
-[[ "$API_BEFORE" == "401" || "$API_BEFORE" == "403" ]] ||
-  fail "The existing unauthenticated Support API check did not return 401/403 (got ${API_BEFORE}); no changes made."
+if [[ "$API_BEFORE" == "200" ]]; then
+  validate_anonymous_session "$WORK_DIR/api-session-before.json" ||
+    fail "The Support API 200 response was not an anonymous session; no changes made."
+elif [[ "$API_BEFORE" != "401" && "$API_BEFORE" != "403" ]]; then
+  fail "The Support API session check returned unexpected status ${API_BEFORE}; no changes made."
+fi
 [[ "$LOGIN_BEFORE" != "000" && "$LOGIN_BEFORE" != "500" ]] ||
   fail "The existing /login route is not healthy (got ${LOGIN_BEFORE}); no changes made."
 
@@ -199,12 +227,27 @@ curl --silent --show-error --fail --max-time 10 --insecure \
   fail "The landing JavaScript asset did not load."
 
 OPS_AFTER="$(request_code smartmoneyhub.tech /operations)"
-API_AFTER="$(request_code smartmoneyhub.tech /api/support/auth/session)"
+API_AFTER="$(api_session_request "$WORK_DIR/api-session-after.json")"
 LOGIN_AFTER="$(request_code smartmoneyhub.tech /login)"
 SIGNUP_AFTER="$(request_code smartmoneyhub.tech /sign-up)"
 MARKET_AFTER="$(request_code smartmoneyhub.tech /market-analysis)"
 [[ "$OPS_AFTER" == "$OPS_BEFORE" ]] || fail "The /operations access response changed."
 [[ "$API_AFTER" == "$API_BEFORE" ]] || fail "The Support API access response changed."
+if [[ "$API_AFTER" == "200" ]]; then
+  validate_anonymous_session "$WORK_DIR/api-session-after.json" ||
+    fail "The Support API no longer returns an anonymous session."
+  python3 - "$WORK_DIR/api-session-before.json" "$WORK_DIR/api-session-after.json" <<'PY' ||
+import json
+import sys
+from pathlib import Path
+
+before = json.loads(Path(sys.argv[1]).read_text())
+after = json.loads(Path(sys.argv[2]).read_text())
+if before != after:
+    raise SystemExit("The Support API session response changed.")
+PY
+    fail "The Support API session response changed."
+fi
 [[ "$LOGIN_AFTER" == "$LOGIN_BEFORE" ]] || fail "The /login response changed."
 [[ "$SIGNUP_AFTER" == "302" ]] || fail "The closed /sign-up route did not redirect to the landing page."
 [[ "$MARKET_AFTER" == "302" ]] || fail "The public marketing route did not redirect to the landing page."
@@ -214,7 +257,7 @@ NGINX_CHANGED=0
 LINK_CHANGED=0
 echo "Landing page installed at https://smartmoneyhub.tech and https://www.smartmoneyhub.tech."
 echo "Verified: landing assets load; /login is unchanged; /sign-up is closed."
-echo "Verified: /operations and Support API access responses are unchanged."
+echo "Verified: /operations protection and the anonymous Support API session response are unchanged."
 echo "No DNS, database, bot, Support API, or Production authentication settings were changed."
 echo "Nginx backup: ${BACKUP}/nginx-site.conf"
 echo "To roll back manually, restore that Nginx file and point ${CURRENT} back to: ${PREVIOUS_TARGET:-no previous release}"
