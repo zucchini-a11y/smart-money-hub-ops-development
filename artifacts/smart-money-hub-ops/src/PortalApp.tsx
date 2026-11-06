@@ -477,7 +477,7 @@ function Login() {
         <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? 'Updating password…' : 'Update password'} <ChevronRight size={15} /></button>
         <button className="login-link-button" type="button" onClick={() => setRecoveryStep('closed')}>Back to sign in</button>
       </form>}
-      <div className="login-note">New to Smart Money Hub? <Link href="/sign-up" data-testid="link-member-sign-up">Create an account</Link></div>
+      <div className="login-note" data-testid="status-member-signup-paused">New member registration is paused. Existing members can still sign in.</div>
     </div></section>
   </main>;
 }
@@ -1467,7 +1467,39 @@ function memberSignupError(value: unknown, fallback: string) {
   return fallback;
 }
 
+// Keep public member self-registration closed until the owner explicitly approves it.
+const MEMBER_SELF_SIGNUP_ENABLED = false;
+
 function MemberSignUpPage() {
+  return MEMBER_SELF_SIGNUP_ENABLED
+    ? <MemberSignUpFlow />
+    : <MemberSignUpPausedPage />;
+}
+
+function MemberSignUpPausedPage() {
+  const [, navigate] = useLocation();
+  return <main className="login-screen">
+    <section className="login-aside">
+      <div className="login-brand"><Brand /></div>
+      <div className="login-copy">
+        <div className="eyebrow" style={{ color: '#d5b56f' }}>MEMBER ACCESS</div>
+        <h1>Registration is paused.</h1>
+        <p>New member accounts are not being accepted right now. Existing members can continue to sign in.</p>
+      </div>
+    </section>
+    <section className="login-panel">
+      <div className="login-form">
+        <div className="eyebrow">ACCOUNT CREATION</div>
+        <h2>Sign-up is temporarily unavailable</h2>
+        <p data-testid="status-member-signup-unavailable">Your existing account and access are unchanged. Sign in to continue.</p>
+        <button className="btn btn-primary" type="button" onClick={() => navigate('/login')} data-testid="button-signup-paused-login">Sign in <ChevronRight size={15} /></button>
+        <button className="login-link-button" type="button" onClick={() => navigate('/')} data-testid="button-signup-paused-home">Back to website</button>
+      </div>
+    </section>
+  </main>;
+}
+
+function MemberSignUpFlow() {
   const [location, navigate] = useLocation();
   const { isLoaded, isSignedIn } = useAuth();
   const { signUp, fetchStatus } = useSignUp();
@@ -1755,7 +1787,9 @@ function Router() {
       document.title = normalizedPath === '/login' || normalizedPath === '/staff/login' || normalizedPath.startsWith('/sign-in')
         ? 'Sign In | VAYDA Smart Money Hub'
         : normalizedPath.startsWith('/sign-up')
-          ? 'Create Member Account | VAYDA Smart Money Hub'
+          ? (MEMBER_SELF_SIGNUP_ENABLED
+            ? 'Create Member Account | VAYDA Smart Money Hub'
+            : 'Member Registration Paused | VAYDA Smart Money Hub')
         : normalizedPath === '/member/dashboard'
           ? 'Member Dashboard | VAYDA Smart Money Hub'
           : normalizedPath === '/member/calendar'

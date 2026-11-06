@@ -252,7 +252,7 @@ function Header({ location }: { location: string }) {
           <a href="#principles" onClick={() => setOpen(false)} data-testid="link-public-principles">Principles</a>
         </> : pages.slice(1).map((page) => <Link key={page.href} href={page.href} aria-current={location === page.href ? 'page' : undefined} onClick={() => setOpen(false)} data-testid={`link-public-${page.href.slice(1) || 'home'}`}>{page.label}</Link>)}
         {isConfiguredPublicUrl(publicSiteLinks.primaryCommunity) && <ExternalLink href={publicSiteLinks.primaryCommunity} className="vs-nav-cta" data-testid="link-public-community-entry">{isHome ? 'Join' : 'Enter community'} <ArrowUpRight size={13} /></ExternalLink>}
-        <Link href="/sign-up" className="vs-create-account" onClick={() => setOpen(false)} data-testid="link-public-create-account">Create account <ArrowUpRight size={13} /></Link>
+        <button className="vs-create-account is-paused" type="button" disabled aria-label="Member sign-up is temporarily paused" data-testid="button-public-signup-paused">Sign-up paused</button>
         <Link href="/login" className="vs-staff-link" onClick={() => setOpen(false)} data-testid="link-public-login">Sign in</Link>
       </nav>
     </div>
@@ -311,6 +311,57 @@ function Home() {
       </section>
       <section className="vs-marquee" aria-label="Learning themes">
         <div className="vs-marquee-track"><span>STRUCTURE</span><i>·</i><span>LIQUIDITY</span><i>·</i><span>RISK</span><i>·</i><span>PROCESS</span><i>·</i><span>STRUCTURE</span><i>·</i><span>LIQUIDITY</span><i>·</i><span>RISK</span><i>·</i><span>PROCESS</span><i>·</i></div>
+      </section>
+
+      <section className="vs-home-tools vs-section" id="destinations">
+        <div className="vs-shell">
+          <div className="vs-section-heading" data-reveal>
+            <div><div className="vs-eyebrow">04 / DESTINATIONS</div><h2>Choose where<br />you want to go.</h2></div>
+            <p>Public learning pages stay open. Member tools keep their sign-in checks, and PRO Signals still requires separate approval.</p>
+          </div>
+          <div className="vs-home-tools-grid" data-reveal>
+            <article className="vs-home-tool-card">
+              <span className="vs-index">PUBLIC / ANALYSIS</span>
+              <h3>Market Analysis</h3>
+              <p>Explore market context, learning notes, and the verified analysis destination.</p>
+              <Link href="/market-analysis" className="vs-button vs-home-tool-button" data-testid="button-home-market-analysis">Open Market Analysis <ArrowUpRight size={15} /></Link>
+            </article>
+            <article className="vs-home-tool-card">
+              <span className="vs-index">MEMBER / PRO</span>
+              <h3>Signal Board</h3>
+              <p>Sign-in and active PRO Signals permission are required.</p>
+              <Link href="/member/pro-signals" className="vs-button vs-home-tool-button" data-testid="button-home-signal-board">Open Signal Board <ArrowUpRight size={15} /></Link>
+            </article>
+            <article className="vs-home-tool-card">
+              <span className="vs-index">MEMBER / COACH</span>
+              <h3>AI Coach</h3>
+              <p>Continue to the private learning conversation after member sign-in.</p>
+              <Link href="/member/coach" className="vs-button vs-home-tool-button" data-testid="button-home-coach">Open Coach Board <ArrowUpRight size={15} /></Link>
+            </article>
+            <article className="vs-home-tool-card">
+              <span className="vs-index">PUBLIC / LEARNING</span>
+              <h3>Trading Academy</h3>
+              <p>Browse the public education overview and the learning approach.</p>
+              <Link href="/education" className="vs-button vs-home-tool-button" data-testid="button-home-academy">Open Academy <ArrowUpRight size={15} /></Link>
+            </article>
+            <article className="vs-home-tool-card">
+              <span className="vs-index">MEMBER / EVENTS</span>
+              <h3>Economic Calendar</h3>
+              <p>Review verified USD releases in your member workspace.</p>
+              <Link href="/member/calendar" className="vs-button vs-home-tool-button" data-testid="button-home-calendar">Open Calendar <ArrowUpRight size={15} /></Link>
+            </article>
+            <article className="vs-home-tool-card">
+              <span className="vs-index">MEMBER / REVIEW</span>
+              <h3>Trading Journal</h3>
+              <p>Keep your trading notes private in your member workspace.</p>
+              <Link href="/member/journal" className="vs-button vs-home-tool-button" data-testid="button-home-journal">Open Journal <ArrowUpRight size={15} /></Link>
+            </article>
+          </div>
+          <div className="vs-home-tools-footer">
+            <span>Already a member?</span>
+            <Link href="/member/dashboard" className="vs-button vs-button-quiet" data-testid="button-home-member-dashboard">Open Member Dashboard <ArrowRight size={15} /></Link>
+          </div>
+        </div>
       </section>
 
       <section className="vs-approach vs-section" id="approach">
