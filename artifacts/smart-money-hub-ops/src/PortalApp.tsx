@@ -49,6 +49,7 @@ import {
 } from '@/components/member-experience';
 import { MemberLearningExperience } from '@/components/member-learning';
 import { MemberNotificationsExperience } from '@/components/member-notifications';
+import StaffAnnouncements from '@/components/staff-announcements';
 import EducationVideos from '@/pages/education-videos';
 import ChannelHistory from '@/pages/channel-history';
 import TradeManagement from '@/pages/trades';
@@ -706,6 +707,7 @@ function AppShell({ session, children }: { session: PortalSession; children: Rea
       { href: '/staff/support', label: 'Support inbox', icon: <MessageSquareText />, testId: 'link-support' },
       { href: '/tasks', label: 'Staff Tasks', icon: <CheckCircle2 />, testId: 'link-staff-tasks' },
       { href: '/staff', label: 'Staff', icon: <Users />, testId: session.role === 'owner' ? 'link-staff-accounts' : 'link-staff' },
+      ...(import.meta.env.DEV ? [{ href: '/staff/announcements', label: 'Member announcements', icon: <Bell />, testId: 'link-member-announcements' }] : []),
       ...(session.role === 'owner' ? [
          { href: '/bot-control', label: 'Bot Control', icon: <Bot />, testId: 'link-owner-bot-control' },
          { href: '/operations', label: 'Operations Center', icon: <Gauge />, testId: 'link-owner-operations' },
@@ -1312,6 +1314,7 @@ function ProtectedRouter({ session }: { session: PortalSession }) {
   return <AppShell session={session}><Switch>
     <Route path="/staff/support/website-chats">{() => <SupportInbox session={session}/>}</Route>
     <Route path="/staff/support">{() => <Queue session={session}/>}</Route>
+    <Route path="/staff/announcements">{() => import.meta.env.DEV && (session.role === 'owner' || session.role === 'manager') ? <StaffAnnouncements session={session}/> : <AccessDenied/>}</Route>
     <Route path="/bot-control">{() => session.role === 'owner' ? <BotControl/> : <AccessDenied/>}</Route>
     <Route path="/command-center/member-access">{() => session.role === 'owner' ? <MemberAccessPage/> : <AccessDenied/>}</Route>
     <Route path="/command-center/pro-access">{() => session.role === 'owner' ? <ProAccessReview/> : <AccessDenied/>}</Route>

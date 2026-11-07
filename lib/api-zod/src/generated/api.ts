@@ -3326,6 +3326,161 @@ export const PublishEducationVideoResponse = zod.object({
 })
 
 
+export const listPortalMemberAnnouncementsResponseAnnouncementsItemTitleMax = 120;
+
+export const listPortalMemberAnnouncementsResponseAnnouncementsItemMessageMax = 500;
+
+export const listPortalMemberAnnouncementsResponseAnnouncementsItemCreatedByNameMax = 160;
+
+export const listPortalMemberAnnouncementsResponseAnnouncementsItemPublishedByNameMax = 160;
+
+export const listPortalMemberAnnouncementsResponseAnnouncementsItemRecipientCountMin = 0;
+
+
+
+export const ListPortalMemberAnnouncementsResponse = zod.object({
+  "announcements": zod.array(zod.object({
+  "announcementId": zod.string().uuid(),
+  "title": zod.string().max(listPortalMemberAnnouncementsResponseAnnouncementsItemTitleMax),
+  "message": zod.string().max(listPortalMemberAnnouncementsResponseAnnouncementsItemMessageMax),
+  "targetPath": zod.enum(['/member/learning', '/member/dashboard']),
+  "status": zod.enum(['draft', 'published']),
+  "createdByName": zod.string().max(listPortalMemberAnnouncementsResponseAnnouncementsItemCreatedByNameMax),
+  "createdAt": zod.coerce.date(),
+  "publishedByName": zod.string().max(listPortalMemberAnnouncementsResponseAnnouncementsItemPublishedByNameMax).nullable(),
+  "publishedAt": zod.coerce.date().nullable(),
+  "recipientCount": zod.number().int().min(listPortalMemberAnnouncementsResponseAnnouncementsItemRecipientCountMin).nullable()
+})),
+  "role": zod.enum(['owner', 'manager']),
+  "audienceLabel": zod.enum(['verified_development_members_excluding_staff'])
+})
+
+
+export const createPortalMemberAnnouncementBodyTitleMax = 120;
+
+export const createPortalMemberAnnouncementBodyMessageMax = 500;
+
+
+
+export const CreatePortalMemberAnnouncementBody = zod.object({
+  "title": zod.string().min(1).max(createPortalMemberAnnouncementBodyTitleMax),
+  "message": zod.string().min(1).max(createPortalMemberAnnouncementBodyMessageMax),
+  "targetPath": zod.enum(['/member/learning', '/member/dashboard']),
+  "requestId": zod.string().uuid()
+})
+
+export const createPortalMemberAnnouncementResponseAnnouncementTitleMax = 120;
+
+export const createPortalMemberAnnouncementResponseAnnouncementMessageMax = 500;
+
+export const createPortalMemberAnnouncementResponseAnnouncementCreatedByNameMax = 160;
+
+export const createPortalMemberAnnouncementResponseAnnouncementPublishedByNameMax = 160;
+
+export const createPortalMemberAnnouncementResponseAnnouncementRecipientCountMin = 0;
+
+
+
+export const CreatePortalMemberAnnouncementResponse = zod.object({
+  "announcement": zod.object({
+  "announcementId": zod.string().uuid(),
+  "title": zod.string().max(createPortalMemberAnnouncementResponseAnnouncementTitleMax),
+  "message": zod.string().max(createPortalMemberAnnouncementResponseAnnouncementMessageMax),
+  "targetPath": zod.enum(['/member/learning', '/member/dashboard']),
+  "status": zod.enum(['draft', 'published']),
+  "createdByName": zod.string().max(createPortalMemberAnnouncementResponseAnnouncementCreatedByNameMax),
+  "createdAt": zod.coerce.date(),
+  "publishedByName": zod.string().max(createPortalMemberAnnouncementResponseAnnouncementPublishedByNameMax).nullable(),
+  "publishedAt": zod.coerce.date().nullable(),
+  "recipientCount": zod.number().int().min(createPortalMemberAnnouncementResponseAnnouncementRecipientCountMin).nullable()
+})
+})
+
+
+export const UpdatePortalMemberAnnouncementParams = zod.object({
+  "announcementId": zod.coerce.string().uuid()
+})
+
+export const updatePortalMemberAnnouncementBodyTitleMax = 120;
+
+export const updatePortalMemberAnnouncementBodyMessageMax = 500;
+
+
+
+export const UpdatePortalMemberAnnouncementBody = zod.object({
+  "title": zod.string().min(1).max(updatePortalMemberAnnouncementBodyTitleMax),
+  "message": zod.string().min(1).max(updatePortalMemberAnnouncementBodyMessageMax),
+  "targetPath": zod.enum(['/member/learning', '/member/dashboard'])
+})
+
+export const updatePortalMemberAnnouncementResponseAnnouncementTitleMax = 120;
+
+export const updatePortalMemberAnnouncementResponseAnnouncementMessageMax = 500;
+
+export const updatePortalMemberAnnouncementResponseAnnouncementCreatedByNameMax = 160;
+
+export const updatePortalMemberAnnouncementResponseAnnouncementPublishedByNameMax = 160;
+
+export const updatePortalMemberAnnouncementResponseAnnouncementRecipientCountMin = 0;
+
+
+
+export const UpdatePortalMemberAnnouncementResponse = zod.object({
+  "announcement": zod.object({
+  "announcementId": zod.string().uuid(),
+  "title": zod.string().max(updatePortalMemberAnnouncementResponseAnnouncementTitleMax),
+  "message": zod.string().max(updatePortalMemberAnnouncementResponseAnnouncementMessageMax),
+  "targetPath": zod.enum(['/member/learning', '/member/dashboard']),
+  "status": zod.enum(['draft', 'published']),
+  "createdByName": zod.string().max(updatePortalMemberAnnouncementResponseAnnouncementCreatedByNameMax),
+  "createdAt": zod.coerce.date(),
+  "publishedByName": zod.string().max(updatePortalMemberAnnouncementResponseAnnouncementPublishedByNameMax).nullable(),
+  "publishedAt": zod.coerce.date().nullable(),
+  "recipientCount": zod.number().int().min(updatePortalMemberAnnouncementResponseAnnouncementRecipientCountMin).nullable()
+})
+})
+
+
+export const PublishPortalMemberAnnouncementParams = zod.object({
+  "announcementId": zod.coerce.string().uuid()
+})
+
+export const PublishPortalMemberAnnouncementBody = zod.object({
+  "confirm": zod.literal(true)
+})
+
+export const publishPortalMemberAnnouncementResponseAnnouncementTitleMax = 120;
+
+export const publishPortalMemberAnnouncementResponseAnnouncementMessageMax = 500;
+
+export const publishPortalMemberAnnouncementResponseAnnouncementCreatedByNameMax = 160;
+
+export const publishPortalMemberAnnouncementResponseAnnouncementPublishedByNameMax = 160;
+
+export const publishPortalMemberAnnouncementResponseAnnouncementRecipientCountMin = 0;
+
+export const publishPortalMemberAnnouncementResponseRecipientCountMin = 0;
+
+
+
+export const PublishPortalMemberAnnouncementResponse = zod.object({
+  "announcement": zod.object({
+  "announcementId": zod.string().uuid(),
+  "title": zod.string().max(publishPortalMemberAnnouncementResponseAnnouncementTitleMax),
+  "message": zod.string().max(publishPortalMemberAnnouncementResponseAnnouncementMessageMax),
+  "targetPath": zod.enum(['/member/learning', '/member/dashboard']),
+  "status": zod.enum(['draft', 'published']),
+  "createdByName": zod.string().max(publishPortalMemberAnnouncementResponseAnnouncementCreatedByNameMax),
+  "createdAt": zod.coerce.date(),
+  "publishedByName": zod.string().max(publishPortalMemberAnnouncementResponseAnnouncementPublishedByNameMax).nullable(),
+  "publishedAt": zod.coerce.date().nullable(),
+  "recipientCount": zod.number().int().min(publishPortalMemberAnnouncementResponseAnnouncementRecipientCountMin).nullable()
+}),
+  "recipientCount": zod.number().int().min(publishPortalMemberAnnouncementResponseRecipientCountMin),
+  "audienceLabel": zod.enum(['verified_development_members_excluding_staff'])
+})
+
+
 /**
  * @summary Get the currently authenticated user
  */

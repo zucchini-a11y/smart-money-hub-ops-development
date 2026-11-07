@@ -718,6 +718,136 @@ export interface MemberNotificationReadResponse {
   unreadCount: number;
 }
 
+export type PortalMemberAnnouncementTargetPath = typeof PortalMemberAnnouncementTargetPath[keyof typeof PortalMemberAnnouncementTargetPath];
+
+
+export const PortalMemberAnnouncementTargetPath = {
+  '/member/learning': '/member/learning',
+  '/member/dashboard': '/member/dashboard',
+} as const;
+
+export type PortalMemberAnnouncementStatus = typeof PortalMemberAnnouncementStatus[keyof typeof PortalMemberAnnouncementStatus];
+
+
+export const PortalMemberAnnouncementStatus = {
+  draft: 'draft',
+  published: 'published',
+} as const;
+
+export interface PortalMemberAnnouncement {
+  announcementId: string;
+  /** @maxLength 120 */
+  title: string;
+  /** @maxLength 500 */
+  message: string;
+  targetPath: PortalMemberAnnouncementTargetPath;
+  status: PortalMemberAnnouncementStatus;
+  /** @maxLength 160 */
+  createdByName: string;
+  createdAt: string;
+  /**
+     * @maxLength 160
+     * @nullable
+     */
+  publishedByName: string | null;
+  /** @nullable */
+  publishedAt: string | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  recipientCount: number | null;
+}
+
+export type PortalMemberAnnouncementListRole = typeof PortalMemberAnnouncementListRole[keyof typeof PortalMemberAnnouncementListRole];
+
+
+export const PortalMemberAnnouncementListRole = {
+  owner: 'owner',
+  manager: 'manager',
+} as const;
+
+export type PortalMemberAnnouncementListAudienceLabel = typeof PortalMemberAnnouncementListAudienceLabel[keyof typeof PortalMemberAnnouncementListAudienceLabel];
+
+
+export const PortalMemberAnnouncementListAudienceLabel = {
+  verified_development_members_excluding_staff: 'verified_development_members_excluding_staff',
+} as const;
+
+export interface PortalMemberAnnouncementList {
+  announcements: PortalMemberAnnouncement[];
+  role: PortalMemberAnnouncementListRole;
+  audienceLabel: PortalMemberAnnouncementListAudienceLabel;
+}
+
+export interface PortalMemberAnnouncementResponse {
+  announcement: PortalMemberAnnouncement;
+}
+
+export type PortalMemberAnnouncementPublishResponseAudienceLabel = typeof PortalMemberAnnouncementPublishResponseAudienceLabel[keyof typeof PortalMemberAnnouncementPublishResponseAudienceLabel];
+
+
+export const PortalMemberAnnouncementPublishResponseAudienceLabel = {
+  verified_development_members_excluding_staff: 'verified_development_members_excluding_staff',
+} as const;
+
+export interface PortalMemberAnnouncementPublishResponse {
+  announcement: PortalMemberAnnouncement;
+  /** @minimum 0 */
+  recipientCount: number;
+  audienceLabel: PortalMemberAnnouncementPublishResponseAudienceLabel;
+}
+
+export type PortalMemberAnnouncementInputTargetPath = typeof PortalMemberAnnouncementInputTargetPath[keyof typeof PortalMemberAnnouncementInputTargetPath];
+
+
+export const PortalMemberAnnouncementInputTargetPath = {
+  '/member/learning': '/member/learning',
+  '/member/dashboard': '/member/dashboard',
+} as const;
+
+export interface PortalMemberAnnouncementInput {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  title: string;
+  /**
+     * @minLength 1
+     * @maxLength 500
+     */
+  message: string;
+  targetPath: PortalMemberAnnouncementInputTargetPath;
+  requestId: string;
+}
+
+export type PortalMemberAnnouncementUpdateTargetPath = typeof PortalMemberAnnouncementUpdateTargetPath[keyof typeof PortalMemberAnnouncementUpdateTargetPath];
+
+
+export const PortalMemberAnnouncementUpdateTargetPath = {
+  '/member/learning': '/member/learning',
+  '/member/dashboard': '/member/dashboard',
+} as const;
+
+export interface PortalMemberAnnouncementUpdate {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  title: string;
+  /**
+     * @minLength 1
+     * @maxLength 500
+     */
+  message: string;
+  targetPath: PortalMemberAnnouncementUpdateTargetPath;
+}
+
+export const PortalMemberAnnouncementPublishInputValue = {
+  confirm: true,
+} as const;
+export type PortalMemberAnnouncementPublishInput = typeof PortalMemberAnnouncementPublishInputValue;
+
 export type CreateMemberJournalTradeDirection = typeof CreateMemberJournalTradeDirection[keyof typeof CreateMemberJournalTradeDirection];
 
 

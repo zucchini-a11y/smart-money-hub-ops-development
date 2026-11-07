@@ -92,6 +92,12 @@ import type {
   PortalCommandCenter,
   PortalDashboard,
   PortalLoginInput,
+  PortalMemberAnnouncementInput,
+  PortalMemberAnnouncementList,
+  PortalMemberAnnouncementPublishInput,
+  PortalMemberAnnouncementPublishResponse,
+  PortalMemberAnnouncementResponse,
+  PortalMemberAnnouncementUpdate,
   PortalPasswordInput,
   PortalReply,
   PortalReplyInput,
@@ -9475,6 +9481,325 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getPublishEducationVideoMutationOptions(options));
+    }
+
+export const getListPortalMemberAnnouncementsUrl = () => {
+
+
+
+
+  return `/api/portal/member-announcements`
+}
+
+export const listPortalMemberAnnouncements = async ( options?: Parameters<typeof customFetch>[1]): Promise<PortalMemberAnnouncementList> => {
+
+  return customFetch<PortalMemberAnnouncementList>(getListPortalMemberAnnouncementsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListPortalMemberAnnouncementsQueryKey = () => {
+    return [
+    `/api/portal/member-announcements`
+    ] as const;
+    }
+
+
+export const getListPortalMemberAnnouncementsQueryOptions = <TData = Awaited<ReturnType<typeof listPortalMemberAnnouncements>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPortalMemberAnnouncements>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListPortalMemberAnnouncementsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listPortalMemberAnnouncements>>> = ({ signal }) => listPortalMemberAnnouncements({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listPortalMemberAnnouncements>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListPortalMemberAnnouncementsQueryResult = NonNullable<Awaited<ReturnType<typeof listPortalMemberAnnouncements>>>
+export type ListPortalMemberAnnouncementsQueryError = ErrorType<ErrorResponse>
+
+
+
+export function useListPortalMemberAnnouncements<TData = Awaited<ReturnType<typeof listPortalMemberAnnouncements>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPortalMemberAnnouncements>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListPortalMemberAnnouncementsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreatePortalMemberAnnouncementUrl = () => {
+
+
+
+
+  return `/api/portal/member-announcements`
+}
+
+export const createPortalMemberAnnouncement = async (portalMemberAnnouncementInput: PortalMemberAnnouncementInput, options?: Parameters<typeof customFetch>[1]): Promise<PortalMemberAnnouncementResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<PortalMemberAnnouncementResponse>(getCreatePortalMemberAnnouncementUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(portalMemberAnnouncementInput)
+  }
+);}
+
+
+
+
+
+export const getCreatePortalMemberAnnouncementMutationKey = () => ['createPortalMemberAnnouncement'] as const;
+
+export const getCreatePortalMemberAnnouncementMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPortalMemberAnnouncement>>, TError,CreatePortalMemberAnnouncementMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createPortalMemberAnnouncement>>, TError,CreatePortalMemberAnnouncementMutationVariables, TContext> => {
+
+const mutationKey = getCreatePortalMemberAnnouncementMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createPortalMemberAnnouncement>>, CreatePortalMemberAnnouncementMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createPortalMemberAnnouncement(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreatePortalMemberAnnouncementMutationResult = NonNullable<Awaited<ReturnType<typeof createPortalMemberAnnouncement>>>
+    export type CreatePortalMemberAnnouncementMutationBody = BodyType<PortalMemberAnnouncementInput>
+    export type CreatePortalMemberAnnouncementMutationError = ErrorType<ErrorResponse>
+    export type CreatePortalMemberAnnouncementMutationVariables = {data: BodyType<PortalMemberAnnouncementInput>}
+
+    export const useCreatePortalMemberAnnouncement = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPortalMemberAnnouncement>>, TError,CreatePortalMemberAnnouncementMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createPortalMemberAnnouncement>>,
+        TError,
+        CreatePortalMemberAnnouncementMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreatePortalMemberAnnouncementMutationOptions(options));
+    }
+
+export const getUpdatePortalMemberAnnouncementUrl = (announcementId: string,) => {
+
+
+
+
+  return `/api/portal/member-announcements/${announcementId}`
+}
+
+export const updatePortalMemberAnnouncement = async (announcementId: string,
+    portalMemberAnnouncementUpdate: PortalMemberAnnouncementUpdate, options?: Parameters<typeof customFetch>[1]): Promise<PortalMemberAnnouncementResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<PortalMemberAnnouncementResponse>(getUpdatePortalMemberAnnouncementUrl(announcementId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(portalMemberAnnouncementUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdatePortalMemberAnnouncementMutationKey = () => ['updatePortalMemberAnnouncement'] as const;
+
+export const getUpdatePortalMemberAnnouncementMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePortalMemberAnnouncement>>, TError,UpdatePortalMemberAnnouncementMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updatePortalMemberAnnouncement>>, TError,UpdatePortalMemberAnnouncementMutationVariables, TContext> => {
+
+const mutationKey = getUpdatePortalMemberAnnouncementMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updatePortalMemberAnnouncement>>, UpdatePortalMemberAnnouncementMutationVariables> = (props) => {
+          const {announcementId,data} = props ?? {};
+
+          return  updatePortalMemberAnnouncement(announcementId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdatePortalMemberAnnouncementMutationResult = NonNullable<Awaited<ReturnType<typeof updatePortalMemberAnnouncement>>>
+    export type UpdatePortalMemberAnnouncementMutationBody = BodyType<PortalMemberAnnouncementUpdate>
+    export type UpdatePortalMemberAnnouncementMutationError = ErrorType<ErrorResponse>
+    export type UpdatePortalMemberAnnouncementMutationVariables = {announcementId: string;data: BodyType<PortalMemberAnnouncementUpdate>}
+
+    export const useUpdatePortalMemberAnnouncement = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePortalMemberAnnouncement>>, TError,UpdatePortalMemberAnnouncementMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updatePortalMemberAnnouncement>>,
+        TError,
+        UpdatePortalMemberAnnouncementMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdatePortalMemberAnnouncementMutationOptions(options));
+    }
+
+export const getPublishPortalMemberAnnouncementUrl = (announcementId: string,) => {
+
+
+
+
+  return `/api/portal/member-announcements/${announcementId}/publish`
+}
+
+export const publishPortalMemberAnnouncement = async (announcementId: string,
+    portalMemberAnnouncementPublishInput: PortalMemberAnnouncementPublishInput, options?: Parameters<typeof customFetch>[1]): Promise<PortalMemberAnnouncementPublishResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<PortalMemberAnnouncementPublishResponse>(getPublishPortalMemberAnnouncementUrl(announcementId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(portalMemberAnnouncementPublishInput)
+  }
+);}
+
+
+
+
+
+export const getPublishPortalMemberAnnouncementMutationKey = () => ['publishPortalMemberAnnouncement'] as const;
+
+export const getPublishPortalMemberAnnouncementMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof publishPortalMemberAnnouncement>>, TError,PublishPortalMemberAnnouncementMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof publishPortalMemberAnnouncement>>, TError,PublishPortalMemberAnnouncementMutationVariables, TContext> => {
+
+const mutationKey = getPublishPortalMemberAnnouncementMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof publishPortalMemberAnnouncement>>, PublishPortalMemberAnnouncementMutationVariables> = (props) => {
+          const {announcementId,data} = props ?? {};
+
+          return  publishPortalMemberAnnouncement(announcementId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PublishPortalMemberAnnouncementMutationResult = NonNullable<Awaited<ReturnType<typeof publishPortalMemberAnnouncement>>>
+    export type PublishPortalMemberAnnouncementMutationBody = BodyType<PortalMemberAnnouncementPublishInput>
+    export type PublishPortalMemberAnnouncementMutationError = ErrorType<ErrorResponse>
+    export type PublishPortalMemberAnnouncementMutationVariables = {announcementId: string;data: BodyType<PortalMemberAnnouncementPublishInput>}
+
+    export const usePublishPortalMemberAnnouncement = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof publishPortalMemberAnnouncement>>, TError,PublishPortalMemberAnnouncementMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof publishPortalMemberAnnouncement>>,
+        TError,
+        PublishPortalMemberAnnouncementMutationVariables,
+        TContext
+      > => {
+      return useMutation(getPublishPortalMemberAnnouncementMutationOptions(options));
     }
 
 export const getGetCurrentAuthUserUrl = () => {

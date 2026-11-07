@@ -3335,6 +3335,171 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /portal/member-announcements:
+    get:
+      operationId: listPortalMemberAnnouncements
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Owner-visible announcements and the manager's own drafts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalMemberAnnouncementList"
+        "403":
+          description: Owner or manager access is required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createPortalMemberAnnouncement
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalMemberAnnouncementInput"
+      responses:
+        "200":
+          description: Existing draft returned after an idempotent retry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalMemberAnnouncementResponse"
+        "201":
+          description: Announcement draft created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalMemberAnnouncementResponse"
+        "400":
+          description: Invalid announcement content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Owner or manager access is required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/member-announcements/{announcementId}:
+    patch:
+      operationId: updatePortalMemberAnnouncement
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      parameters:
+        - name: announcementId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalMemberAnnouncementUpdate"
+      responses:
+        "200":
+          description: Draft updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalMemberAnnouncementResponse"
+        "400":
+          description: Invalid announcement identifier or content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Draft ownership or staff role does not allow this update
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Draft not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Published announcements cannot be edited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /portal/member-announcements/{announcementId}/publish:
+    post:
+      operationId: publishPortalMemberAnnouncement
+      tags:
+        - supportPortal
+      security:
+        - portalSession: []
+      parameters:
+        - name: announcementId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalMemberAnnouncementPublishInput"
+      responses:
+        "200":
+          description: In-app notification delivered to verified Development members
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalMemberAnnouncementPublishResponse"
+        "400":
+          description: Invalid announcement identifier or missing confirmation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Announcement draft not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Owner-only publishing permission is required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Announcement is not publishable or no eligible recipients exist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Development member audience is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /auth/user:
     get:
       tags:
@@ -4530,6 +4695,122 @@ components:
           type: integer
           minimum: 0
       required: [unreadCount]
+    PortalMemberAnnouncement:
+      type: object
+      properties:
+        announcementId:
+          type: string
+          format: uuid
+        title:
+          type: string
+          maxLength: 120
+        message:
+          type: string
+          maxLength: 500
+        targetPath:
+          type: string
+          enum: [/member/learning, /member/dashboard]
+        status:
+          type: string
+          enum: [draft, published]
+        createdByName:
+          type: string
+          maxLength: 160
+        createdAt:
+          type: string
+          format: date-time
+        publishedByName:
+          type: ["string", "null"]
+          maxLength: 160
+        publishedAt:
+          type: ["string", "null"]
+          format: date-time
+        recipientCount:
+          type: ["integer", "null"]
+          minimum: 0
+      required:
+        - announcementId
+        - title
+        - message
+        - targetPath
+        - status
+        - createdByName
+        - createdAt
+        - publishedByName
+        - publishedAt
+        - recipientCount
+    PortalMemberAnnouncementList:
+      type: object
+      properties:
+        announcements:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortalMemberAnnouncement"
+        role:
+          type: string
+          enum: [owner, manager]
+        audienceLabel:
+          type: string
+          enum: [verified_development_members_excluding_staff]
+      required: [announcements, role, audienceLabel]
+    PortalMemberAnnouncementResponse:
+      type: object
+      properties:
+        announcement:
+          $ref: "#/components/schemas/PortalMemberAnnouncement"
+      required: [announcement]
+    PortalMemberAnnouncementPublishResponse:
+      type: object
+      properties:
+        announcement:
+          $ref: "#/components/schemas/PortalMemberAnnouncement"
+        recipientCount:
+          type: integer
+          minimum: 0
+        audienceLabel:
+          type: string
+          enum: [verified_development_members_excluding_staff]
+      required: [announcement, recipientCount, audienceLabel]
+    PortalMemberAnnouncementInput:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 120
+        message:
+          type: string
+          minLength: 1
+          maxLength: 500
+        targetPath:
+          type: string
+          enum: [/member/learning, /member/dashboard]
+        requestId:
+          type: string
+          format: uuid
+      required: [title, message, targetPath, requestId]
+    PortalMemberAnnouncementUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 120
+        message:
+          type: string
+          minLength: 1
+          maxLength: 500
+        targetPath:
+          type: string
+          enum: [/member/learning, /member/dashboard]
+      required: [title, message, targetPath]
+    PortalMemberAnnouncementPublishInput:
+      type: object
+      properties:
+        confirm:
+          type: boolean
+          const: true
+      required: [confirm]
     CreateMemberJournalTrade:
       type: object
       properties:

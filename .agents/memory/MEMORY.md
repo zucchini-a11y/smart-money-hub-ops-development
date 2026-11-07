@@ -1,6 +1,7 @@
 - [Smart Money Hub module boundaries](smart-money-hub-module-boundaries.md) — keep dashboard dependencies one-way from the bot orchestrator.
 - [Education group archive boundaries](education-group-knowledge.md) — keep private member history separate and do not assume Telegram can backfill old group messages.
 - [Member learning migration](member-learning-migration.md) — keep Telegram onboarding active until the website replacement is verified; preserve PRO access as a separate entitlement.
+- [Member announcement permissions](member-announcement-permissions.md) — Managers may prepare drafts; only Owners may publish platform-wide member announcements until member-team scope exists.
 - [Coach diagram flow](coach-diagram-flow.md) — send requested/confusion diagrams, otherwise offer in plain text and wait; never use a diagram button.
 - [Smart Money Hub Coach rules](smart-money-hub-coach-rules.md) — treat H1/M5, 2% risk, 1:3 planned R:R, 3% daily loss, and 1:1 break-even as preferences, not proof of validity.
 - [Coach chat reactions](coach-chat-reactions.md) — use restrained emoji reactions for reported learning progress and disciplined process in private chats and the Education group.
