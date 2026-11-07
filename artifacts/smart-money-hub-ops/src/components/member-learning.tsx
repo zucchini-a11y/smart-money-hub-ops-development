@@ -20,6 +20,7 @@ import {
   EyeOff,
   LockKeyhole,
   RefreshCw,
+  Search,
   ShieldCheck,
 } from 'lucide-react';
 import './member-learning.css';
@@ -30,7 +31,19 @@ const diagramLessonIds = new Set([
   'market-structure',
   'bos-and-choch',
   'liquidity-and-equal-highs-lows',
+  'order-blocks-in-context',
+  'fair-value-gaps',
+  'multi-timeframe-context',
+  'confirmation-and-risk-planning',
 ]);
+type LessonFilter = 'all' | MemberLearningLesson['progress'];
+
+const lessonFilters: Array<{ value: LessonFilter; label: string }> = [
+  { value: 'all', label: 'All' },
+  { value: 'not_started', label: 'To do' },
+  { value: 'in_progress', label: 'In progress' },
+  { value: 'completed', label: 'Complete' },
+];
 
 function lessonStatus(progress: MemberLearningLesson['progress']) {
   if (progress === 'completed') return 'Completed';
@@ -131,28 +144,39 @@ export function MemberLearningExperience() {
   const updateProgress = useUpdateMemberLearningProgress();
   const lessons = useMemo(() => learning.data?.lessons ?? [], [learning.data?.lessons]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [lessonQuery, setLessonQuery] = useState('');
+  const [lessonFilter, setLessonFilter] = useState<LessonFilter>('all');
   const [savedMessage, setSavedMessage] = useState('');
   const [actionError, setActionError] = useState('');
   const [diagramOpen, setDiagramOpen] = useState(false);
+  const visibleLessons = useMemo(() => {
+    const normalizedQuery = lessonQuery.trim().toLocaleLowerCase();
+    return lessons.filter((lesson) => {
+      const matchesFilter = lessonFilter === 'all' || lesson.progress === lessonFilter;
+      const matchesSearch = !normalizedQuery ||
+        `${lesson.title} ${lesson.summary}`.toLocaleLowerCase().includes(normalizedQuery);
+      return matchesFilter && matchesSearch;
+    });
+  }, [lessons, lessonFilter, lessonQuery]);
 
   useEffect(() => {
-    if (!lessons.length) {
-      setSelectedId(null);
+    if (!visibleLessons.length) {
+      if (selectedId !== null) setSelectedId(null);
       return;
     }
-    if (selectedId && lessons.some((lesson) => lesson.lessonId === selectedId && !lesson.locked)) return;
+    if (selectedId && visibleLessons.some((lesson) => lesson.lessonId === selectedId && !lesson.locked)) return;
     const next = learning.data?.nextLessonId;
-    const nextLesson = next ? lessons.find((lesson) => lesson.lessonId === next && !lesson.locked) : undefined;
-    setSelectedId(nextLesson?.lessonId ?? lessons.find((lesson) => !lesson.locked)?.lessonId ?? lessons[0].lessonId);
-  }, [lessons, learning.data?.nextLessonId, selectedId]);
+    const nextLesson = next ? visibleLessons.find((lesson) => lesson.lessonId === next && !lesson.locked) : undefined;
+    setSelectedId(nextLesson?.lessonId ?? visibleLessons.find((lesson) => !lesson.locked)?.lessonId ?? visibleLessons[0].lessonId);
+  }, [visibleLessons, learning.data?.nextLessonId, selectedId]);
 
   useEffect(() => {
     setDiagramOpen(false);
   }, [selectedId]);
 
   const response = learning.data as MemberLearningResponse | undefined;
-  const selected = lessons.find((lesson) => lesson.lessonId === selectedId) ?? null;
-  const activeIndex = selected ? lessons.findIndex((lesson) => lesson.lessonId === selected.lessonId) : -1;
+  const selected = visibleLessons.find((lesson) => lesson.lessonId === selectedId) ?? null;
+  const activeIndex = selected ? visibleLessons.findIndex((lesson) => lesson.lessonId === selected.lessonId) : -1;
   const saving = updateProgress.isPending;
 
   async function saveProgress(lesson: MemberLearningLesson, progress: 'in_progress' | 'completed') {
@@ -169,7 +193,7 @@ export function MemberLearningExperience() {
   }
 
   function moveLesson(offset: number) {
-    const target = lessons[activeIndex + offset];
+    const target = visibleLessons[activeIndex + offset];
     if (target) {
       setSelectedId(target.lessonId);
       setSavedMessage('');
@@ -241,8 +265,33 @@ export function MemberLearningExperience() {
           <section className="ml-workspace" aria-label="Learning path and lesson">
             <aside className="ml-lesson-rail">
               <div className="ml-rail-heading"><div><span className="ml-eyebrow">PUBLISHED TEXT LESSONS</span><h2>Study path</h2></div><span className="ml-count">{String(lessons.length).padStart(2, '0')}</span></div>
+              <label className="ml-lesson-search">
+                <Search size={15} aria-hidden="true" />
+                <input
+                  type="search"
+                  value={lessonQuery}
+                  onChange={(event) => setLessonQuery(event.target.value)}
+                  placeholder="Find a lesson"
+                  aria-label="Search lessons"
+                  data-testid="input-search-lessons"
+                />
+              </label>
+              <div className="ml-lesson-filters" role="group" aria-label="Filter lessons by progress">
+                {lessonFilters.map((filter) => (
+                  <button
+                    key={filter.value}
+                    type="button"
+                    className={lessonFilter === filter.value ? 'is-active' : ''}
+                    aria-pressed={lessonFilter === filter.value}
+                    onClick={() => setLessonFilter(filter.value)}
+                    data-testid={`filter-lessons-${filter.value}`}
+                  >
+                    {filter.label}
+                  </button>
+                ))}
+              </div>
               <ol className="ml-lesson-list" data-testid="learning-lesson-list">
-                {lessons.map((lesson, index) => {
+                {visibleLessons.map((lesson, index) => {
                   const isActive = lesson.lessonId === selected?.lessonId;
                   const isComplete = lesson.progress === 'completed';
                   return (
@@ -268,7 +317,13 @@ export function MemberLearningExperience() {
               <div className="ml-rail-foot"><span className="ml-rail-line" /><span>PROCESS OVER PREDICTION</span></div>
             </aside>
 
-            {selected && (
+            {visibleLessons.length === 0 ? (
+              <section className="ml-no-results" role="status" data-testid="learning-no-results">
+                <Search size={18} />
+                <strong>No lessons match these filters.</strong>
+                <span>Clear the search or choose All to see the full study path.</span>
+              </section>
+            ) : selected && (
               <article className="ml-reading-panel" data-testid="learning-lesson-detail">
                 <div className="ml-reading-topline">
                   <span><span className="ml-live-dot" /> LESSON {String(selected.sequence || activeIndex + 1).padStart(2, '0')}</span>
@@ -333,7 +388,7 @@ export function MemberLearningExperience() {
                     {!selected.locked && selected.progress === 'completed' && (
                       <span className="ml-complete-lock"><CheckCircle2 size={16} /> Progress saved</span>
                     )}
-                    <button className="ml-button ml-button-next" type="button" onClick={() => moveLesson(1)} disabled={activeIndex >= lessons.length - 1} data-testid="button-next-lesson">
+                    <button className="ml-button ml-button-next" type="button" onClick={() => moveLesson(1)} disabled={activeIndex >= visibleLessons.length - 1} data-testid="button-next-lesson">
                       Next lesson <ArrowRight size={15} />
                     </button>
                   </div>
