@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -34,6 +34,79 @@ function formatDate(value: string | null) {
   return Number.isNaN(date.getTime())
     ? ''
     : new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(date);
+}
+
+function renderInlineMarkdown(value: string): ReactNode[] {
+  const tokens = value.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).filter(Boolean);
+  return tokens.map((token, index) => {
+    if (token.startsWith('**') && token.endsWith('**')) {
+      return <strong key={index}>{token.slice(2, -2)}</strong>;
+    }
+    if (token.startsWith('`') && token.endsWith('`')) {
+      return <code key={index}>{token.slice(1, -1)}</code>;
+    }
+    return token;
+  });
+}
+
+function renderLessonMarkdown(markdown: string): ReactNode[] {
+  const blocks: ReactNode[] = [];
+  let paragraph: string[] = [];
+  let list: { kind: 'ordered' | 'unordered'; items: string[] } | null = null;
+  let key = 0;
+
+  const flushParagraph = () => {
+    if (!paragraph.length) return;
+    blocks.push(<p key={`paragraph-${key++}`}>{renderInlineMarkdown(paragraph.join(' '))}</p>);
+    paragraph = [];
+  };
+
+  const flushList = () => {
+    if (!list) return;
+    const List = list.kind === 'ordered' ? 'ol' : 'ul';
+    blocks.push(
+      <List key={`list-${key++}`}>
+        {list.items.map((item, index) => <li key={index}>{renderInlineMarkdown(item)}</li>)}
+      </List>,
+    );
+    list = null;
+  };
+
+  markdown.split(/\r?\n/).forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushParagraph();
+      flushList();
+      return;
+    }
+
+    const heading = trimmed.match(/^#{1,3}\s+(.+)$/);
+    if (heading) {
+      flushParagraph();
+      flushList();
+      blocks.push(<h3 key={`heading-${key++}`}>{renderInlineMarkdown(heading[1])}</h3>);
+      return;
+    }
+
+    const orderedItem = trimmed.match(/^\d+\.\s+(.+)$/);
+    const unorderedItem = trimmed.match(/^[-*]\s+(.+)$/);
+    const item = orderedItem?.[1] ?? unorderedItem?.[1];
+    if (item) {
+      flushParagraph();
+      const kind = orderedItem ? 'ordered' : 'unordered';
+      if (list && list.kind !== kind) flushList();
+      if (!list) list = { kind, items: [] };
+      list.items.push(item);
+      return;
+    }
+
+    flushList();
+    paragraph.push(trimmed);
+  });
+
+  flushParagraph();
+  flushList();
+  return blocks;
 }
 
 export function MemberLearningExperience() {
@@ -105,12 +178,12 @@ export function MemberLearningExperience() {
 
         <section className="ml-intro" aria-labelledby="ml-title">
           <div className="ml-intro-copy">
-            <div className="ml-eyebrow"><span className="ml-live-dot" /> INDEPENDENT MARKET STUDY</div>
-            <h1 id="ml-title">Build a sharper<br /><em>way of seeing.</em></h1>
-            <p>A private study space for developing your own market-analysis habits. Move at your pace; progress stays with your account.</p>
+            <div className="ml-eyebrow"><span className="ml-live-dot" /> TRADING ACADEMY · MEMBER STUDY SPACE</div>
+            <h1 id="ml-title">Learn the market.<br /><em>Think for yourself.</em></h1>
+            <p>Work through the published text lessons in order, save your progress, and build a process you can explain.</p>
           </div>
           <aside className="ml-progress-card" aria-label="Learning progress" data-testid="learning-progress">
-            <div className="ml-progress-top"><span>YOUR LEARNING PATH</span><BookOpen size={17} aria-hidden="true" /></div>
+            <div className="ml-progress-top"><span>TRADING ACADEMY PROGRESS</span><BookOpen size={17} aria-hidden="true" /></div>
             {learning.isLoading ? (
               <div className="ml-progress-skeleton" role="status" aria-label="Loading learning progress"><i /><i /></div>
             ) : response ? (
@@ -152,7 +225,7 @@ export function MemberLearningExperience() {
         ) : (
           <section className="ml-workspace" aria-label="Learning path and lesson">
             <aside className="ml-lesson-rail">
-              <div className="ml-rail-heading"><div><span className="ml-eyebrow">THE CURRICULUM</span><h2>Your path</h2></div><span className="ml-count">{String(lessons.length).padStart(2, '0')}</span></div>
+              <div className="ml-rail-heading"><div><span className="ml-eyebrow">PUBLISHED TEXT LESSONS</span><h2>Study path</h2></div><span className="ml-count">{String(lessons.length).padStart(2, '0')}</span></div>
               <ol className="ml-lesson-list" data-testid="learning-lesson-list">
                 {lessons.map((lesson, index) => {
                   const isActive = lesson.lessonId === selected?.lessonId;
@@ -201,7 +274,7 @@ export function MemberLearningExperience() {
                     <h2>{selected.title}</h2>
                     <p className="ml-summary">{selected.summary}</p>
                     <div className="ml-reading-rule"><span>STUDY NOTES</span><i /></div>
-                    <div className="ml-body" data-testid="learning-lesson-body">{selected.bodyMarkdown}</div>
+                    <div className="ml-body" data-testid="learning-lesson-body">{renderLessonMarkdown(selected.bodyMarkdown)}</div>
                     {selected.progress === 'completed' && selected.completedAt && <p className="ml-completed-date"><CheckCircle2 size={14} /> Completed {formatDate(selected.completedAt)}</p>}
                   </>
                 )}

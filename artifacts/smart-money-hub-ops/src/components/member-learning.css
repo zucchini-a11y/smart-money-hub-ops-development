@@ -188,6 +188,49 @@
   .ml-page *, .ml-page *::before, .ml-page *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
 
+/* Render lesson content as readable study notes instead of raw Markdown text. */
+.ml-body {
+  min-height: 140px;
+  white-space: normal;
+}
+.ml-body > p {
+  margin: 0 0 15px;
+}
+.ml-body > h3 {
+  margin: 27px 0 10px;
+  color: #f1f4ff;
+  font-size: 16px;
+  line-height: 1.4;
+  letter-spacing: -.025em;
+}
+.ml-body > ol,
+.ml-body > ul {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 20px;
+  padding-left: 23px;
+}
+.ml-body li {
+  padding-left: 4px;
+}
+.ml-body li::marker {
+  color: #a894ff;
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+}
+.ml-body strong {
+  color: #e9e3ff;
+  font-weight: 700;
+}
+.ml-body code {
+  padding: 2px 6px;
+  border: 1px solid rgba(91, 216, 231, .2);
+  border-radius: 5px;
+  color: #8ee8ef;
+  background: rgba(91, 216, 231, .07);
+  font: 12px 'DM Mono', monospace;
+}
+
 /* Member-area night interface: a precise navy canvas with restrained spectral accents. */
 .ml-page {
   --ml-ink: #edf2ff;
