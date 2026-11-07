@@ -28,7 +28,7 @@ import type {
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'wouter';
-import { publicSiteLinks } from '../public-site/config';
+import { isConfiguredPublicUrl, publicSiteLinks } from '../public-site/config';
 import {
   ArrowRight,
   ArrowUpRight,
@@ -895,17 +895,33 @@ export function MemberCoachExperience() {
 }
 
 export function MemberFeatureDashboardLinks({ proSignalsAccess = false }: { proSignalsAccess?: boolean }) {
-  const quickLinks = [
+  const quickLinks: Array<{ href: string; title: string; detail: string; icon: ReactNode; external?: boolean }> = [
     { href: '/member/learning', title: 'Trading Academy', detail: 'Lessons and saved progress', icon: <BookOpen size={18} /> },
     { href: '/member/calendar', title: 'Economic calendar', detail: 'Verified USD events', icon: <CalendarDays size={18} /> },
     { href: '/member/journal', title: 'Trading journal', detail: 'Your saved decisions', icon: <FileText size={18} /> },
     { href: '/member/coach', title: 'Ask Vayda', detail: 'Learn and reflect', icon: <MessageCircle size={18} /> },
-    { href: '/market-analysis', title: 'Market Analysis', detail: 'Read market context', icon: <Activity size={18} /> },
+    ...(isConfiguredPublicUrl(publicSiteLinks.marketAnalysisChannel)
+      ? [{
+          href: publicSiteLinks.marketAnalysisChannel,
+          title: 'Market Analysis',
+          detail: 'Open the official channel',
+          icon: <Activity size={18} />,
+          external: true,
+        }]
+      : []),
     ...(proSignalsAccess ? [{ href: '/member/pro-signals', title: 'PRO Signals', detail: 'Authorized member feed', icon: <Radio size={18} /> }] : []),
   ];
   return <div className="mx-feature-dashboard-links">
-    {quickLinks.map((item) => <Link className="mx-tool-card" href={item.href} key={item.href} aria-label={item.title} data-testid={`card-feature-${item.href.split('/').pop()}`}>
-      <span className="mx-tool-icon">{item.icon}</span><span className="mx-tool-copy"><strong>{item.title}</strong><small>{item.detail}</small></span><ArrowRight size={14} className="mx-tool-arrow" />
-    </Link>)}
+    {quickLinks.map((item) => {
+      const contents = <>
+        <span className="mx-tool-icon">{item.icon}</span>
+        <span className="mx-tool-copy"><strong>{item.title}</strong><small>{item.detail}</small></span>
+        {item.external ? <ArrowUpRight size={14} className="mx-tool-arrow" /> : <ArrowRight size={14} className="mx-tool-arrow" />}
+      </>;
+      const testId = item.external ? 'card-feature-market-analysis' : `card-feature-${item.href.split('/').pop()}`;
+      return item.external
+        ? <a className="mx-tool-card" href={item.href} key={item.title} target="_blank" rel="noopener noreferrer" aria-label={item.title} data-testid={testId}>{contents}</a>
+        : <Link className="mx-tool-card" href={item.href} key={item.href} aria-label={item.title} data-testid={testId}>{contents}</Link>;
+    })}
   </div>;
 }
