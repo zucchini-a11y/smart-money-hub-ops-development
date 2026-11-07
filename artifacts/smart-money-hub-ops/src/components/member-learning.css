@@ -330,87 +330,9 @@
 .ml-diagram-toggle > svg:last-child { transition: transform .18s ease; }
 .ml-diagram-toggle > svg:last-child.is-expanded { transform: rotate(90deg); }
 .ml-diagram-content { margin-top: 15px; animation: ml-diagram-reveal .24s ease both; }
-.ml-diagram-panel {
-  display: grid;
-  gap: 13px;
-  padding: clamp(15px, 2.5vw, 24px);
-  border: 1px solid rgba(154, 173, 214, .2);
-  border-radius: 12px 22px 12px 22px;
-  background: linear-gradient(145deg, rgba(20, 31, 53, .95), rgba(12, 20, 37, .96));
-}
-.ml-diagram-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-}
-.ml-diagram-heading h3 {
-  margin: 5px 0 0;
-  color: #eef2ff;
-  font-size: 16px;
-  letter-spacing: -.03em;
-}
-.ml-diagram-note {
-  flex: 0 0 auto;
-  padding: 6px 8px;
-  border: 1px solid rgba(91, 216, 231, .2);
-  border-radius: 99px;
-  color: #93dce3;
-  font: 8px 'DM Mono', monospace;
-  letter-spacing: .06em;
-}
-.ml-diagram-canvas {
-  overflow: hidden;
-  border: 1px solid rgba(154, 173, 214, .14);
-  border-radius: 10px;
-  background:
-    radial-gradient(ellipse at 72% 12%, rgba(111, 83, 196, .12), transparent 55%),
-    #0b1324;
-}
-.ml-diagram-canvas svg { display: block; width: 100%; height: auto; }
-.ml-diagram-description {
-  margin: 0;
-  color: #c0cbe0;
-  font-size: 11px;
-  line-height: 1.75;
-}
-.ml-diagram-disclaimer {
-  margin: -6px 0 0;
-  color: #8696b5;
-  font: 9px/1.6 'DM Mono', monospace;
-}
-.ml-comparison-diagrams {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-.ml-comparison-card {
-  min-width: 0;
-  display: grid;
-  align-content: start;
-  gap: 9px;
-  margin: 0;
-}
-.ml-comparison-card figcaption {
-  color: #e9edff;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1.45;
-}
-.ml-comparison-card p {
-  margin: 0;
-  color: #aebad2;
-  font-size: 10px;
-  line-height: 1.7;
-}
 @keyframes ml-diagram-reveal {
   from { opacity: 0; transform: translateY(5px); }
   to { opacity: 1; transform: translateY(0); }
-}
-@media (max-width: 620px) {
-  .ml-diagram-heading { align-items: flex-start; flex-direction: column; }
-  .ml-diagram-note { white-space: nowrap; }
-  .ml-comparison-diagrams { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {
   .ml-diagram-content { animation: none; }
@@ -523,24 +445,8 @@
 .ml-empty-foot { color: #9aa9c4; }
 .ml-locked-content { display: grid; justify-items: start; padding: 37px 0 26px; }
 .ml-locked-icon { width: 44px; height: 44px; display: grid; place-items: center; margin-bottom: 19px; border: 1px solid rgba(157, 137, 255, .38); border-radius: 14px 4px 14px 4px; color: #b1a2ff; background: rgba(130, 108, 222, .12); }
-.ml-locked-content h2 { margin-top: 12px; }
+.ml-locked-title { max-width: 540px; margin: 12px 0 8px; color: #eff3ff; font-size: clamp(18px, 2vw, 24px); line-height: 1.35; letter-spacing: -.025em; }
 .ml-locked-content p { max-width: 430px; margin: 0; color: #a8b4cb; font-size: 12px; line-height: 1.8; }
-.ml-read-ahead-note {
-  display: flex;
-  align-items: flex-start;
-  gap: 11px;
-  margin: 21px 0 23px;
-  padding: 14px 16px;
-  border: 1px solid rgba(157, 137, 255, .3);
-  border-radius: 8px 15px 8px 15px;
-  color: #c8d3e9;
-  background: rgba(132, 111, 230, .09);
-  font-size: 14px;
-  line-height: 1.7;
-}
-.ml-read-ahead-note > svg { flex: 0 0 auto; margin-top: 2px; color: #b6a8ff; }
-.ml-read-ahead-note > span { display: grid; gap: 3px; }
-.ml-read-ahead-note strong { color: #e1d9ff; font-size: 14px; }
 .ml-footer { color: #8e9db9; }
 .ml-footer > span:first-child { color: #a1aec8; }
 .ml-footer i { background: #9e8bff; }
@@ -723,21 +629,6 @@
   font-size: 12px;
   line-height: 1.65;
 }
-.ml-supplemental-sketch {
-  overflow: hidden;
-  border: 1px solid rgba(154, 173, 214, .2);
-  border-radius: 8px 14px 8px 14px;
-  background: rgba(255, 255, 255, .025);
-}
-.ml-supplemental-sketch summary {
-  padding: 13px 15px;
-  color: #c5baff;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.ml-supplemental-sketch[open] { padding: 0 12px 12px; }
-.ml-supplemental-sketch[open] > summary { margin: 0 -12px 12px; border-bottom: 1px solid var(--ml-line); }
 
 @media (max-width: 760px) {
   .ml-roadmap { grid-template-columns: 1fr; }

@@ -8,14 +8,14 @@ const lessons = [
   { lesson_key: "bos-and-choch", title: "BOS and CHoCH", summary: "Study breaks", body_markdown: "BOS content", sequence: 3 },
 ];
 
-test("published lesson content is readable ahead while progress stays sequential", () => {
+test("locked lessons do not return their content before earlier lessons are complete", () => {
   const response = buildMemberLearningResponse(lessons);
   assert.equal(response.lessons[0].locked, false);
   assert.equal(response.lessons[0].bodyMarkdown, "Orientation content");
   assert.equal(response.lessons[1].locked, true);
-  assert.equal(response.lessons[1].bodyMarkdown, "Market structure content");
+  assert.equal(response.lessons[1].bodyMarkdown, "");
   assert.equal(response.lessons[2].locked, true);
-  assert.equal(response.lessons[2].bodyMarkdown, "BOS content");
+  assert.equal(response.lessons[2].bodyMarkdown, "");
   assert.equal(response.nextLessonId, "orientation");
 });
 
@@ -32,6 +32,19 @@ test("completing a lesson unlocks only the next published lesson", () => {
   assert.equal(response.lessons[1].locked, false);
   assert.equal(response.lessons[1].bodyMarkdown, "Market structure content");
   assert.equal(response.lessons[2].locked, true);
+  assert.equal(response.nextLessonId, "market-structure");
+});
+
+test("an in-progress lesson does not unlock the following lesson", () => {
+  const response = buildMemberLearningResponse([
+    { ...lessons[0], progress: "completed" },
+    { ...lessons[1], progress: "in_progress" },
+    lessons[2],
+  ]);
+  assert.equal(response.lessons[1].locked, false);
+  assert.equal(response.lessons[1].bodyMarkdown, "Market structure content");
+  assert.equal(response.lessons[2].locked, true);
+  assert.equal(response.lessons[2].bodyMarkdown, "");
   assert.equal(response.nextLessonId, "market-structure");
 });
 

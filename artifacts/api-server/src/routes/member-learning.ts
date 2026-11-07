@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { Router, type IRouter, type Response } from "express";
 import {
   GetMemberLearningResponse,
@@ -16,6 +18,29 @@ const schema = resolvePortalSupportSchema(
   process.env.PORTAL_SUPPORT_SCHEMA,
 );
 const LESSON_ID_RE = /^[a-z0-9-]{1,80}$/;
+const GUIDE_FIGURE_IDS_BY_LESSON: Record<string, readonly string[]> = {
+  "candle-anatomy": ["candle-anatomy"],
+  "swing-high-low": ["swing-high-low"],
+  "market-structure": ["market-structure"],
+  "bos-and-choch": ["bos"],
+  "change-of-character": ["choch"],
+  "mss-displacement": ["mss-displacement"],
+  "liquidity-and-equal-highs-lows": ["liquidity-equal-highs-lows"],
+  "liquidity-sweep": ["liquidity-sweep"],
+  inducement: ["inducement"],
+  "fair-value-gaps": ["fair-value-gap"],
+  "inverse-fvg": ["inverse-fvg"],
+  "volume-imbalance-liquidity-void": ["volume-imbalance-liquidity-void"],
+  "order-blocks-in-context": ["order-block"],
+  "breaker-block": ["breaker-block"],
+  "mitigation-block": ["mitigation-block"],
+  "rejection-block": ["rejection-block"],
+  "premium-discount-ote": ["premium-discount-ote"],
+  "power-of-three-judas-swing": ["power-of-three-judas-swing"],
+  "multi-timeframe-context": ["premium-discount-ote", "complete-smc-model"],
+  "complete-smc-trade-model": ["complete-smc-model"],
+  "confirmation-and-risk-planning": ["complete-smc-model"],
+};
 
 function developmentLearningEnabled(res: Response): boolean {
   if (process.env.NODE_ENV === "production" || schema !== "smh_test") {
@@ -28,6 +53,7 @@ function developmentLearningEnabled(res: Response): boolean {
 function privateResponse(res: Response): void {
   res.setHeader("Cache-Control", "no-store, private");
   res.setHeader("Pragma", "no-cache");
+  res.setHeader("X-Content-Type-Options", "nosniff");
 }
 
 async function readMemberLearning(clerkUserId: string) {
@@ -55,6 +81,60 @@ router.get("/member/learning", async (req, res): Promise<void> => {
   const learning = await readMemberLearning(identity.clerkUserId);
   res.json(learning);
 });
+
+router.get(
+  "/member/learning/:lessonId/figures/:figureId",
+  async (req, res): Promise<void> => {
+    privateResponse(res);
+    if (!developmentLearningEnabled(res)) return;
+    const identity = await requireMemberIdentity(req, res);
+    if (!identity) return;
+
+    const lessonId = Array.isArray(req.params.lessonId) ? req.params.lessonId[0] : req.params.lessonId;
+    const figureId = Array.isArray(req.params.figureId) ? req.params.figureId[0] : req.params.figureId;
+    if (
+      !lessonId || !LESSON_ID_RE.test(lessonId)
+      || !figureId || !LESSON_ID_RE.test(figureId)
+      || !GUIDE_FIGURE_IDS_BY_LESSON[lessonId]?.includes(figureId)
+    ) {
+      res.status(404).json({ error: "This lesson figure is not available." });
+      return;
+    }
+
+    const unlocked = await pool.query(
+      `SELECT lesson.lesson_key
+         FROM ${schema}.member_learning_lessons AS lesson
+        WHERE lesson.lesson_key=$1
+          AND lesson.published=TRUE
+          AND NOT EXISTS (
+            SELECT 1
+              FROM ${schema}.member_learning_lessons AS earlier
+              LEFT JOIN ${schema}.member_learning_progress AS earlier_progress
+                ON earlier_progress.lesson_key=earlier.lesson_key
+               AND earlier_progress.clerk_user_id=$2
+             WHERE earlier.published=TRUE
+               AND earlier.sequence < lesson.sequence
+               AND COALESCE(earlier_progress.progress, 'not_started') <> 'completed'
+          )
+        LIMIT 1`,
+      [lessonId, identity.clerkUserId],
+    );
+    if (!unlocked.rows.length) {
+      res.status(404).json({ error: "This lesson figure is not available." });
+      return;
+    }
+
+    const image = await readFile(
+      resolve(process.cwd(), "assets", "academy-guide", `${figureId}.webp`),
+    ).catch(() => null);
+    if (!image) {
+      res.status(404).json({ error: "This lesson figure is not available." });
+      return;
+    }
+
+    res.type("image/webp").status(200).send(image);
+  },
+);
 
 router.patch(
   "/member/learning/:lessonId/progress",

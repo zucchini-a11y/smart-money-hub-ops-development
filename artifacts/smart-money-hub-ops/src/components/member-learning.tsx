@@ -27,7 +27,6 @@ import './member-learning.css';
 import { MemberLessonDiagram } from './member-learning-diagrams';
 
 const diagramLessonIds = new Set([
-  'orientation',
   'candle-anatomy',
   'swing-high-low',
   'market-structure',
@@ -68,123 +67,34 @@ const roadmapSteps = [
 
 type LessonActivity = { practise: string[]; analyse: string; review: string[] };
 
-const lessonActivities: Record<string, LessonActivity> = {
-  orientation: {
-    practise: ['Write the Learn → Practise → Analyse → Review steps in your journal.', 'Record your H1 bias, M5 entry timeframe, risk limits, and conditions for standing aside.'],
-    analyse: 'Choose a saved or demo chart for Gold and one other relevant market. Describe only what the charts show; this is not a live signal.',
-    review: ['Which rules are part of your established plan?', 'When is standing aside the correct decision?'],
-  },
-  'candle-anatomy': {
-    practise: ['Mark open, high, low, and close on five candles.', 'Compare each candle body with its wicks.'],
-    analyse: 'Compare up-closing and down-closing candles on a saved Gold chart and another relevant market. Check the chart colour legend.',
-    review: ['What do the body and wicks represent?', 'Can candle colour alone establish direction?'],
-  },
-  'swing-high-low': {
-    practise: ['Mark 10 swing highs and lows on an M5 Gold chart using the three-candle example.', 'Repeat on H1 and note which swings price visibly respects.'],
-    analyse: 'Compare how H1 swing areas appear in M5 detail on XAUUSD and one other market.',
-    review: ['What is the minimum candle pattern shown in the guide?', 'Why can an H1 swing matter more than an M5 fluctuation?'],
-  },
-  'market-structure': {
-    practise: ['Label HH, HL, LH, and LL across one H1 Gold chart. Mark the swing that would challenge the current sequence.'],
-    analyse: 'State the H1 bias on a saved XAUUSD chart, then check whether M5 agrees. Repeat on another relevant market.',
-    review: ['What makes a chart sequence a range rather than a trend?', 'Which swing is protected in the guide’s uptrend example?'],
-  },
-  'multi-timeframe-context': {
-    practise: ['Write the H1 bias before viewing M5.', 'On M5, record what entry confirmation you would need and what would invalidate the idea.'],
-    analyse: 'Apply the H1-to-M5 process to Gold and another market you follow. If the views conflict, record the conflict instead of forcing a setup.',
-    review: ['Which timeframe sets your higher-timeframe bias?', 'Does M5 detail override an unclear H1 context?'],
-  },
-  'bos-and-choch': {
-    practise: ['Find five BOS examples on H1 Gold. Mark the prior swing and closing candle; separately note wick-only breaks.'],
-    analyse: 'On a saved XAUUSD chart, map the pullback area after a BOS and note what M5 confirmation your plan would still require.',
-    review: ['Why does a wick through a level not meet the guide’s BOS close rule?', 'What do you study after a BOS without chasing it?'],
-  },
-  'change-of-character': {
-    practise: ['Find three CHoCH examples on H1 Gold. Note whether a sweep came first and whether the observed shift held.'],
-    analyse: 'Compare an M5 CHoCH against H1 context on a saved chart. Record whether it describes a shift or only a pullback.',
-    review: ['Which swing level breaks in the guide’s bullish CHoCH example?', 'Why is a CHoCH not an entry by itself?'],
-  },
-  'mss-displacement': {
-    practise: ['Mark displacement candles and gaps on five M5 structure breaks. Grade each example strong or weak and explain why.'],
-    analyse: 'Compare saved XAUUSD examples around London and New York sessions with another market; do not assume the pattern repeats.',
-    review: ['How does the guide distinguish MSS from CHoCH?', 'What can make a structure break look weak?'],
-  },
-  'liquidity-and-equal-highs-lows': {
-    practise: ['Mark equal highs, equal lows, previous-day highs/lows, and a session range on a saved Gold chart.'],
-    analyse: 'List visible levels above and below the selected XAUUSD price. Compare which is nearer and more obvious, then repeat on another market.',
-    review: ['Why is a liquidity level a chart interpretation rather than proof of hidden orders?', 'Name four visible reference types from the lesson.'],
-  },
-  'liquidity-sweep': {
-    practise: ['Find five sweep examples on M5 Gold. Mark the wick beyond the reference and the close back inside.'],
-    analyse: 'Review saved Asia high/low examples around the London session and note whether a later structure description followed.',
-    review: ['How does a sweep differ from a close-based BOS?', 'Is a sweep alone sufficient under your plan?'],
-  },
-  inducement: {
-    practise: ['Mark a smaller swing before three candidate order-block areas on M5 Gold. Note whether price passed the swing first.'],
-    analyse: 'On a saved H1 chart, identify smaller visible swings leading toward a zone without assuming intent or hidden orders.',
-    review: ['Why does the guide describe inducement as a filter, not a universal rule?', 'What did price visibly do after passing the smaller swing?'],
-  },
-  'fair-value-gaps': {
-    practise: ['Draw 10 three-candle FVG examples on M5 Gold. Mark the 50% level and record whether each area was revisited.'],
-    analyse: 'Compare saved FVG examples that align with H1 context with those that do not on XAUUSD.',
-    review: ['What price relationship defines bullish and bearish FVG examples?', 'What does consequent encroachment refer to?'],
-  },
-  'inverse-fvg': {
-    practise: ['Find three FVG examples with a candle close through the zone. Record what happened on a later revisit.'],
-    analyse: 'Look for saved M5 IFVG examples after a sweep and structure shift; compare them with wick-only passes.',
-    review: ['Why is a wick-only pass not enough for the guide’s inversion example?', 'What opposite-side role is assigned to a failed bullish FVG?'],
-  },
-  'volume-imbalance-liquidity-void': {
-    practise: ['Mark one body imbalance with overlapping wicks and one run of directional candles on Gold.'],
-    analyse: 'Use a saved chart around a sharp move and observe whether price later revisited any marked area.',
-    review: ['How does a body imbalance differ from the FVG definition?', 'What candle sequence is called a liquidity void in the guide?'],
-  },
-  'order-blocks-in-context': {
-    practise: ['Mark five candidate order-block areas that precede a visible structure break on M5 Gold.', 'Record the zone bounds and whether price later revisited them.'],
-    analyse: 'Find saved H1 candidate zones that align with the observed structure; inspect M5 detail without assuming a reaction.',
-    review: ['What visible move does the guide require before applying the label?', 'Does the label prove who placed orders?'],
-  },
-  'breaker-block': {
-    practise: ['Find three candidate breaker examples on M5 Gold. Mark the prior zone, the close through, and any earlier sweep.'],
-    analyse: 'Mark one H1 candidate and inspect a saved M5 revisit without predicting the outcome.',
-    review: ['How does the guide distinguish a breaker from a mitigation block?', 'What happens to the old zone in a bullish breaker example?'],
-  },
-  'mitigation-block': {
-    practise: ['Find three failure-swing examples on M5 Gold. Mark the failed swing area and any later revisit.'],
-    analyse: 'Journal candidate breaker and mitigation examples separately on saved XAUUSD charts.',
-    review: ['Why does the guide treat this as a supporting zone?', 'What happened to the prior high or low before the example formed?'],
-  },
-  'rejection-block': {
-    practise: ['Mark five prominent wick examples at H1 swing areas. Record how price behaved if it later returned.'],
-    analyse: 'Compare candidate wick zones with previous-day or session reference levels on a saved Gold chart.',
-    review: ['How is the example zone drawn?', 'Why should ordinary small wicks not all receive the same label?'],
-  },
-  'premium-discount-ote': {
-    practise: ['Draw a selected H1 Gold dealing range. Mark 50% and the guide’s 62%–79% OTE band, then note M5 observations.'],
-    analyse: 'On a saved XAUUSD chart, describe the range location and what context it provides; do not infer a trade direction from the band alone.',
-    review: ['Which retracement range does the guide show for OTE?', 'What does the midpoint represent?'],
-  },
-  'power-of-three-judas-swing': {
-    practise: ['Mark the Asia range on Gold across five saved or demo sessions. Note whether either side was passed later.'],
-    analyse: 'Compare the AMD description on XAUUSD with another market over the same selected dates.',
-    review: ['What do accumulation, manipulation, and distribution mean in this framework?', 'What should you do when the sequence does not appear?'],
-  },
-  'complete-smc-trade-model': {
-    practise: ['Paper-trade five historical or demo chart examples. Log H1 context, sweep, M5 shift, zone, stop, target, and whether 1:3 was available.'],
-    analyse: 'Apply the same checklist to one other relevant market and compare observations without assuming equal results.',
-    review: ['Which elements does the guide combine in its schematic?', 'What is the planned decision if there is no sweep or 1:3 is unavailable?'],
-  },
-  'sessions-and-kill-zones': {
-    practise: ['On a saved chart, label the timezone and daylight-saving setting before marking any session window.'],
-    analyse: 'Compare one selected Gold session with another relevant market using the broker chart timezone.',
-    review: ['Which timezone does the guide use for its example windows?', 'What must you verify before comparing a chart with those times?'],
-  },
-  'confirmation-and-risk-planning': {
-    practise: ['Use a hypothetical or demo example to review all 10 checklist steps and calculate whether the plan meets 2% risk and 1:3 minimum R:R.', 'Explain the planned response at 1:1 and at the 3% daily loss limit.'],
-    analyse: 'Apply the checklist to saved Gold and another relevant market chart. Record missing evidence or invalidation; do not imply live data.',
-    review: ['What is the planned decision if 1:3 is unavailable?', 'When must you stop for the day?'],
-  },
-};
+function splitLessonActivities(markdown: string): { bodyMarkdown: string; activities: LessonActivity | null } {
+  const body: string[] = [];
+  const sections: Record<keyof LessonActivity, string[]> = { practise: [], analyse: [], review: [] };
+  let activeSection: keyof LessonActivity | null = null;
+
+  for (const line of markdown.split(/\r?\n/)) {
+    const heading = line.trim().match(/^##\s+(PRACTISE|ANALYSE|REVIEW)\s*$/i);
+    if (heading) {
+      activeSection = heading[1].toLocaleLowerCase() as keyof LessonActivity;
+      continue;
+    }
+    if (!activeSection) body.push(line);
+    else sections[activeSection].push(line);
+  }
+
+  const bullets = (lines: string[]) => lines
+    .map((line) => line.trim().match(/^[-*]\s+(.+)$/)?.[1])
+    .filter((line): line is string => Boolean(line));
+  const analyse = sections.analyse.map((line) => line.trim()).filter(Boolean).join(" ");
+  const hasActivities = sections.practise.length > 0 || Boolean(analyse) || sections.review.length > 0;
+
+  return {
+    bodyMarkdown: body.join("\n").trim(),
+    activities: hasActivities
+      ? { practise: bullets(sections.practise), analyse, review: bullets(sections.review) }
+      : null,
+  };
+}
 
 function lessonStatus(progress: MemberLearningLesson['progress']) {
   if (progress === 'completed') return 'Completed';
@@ -317,6 +227,9 @@ export function MemberLearningExperience() {
 
   const response = learning.data as MemberLearningResponse | undefined;
   const selected = visibleLessons.find((lesson) => lesson.lessonId === selectedId) ?? null;
+  const selectedContent = selected && !selected.locked
+    ? splitLessonActivities(selected.bodyMarkdown)
+    : null;
   const activeIndex = selected ? visibleLessons.findIndex((lesson) => lesson.lessonId === selected.lessonId) : -1;
   const saving = updateProgress.isPending;
 
@@ -360,7 +273,7 @@ export function MemberLearningExperience() {
           <div className="ml-intro-copy">
             <div className="ml-eyebrow"><span className="ml-live-dot" /> TRADING ACADEMY · MEMBER STUDY SPACE</div>
             <h1 id="ml-title">Learn the market.<br /><em>Think for yourself.</em></h1>
-            <p>Read any published lesson, practise the concept, and record progress in sequence. Build a process you can explain.</p>
+            <p>Complete lessons in order. Finish the current lesson to unlock the next one, then practise, analyse, and review.</p>
           </div>
           <aside className="ml-progress-card" aria-label="Learning progress" data-testid="learning-progress">
             <div className="ml-progress-top"><span>TRADING ACADEMY PROGRESS</span><BookOpen size={17} aria-hidden="true" /></div>
@@ -473,12 +386,12 @@ export function MemberLearningExperience() {
                         className={`ml-lesson-item${isActive ? ' is-active' : ''}${isComplete ? ' is-complete' : ''}${lesson.locked ? ' is-locked' : ''}`}
                         type="button"
                         onClick={() => { setSelectedId(lesson.lessonId); setSavedMessage(''); setActionError(''); setDiagramOpen(false); }}
-                        aria-label={`${lesson.title}${lesson.locked ? ', available to read; progress requires earlier lessons to be completed.' : ''}`}
+                        aria-label={`${lesson.title}${lesson.locked ? ', locked until earlier lessons are completed.' : ''}`}
                         aria-current={isActive ? 'step' : undefined}
                         data-testid={`learning-lesson-${lesson.lessonId}`}
                       >
                         <span className="ml-lesson-number">{String(lesson.sequence || index + 1).padStart(2, '0')}</span>
-                        <span className="ml-lesson-label"><strong>{lesson.title}</strong><small>{lesson.locked ? 'Read ahead' : lessonStatus(lesson.progress)}</small></span>
+                        <span className="ml-lesson-label"><strong>{lesson.title}</strong><small>{lesson.locked ? 'Locked · finish the previous lesson' : lessonStatus(lesson.progress)}</small></span>
                         <span className="ml-lesson-state" aria-hidden="true">{lesson.locked ? <LockKeyhole size={13} /> : isComplete ? <Check size={14} /> : isActive ? <ChevronRight size={15} /> : <Circle size={11} />}</span>
                       </button>
                     </li>
@@ -500,58 +413,63 @@ export function MemberLearningExperience() {
                   <span><span className="ml-live-dot" /> LESSON {String(selected.sequence || activeIndex + 1).padStart(2, '0')}</span>
                   <span className={`ml-status-chip ${selected.progress === 'completed' ? 'is-done' : ''}`}>
                     {selected.locked ? <LockKeyhole size={13} /> : selected.progress === 'completed' ? <CheckCircle2 size={13} /> : <Clock3 size={13} />}
-                    {selected.locked ? 'Reading ahead' : lessonStatus(selected.progress)}
+                    {selected.locked ? 'Locked' : lessonStatus(selected.progress)}
                   </span>
                 </div>
-                {selected.locked && (
-                  <aside className="ml-read-ahead-note" role="note" data-testid="learning-read-ahead-note">
-                    <LockKeyhole size={16} />
-                    <span><strong>Reading ahead is available.</strong> Complete earlier lessons before recording progress on this one.</span>
-                  </aside>
-                )}
                 <h2>{selected.title}</h2>
-                <p className="ml-summary">{selected.summary}</p>
-                <div className="ml-reading-rule"><span>STUDY NOTES</span><i /></div>
-                <div className="ml-body" data-testid="learning-lesson-body">{renderLessonMarkdown(selected.bodyMarkdown)}</div>
-                {diagramLessonIds.has(selected.lessonId) && (
-                  <div className="ml-lesson-visual">
-                    <button
-                      className="ml-diagram-toggle"
-                      type="button"
-                      aria-expanded={diagramOpen}
-                      aria-controls={`lesson-diagram-${selected.lessonId}`}
-                      onClick={() => setDiagramOpen((open) => !open)}
-                    >
-                      {diagramOpen ? <EyeOff size={15} /> : <Eye size={15} />}
+                {selected.locked ? (
+                  <section className="ml-locked-content" role="note" data-testid="learning-locked-note">
+                    <span className="ml-locked-icon"><LockKeyhole size={18} /></span>
+                    <span className="ml-eyebrow">LESSON LOCKED</span>
+                    <strong className="ml-locked-title">Complete the previous lesson to unlock this one.</strong>
+                    <p>Finish and mark the lesson before this one as complete. Its notes, real candlestick diagrams, and exercises will then become available.</p>
+                  </section>
+                ) : (
+                  <>
+                    <p className="ml-summary">{selected.summary}</p>
+                    <div className="ml-reading-rule"><span>STUDY NOTES</span><i /></div>
+                    <div className="ml-body" data-testid="learning-lesson-body">{renderLessonMarkdown(selectedContent?.bodyMarkdown ?? '')}</div>
+                    {diagramLessonIds.has(selected.lessonId) && (
+                      <div className="ml-lesson-visual">
+                        <button
+                          className="ml-diagram-toggle"
+                          type="button"
+                          aria-expanded={diagramOpen}
+                          aria-controls={`lesson-diagram-${selected.lessonId}`}
+                          onClick={() => setDiagramOpen((open) => !open)}
+                        >
+                          {diagramOpen ? <EyeOff size={15} /> : <Eye size={15} />}
                           {diagramOpen ? 'Hide guide diagrams' : 'Show guide diagrams'}
-                      <ChevronRight size={14} className={diagramOpen ? 'is-expanded' : ''} />
-                    </button>
-                    {diagramOpen && (
-                      <div id={`lesson-diagram-${selected.lessonId}`} className="ml-diagram-content">
-                        <MemberLessonDiagram lessonId={selected.lessonId} />
+                          <ChevronRight size={14} className={diagramOpen ? 'is-expanded' : ''} />
+                        </button>
+                        {diagramOpen && (
+                          <div id={`lesson-diagram-${selected.lessonId}`} className="ml-diagram-content">
+                            <MemberLessonDiagram lessonId={selected.lessonId} />
+                          </div>
+                        )}
                       </div>
                     )}
-                  </div>
+                    {selectedContent?.activities && (
+                      <section className="ml-lesson-activities" aria-label="Lesson practice, analysis, and review">
+                        <article className="ml-activity-card">
+                          <span className="ml-eyebrow">PRACTISE</span>
+                          <ul>{selectedContent.activities.practise.map((item) => <li key={item}>{item}</li>)}</ul>
+                        </article>
+                        <article className="ml-activity-card">
+                          <span className="ml-eyebrow">ANALYSE</span>
+                          <p>{selectedContent.activities.analyse}</p>
+                        </article>
+                        <article className="ml-activity-card">
+                          <span className="ml-eyebrow">REVIEW · SELF-CHECK</span>
+                          <ul>{selectedContent.activities.review.map((item) => <li key={item}>{item}</li>)}</ul>
+                        </article>
+                      </section>
+                    )}
+                    {selected.progress === 'completed' && selected.completedAt && <p className="ml-completed-date"><CheckCircle2 size={14} /> Completed {formatDate(selected.completedAt)}</p>}
+                    {savedMessage && <p className="ml-save-message" role="status" data-testid="learning-saved-message"><CheckCircle2 size={15} /> {savedMessage}</p>}
+                    {actionError && <p className="ml-action-error" role="alert" data-testid="learning-save-error">{actionError}</p>}
+                  </>
                 )}
-                {lessonActivities[selected.lessonId] && (
-                  <section className="ml-lesson-activities" aria-label="Lesson practice, analysis, and review">
-                    <article className="ml-activity-card">
-                      <span className="ml-eyebrow">PRACTISE</span>
-                      <ul>{lessonActivities[selected.lessonId].practise.map((item) => <li key={item}>{item}</li>)}</ul>
-                    </article>
-                    <article className="ml-activity-card">
-                      <span className="ml-eyebrow">ANALYSE</span>
-                      <p>{lessonActivities[selected.lessonId].analyse}</p>
-                    </article>
-                    <article className="ml-activity-card">
-                      <span className="ml-eyebrow">REVIEW · SELF-CHECK</span>
-                      <ul>{lessonActivities[selected.lessonId].review.map((item) => <li key={item}>{item}</li>)}</ul>
-                    </article>
-                  </section>
-                )}
-                {selected.progress === 'completed' && selected.completedAt && <p className="ml-completed-date"><CheckCircle2 size={14} /> Completed {formatDate(selected.completedAt)}</p>}
-                {savedMessage && <p className="ml-save-message" role="status" data-testid="learning-saved-message"><CheckCircle2 size={15} /> {savedMessage}</p>}
-                {actionError && <p className="ml-action-error" role="alert" data-testid="learning-save-error">{actionError}</p>}
                 <div className="ml-reading-actions">
                   <button className="ml-button ml-button-quiet" type="button" onClick={() => moveLesson(-1)} disabled={activeIndex <= 0} data-testid="button-previous-lesson">
                     <ArrowLeft size={15} /> Previous

@@ -328,4 +328,363 @@ ON CONFLICT (lesson_key) DO UPDATE SET
     published = EXCLUDED.published,
     updated_at = NOW();
 
+-- Keep exercises in the protected lesson body instead of shipping them in the
+-- member-page JavaScript. The API withholds all body content for locked lessons.
+UPDATE member_learning_lessons AS lesson
+SET body_markdown = lesson.body_markdown || activities.markdown
+FROM (VALUES
+    ('orientation', $activities$
+
+## PRACTISE
+
+- Write the Learn → Practise → Analyse → Review steps in your journal.
+- Record your H1 bias, M5 entry timeframe, risk limits, and conditions for standing aside.
+
+## ANALYSE
+
+Choose a saved or demo chart for Gold and one other relevant market. Describe only what the charts show; this is not a live signal.
+
+## REVIEW
+
+- Which rules are part of your established plan?
+- When is standing aside the correct decision?
+$activities$),
+    ('candle-anatomy', $activities$
+
+## PRACTISE
+
+- Mark open, high, low, and close on five candles.
+- Compare each candle body with its wicks.
+
+## ANALYSE
+
+Compare up-closing and down-closing candles on a saved Gold chart and another relevant market. Check the chart colour legend.
+
+## REVIEW
+
+- What do the body and wicks represent?
+- Can candle colour alone establish direction?
+$activities$),
+    ('swing-high-low', $activities$
+
+## PRACTISE
+
+- Mark 10 swing highs and lows on an M5 Gold chart using the three-candle example.
+- Repeat on H1 and note which swings price visibly respects.
+
+## ANALYSE
+
+Compare how H1 swing areas appear in M5 detail on XAUUSD and one other market.
+
+## REVIEW
+
+- What is the minimum candle pattern shown in the guide?
+- Why can an H1 swing matter more than an M5 fluctuation?
+$activities$),
+    ('market-structure', $activities$
+
+## PRACTISE
+
+- Label HH, HL, LH, and LL across one H1 Gold chart. Mark the swing that would challenge the current sequence.
+
+## ANALYSE
+
+State the H1 bias on a saved XAUUSD chart, then check whether M5 agrees. Repeat on another relevant market.
+
+## REVIEW
+
+- What makes a chart sequence a range rather than a trend?
+- Which swing is protected in the guide’s uptrend example?
+$activities$),
+    ('multi-timeframe-context', $activities$
+
+## PRACTISE
+
+- Write the H1 bias before viewing M5.
+- On M5, record what entry confirmation you would need and what would invalidate the idea.
+
+## ANALYSE
+
+Apply the H1-to-M5 process to Gold and another market you follow. If the views conflict, record the conflict instead of forcing a setup.
+
+## REVIEW
+
+- Which timeframe sets your higher-timeframe bias?
+- Does M5 detail override an unclear H1 context?
+$activities$),
+    ('bos-and-choch', $activities$
+
+## PRACTISE
+
+- Find five BOS examples on H1 Gold. Mark the prior swing and closing candle; separately note wick-only breaks.
+
+## ANALYSE
+
+On a saved XAUUSD chart, map the pullback area after a BOS and note what M5 confirmation your plan would still require.
+
+## REVIEW
+
+- Why does a wick through a level not meet the guide’s BOS close rule?
+- What do you study after a BOS without chasing it?
+$activities$),
+    ('change-of-character', $activities$
+
+## PRACTISE
+
+- Find three CHoCH examples on H1 Gold. Note whether a sweep came first and whether the observed shift held.
+
+## ANALYSE
+
+Compare an M5 CHoCH against H1 context on a saved chart. Record whether it describes a shift or only a pullback.
+
+## REVIEW
+
+- Which swing level breaks in the guide’s bullish CHoCH example?
+- Why is a CHoCH not an entry by itself?
+$activities$),
+    ('mss-displacement', $activities$
+
+## PRACTISE
+
+- Mark displacement candles and gaps on five M5 structure breaks. Grade each example strong or weak and explain why.
+
+## ANALYSE
+
+Compare saved XAUUSD examples around London and New York sessions with another market; do not assume the pattern repeats.
+
+## REVIEW
+
+- How does the guide distinguish MSS from CHoCH?
+- What can make a structure break look weak?
+$activities$),
+    ('liquidity-and-equal-highs-lows', $activities$
+
+## PRACTISE
+
+- Mark equal highs, equal lows, previous-day highs/lows, and a session range on a saved Gold chart.
+
+## ANALYSE
+
+List visible levels above and below the selected XAUUSD price. Compare which is nearer and more obvious, then repeat on another market.
+
+## REVIEW
+
+- Why is a liquidity level a chart interpretation rather than proof of hidden orders?
+- Name four visible reference types from the lesson.
+$activities$),
+    ('liquidity-sweep', $activities$
+
+## PRACTISE
+
+- Find five sweep examples on M5 Gold. Mark the wick beyond the reference and the close back inside.
+
+## ANALYSE
+
+Review saved Asia high/low examples around the London session and note whether a later structure description followed.
+
+## REVIEW
+
+- How does a sweep differ from a close-based BOS?
+- Is a sweep alone sufficient under your plan?
+$activities$),
+    ('inducement', $activities$
+
+## PRACTISE
+
+- Mark a smaller swing before three candidate order-block areas on M5 Gold. Note whether price passed the swing first.
+
+## ANALYSE
+
+On a saved H1 chart, identify smaller visible swings leading toward a zone without assuming intent or hidden orders.
+
+## REVIEW
+
+- Why does the guide describe inducement as a filter, not a universal rule?
+- What did price visibly do after passing the smaller swing?
+$activities$),
+    ('fair-value-gaps', $activities$
+
+## PRACTISE
+
+- Draw 10 three-candle FVG examples on M5 Gold. Mark the 50% level and record whether each area was revisited.
+
+## ANALYSE
+
+Compare saved FVG examples that align with H1 context with those that do not on XAUUSD.
+
+## REVIEW
+
+- What price relationship defines bullish and bearish FVG examples?
+- What does consequent encroachment refer to?
+$activities$),
+    ('inverse-fvg', $activities$
+
+## PRACTISE
+
+- Find three FVG examples with a candle close through the zone. Record what happened on a later revisit.
+
+## ANALYSE
+
+Look for saved M5 IFVG examples after a sweep and structure shift; compare them with wick-only passes.
+
+## REVIEW
+
+- Why is a wick-only pass not enough for the guide’s inversion example?
+- What opposite-side role is assigned to a failed bullish FVG?
+$activities$),
+    ('volume-imbalance-liquidity-void', $activities$
+
+## PRACTISE
+
+- Mark one body imbalance with overlapping wicks and one run of directional candles on Gold.
+
+## ANALYSE
+
+Use a saved chart around a sharp move and observe whether price later revisited any marked area.
+
+## REVIEW
+
+- How does a body imbalance differ from the FVG definition?
+- What candle sequence is called a liquidity void in the guide?
+$activities$),
+    ('order-blocks-in-context', $activities$
+
+## PRACTISE
+
+- Mark five candidate order-block areas that precede a visible structure break on M5 Gold.
+- Record the zone bounds and whether price later revisited them.
+
+## ANALYSE
+
+Find saved H1 candidate zones that align with the observed structure; inspect M5 detail without assuming a reaction.
+
+## REVIEW
+
+- What visible move does the guide require before applying the label?
+- Does the label prove who placed orders?
+$activities$),
+    ('breaker-block', $activities$
+
+## PRACTISE
+
+- Find three candidate breaker examples on M5 Gold. Mark the prior zone, the close through, and any earlier sweep.
+
+## ANALYSE
+
+Mark one H1 candidate and inspect a saved M5 revisit without predicting the outcome.
+
+## REVIEW
+
+- How does the guide distinguish a breaker from a mitigation block?
+- What happens to the old zone in a bullish breaker example?
+$activities$),
+    ('mitigation-block', $activities$
+
+## PRACTISE
+
+- Find three failure-swing examples on M5 Gold. Mark the failed swing area and any later revisit.
+
+## ANALYSE
+
+Journal candidate breaker and mitigation examples separately on saved XAUUSD charts.
+
+## REVIEW
+
+- Why does the guide treat this as a supporting zone?
+- What happened to the prior high or low before the example formed?
+$activities$),
+    ('rejection-block', $activities$
+
+## PRACTISE
+
+- Mark five prominent wick examples at H1 swing areas. Record how price behaved if it later returned.
+
+## ANALYSE
+
+Compare candidate wick zones with previous-day or session reference levels on a saved Gold chart.
+
+## REVIEW
+
+- How is the example zone drawn?
+- Why should ordinary small wicks not all receive the same label?
+$activities$),
+    ('premium-discount-ote', $activities$
+
+## PRACTISE
+
+- Draw a selected H1 Gold dealing range. Mark 50% and the guide’s 62%–79% OTE band, then note M5 observations.
+
+## ANALYSE
+
+On a saved XAUUSD chart, describe the range location and what context it provides; do not infer a trade direction from the band alone.
+
+## REVIEW
+
+- Which retracement range does the guide show for OTE?
+- What does the midpoint represent?
+$activities$),
+    ('power-of-three-judas-swing', $activities$
+
+## PRACTISE
+
+- Mark the Asia range on Gold across five saved or demo sessions. Note whether either side was passed later.
+
+## ANALYSE
+
+Compare the AMD description on XAUUSD with another market over the same selected dates.
+
+## REVIEW
+
+- What do accumulation, manipulation, and distribution mean in this framework?
+- What should you do when the sequence does not appear?
+$activities$),
+    ('complete-smc-trade-model', $activities$
+
+## PRACTISE
+
+- Paper-trade five historical or demo chart examples. Log H1 context, sweep, M5 shift, zone, stop, target, and whether 1:3 was available.
+
+## ANALYSE
+
+Apply the same checklist to one other relevant market and compare observations without assuming equal results.
+
+## REVIEW
+
+- Which elements does the guide combine in its schematic?
+- What is the planned decision if there is no sweep or 1:3 is unavailable?
+$activities$),
+    ('sessions-and-kill-zones', $activities$
+
+## PRACTISE
+
+- On a saved chart, label the timezone and daylight-saving setting before marking any session window.
+
+## ANALYSE
+
+Compare one selected Gold session with another relevant market using the broker chart timezone.
+
+## REVIEW
+
+- Which timezone does the guide use for its example windows?
+- What must you verify before comparing a chart with those times?
+$activities$),
+    ('confirmation-and-risk-planning', $activities$
+
+## PRACTISE
+
+- Use a hypothetical or demo example to review all 10 checklist steps and calculate whether the plan meets 2% risk and 1:3 minimum R:R.
+- Explain the planned response at 1:1 and at the 3% daily loss limit.
+
+## ANALYSE
+
+Apply the checklist to saved Gold and another relevant market chart. Record missing evidence or invalidation; do not imply live data.
+
+## REVIEW
+
+- What is the planned decision if 1:3 is unavailable?
+- When must you stop for the day?
+$activities$)
+) AS activities(lesson_key, markdown)
+WHERE lesson.lesson_key = activities.lesson_key;
+
 COMMIT;
