@@ -1268,3 +1268,78 @@
     animation: none !important;
   }
 }
+
+/* Explicit narrow-screen layout: keep every Academy surface within the phone viewport. */
+@media (max-width: 760px) {
+  .ml-page {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: clip;
+    padding-inline: clamp(12px, 4vw, 18px);
+  }
+  .ml-shell {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+  .ml-intro {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+  .ml-workspace {
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ml-lesson-rail,
+  .ml-reading-panel {
+    width: 100%;
+    min-width: 0;
+  }
+  .ml-lesson-list {
+    max-width: 100%;
+  }
+  .ml-roadmap {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ml-lesson-activities {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ml-reading-actions {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+  .ml-primary-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    max-width: 100%;
+  }
+  .ml-button {
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 480px) {
+  .ml-page {
+    padding-inline: 12px;
+  }
+  .ml-reading-panel {
+    padding-inline: 14px;
+  }
+  .ml-reading-topline {
+    flex-wrap: wrap;
+  }
+  .ml-roadmap-steps,
+  .ml-philosophy-rules {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ml-lesson-list li {
+    flex-basis: min(84vw, 320px);
+  }
+  .ml-primary-actions {
+    width: 100%;
+  }
+  .ml-primary-actions > .ml-button {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+}
