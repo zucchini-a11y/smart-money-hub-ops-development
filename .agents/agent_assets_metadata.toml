@@ -350,3 +350,17 @@ mtime_ms = 1794025608425
 storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/5d648b88-dbd3-410a-8e73-c5c163af305f/9d84d1c8-a65e-43e4-a15a-b45873291dd2"
 storage_version_token = "1794025643526468"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "iofKhyjTfuBoq9j3pzX_y"
+uri = "file://generated-artifacts/smh-support-widget-hostinger-20261107.zip"
+type = "unspecified"
+title = "Smart Money Hub support-widget source ZIP"
+description = "Hostinger handoff bundle with API and widget source, built frontend/API, lockfile, all 26 current migrations, variable-only .env.example, and deployment notes. Not production-ready: the widget migration is Development-only and no Production widget migration exists."
+logical_id = "2f2ddd65-d50a-4b54-a95b-329a0afd0cbe"
+content_hash = "sha256:81938b54ed97959a00d55f1e0a355120aac24ddf1c4820680c5dae25eb7d3d25"
+size = 3767391
+mtime_ms = 1794059805767
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/2f2ddd65-d50a-4b54-a95b-329a0afd0cbe/27aa6383-e54b-4959-8f46-90d4ec477021"
+storage_version_token = "1794059848506221"
+content_type = "application/octet-stream"
