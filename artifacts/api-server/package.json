@@ -8,6 +8,7 @@
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "member-tools:migrate-dev": "tsx src/scripts/migrate-development-member-tools.ts",
+    "member-learning:migrate-dev": "tsx src/scripts/migrate-development-member-learning.ts",
     "portal:reset-dev-owner": "tsx src/scripts/reset-development-portal-owner.ts",
     "test": "tsx --test test/*.test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"

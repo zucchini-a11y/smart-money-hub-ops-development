@@ -788,6 +788,85 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /member/learning:
+    get:
+      operationId: getMemberLearning
+      tags:
+        - members
+      summary: Read the current member's lessons and saved learning progress
+      security:
+        - clerkSession: []
+      responses:
+        "200":
+          description: Published lessons and progress for the signed-in member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberLearningResponse"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Verified member access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /member/learning/{lessonId}/progress:
+    patch:
+      operationId: updateMemberLearningProgress
+      tags:
+        - members
+      summary: Save progress for a lesson owned by the current member
+      security:
+        - clerkSession: []
+      parameters:
+        - name: lessonId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^[a-z0-9-]{1,80}$"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemberLearningProgressInput"
+      responses:
+        "200":
+          description: Updated learning progress for the current member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberLearningProgressResponse"
+        "400":
+          description: Invalid lesson progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Verified member access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Lesson not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /member/journal:
     get:
       operationId: listMemberJournalTrades
@@ -4165,6 +4244,71 @@ components:
         stale:
           type: boolean
       required: [events, sources, refreshedAt, stale]
+    MemberLearningLesson:
+      type: object
+      properties:
+        lessonId:
+          type: string
+        title:
+          type: string
+        summary:
+          type: string
+        bodyMarkdown:
+          type: string
+        sequence:
+          type: integer
+        progress:
+          type: string
+          enum: [not_started, in_progress, completed]
+        locked:
+          type: boolean
+        startedAt:
+          type: ["string", "null"]
+          format: date-time
+        completedAt:
+          type: ["string", "null"]
+          format: date-time
+      required:
+        - lessonId
+        - title
+        - summary
+        - bodyMarkdown
+        - sequence
+        - progress
+        - locked
+        - startedAt
+        - completedAt
+    MemberLearningResponse:
+      type: object
+      properties:
+        lessons:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemberLearningLesson"
+        completedCount:
+          type: integer
+        totalCount:
+          type: integer
+        completionPercent:
+          type: integer
+          minimum: 0
+          maximum: 100
+        nextLessonId:
+          type: ["string", "null"]
+      required: [lessons, completedCount, totalCount, completionPercent, nextLessonId]
+    MemberLearningProgressInput:
+      type: object
+      properties:
+        progress:
+          type: string
+          enum: [in_progress, completed]
+      required: [progress]
+    MemberLearningProgressResponse:
+      type: object
+      properties:
+        learning:
+          $ref: "#/components/schemas/MemberLearningResponse"
+      required: [learning]
     CreateMemberJournalTrade:
       type: object
       properties:

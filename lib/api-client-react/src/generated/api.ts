@@ -69,6 +69,9 @@ import type {
   MemberJournalDeleteResponse,
   MemberJournalResponse,
   MemberJournalTrade,
+  MemberLearningProgressInput,
+  MemberLearningProgressResponse,
+  MemberLearningResponse,
   MemberProSignalsResponse,
   MemberSession,
   MemberTelegramLink,
@@ -3124,6 +3127,172 @@ export function useGetMemberCalendar<TData = Awaited<ReturnType<typeof getMember
 
 
 
+
+export const getGetMemberLearningUrl = () => {
+
+
+
+
+  return `/api/member/learning`
+}
+
+/**
+ * @summary Read the current member's lessons and saved learning progress
+ */
+export const getMemberLearning = async ( options?: Parameters<typeof customFetch>[1]): Promise<MemberLearningResponse> => {
+
+  return customFetch<MemberLearningResponse>(getGetMemberLearningUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMemberLearningQueryKey = () => {
+    return [
+    `/api/member/learning`
+    ] as const;
+    }
+
+
+export const getGetMemberLearningQueryOptions = <TData = Awaited<ReturnType<typeof getMemberLearning>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMemberLearning>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMemberLearningQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMemberLearning>>> = ({ signal }) => getMemberLearning({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMemberLearning>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMemberLearningQueryResult = NonNullable<Awaited<ReturnType<typeof getMemberLearning>>>
+export type GetMemberLearningQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Read the current member's lessons and saved learning progress
+ */
+
+export function useGetMemberLearning<TData = Awaited<ReturnType<typeof getMemberLearning>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMemberLearning>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMemberLearningQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateMemberLearningProgressUrl = (lessonId: string,) => {
+
+
+
+
+  return `/api/member/learning/${lessonId}/progress`
+}
+
+/**
+ * @summary Save progress for a lesson owned by the current member
+ */
+export const updateMemberLearningProgress = async (lessonId: string,
+    memberLearningProgressInput: MemberLearningProgressInput, options?: Parameters<typeof customFetch>[1]): Promise<MemberLearningProgressResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<MemberLearningProgressResponse>(getUpdateMemberLearningProgressUrl(lessonId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(memberLearningProgressInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateMemberLearningProgressMutationKey = () => ['updateMemberLearningProgress'] as const;
+
+export const getUpdateMemberLearningProgressMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMemberLearningProgress>>, TError,UpdateMemberLearningProgressMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateMemberLearningProgress>>, TError,UpdateMemberLearningProgressMutationVariables, TContext> => {
+
+const mutationKey = getUpdateMemberLearningProgressMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateMemberLearningProgress>>, UpdateMemberLearningProgressMutationVariables> = (props) => {
+          const {lessonId,data} = props ?? {};
+
+          return  updateMemberLearningProgress(lessonId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateMemberLearningProgressMutationResult = NonNullable<Awaited<ReturnType<typeof updateMemberLearningProgress>>>
+    export type UpdateMemberLearningProgressMutationBody = BodyType<MemberLearningProgressInput>
+    export type UpdateMemberLearningProgressMutationError = ErrorType<ErrorResponse>
+    export type UpdateMemberLearningProgressMutationVariables = {lessonId: string;data: BodyType<MemberLearningProgressInput>}
+
+    /**
+ * @summary Save progress for a lesson owned by the current member
+ */
+export const useUpdateMemberLearningProgress = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMemberLearningProgress>>, TError,UpdateMemberLearningProgressMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateMemberLearningProgress>>,
+        TError,
+        UpdateMemberLearningProgressMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateMemberLearningProgressMutationOptions(options));
+    }
 
 export const getListMemberJournalTradesUrl = (params?: ListMemberJournalTradesParams,) => {
   const normalizedParams = new URLSearchParams();

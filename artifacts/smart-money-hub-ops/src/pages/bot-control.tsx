@@ -18,8 +18,20 @@ const formatDate = (value?: string | null) => {
 };
 const human = (value: string) => value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 const statusTone = (value: string) => ['healthy', 'running', 'enabled', 'true'].includes(value.toLowerCase()) ? 'good' : ['unknown', 'not_connected'].includes(value.toLowerCase()) ? 'neutral' : 'caution';
+const statusText = (value: string, field: string, sourceId?: string) => {
+  if (sourceId === 'production') return 'Outside Development';
+  const normalized = value.toLowerCase();
+  if (normalized === 'unknown' || normalized === 'not_recorded') {
+    if (/process|polling|heartbeat/i.test(field)) return 'No heartbeat';
+    if (/health|telegram|database/i.test(field)) return 'Not reported';
+    return 'Not recorded';
+  }
+  if (normalized === 'not_connected') return 'Not connected here';
+  if (normalized === 'not_configured') return 'Not configured';
+  return human(value);
+};
 const identityLabel: Record<PortalBotConnection['identityStatus'], string> = {
-  verified: 'Telegram identity verified',
+  verified: 'Telegram accepted this token',
   not_configured: 'Not configured',
   invalid_credentials: 'Credentials rejected',
   identity_mismatch: 'Wrong bot identity',
@@ -28,7 +40,7 @@ const identityLabel: Record<PortalBotConnection['identityStatus'], string> = {
 const runtimeLabel: Record<PortalBotConnection['runtimeStatus'], string> = {
   running: 'Recent heartbeat',
   stale: 'Heartbeat is stale',
-  unknown: 'Runtime not verified',
+  unknown: 'No process heartbeat here',
 };
 const developmentSecretNames: Partial<Record<PortalBotConnection['id'], string>> = {
   test: 'SMH_TEST_TELEGRAM_BOT_TOKEN',
@@ -57,7 +69,7 @@ const telegramOnly = [
   'Bot workflow start and restart',
 ];
 
-function BotConnections() {
+export function BotConnections() {
   const query = useGetPortalBotConnections({
     query: {
       queryKey: getGetPortalBotConnectionsQueryKey(),
@@ -78,7 +90,7 @@ function BotConnections() {
 
   return <section className="bot-connections-panel" aria-labelledby="bot-connections-title" data-testid="bot-live-connections">
     <div className="bot-section-heading">
-      <div><span className="bot-overline">DEVELOPMENT · READ-ONLY CHECKS</span><h2 id="bot-connections-title">Bot connections</h2><p>Identity is checked with Telegram. Only the private test bot currently reports a process heartbeat.</p></div>
+      <div><span className="bot-overline">DEVELOPMENT · READ-ONLY CHECKS</span><h2 id="bot-connections-title">Bot connections</h2><p>Telegram token checks and process heartbeats are reported separately. A token check does not start a bot.</p></div>
       <button className="btn btn-outline" onClick={() => void query.refetch()} disabled={query.isFetching} aria-label="Refresh bot connections" data-testid="button-refresh-bot-connections"><RefreshCw size={14} className={query.isFetching ? 'bot-rotate' : ''}/>{query.isFetching ? 'Checking' : 'Check now'}</button>
     </div>
     {query.isLoading ? <div className="bot-connection-grid" aria-label="Checking bot connections">{[0, 1, 2].map((item) => <div className="bot-connection-card bot-connection-loading" key={item}><span className="skeleton"/><span className="skeleton"/><span className="skeleton"/></div>)}</div>
@@ -111,7 +123,7 @@ function BotConnections() {
         </article>;
       })}</div>
         : <div className="bot-connection-feedback">No Development bot connections were returned.</div>}
-    <div className="bot-connection-safety"><LockKeyhole size={14}/><span>These checks never poll Telegram, send a message, publish a post, change permissions, or start a bot. Coach and PRO process status stays unknown until their own heartbeat is connected.</span></div>
+    <div className="bot-connection-safety"><LockKeyhole size={14}/><span>These checks only call Telegram’s read-only getMe endpoint. They do not poll for updates, send messages, publish, change permissions, or start a process. Coach and PRO runtime monitoring is not connected to this workspace.</span></div>
   </section>;
 }
 
@@ -144,13 +156,13 @@ function Snapshot({ data, onRefresh, refreshing }: { data: PortalCommandCenter; 
       {data.bots.length ? <div className="bot-source-list">{data.bots.map((bot, index) => {
         const readings = [
           ['Health', bot.healthStatus], ['Process', bot.processStatus], ['Telegram', bot.telegramStatus],
-          ['Database', bot.databaseStatus], ['Polling', bot.pollingStatus], ['Publishing flag', bot.publishingStatus],
+          ['Database', bot.databaseStatus], ['Polling', bot.pollingStatus], ['Publishing setting', bot.publishingStatus],
           ['Workflow', bot.workflowStatus],
         ];
         return <article className="bot-source-card" key={`${bot.id}-${index}`} data-testid={`bot-source-${bot.id}-${index}`}>
           <div className="bot-source-top"><span className="bot-source-mark"><Bot size={17}/></span><div><span className="bot-overline">{human(bot.id)}</span><h3>{bot.label}</h3></div><span className="bot-record-tag">Stored status</span></div>
           <p className="bot-source-note">{bot.note || 'No additional note recorded.'}</p>
-          <div className="bot-readings">{readings.map(([label, value]) => <div className="bot-reading" key={label}><span>{label}</span><strong className={`tone-${statusTone(value)}`}>{human(value)}</strong></div>)}</div>
+          <div className="bot-readings">{readings.map(([label, value]) => <div className="bot-reading" key={label}><span>{label}</span><strong className={`tone-${statusTone(value)}`}>{statusText(value, label, bot.id)}</strong></div>)}</div>
           <div className="bot-source-foot"><span>Health checked · {formatDate(bot.healthCheckedAt)}</span><span>Last Telegram update · {formatDate(bot.lastTelegramUpdate)}</span></div>
         </article>;
       })}</div> : <div className="bot-empty">No bot source records are included in this snapshot.</div>}
@@ -158,10 +170,10 @@ function Snapshot({ data, onRefresh, refreshing }: { data: PortalCommandCenter; 
 
     <section className="bot-snapshot-panel">
       <div className="bot-section-heading"><div><span className="bot-overline">DESTINATION RECORDS</span><h2>Channels &amp; recent operations</h2><p>Recorded activity can be old and does not establish current Telegram access.</p></div></div>
-      <div className="bot-channel-grid">{data.channels.length ? data.channels.map((channel, index) => <article className="bot-channel" key={`${channel.name}-${channel.sourceBot}-${index}`}><div className="bot-channel-title"><span>{human(channel.sourceBot)}</span><strong>{human(channel.name)}</strong></div><span className={`bot-status-pill tone-${statusTone(channel.status)}`}>{human(channel.status)}</span><p>{channel.note}</p><small>Last recorded activity · {formatDate(channel.latestRecordedActivity)}</small></article>) : <div className="bot-empty">No channel records are included.</div>}</div>
-      <div className="bot-operations">
+       <div className="bot-channel-grid">{data.channels.length ? data.channels.map((channel, index) => <article className="bot-channel" key={`${channel.name}-${channel.sourceBot}-${index}`}><div className="bot-channel-title"><span>{human(channel.sourceBot)}</span><strong>{human(channel.name)}</strong></div><span className={`bot-status-pill tone-${statusTone(channel.status)}`}>{statusText(channel.status, 'channel')}</span><p>{channel.note}</p><small>Last recorded activity · {formatDate(channel.latestRecordedActivity)}</small></article>) : <div className="bot-empty">No channel records are included.</div>}</div>
+       <div className="bot-operations">
         <div className="bot-subheading"><h3>Recent operations</h3><span>{data.recentOperations.length} records</span></div>
-        {data.recentOperations.length ? data.recentOperations.slice(0, 5).map((operation, index) => <article className="bot-operation" key={`${operation.recordedAt}-${index}`}><span className="bot-operation-icon"><Activity size={15}/></span><div><strong>{human(operation.operationType)}</strong><small>{human(operation.sourceBot)} · {human(operation.destination)} · {formatDate(operation.recordedAt)}</small></div><span className="bot-operation-state">{human(operation.status)}</span><span className="bot-operation-accepted">{operation.telegramAccepted ? 'Telegram accepted' : 'Not accepted / unknown'}</span></article>) : <div className="bot-empty">No recent operations are stored.</div>}
+         {data.recentOperations.length ? data.recentOperations.slice(0, 5).map((operation, index) => <article className="bot-operation" key={`${operation.recordedAt}-${index}`}><span className="bot-operation-icon"><Activity size={15}/></span><div><strong>{human(operation.operationType)}</strong><small>{human(operation.sourceBot)} · {human(operation.destination)} · {formatDate(operation.recordedAt)}</small></div><span className="bot-operation-state">{statusText(operation.status, 'operation')}</span><span className="bot-operation-accepted">{operation.telegramAccepted ? 'Telegram accepted' : 'Not accepted / not confirmed'}</span></article>) : <div className="bot-empty">No recent operations are stored.</div>}
       </div>
       <div className="bot-last-update"><Clock3 size={14}/><span>Last Telegram update in snapshot</span><strong>{formatDate(data.lastTelegramUpdate)}</strong></div>
     </section>

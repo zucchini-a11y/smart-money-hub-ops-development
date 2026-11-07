@@ -747,6 +747,14 @@
 .mx-home-outcome.is-loss { background: #e45c65; }
 .mx-home-pro > p, .mx-home-learning > p { min-height: 42px; margin: 0 0 12px; color: var(--mx-muted); font-size: 10px; line-height: 1.65; }
 .mx-home-pro .mx-button, .mx-home-learning .mx-button { min-height: 37px; margin: 0; font-size: 9px !important; }
+.mx-learning-overview { display: grid; gap: 10px; }
+.mx-learning-count { display: flex; align-items: end; justify-content: space-between; gap: 10px; }
+.mx-learning-count strong { color: var(--mx-text); font: 600 23px/1 'Manrope', sans-serif; }
+.mx-learning-count strong span { color: var(--mx-muted); font-size: 13px; }
+.mx-learning-count small { color: var(--mx-dim); font: 8px 'DM Mono', monospace; letter-spacing: .08em; }
+.mx-learning-progress-track { height: 6px; overflow: hidden; border-radius: 999px; background: rgba(183,198,223,.12); }
+.mx-learning-progress-track span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #67ddd4, #8a72f0); transition: width .3s ease; }
+.mx-learning-overview > p { min-height: 0; margin: 0 0 2px; color: var(--mx-muted); font-size: 10px; line-height: 1.55; }
 .mx-home-pro .mx-button-gold { background: var(--mx-gold); }
 .mx-member-home .mx-dashboard-footer { margin-top: 25px; border-top: 1px solid rgba(183,198,223,.09); }
 .mx-vayda-portrait { position: relative; display: grid; width: 168px; aspect-ratio: 220 / 250; flex: 0 0 auto; place-items: center; isolation: isolate; }

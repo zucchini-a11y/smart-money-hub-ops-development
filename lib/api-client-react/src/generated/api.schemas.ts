@@ -587,6 +587,58 @@ export interface MemberCalendarResponse {
   stale: boolean;
 }
 
+export type MemberLearningLessonProgress = typeof MemberLearningLessonProgress[keyof typeof MemberLearningLessonProgress];
+
+
+export const MemberLearningLessonProgress = {
+  not_started: 'not_started',
+  in_progress: 'in_progress',
+  completed: 'completed',
+} as const;
+
+export interface MemberLearningLesson {
+  lessonId: string;
+  title: string;
+  summary: string;
+  bodyMarkdown: string;
+  sequence: number;
+  progress: MemberLearningLessonProgress;
+  locked: boolean;
+  /** @nullable */
+  startedAt: string | null;
+  /** @nullable */
+  completedAt: string | null;
+}
+
+export interface MemberLearningResponse {
+  lessons: MemberLearningLesson[];
+  completedCount: number;
+  totalCount: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  completionPercent: number;
+  /** @nullable */
+  nextLessonId: string | null;
+}
+
+export type MemberLearningProgressInputProgress = typeof MemberLearningProgressInputProgress[keyof typeof MemberLearningProgressInputProgress];
+
+
+export const MemberLearningProgressInputProgress = {
+  in_progress: 'in_progress',
+  completed: 'completed',
+} as const;
+
+export interface MemberLearningProgressInput {
+  progress: MemberLearningProgressInputProgress;
+}
+
+export interface MemberLearningProgressResponse {
+  learning: MemberLearningResponse;
+}
+
 export type CreateMemberJournalTradeDirection = typeof CreateMemberJournalTradeDirection[keyof typeof CreateMemberJournalTradeDirection];
 
 

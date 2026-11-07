@@ -741,6 +741,73 @@ export const GetMemberCalendarResponse = zod.object({
 
 
 /**
+ * @summary Read the current member's lessons and saved learning progress
+ */
+export const getMemberLearningResponseCompletionPercentMin = 0;
+export const getMemberLearningResponseCompletionPercentMax = 100;
+
+
+
+export const GetMemberLearningResponse = zod.object({
+  "lessons": zod.array(zod.object({
+  "lessonId": zod.string(),
+  "title": zod.string(),
+  "summary": zod.string(),
+  "bodyMarkdown": zod.string(),
+  "sequence": zod.number().int(),
+  "progress": zod.enum(['not_started', 'in_progress', 'completed']),
+  "locked": zod.boolean(),
+  "startedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable()
+})),
+  "completedCount": zod.number().int(),
+  "totalCount": zod.number().int(),
+  "completionPercent": zod.number().int().min(getMemberLearningResponseCompletionPercentMin).max(getMemberLearningResponseCompletionPercentMax),
+  "nextLessonId": zod.string().nullable()
+})
+
+
+/**
+ * @summary Save progress for a lesson owned by the current member
+ */
+export const updateMemberLearningProgressPathLessonIdRegExp = new RegExp('^[a-z0-9-]{1,80}$');
+
+
+export const UpdateMemberLearningProgressParams = zod.object({
+  "lessonId": zod.coerce.string().regex(updateMemberLearningProgressPathLessonIdRegExp)
+})
+
+export const UpdateMemberLearningProgressBody = zod.object({
+  "progress": zod.enum(['in_progress', 'completed'])
+})
+
+export const updateMemberLearningProgressResponseLearningCompletionPercentMin = 0;
+export const updateMemberLearningProgressResponseLearningCompletionPercentMax = 100;
+
+
+
+export const UpdateMemberLearningProgressResponse = zod.object({
+  "learning": zod.object({
+  "lessons": zod.array(zod.object({
+  "lessonId": zod.string(),
+  "title": zod.string(),
+  "summary": zod.string(),
+  "bodyMarkdown": zod.string(),
+  "sequence": zod.number().int(),
+  "progress": zod.enum(['not_started', 'in_progress', 'completed']),
+  "locked": zod.boolean(),
+  "startedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable()
+})),
+  "completedCount": zod.number().int(),
+  "totalCount": zod.number().int(),
+  "completionPercent": zod.number().int().min(updateMemberLearningProgressResponseLearningCompletionPercentMin).max(updateMemberLearningProgressResponseLearningCompletionPercentMax),
+  "nextLessonId": zod.string().nullable()
+})
+})
+
+
+/**
  * @summary List the current member's journal trades
  */
 export const listMemberJournalTradesQueryInstrumentMax = 24;

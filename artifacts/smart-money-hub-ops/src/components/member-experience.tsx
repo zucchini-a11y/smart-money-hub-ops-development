@@ -2,11 +2,13 @@ import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type React
 import { Link } from 'wouter';
 import {
   getGetMemberCalendarQueryKey,
+  getGetMemberLearningQueryKey,
   getGetMemberProSignalsQueryKey,
   getListMemberJournalTradesQueryKey,
   useCreateMemberJournalTrade,
   useDeleteMemberJournalTrade,
   useGetMemberCalendar,
+  useGetMemberLearning,
   useGetMemberProSignals,
   useListMemberJournalTrades,
   useSendMemberCoachMessage,
@@ -30,6 +32,7 @@ import {
   ArrowUpRight,
   ArrowLeft,
   Activity,
+  BookOpen,
   CalendarDays,
   Check,
   CheckCircle2,
@@ -233,6 +236,9 @@ export function MemberDashboardExperience({
   const calendar = useGetMemberCalendar(calendarParams, {
     query: { queryKey: getGetMemberCalendarQueryKey(calendarParams), staleTime: 60_000 },
   });
+  const learning = useGetMemberLearning({
+    query: { queryKey: getGetMemberLearningQueryKey(), staleTime: 60_000 },
+  });
   const journalParams = useMemo<ListMemberJournalTradesParams>(() => ({}), []);
   const journal = useListMemberJournalTrades(journalParams, {
     query: { queryKey: getListMemberJournalTradesQueryKey(journalParams), staleTime: 30_000 },
@@ -250,6 +256,7 @@ export function MemberDashboardExperience({
           </Link>
           <nav className="mx-home-nav" aria-label="Member navigation">
             <Link className="is-current" href="/member/dashboard">Home</Link>
+            <Link href="/member/learning">Learning</Link>
             <Link href="/member/calendar">Calendar</Link>
             <Link href="/member/journal">Journal</Link>
             <Link href="/member/coach">AI Coach</Link>
@@ -336,8 +343,20 @@ export function MemberDashboardExperience({
 
           <article className="mx-home-panel mx-home-learning">
             <div className="mx-home-panel-head"><div><span className="mx-card-kicker">LEARNING</span><h2>Learning progress</h2></div><Activity size={19} aria-hidden="true" /></div>
-            <p>Lesson completion is not tracked in this dashboard, so no progress percentage is shown.</p>
-            <Link className="mx-button mx-button-quiet" href="/education" data-testid="button-explore-trading-academy">Explore Trading Academy <ArrowRight size={14} /></Link>
+            {learning.isLoading
+              ? <div className="mx-home-loading" role="status">Loading your learning progress…</div>
+              : learning.isError
+                ? <div className="mx-home-empty" role="alert"><span>Your learning progress could not be loaded.</span><button type="button" onClick={() => void learning.refetch()} disabled={learning.isFetching}>Try again</button></div>
+                : <div className="mx-learning-overview">
+                  <div className="mx-learning-count"><strong>{learning.data?.completedCount ?? 0}<span> / {learning.data?.totalCount ?? 0}</span></strong><small>LESSONS COMPLETED</small></div>
+                  <div className="mx-learning-progress-track" role="progressbar" aria-label="Learning progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={learning.data?.completionPercent ?? 0}>
+                    <span style={{ width: `${learning.data?.completionPercent ?? 0}%` }} />
+                  </div>
+                  <p>{learning.data?.nextLessonId
+                    ? `Next up: ${learning.data.lessons.find((lesson) => lesson.lessonId === learning.data?.nextLessonId)?.title ?? 'Continue your next lesson'}`
+                    : 'You have completed all published text lessons.'}</p>
+                  <Link className="mx-button mx-button-quiet" href="/member/learning" data-testid="button-explore-trading-academy">Open Trading Academy <ArrowRight size={14} /></Link>
+                </div>}
           </article>
         </section>
 
@@ -382,9 +401,10 @@ function VaydaPortrait({ state = 'idle', compact = false }: { state?: VaydaState
   </span>;
 }
 
-type MemberFeaturePath = '/member/calendar' | '/member/journal' | '/member/coach' | '/member/pro-signals';
+type MemberFeaturePath = '/member/learning' | '/member/calendar' | '/member/journal' | '/member/coach' | '/member/pro-signals';
 
 const featureLinks: Array<{ href: Exclude<MemberFeaturePath, '/member/pro-signals'>; title: string; description: string; number: string; icon: ReactNode }> = [
+  { href: '/member/learning', title: 'Trading Academy', description: 'Follow verified text lessons and save your progress.', number: '01 / LEARN', icon: <BookOpen size={17} /> },
   { href: '/member/calendar', title: 'Economic calendar', description: 'Review verified USD events with source and timing context.', number: '01 / OBSERVE', icon: <CalendarDays size={17} /> },
   { href: '/member/journal', title: 'Trade journal', description: 'Record your own decisions and reflect on saved outcomes.', number: '02 / REVIEW', icon: <FileText size={17} /> },
   { href: '/member/coach', title: 'AI Coach', description: 'Explore trading concepts through an educational conversation.', number: '03 / STUDY', icon: <MessageCircle size={17} /> },
@@ -851,10 +871,10 @@ export function MemberCoachExperience() {
 
 export function MemberFeatureDashboardLinks({ proSignalsAccess = false }: { proSignalsAccess?: boolean }) {
   const quickLinks = [
+    { href: '/member/learning', title: 'Trading Academy', detail: 'Lessons and saved progress', icon: <BookOpen size={18} /> },
     { href: '/member/calendar', title: 'Economic calendar', detail: 'Verified USD events', icon: <CalendarDays size={18} /> },
     { href: '/member/journal', title: 'Trading journal', detail: 'Your saved decisions', icon: <FileText size={18} /> },
     { href: '/member/coach', title: 'Ask Vayda', detail: 'Learn and reflect', icon: <MessageCircle size={18} /> },
-    { href: '/education', title: 'Trading Academy', detail: 'Explore the curriculum', icon: <Sparkles size={18} /> },
     { href: '/market-analysis', title: 'Market Analysis', detail: 'Read market context', icon: <Activity size={18} /> },
     ...(proSignalsAccess ? [{ href: '/member/pro-signals', title: 'PRO Signals', detail: 'Authorized member feed', icon: <Radio size={18} /> }] : []),
   ];
