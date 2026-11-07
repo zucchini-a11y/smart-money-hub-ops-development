@@ -393,7 +393,7 @@ function ConfirmationDiagram() {
   );
 }
 
-export function MemberLessonDiagram({ lessonId }: { lessonId: string }) {
+function MemberLessonSchematicDiagram({ lessonId }: { lessonId: string }) {
   if (lessonId === 'orientation') {
     return (
       <DiagramFrame
@@ -486,4 +486,126 @@ export function MemberLessonDiagram({ lessonId }: { lessonId: string }) {
   }
 
   return null;
+}
+
+type GuideFigure = {
+  file: string;
+  title: string;
+  alt: string;
+  page: number;
+  note?: string;
+};
+
+const guideFigures: Record<string, GuideFigure[]> = {
+  'candle-anatomy': [
+    { file: 'candle-anatomy.webp', title: 'How to read a candle', alt: 'Green and red candlesticks illustrating open, high, low, and close.', page: 3 },
+  ],
+  'swing-high-low': [
+    { file: 'swing-high-low.webp', title: 'Swing highs and swing lows', alt: 'Candlestick swing-high and swing-low examples.', page: 4 },
+  ],
+  'market-structure': [
+    { file: 'market-structure.webp', title: 'Market structure', alt: 'Candlestick sequences illustrating higher highs, higher lows, lower highs, and lower lows.', page: 5 },
+  ],
+  'bos-and-choch': [
+    { file: 'bos.webp', title: 'Break of Structure', alt: 'Bullish and bearish candlestick examples of a body closing beyond a swing level.', page: 6 },
+  ],
+  'change-of-character': [
+    { file: 'choch.webp', title: 'Change of Character', alt: 'Candlestick example of a close through a prior swing against the previous structure.', page: 7 },
+  ],
+  'mss-displacement': [
+    { file: 'mss-displacement.webp', title: 'Market Structure Shift and displacement', alt: 'Candles showing a forceful structure break and displacement.', page: 8 },
+  ],
+  'liquidity-and-equal-highs-lows': [
+    { file: 'liquidity-equal-highs-lows.webp', title: 'Equal highs and equal lows', alt: 'Candlesticks with equal-high and equal-low reference levels.', page: 9 },
+  ],
+  'liquidity-sweep': [
+    { file: 'liquidity-sweep.webp', title: 'Liquidity sweep', alt: 'A candle wick moves beyond a reference level and closes back inside.', page: 10 },
+  ],
+  inducement: [
+    { file: 'inducement.webp', title: 'Inducement', alt: 'Candlestick example labeling a smaller swing and a later move to a reference area.', page: 11 },
+  ],
+  'fair-value-gaps': [
+    { file: 'fair-value-gap.webp', title: 'Fair Value Gap', alt: 'Bullish and bearish three-candle Fair Value Gap examples.', page: 12 },
+  ],
+  'inverse-fvg': [
+    { file: 'inverse-fvg.webp', title: 'Inverse Fair Value Gap', alt: 'Candlestick example of a gap failing and being viewed from the opposite direction.', page: 13 },
+  ],
+  'volume-imbalance-liquidity-void': [
+    { file: 'volume-imbalance-liquidity-void.webp', title: 'Volume imbalance and liquidity void', alt: 'Candlestick examples comparing body imbalance and a run of directional candles.', page: 14 },
+  ],
+  'order-blocks-in-context': [
+    { file: 'order-block.webp', title: 'Order Block', alt: 'Bullish and bearish candlestick zones labeled as order-block examples.', page: 15 },
+  ],
+  'breaker-block': [
+    { file: 'breaker-block.webp', title: 'Breaker Block', alt: 'Candlestick illustration of a failed block and a later retest.', page: 16 },
+  ],
+  'mitigation-block': [
+    { file: 'mitigation-block.webp', title: 'Mitigation Block', alt: 'Candlestick example of a failed swing and return to a marked zone.', page: 17 },
+  ],
+  'rejection-block': [
+    { file: 'rejection-block.webp', title: 'Rejection Block', alt: 'Candlestick wicks marking example rejection areas.', page: 18 },
+  ],
+  'premium-discount-ote': [
+    { file: 'premium-discount-ote.webp', title: 'Premium, discount, and OTE', alt: 'Candlestick range with midpoint and retracement reference zones.', page: 19 },
+  ],
+  'power-of-three-judas-swing': [
+    { file: 'power-of-three-judas-swing.webp', title: 'Power of Three and Judas Swing', alt: 'Candlestick example organized into accumulation, a possible false move, and later expansion.', page: 20 },
+  ],
+  'multi-timeframe-context': [
+    { file: 'premium-discount-ote.webp', title: 'H1 range and location', alt: 'Candlestick range with midpoint and retracement reference zones.', page: 19 },
+    { file: 'complete-smc-model.webp', title: 'H1 context with M5 confirmation', alt: 'Schematic candlestick sequence combining higher-timeframe context with entry-timeframe confirmation.', page: 21 },
+  ],
+  'complete-smc-trade-model': [
+    {
+      file: 'complete-smc-model.webp',
+      title: 'Complete SMC model example',
+      alt: 'Candlestick diagram showing a schematic liquidity sweep, structure shift, entry area, a 1R risk and 3R target, and breakeven at 1:1.',
+      page: 21,
+    },
+  ],
+  'confirmation-and-risk-planning': [
+    {
+      file: 'complete-smc-model.webp',
+      title: 'The guide’s complete model',
+      alt: 'Schematic candlestick sequence showing a sweep, structure shift, entry area, 1R risk, 3R target, and breakeven at 1:1.',
+      page: 21,
+    },
+  ],
+};
+
+function GuideFigureGallery({ figures }: { figures: GuideFigure[] }) {
+  return (
+    <div className="ml-guide-figure-gallery">
+      {figures.map((figure) => (
+        <figure className="ml-guide-figure" key={figure.file}>
+          <img
+            src={`${import.meta.env.BASE_URL}images/academy-guide/${figure.file}`}
+            alt={figure.alt}
+            loading="lazy"
+            decoding="async"
+          />
+          <figcaption>
+            <span><strong>{figure.title}</strong><small>Visual guide · page {figure.page}</small></span>
+            {figure.note && <p>{figure.note}</p>}
+          </figcaption>
+        </figure>
+      ))}
+      <p className="ml-guide-source-note">Diagrams from the updated SMC Candlestick Visual Guide. They are schematic illustrations, not live market data or trade signals.</p>
+    </div>
+  );
+}
+
+export function MemberLessonDiagram({ lessonId }: { lessonId: string }) {
+  const figures = guideFigures[lessonId];
+  if (!figures) return <MemberLessonSchematicDiagram lessonId={lessonId} />;
+
+  return (
+    <div className="ml-guide-visuals">
+      <GuideFigureGallery figures={figures} />
+      <details className="ml-supplemental-sketch">
+        <summary>Open the supplemental Academy candle sketch</summary>
+        <MemberLessonSchematicDiagram lessonId={lessonId} />
+      </details>
+    </div>
+  );
 }

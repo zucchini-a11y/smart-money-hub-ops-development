@@ -546,9 +546,217 @@
 .ml-footer i { background: #9e8bff; }
 .ml-page button:focus-visible, .ml-page a:focus-visible { outline-color: #65dce8; }
 
+.ml-roadmap {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(330px, .95fr);
+  gap: 15px;
+  margin-top: 22px;
+}
+.ml-roadmap-method, .ml-philosophy {
+  min-width: 0;
+  padding: 22px;
+  border: 1px solid rgba(154, 173, 214, .2);
+  border-radius: 5px 17px 5px 17px;
+  background: linear-gradient(145deg, rgba(18, 28, 49, .96), rgba(12, 20, 36, .96));
+  box-shadow: 0 17px 46px rgba(0, 0, 0, .16);
+}
+.ml-roadmap-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 17px;
+}
+.ml-roadmap-heading h2, .ml-philosophy h2 {
+  margin: 7px 0 0;
+  color: #f0f3ff;
+  font-size: 21px;
+  line-height: 1.25;
+  letter-spacing: -.035em;
+}
+.ml-roadmap-motto {
+  flex: 0 0 auto;
+  color: #a894ff;
+  font: 10px 'DM Mono', monospace;
+  letter-spacing: .08em;
+}
+.ml-roadmap-steps {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+.ml-roadmap-step {
+  min-width: 0;
+  display: flex;
+  gap: 11px;
+  padding: 13px 12px;
+  border: 1px solid rgba(154, 173, 214, .14);
+  border-radius: 8px 13px 8px 13px;
+  background: rgba(255, 255, 255, .025);
+}
+.ml-roadmap-step > span {
+  flex: 0 0 auto;
+  color: #68dce8;
+  font: 11px 'DM Mono', monospace;
+}
+.ml-roadmap-step h3 {
+  margin: 0 0 4px;
+  color: #f0f3ff;
+  font-size: 15px;
+}
+.ml-roadmap-step p {
+  margin: 0;
+  color: #bdc9df;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.ml-philosophy > .ml-eyebrow { color: #65dce8; }
+.ml-philosophy h2 { margin-bottom: 15px; }
+.ml-philosophy-rules {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ml-philosophy-rules li {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 10px 11px;
+  border-left: 2px solid rgba(168, 148, 255, .8);
+  background: rgba(255, 255, 255, .025);
+}
+.ml-philosophy-rules strong {
+  color: #b9aaff;
+  font: 700 15px 'DM Mono', monospace;
+}
+.ml-philosophy-rules span {
+  color: #cad4e6;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.ml-philosophy-discipline {
+  margin: 13px 0 8px;
+  color: #dbe3f1;
+  font-size: 13px;
+  line-height: 1.65;
+}
+.ml-philosophy-rule {
+  margin: 0 0 7px;
+  color: #75e4ea;
+  font: 700 13px 'DM Mono', monospace;
+  letter-spacing: .06em;
+}
+.ml-philosophy > small {
+  color: #9eacc4;
+  font-size: 11px;
+  line-height: 1.55;
+}
+.ml-lesson-activities {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 27px 0 4px;
+}
+.ml-activity-card {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid rgba(154, 173, 214, .18);
+  border-radius: 8px 15px 8px 15px;
+  background: linear-gradient(145deg, rgba(20, 31, 53, .8), rgba(12, 20, 37, .86));
+}
+.ml-activity-card > .ml-eyebrow { color: #72dfe8; }
+.ml-activity-card ul {
+  display: grid;
+  gap: 10px;
+  margin: 11px 0 0;
+  padding-left: 19px;
+  color: #d0daea;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.ml-activity-card li::marker { color: #b6a8ff; }
+.ml-activity-card > p {
+  margin: 11px 0 0;
+  color: #d0daea;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.ml-guide-visuals { display: grid; gap: 14px; }
+.ml-guide-figure-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr));
+  align-items: start;
+  gap: 12px;
+}
+.ml-guide-figure {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid rgba(154, 173, 214, .22);
+  border-radius: 10px 16px 10px 16px;
+  background: #f7f9fb;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, .16);
+}
+.ml-guide-figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #fff;
+}
+.ml-guide-figure figcaption {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  color: #17263a;
+}
+.ml-guide-figure figcaption > span { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.ml-guide-figure figcaption strong { font-size: 13px; }
+.ml-guide-figure figcaption small { flex: 0 0 auto; color: #5e6b7b; font: 10px 'DM Mono', monospace; }
+.ml-guide-figure figcaption p { margin: 0; color: #465469; font-size: 12px; line-height: 1.6; }
+.ml-guide-source-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #aab7d0;
+  font-size: 12px;
+  line-height: 1.65;
+}
+.ml-supplemental-sketch {
+  overflow: hidden;
+  border: 1px solid rgba(154, 173, 214, .2);
+  border-radius: 8px 14px 8px 14px;
+  background: rgba(255, 255, 255, .025);
+}
+.ml-supplemental-sketch summary {
+  padding: 13px 15px;
+  color: #c5baff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.ml-supplemental-sketch[open] { padding: 0 12px 12px; }
+.ml-supplemental-sketch[open] > summary { margin: 0 -12px 12px; border-bottom: 1px solid var(--ml-line); }
+
 @media (max-width: 760px) {
+  .ml-roadmap { grid-template-columns: 1fr; }
+  .ml-lesson-activities { grid-template-columns: 1fr; }
+  .ml-guide-figure-gallery { grid-template-columns: 1fr; }
+  .ml-guide-figure figcaption > span { align-items: flex-start; flex-direction: column; gap: 4px; }
   .ml-lesson-rail { border-bottom-color: var(--ml-line); }
   .ml-lesson-list { scrollbar-color: #59688c transparent; }
+}
+
+@media (max-width: 480px) {
+  .ml-roadmap-method, .ml-philosophy { padding: 18px 15px; }
+  .ml-roadmap-heading { align-items: flex-start; flex-direction: column; }
+  .ml-roadmap-heading h2, .ml-philosophy h2 { font-size: 19px; }
+  .ml-roadmap-step { padding: 11px 9px; }
+  .ml-roadmap-step p, .ml-philosophy-discipline, .ml-activity-card ul, .ml-activity-card > p { font-size: 14px; }
+  .ml-philosophy-rules { gap: 6px; }
+  .ml-philosophy-rules li { padding: 9px; }
+  .ml-philosophy-rules span { font-size: 11px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
