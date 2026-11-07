@@ -235,6 +235,7 @@ function ExternalLink({ href, children, className = '', ...props }: AnchorHTMLAt
 
 function Header({ location }: { location: string }) {
   const [open, setOpen] = useState(false);
+  const [, navigate] = useLocation();
   const isHome = location === '/';
   return <header className="vs-header">
     <div className="vs-header-inner">
@@ -252,7 +253,15 @@ function Header({ location }: { location: string }) {
           <a href="#principles" onClick={() => setOpen(false)} data-testid="link-public-principles">Principles</a>
         </> : pages.slice(1).map((page) => <Link key={page.href} href={page.href} aria-current={location === page.href ? 'page' : undefined} onClick={() => setOpen(false)} data-testid={`link-public-${page.href.slice(1) || 'home'}`}>{page.label}</Link>)}
         {isConfiguredPublicUrl(publicSiteLinks.primaryCommunity) && <ExternalLink href={publicSiteLinks.primaryCommunity} className="vs-nav-cta" data-testid="link-public-community-entry">{isHome ? 'Coach Bot' : 'Open Coach'} <ArrowUpRight size={13} /></ExternalLink>}
-        <button className="vs-create-account is-paused" type="button" disabled aria-label="Member sign-up is temporarily paused" data-testid="button-public-signup-paused">Sign-up paused</button>
+        <button
+          className="vs-create-account"
+          type="button"
+          onClick={() => { navigate('/sign-up'); setOpen(false); }}
+          aria-label="Create a member account"
+          data-testid="button-public-signup"
+        >
+          Create account
+        </button>
         <a href="/login" className="vs-staff-link" onClick={() => setOpen(false)} data-testid="link-public-login">Sign in</a>
       </nav>
     </div>

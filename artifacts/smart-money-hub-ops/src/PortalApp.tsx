@@ -485,7 +485,12 @@ function Login() {
         <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? 'Updating password…' : 'Update password'} <ChevronRight size={15} /></button>
         <button className="login-link-button" type="button" onClick={() => setRecoveryStep('closed')}>Back to sign in</button>
       </form>}
-      <div className="login-note" data-testid="status-member-signup-paused">New member registration is paused. Existing members can still sign in.</div>
+      <div className="login-note" data-testid="status-member-signup-open">
+        New to Smart Money Hub?{' '}
+        <button className="login-link-button" type="button" onClick={() => navigate('/sign-up')} data-testid="button-login-create-account">
+          Create an account
+        </button>
+      </div>
       </div>
     </div></section>
   </main>;
@@ -1391,8 +1396,8 @@ function memberSignupError(value: unknown, fallback: string) {
   return fallback;
 }
 
-// Keep public member self-registration closed until the owner explicitly approves it.
-const MEMBER_SELF_SIGNUP_ENABLED = false;
+// The owner approved reopening member self-registration in Development and Production.
+const MEMBER_SELF_SIGNUP_ENABLED = true;
 
 function MemberSignUpPage() {
   return MEMBER_SELF_SIGNUP_ENABLED
