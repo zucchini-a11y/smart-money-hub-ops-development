@@ -87,6 +87,30 @@ function MarketStructureDiagram() {
   );
 }
 
+function LiquidityReferenceDiagram() {
+  return (
+    <div className="ml-diagram-canvas">
+      <svg viewBox="0 0 720 220" role="img" aria-labelledby="ml-liquidity-title ml-liquidity-desc">
+        <title id="ml-liquidity-title">Repeated highs as a visible reference zone</title>
+        <desc id="ml-liquidity-desc">A simplified price path forms two similar swing highs. A dashed band marks the visible reference area and does not indicate confirmed orders.</desc>
+        <path d="M42 185H680M42 140H680M42 95H680M42 50H680" stroke="rgba(154,173,214,.12)" />
+        <rect x="42" y="73" width="638" height="18" rx="9" fill="rgba(91,216,231,.06)" stroke="rgba(91,216,231,.35)" strokeDasharray="5 6" />
+        <path d="M54 177 L118 137 L174 83 L236 133 L294 84 L352 126 L418 152 L476 106 L528 121 L588 72 L642 101" fill="none" stroke="url(#ml-liquidity-line)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+        <defs>
+          <linearGradient id="ml-liquidity-line" x1="0" x2="1">
+            <stop stopColor="#a894ff" />
+            <stop offset="1" stopColor="#5bd8e7" />
+          </linearGradient>
+        </defs>
+        <circle cx="174" cy="83" r="5" fill="#62dce8" stroke="#0a1020" strokeWidth="3" />
+        <circle cx="294" cy="84" r="5" fill="#62dce8" stroke="#0a1020" strokeWidth="3" />
+        <text x="233" y="62" textAnchor="middle" fill="#dce6ff" fontSize="11" fontFamily="sans-serif">Similar swing highs</text>
+        <text x="548" y="67" textAnchor="middle" fill="#82e6ed" fontSize="10" fontFamily="monospace">VISIBLE REFERENCE ZONE</text>
+      </svg>
+    </div>
+  );
+}
+
 function StructureBreakDiagram({ kind }: { kind: 'bos' | 'choch' }) {
   const isBos = kind === 'bos';
   const titleId = isBos ? 'ml-bos-title' : 'ml-choch-title';
@@ -144,6 +168,17 @@ export function MemberLessonDiagram({ lessonId }: { lessonId: string }) {
         description="This simplified rising sequence shows higher highs and higher lows. Structure describes observed swings; it does not predict the next move."
       >
         <MarketStructureDiagram />
+      </DiagramFrame>
+    );
+  }
+
+  if (lessonId === 'liquidity-and-equal-highs-lows') {
+    return (
+      <DiagramFrame
+        title="Equal highs are visible references"
+        description="Repeated swing highs can be marked as a reference zone. The chart does not confirm hidden stop orders, and price may react in different ways."
+      >
+        <LiquidityReferenceDiagram />
       </DiagramFrame>
     );
   }

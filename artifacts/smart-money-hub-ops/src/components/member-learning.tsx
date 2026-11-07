@@ -25,7 +25,12 @@ import {
 import './member-learning.css';
 import { MemberLessonDiagram } from './member-learning-diagrams';
 
-const diagramLessonIds = new Set(['orientation', 'market-structure', 'bos-and-choch']);
+const diagramLessonIds = new Set([
+  'orientation',
+  'market-structure',
+  'bos-and-choch',
+  'liquidity-and-equal-highs-lows',
+]);
 
 function lessonStatus(progress: MemberLearningLesson['progress']) {
   if (progress === 'completed') return 'Completed';
