@@ -12,8 +12,8 @@ export const modules: ModuleMap = {
   "./components/mockups/smh-owner-command-center/Current.tsx": () => import("../components/mockups/smh-owner-command-center/Current.tsx"),
   "./components/mockups/smh-public-site/Current.tsx": () => import("../components/mockups/smh-public-site/Current.tsx"),
   "./components/mockups/smh-public-site-latest/Current.tsx": () => import("../components/mockups/smh-public-site-latest/Current.tsx"),
-  "./components/mockups/smh-support-unified/Current.tsx": () => import("../components/mockups/smh-support-unified/Current.tsx"),
-  "./components/mockups/smh-support-unified/UnifiedInbox.tsx": () => import("../components/mockups/smh-support-unified/UnifiedInbox.tsx"),
   "./components/mockups/smh-support/Current.tsx": () => import("../components/mockups/smh-support/Current.tsx"),
-  "./components/mockups/smh-support/PortalLook.tsx": () => import("../components/mockups/smh-support/PortalLook.tsx")
+  "./components/mockups/smh-support/PortalLook.tsx": () => import("../components/mockups/smh-support/PortalLook.tsx"),
+  "./components/mockups/smh-support-unified/Current.tsx": () => import("../components/mockups/smh-support-unified/Current.tsx"),
+  "./components/mockups/smh-support-unified/UnifiedInbox.tsx": () => import("../components/mockups/smh-support-unified/UnifiedInbox.tsx")
 };
