@@ -1,5 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { startDevelopmentMemberReminderWorker } from "./lib/development-member-reminders";
 
 const rawPort = process.env["PORT"];
 
@@ -16,6 +17,8 @@ if (Number.isNaN(port) || port <= 0) {
 }
 
 const host = process.env.NODE_ENV === "production" ? "127.0.0.1" : "0.0.0.0";
+
+startDevelopmentMemberReminderWorker();
 
 app.listen(port, host, (err) => {
   if (err) {

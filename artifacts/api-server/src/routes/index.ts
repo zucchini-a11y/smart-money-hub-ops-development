@@ -8,6 +8,7 @@ import educationVideosRouter from "./education-videos";
 import memberRouter from "./member";
 import memberToolsRouter from "./member-tools";
 import memberLearningRouter from "./member-learning";
+import memberNotificationsRouter from "./member-notifications";
 import websiteSupportRouter from "./website-support";
 import { requirePasswordReady, requirePortalSession } from "../lib/portal-auth";
 
@@ -18,6 +19,7 @@ router.use(authRouter);
 router.use(memberRouter);
 router.use(memberToolsRouter);
 router.use(memberLearningRouter);
+router.use(memberNotificationsRouter);
 router.use(supportRouter);
 router.use(portalRouter);
 router.use(websiteSupportRouter);
