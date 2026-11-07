@@ -41,7 +41,7 @@ test("weekly reminder records contain a stable per-local-date idempotency key", 
     idempotencyKey: "learning-reminder:2026-11-09",
     kind: "learning_reminder",
     title: "Your weekly learning reminder",
-    message: "Continue with “Understanding market structure” when you are ready. Your saved progress is waiting for you.",
+    message: "Continue with “Understanding market structure” when you are ready. Your learning path is here when you return.",
     targetPath: "/member/learning",
   });
   assert.equal(buildLearningReminderCandidate(input)?.idempotencyKey, reminder?.idempotencyKey);

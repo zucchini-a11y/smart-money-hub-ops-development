@@ -927,6 +927,22 @@
 .mx-home-account { border-radius: 999px; background: rgba(20,31,55,.62); }
 .mx-home-avatar { border-color: rgba(89,226,218,.38); background: linear-gradient(145deg, rgba(165,139,255,.32), rgba(48,211,216,.17)); color: #d5f9ff; }
 .mx-member-home .mx-header-icon-button { border-radius: 50%; background: rgba(20,31,55,.62); }
+.mx-member-home .mx-notifications-button { position: relative; }
+.mx-member-home .mx-notification-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  display: grid;
+  min-width: 17px;
+  height: 17px;
+  place-items: center;
+  padding: 0 4px;
+  border: 1px solid #10181b;
+  border-radius: 999px;
+  background: #d2b978;
+  color: #151a18;
+  font: 700 9px/1 'DM Mono', monospace;
+}
 .mx-member-home .mx-home-hero-copy,
 .mx-member-home .mx-home-vayda-card {
   border-color: rgba(116,190,255,.2);

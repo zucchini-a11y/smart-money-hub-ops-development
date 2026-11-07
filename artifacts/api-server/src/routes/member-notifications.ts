@@ -165,6 +165,14 @@ router.patch(
       res.status(400).json({ error: "Choose a valid reminder day, time, and timezone." });
       return;
     }
+    const timezoneResult = await pool.query(
+      `SELECT name FROM pg_timezone_names WHERE name=$1 LIMIT 1`,
+      [parsed.data.timezone],
+    );
+    if (!timezoneResult.rows.length) {
+      res.status(400).json({ error: "Choose a timezone supported by the reminder scheduler." });
+      return;
+    }
 
     const result = await pool.query(
       `INSERT INTO ${schema}.member_notification_preferences

@@ -3,12 +3,14 @@ import { Link } from 'wouter';
 import {
   getGetMemberCalendarQueryKey,
   getGetMemberLearningQueryKey,
+  getGetMemberNotificationsQueryKey,
   getGetMemberProSignalsQueryKey,
   getListMemberJournalTradesQueryKey,
   useCreateMemberJournalTrade,
   useDeleteMemberJournalTrade,
   useGetMemberCalendar,
   useGetMemberLearning,
+  useGetMemberNotifications,
   useGetMemberProSignals,
   useListMemberJournalTrades,
   useSendMemberCoachMessage,
@@ -32,6 +34,7 @@ import {
   ArrowUpRight,
   ArrowLeft,
   Activity,
+  Bell,
   BookOpen,
   CalendarDays,
   Check,
@@ -239,12 +242,21 @@ export function MemberDashboardExperience({
   const learning = useGetMemberLearning({
     query: { queryKey: getGetMemberLearningQueryKey(), staleTime: 60_000 },
   });
+  const notifications = useGetMemberNotifications({
+    query: {
+      queryKey: getGetMemberNotificationsQueryKey(),
+      staleTime: 30_000,
+      retry: false,
+      enabled: import.meta.env.DEV,
+    },
+  });
   const journalParams = useMemo<ListMemberJournalTradesParams>(() => ({}), []);
   const journal = useListMemberJournalTrades(journalParams, {
     query: { queryKey: getListMemberJournalTradesQueryKey(journalParams), staleTime: 30_000 },
   });
   const calendarEvents = calendar.data?.events.slice(0, 3) ?? [];
   const latestTrade = journal.data?.trades[0];
+  const unreadNotifications = notifications.data?.unreadCount ?? 0;
 
   return (
     <main className="member-experience mx-dashboard mx-member-home" data-testid="member-dashboard">
@@ -263,6 +275,16 @@ export function MemberDashboardExperience({
             {session.proSignalsAccess && <Link href="/member/pro-signals">PRO Signals</Link>}
           </nav>
           <div className="mx-header-actions">
+            {import.meta.env.DEV && <Link
+              className="mx-header-icon-button mx-notifications-button"
+              href="/member/notifications"
+              aria-label={unreadNotifications > 0 ? `Notifications, ${unreadNotifications} unread` : 'Notifications'}
+              title="Notifications"
+              data-testid="button-member-notifications"
+            >
+              <Bell size={17} aria-hidden="true" />
+              {unreadNotifications > 0 && <span className="mx-notification-badge">{unreadNotifications > 99 ? '99+' : unreadNotifications}</span>}
+            </Link>}
             <button className="mx-home-account" type="button" onClick={onSettings} aria-label={`Account settings for ${name}`} title="Account settings">
               <span className="mx-home-avatar" aria-hidden="true">{memberInitials(name)}</span><span>{name}</span><Settings2 size={15} />
             </button>

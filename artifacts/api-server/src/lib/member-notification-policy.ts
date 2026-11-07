@@ -42,7 +42,7 @@ export function buildLearningReminderCandidate(input: {
     idempotencyKey: `learning-reminder:${input.localDate}`,
     kind: "learning_reminder",
     title: "Your weekly learning reminder",
-    message: `Continue with “${lessonTitle}” when you are ready. Your saved progress is waiting for you.`,
+    message: `Continue with “${lessonTitle}” when you are ready. Your learning path is here when you return.`,
     targetPath: "/member/learning",
   };
 }

@@ -99,7 +99,7 @@ export function MemberNotificationsExperience() {
       learningRemindersEnabled: stored.learningRemindersEnabled ?? false,
       reminderDayOfWeek: stored.reminderDayOfWeek ?? 0,
       reminderLocalTime: stored.reminderLocalTime || '09:00',
-      timezone: stored.timezone || initialTimezone,
+      timezone: stored.updatedAt ? stored.timezone : initialTimezone,
     });
   }, [query.data, initialTimezone]);
 

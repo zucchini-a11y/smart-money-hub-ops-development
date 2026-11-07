@@ -22,35 +22,40 @@ export async function runDevelopmentMemberReminderCycle(): Promise<number> {
   if (!isDevelopmentReminderWorkerEnabled()) return 0;
 
   const due = await pool.query(
-    `SELECT preferences.clerk_user_id,
-            TO_CHAR(
-              (NOW() AT TIME ZONE preferences.timezone)::date,
-              'YYYY-MM-DD'
-            ) AS local_date,
+    `WITH scheduled_preferences AS (
+       SELECT preferences.clerk_user_id,
+              preferences.reminder_day_of_week,
+              preferences.reminder_local_time,
+              CASE
+                WHEN EXISTS (
+                  SELECT 1
+                    FROM pg_timezone_names AS known_zone
+                   WHERE known_zone.name=preferences.timezone
+                )
+                THEN NOW() AT TIME ZONE preferences.timezone
+                ELSE NULL
+              END AS local_now
+         FROM smh_test.member_notification_preferences AS preferences
+        WHERE preferences.learning_reminders_enabled=TRUE
+     )
+     SELECT scheduled.clerk_user_id,
+            TO_CHAR(scheduled.local_now::date, 'YYYY-MM-DD') AS local_date,
             next_lesson.title AS next_lesson_title
-       FROM smh_test.member_notification_preferences AS preferences
+       FROM scheduled_preferences AS scheduled
        JOIN LATERAL (
          SELECT lesson.title
            FROM smh_test.member_learning_lessons AS lesson
            LEFT JOIN smh_test.member_learning_progress AS progress
              ON progress.lesson_key=lesson.lesson_key
-            AND progress.clerk_user_id=preferences.clerk_user_id
+            AND progress.clerk_user_id=scheduled.clerk_user_id
           WHERE lesson.published=TRUE
             AND COALESCE(progress.progress, 'not_started') <> 'completed'
           ORDER BY lesson.sequence ASC
           LIMIT 1
        ) AS next_lesson ON TRUE
-      WHERE preferences.learning_reminders_enabled=TRUE
-        AND EXTRACT(
-              DOW FROM (NOW() AT TIME ZONE preferences.timezone)
-            )::int=preferences.reminder_day_of_week
-        AND (NOW() AT TIME ZONE preferences.timezone)::time
-              >= preferences.reminder_local_time
-        AND EXISTS (
-          SELECT 1
-            FROM pg_timezone_names AS known_zone
-           WHERE known_zone.name=preferences.timezone
-        )`,
+      WHERE scheduled.local_now IS NOT NULL
+        AND EXTRACT(DOW FROM scheduled.local_now)::int=scheduled.reminder_day_of_week
+        AND scheduled.local_now::time >= scheduled.reminder_local_time`,
   );
 
   let created = 0;

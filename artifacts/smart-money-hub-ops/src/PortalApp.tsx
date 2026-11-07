@@ -48,6 +48,7 @@ import {
   MemberSignupExperience,
 } from '@/components/member-experience';
 import { MemberLearningExperience } from '@/components/member-learning';
+import { MemberNotificationsExperience } from '@/components/member-notifications';
 import EducationVideos from '@/pages/education-videos';
 import ChannelHistory from '@/pages/channel-history';
 import TradeManagement from '@/pages/trades';
@@ -637,6 +638,15 @@ function MemberRoot() {
   }
   if (location === '/member/settings') return <MemberAccountSettingsPage session={member.data}/>;
   if (location === '/member/learning') return <MemberLearningExperience />;
+  if (location === '/member/notifications') {
+    if (import.meta.env.DEV) return <MemberNotificationsExperience />;
+    return <main className="member-experience mx-signup-loading"><section className="mx-signup-panel mx-access-unavailable">
+      <div className="mx-overline"><span className="mx-live-mark"/> DEVELOPMENT FEATURE</div>
+      <h1>Notifications are not enabled here</h1>
+      <p>The Development notification center is not available in this environment.</p>
+      <Link className="mx-button mx-button-quiet" href={member.data.dashboardPath}>Return to your workspace</Link>
+    </section></main>;
+  }
   if (location === '/member/calendar') return <MemberCalendarExperience />;
   if (location === '/member/journal') return <MemberJournalExperience />;
   if (location === '/member/coach') return <MemberCoachExperience />;
