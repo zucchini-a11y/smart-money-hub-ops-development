@@ -364,3 +364,17 @@ mtime_ms = 1794059805767
 storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/2f2ddd65-d50a-4b54-a95b-329a0afd0cbe/27aa6383-e54b-4959-8f46-90d4ec477021"
 storage_version_token = "1794059848506221"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "8qsZ9H1ZZ6qjREQQo8n-S"
+uri = "file://generated-artifacts/vayda-latest-landing-update-20261107.zip"
+type = "unspecified"
+title = "Latest VAYDA landing-site update"
+description = "Downloadable static build of the current public landing site, including the support-widget interface. This does not include the support API or Production migration."
+logical_id = "ebeff712-680b-4fdd-a143-2c658cb1ba53"
+content_hash = "sha256:28cfbc64424ae5a9f07e263813a24e882e9960202c170d57e49b0dabbb58d0f7"
+size = 318798
+mtime_ms = 1794062463330
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/ebeff712-680b-4fdd-a143-2c658cb1ba53/2bbbcfe2-feec-46a1-91c5-7da122e171c8"
+storage_version_token = "1794062469857183"
+content_type = "application/octet-stream"
