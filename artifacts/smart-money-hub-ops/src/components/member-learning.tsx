@@ -297,38 +297,6 @@ export function MemberLearningExperience() {
           <div className="ml-intro-index" aria-hidden="true"><span>01</span><i /> LEARN BY OBSERVING</div>
         </section>
 
-        <section className="ml-roadmap" aria-label="Trading Academy roadmap">
-          <div className="ml-roadmap-method">
-            <div className="ml-roadmap-heading">
-              <div><span className="ml-eyebrow">THE LEARNING ROUTE</span><h2>Learn. Practise. Apply. Review.</h2></div>
-              <span className="ml-roadmap-motto">LEARN • CONFIRM • EXECUTE • GROW</span>
-            </div>
-            <div className="ml-roadmap-steps">
-              {roadmapSteps.map((step) => (
-                <article className="ml-roadmap-step" key={step.number}>
-                  <span>{step.number}</span>
-                  <div><h3>{step.title}</h3><p>{step.description}</p></div>
-                </article>
-              ))}
-            </div>
-          </div>
-          <aside className="ml-philosophy" aria-labelledby="ml-philosophy-title">
-            <span className="ml-eyebrow">YOUR ESTABLISHED PLAN</span>
-            <h2 id="ml-philosophy-title">Our trading philosophy</h2>
-            <ul className="ml-philosophy-rules">
-              <li><strong>H1</strong><span>Higher-timeframe bias</span></li>
-              <li><strong>M5</strong><span>Entry timeframe</span></li>
-              <li><strong>2%</strong><span>Risk per trade</span></li>
-              <li><strong>1:3</strong><span>Minimum planned risk-to-reward</span></li>
-              <li><strong>3%</strong><span>Maximum daily loss</span></li>
-              <li><strong>1:1</strong><span>Move to breakeven according to your plan</span></li>
-            </ul>
-            <p className="ml-philosophy-discipline">No forced entries, FOMO, or revenge trading. No setup means no trade.</p>
-            <p className="ml-philosophy-rule">NO CONFIRMATION, NO ENTRY.</p>
-            <small>These are your stated rules—not a guarantee or proof that a setup is valid.</small>
-          </aside>
-        </section>
-
         {learning.isLoading ? (
           <section className="ml-content-loading" aria-label="Loading your lessons" data-testid="learning-loading">
             <div className="ml-list-skeleton"><i /><i /><i /><i /></div>
@@ -498,6 +466,38 @@ export function MemberLearningExperience() {
             )}
           </section>
         )}
+
+        <section className="ml-roadmap" aria-label="Trading Academy roadmap">
+          <div className="ml-roadmap-method">
+            <div className="ml-roadmap-heading">
+              <div><span className="ml-eyebrow">THE LEARNING ROUTE</span><h2>Learn. Practise. Apply. Review.</h2></div>
+              <span className="ml-roadmap-motto">LEARN • CONFIRM • EXECUTE • GROW</span>
+            </div>
+            <div className="ml-roadmap-steps">
+              {roadmapSteps.map((step) => (
+                <article className="ml-roadmap-step" key={step.number}>
+                  <span>{step.number}</span>
+                  <div><h3>{step.title}</h3><p>{step.description}</p></div>
+                </article>
+              ))}
+            </div>
+          </div>
+          <aside className="ml-philosophy" aria-labelledby="ml-philosophy-title">
+            <span className="ml-eyebrow">YOUR ESTABLISHED PLAN</span>
+            <h2 id="ml-philosophy-title">Our trading philosophy</h2>
+            <ul className="ml-philosophy-rules">
+              <li><strong>H1</strong><span>Higher-timeframe bias</span></li>
+              <li><strong>M5</strong><span>Entry timeframe</span></li>
+              <li><strong>2%</strong><span>Risk per trade</span></li>
+              <li><strong>1:3</strong><span>Minimum planned risk-to-reward</span></li>
+              <li><strong>3%</strong><span>Maximum daily loss</span></li>
+              <li><strong>1:1</strong><span>Move to breakeven according to your plan</span></li>
+            </ul>
+            <p className="ml-philosophy-discipline">No forced entries, FOMO, or revenge trading. No setup means no trade.</p>
+            <p className="ml-philosophy-rule">NO CONFIRMATION, NO ENTRY.</p>
+            <small>These are your stated rules—not a guarantee or proof that a setup is valid.</small>
+          </aside>
+        </section>
 
         <footer className="ml-footer">
           <span>VAYDA SMART MONEY HUB <i /> LEARN WITH CLARITY</span>

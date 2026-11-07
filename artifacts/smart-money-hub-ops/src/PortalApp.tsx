@@ -201,6 +201,32 @@ function isConnectionFailure(failure: unknown): boolean {
     || (failure instanceof Error && /load failed|failed to fetch|network error|network request failed/i.test(failure.message));
 }
 
+function clerkErrorCode(failure: unknown): string | undefined {
+  if (!failure || typeof failure !== 'object') return undefined;
+  const error = failure as { code?: unknown; errors?: unknown };
+  if (typeof error.code === 'string') return error.code;
+  if (!Array.isArray(error.errors)) return undefined;
+  const first = error.errors.find((item) => item && typeof item === 'object') as { code?: unknown } | undefined;
+  return typeof first?.code === 'string' ? first.code : undefined;
+}
+
+function passwordRecoveryErrorMessage(failure: unknown): string {
+  if (isConnectionFailure(failure)) {
+    return 'We could not connect to the recovery service. Please try again.';
+  }
+  const code = clerkErrorCode(failure);
+  if (import.meta.env.DEV && code) {
+    console.warn('Clerk password recovery error code:', code);
+  }
+  if (code && /(strategy|password|reset).*(not_enabled|disabled)|(not_enabled|disabled).*(strategy|password|reset)/i.test(code)) {
+    return 'Email password recovery is not enabled in the Development sign-in settings. The administrator must enable it before a recovery code can be sent.';
+  }
+  if (code && /(too_many|rate_limit|request_throttled)/i.test(code)) {
+    return 'Too many recovery requests. Wait a few minutes, then try again.';
+  }
+  return 'Development sign-in could not start password recovery. Check the member account email and try again. If it continues, the Development recovery settings need to be checked.';
+}
+
 function Login() {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -409,9 +435,25 @@ function Login() {
       if (sent.error) throw sent.error;
       setRecoveryStep('code');
       setNotice('If password recovery is available for this account, a code has been sent to its registered email.');
-    } catch {
-      setNotice('If password recovery is available for this account, a code will be sent to its registered email.');
-      setRecoveryStep('code');
+    } catch (failure) {
+      setRecoveryStep('closed');
+      setRecoveryCode('');
+      setError(passwordRecoveryErrorMessage(failure));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resendRecoveryCode = async () => {
+    setError('');
+    setNotice('');
+    setBusy(true);
+    try {
+      const sent = await signIn.resetPasswordEmailCode.sendCode();
+      if (sent.error) throw sent.error;
+      setNotice('If password recovery is available for this account, a new code has been sent.');
+    } catch (failure) {
+      setError(passwordRecoveryErrorMessage(failure));
     } finally {
       setBusy(false);
     }
@@ -479,7 +521,8 @@ function Login() {
       </form> : recoveryStep === 'code' ? <form onSubmit={verifyRecoveryCode}>
         <div className="form-field"><label className="form-label" htmlFor="member-reset-code">Email recovery code</label><input id="member-reset-code" className="field-input" inputMode="numeric" autoComplete="one-time-code" required maxLength={12} value={recoveryCode} onChange={(event) => setRecoveryCode(event.target.value)} /></div>
         <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? 'Checking code…' : 'Verify code'} <ChevronRight size={15} /></button>
-        <button className="login-link-button" type="button" onClick={() => setRecoveryStep('closed')}>Back to sign in</button>
+        <button className="login-link-button" type="button" onClick={() => void resendRecoveryCode()} disabled={busy}>Resend recovery code</button>
+        <button className="login-link-button" type="button" onClick={() => { setRecoveryStep('closed'); setRecoveryCode(''); setNewMemberPassword(''); setNotice(''); setError(''); }} disabled={busy}>Back to sign in</button>
       </form> : <form onSubmit={submitMemberPassword}>
         <div className="form-field"><label className="form-label" htmlFor="member-new-password">New password</label><input id="member-new-password" className="field-input" type="password" autoComplete="new-password" required minLength={12} maxLength={256} value={newMemberPassword} onChange={(event) => setNewMemberPassword(event.target.value)} /></div>
         <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? 'Updating password…' : 'Update password'} <ChevronRight size={15} /></button>
