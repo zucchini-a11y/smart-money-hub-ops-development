@@ -29,7 +29,7 @@ import type { MemberSession, PortalSession, PortalStaff, StaffPerformanceRow, St
 import {
   Activity, ArrowLeft, ArrowUpRight, Check, CheckCircle2, ChevronLeft, ChevronRight, CircleHelp,
   Bell, Eye, EyeOff, FileText, KeyRound, LockKeyhole, LogOut, MessageSquareText,
-  Plus, Search, ShieldCheck, Users, X, Gauge, RefreshCw, Radio, CircleAlert, Database, History, Bot,
+  Plus, Search, ShieldCheck, Users, X, Gauge, RefreshCw, Radio, CircleAlert, Database, History, Bot, Clapperboard,
 } from 'lucide-react';
 import { Link, Route, Switch, Router as WouterRouter, useLocation, useParams } from 'wouter';
 import { ClerkProvider, UserProfile, useAuth, useClerk, useSignIn, useSignUp } from '@clerk/react';
@@ -48,6 +48,7 @@ import {
   MemberSignupExperience,
 } from '@/components/member-experience';
 import { MemberLearningExperience } from '@/components/member-learning';
+import { MemberCourseVideoLibrary, OwnerMemberCourseVideos } from '@/components/member-course-videos';
 import { MemberNotificationsExperience } from '@/components/member-notifications';
 import StaffAnnouncements from '@/components/staff-announcements';
 import EducationVideos from '@/pages/education-videos';
@@ -163,7 +164,7 @@ function taskNoticeLabel(type: string) {
 function isUnauthorized(error: unknown) {
   return Boolean(error && typeof error === 'object' && [401, 403].includes((error as { status?: number }).status ?? 0));
 }
-const memberFeaturePaths = new Set(['/member/dashboard', '/member/calendar', '/member/journal', '/member/coach', '/member/pro-signals', '/member/settings']);
+const memberFeaturePaths = new Set(['/member/dashboard', '/member/learning', '/member/videos', '/member/calendar', '/member/journal', '/member/coach', '/member/pro-signals', '/member/settings']);
 function safeMemberReturnTo(value: string | null | undefined) {
   return value && memberFeaturePaths.has(value) ? value : null;
 }
@@ -639,6 +640,7 @@ function MemberRoot() {
   }
   if (location === '/member/settings') return <MemberAccountSettingsPage session={member.data}/>;
   if (location === '/member/learning') return <MemberLearningExperience />;
+  if (location === '/member/videos') return <MemberCourseVideoLibrary />;
   if (location === '/member/notifications') {
     if (import.meta.env.DEV) return <MemberNotificationsExperience />;
     return <main className="member-experience mx-signup-loading"><section className="mx-signup-panel mx-access-unavailable">
@@ -712,6 +714,7 @@ function AppShell({ session, children }: { session: PortalSession; children: Rea
          { href: '/bot-control', label: 'Bot Control', icon: <Bot />, testId: 'link-owner-bot-control' },
          { href: '/operations', label: 'Operations Center', icon: <Gauge />, testId: 'link-owner-operations' },
          { href: '/command-center/member-access', label: 'Member access', icon: <Users />, testId: 'link-owner-member-access' },
+         { href: '/command-center/member-course-videos', label: 'Member video lessons', icon: <Clapperboard />, testId: 'link-owner-member-course-videos' },
         { href: '/trades', label: 'Trade management', icon: <Activity />, testId: 'link-owner-trades' },
         ...(import.meta.env.DEV ? [{ href: '/signals', label: 'Signals & Zones', icon: <Radio />, testId: 'link-owner-signals' }] : []),
       ] : []),
@@ -1319,6 +1322,7 @@ function ProtectedRouter({ session }: { session: PortalSession }) {
     <Route path="/command-center/member-access">{() => session.role === 'owner' ? <MemberAccessPage/> : <AccessDenied/>}</Route>
     <Route path="/command-center/pro-access">{() => session.role === 'owner' ? <ProAccessReview/> : <AccessDenied/>}</Route>
     <Route path="/command-center/education-videos">{() => session.role === 'owner' ? <EducationVideos/> : <AccessDenied/>}</Route>
+    <Route path="/command-center/member-course-videos">{() => session.role === 'owner' ? <OwnerMemberCourseVideos/> : <AccessDenied/>}</Route>
     <Route path="/command-center/channel-history">{() => session.role === 'owner' ? <ChannelHistory/> : <AccessDenied/>}</Route>
     <Route path="/trades">{() => session.role === 'owner' ? <TradeManagement/> : <AccessDenied/>}</Route>
     <Route path="/signals">{() => session.role === 'owner' && import.meta.env.DEV ? <Signals/> : <AccessDenied/>}</Route>
@@ -1738,6 +1742,7 @@ function Router() {
     <Route path="/staff/login" component={LegacyLoginRedirect}/>
     <Route path="/member/dashboard" component={MemberRoot}/>
     <Route path="/member/learning" component={MemberRoot}/>
+    <Route path="/member/videos" component={MemberRoot}/>
     <Route path="/member/calendar" component={MemberRoot}/>
     <Route path="/member/journal" component={MemberRoot}/>
     <Route path="/member/coach" component={MemberRoot}/>

@@ -39,6 +39,7 @@ import {
   CalendarDays,
   Check,
   CheckCircle2,
+  Clapperboard,
   ChevronLeft,
   CircleHelp,
   Clock3,
@@ -269,6 +270,7 @@ export function MemberDashboardExperience({
           <nav className="mx-home-nav" aria-label="Member navigation">
             <Link className="is-current" href="/member/dashboard">Home</Link>
             <Link href="/member/learning">Learning</Link>
+            <Link href="/member/videos">Videos</Link>
             <Link href="/member/calendar">Calendar</Link>
             <Link href="/member/journal">Journal</Link>
             <Link href="/member/coach">AI Coach</Link>
@@ -423,10 +425,11 @@ function VaydaPortrait({ state = 'idle', compact = false }: { state?: VaydaState
   </span>;
 }
 
-type MemberFeaturePath = '/member/learning' | '/member/calendar' | '/member/journal' | '/member/coach' | '/member/pro-signals';
+type MemberFeaturePath = '/member/learning' | '/member/videos' | '/member/calendar' | '/member/journal' | '/member/coach' | '/member/pro-signals';
 
 const featureLinks: Array<{ href: Exclude<MemberFeaturePath, '/member/pro-signals'>; title: string; description: string; number: string; icon: ReactNode }> = [
   { href: '/member/learning', title: 'Trading Academy', description: 'Follow verified text lessons and save your progress.', number: '01 / LEARN', icon: <BookOpen size={17} /> },
+  { href: '/member/videos', title: 'Video lessons', description: 'Watch lessons published for members.', number: '02 / WATCH', icon: <Clapperboard size={17} /> },
   { href: '/member/calendar', title: 'Economic calendar', description: 'Review verified USD events with source and timing context.', number: '01 / OBSERVE', icon: <CalendarDays size={17} /> },
   { href: '/member/journal', title: 'Trade journal', description: 'Record your own decisions and reflect on saved outcomes.', number: '02 / REVIEW', icon: <FileText size={17} /> },
   { href: '/member/coach', title: 'AI Coach', description: 'Explore trading concepts through an educational conversation.', number: '03 / STUDY', icon: <MessageCircle size={17} /> },
