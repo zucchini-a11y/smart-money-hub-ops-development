@@ -639,6 +639,85 @@ export interface MemberLearningProgressResponse {
   learning: MemberLearningResponse;
 }
 
+export type MemberNotificationKind = typeof MemberNotificationKind[keyof typeof MemberNotificationKind];
+
+
+export const MemberNotificationKind = {
+  learning_reminder: 'learning_reminder',
+  announcement: 'announcement',
+} as const;
+
+export type MemberNotificationTargetPath = typeof MemberNotificationTargetPath[keyof typeof MemberNotificationTargetPath];
+
+
+export const MemberNotificationTargetPath = {
+  '/member/learning': '/member/learning',
+  '/member/dashboard': '/member/dashboard',
+} as const;
+
+export interface MemberNotification {
+  notificationId: string;
+  kind: MemberNotificationKind;
+  /** @maxLength 160 */
+  title: string;
+  /** @maxLength 500 */
+  message: string;
+  targetPath: MemberNotificationTargetPath;
+  createdAt: string;
+  /** @nullable */
+  readAt: string | null;
+}
+
+export interface MemberNotificationPreferences {
+  learningRemindersEnabled: boolean;
+  /**
+     * @minimum 0
+     * @maximum 6
+     */
+  reminderDayOfWeek: number;
+  /** @pattern ^(?:[01][0-9]|2[0-3]):[0-5][0-9]$ */
+  reminderLocalTime: string;
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  timezone: string;
+  /** @nullable */
+  updatedAt: string | null;
+}
+
+export interface MemberNotificationsResponse {
+  notifications: MemberNotification[];
+  /** @minimum 0 */
+  unreadCount: number;
+  preferences: MemberNotificationPreferences;
+}
+
+export interface MemberNotificationPreferencesInput {
+  learningRemindersEnabled: boolean;
+  /**
+     * @minimum 0
+     * @maximum 6
+     */
+  reminderDayOfWeek: number;
+  /** @pattern ^(?:[01][0-9]|2[0-3]):[0-5][0-9]$ */
+  reminderLocalTime: string;
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  timezone: string;
+}
+
+export interface MemberNotificationPreferencesResponse {
+  preferences: MemberNotificationPreferences;
+}
+
+export interface MemberNotificationReadResponse {
+  /** @minimum 0 */
+  unreadCount: number;
+}
+
 export type CreateMemberJournalTradeDirection = typeof CreateMemberJournalTradeDirection[keyof typeof CreateMemberJournalTradeDirection];
 
 

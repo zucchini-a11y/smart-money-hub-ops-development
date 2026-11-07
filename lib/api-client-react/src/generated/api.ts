@@ -72,6 +72,10 @@ import type {
   MemberLearningProgressInput,
   MemberLearningProgressResponse,
   MemberLearningResponse,
+  MemberNotificationPreferencesInput,
+  MemberNotificationPreferencesResponse,
+  MemberNotificationReadResponse,
+  MemberNotificationsResponse,
   MemberProSignalsResponse,
   MemberSession,
   MemberTelegramLink,
@@ -3292,6 +3296,319 @@ export const useUpdateMemberLearningProgress = <TError = ErrorType<ErrorResponse
         TContext
       > => {
       return useMutation(getUpdateMemberLearningProgressMutationOptions(options));
+    }
+
+export const getGetMemberNotificationsUrl = () => {
+
+
+
+
+  return `/api/member/notifications`
+}
+
+/**
+ * @summary Read private notifications and reminder preferences for the signed-in member
+ */
+export const getMemberNotifications = async ( options?: Parameters<typeof customFetch>[1]): Promise<MemberNotificationsResponse> => {
+
+  return customFetch<MemberNotificationsResponse>(getGetMemberNotificationsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMemberNotificationsQueryKey = () => {
+    return [
+    `/api/member/notifications`
+    ] as const;
+    }
+
+
+export const getGetMemberNotificationsQueryOptions = <TData = Awaited<ReturnType<typeof getMemberNotifications>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMemberNotifications>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMemberNotificationsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMemberNotifications>>> = ({ signal }) => getMemberNotifications({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMemberNotifications>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMemberNotificationsQueryResult = NonNullable<Awaited<ReturnType<typeof getMemberNotifications>>>
+export type GetMemberNotificationsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Read private notifications and reminder preferences for the signed-in member
+ */
+
+export function useGetMemberNotifications<TData = Awaited<ReturnType<typeof getMemberNotifications>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMemberNotifications>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMemberNotificationsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getMarkMemberNotificationReadUrl = (notificationId: string,) => {
+
+
+
+
+  return `/api/member/notifications/${notificationId}/read`
+}
+
+/**
+ * @summary Mark one notification belonging to the signed-in member as read
+ */
+export const markMemberNotificationRead = async (notificationId: string, options?: Parameters<typeof customFetch>[1]): Promise<MemberNotificationReadResponse> => {
+
+  return customFetch<MemberNotificationReadResponse>(getMarkMemberNotificationReadUrl(notificationId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getMarkMemberNotificationReadMutationKey = () => ['markMemberNotificationRead'] as const;
+
+export const getMarkMemberNotificationReadMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markMemberNotificationRead>>, TError,MarkMemberNotificationReadMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof markMemberNotificationRead>>, TError,MarkMemberNotificationReadMutationVariables, TContext> => {
+
+const mutationKey = getMarkMemberNotificationReadMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof markMemberNotificationRead>>, MarkMemberNotificationReadMutationVariables> = (props) => {
+          const {notificationId} = props ?? {};
+
+          return  markMemberNotificationRead(notificationId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MarkMemberNotificationReadMutationResult = NonNullable<Awaited<ReturnType<typeof markMemberNotificationRead>>>
+
+    export type MarkMemberNotificationReadMutationError = ErrorType<ErrorResponse>
+    export type MarkMemberNotificationReadMutationVariables = {notificationId: string}
+
+    /**
+ * @summary Mark one notification belonging to the signed-in member as read
+ */
+export const useMarkMemberNotificationRead = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markMemberNotificationRead>>, TError,MarkMemberNotificationReadMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof markMemberNotificationRead>>,
+        TError,
+        MarkMemberNotificationReadMutationVariables,
+        TContext
+      > => {
+      return useMutation(getMarkMemberNotificationReadMutationOptions(options));
+    }
+
+export const getMarkAllMemberNotificationsReadUrl = () => {
+
+
+
+
+  return `/api/member/notifications/read-all`
+}
+
+/**
+ * @summary Mark all notifications belonging to the signed-in member as read
+ */
+export const markAllMemberNotificationsRead = async ( options?: Parameters<typeof customFetch>[1]): Promise<MemberNotificationReadResponse> => {
+
+  return customFetch<MemberNotificationReadResponse>(getMarkAllMemberNotificationsReadUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getMarkAllMemberNotificationsReadMutationKey = () => ['markAllMemberNotificationsRead'] as const;
+
+export const getMarkAllMemberNotificationsReadMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markAllMemberNotificationsRead>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof markAllMemberNotificationsRead>>, TError,void, TContext> => {
+
+const mutationKey = getMarkAllMemberNotificationsReadMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof markAllMemberNotificationsRead>>, void> = () => {
+
+
+          return  markAllMemberNotificationsRead(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MarkAllMemberNotificationsReadMutationResult = NonNullable<Awaited<ReturnType<typeof markAllMemberNotificationsRead>>>
+
+    export type MarkAllMemberNotificationsReadMutationError = ErrorType<ErrorResponse>
+
+
+    /**
+ * @summary Mark all notifications belonging to the signed-in member as read
+ */
+export const useMarkAllMemberNotificationsRead = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markAllMemberNotificationsRead>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof markAllMemberNotificationsRead>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getMarkAllMemberNotificationsReadMutationOptions(options));
+    }
+
+export const getUpdateMemberNotificationPreferencesUrl = () => {
+
+
+
+
+  return `/api/member/notification-preferences`
+}
+
+/**
+ * @summary Update in-app weekly learning reminder preferences
+ */
+export const updateMemberNotificationPreferences = async (memberNotificationPreferencesInput: MemberNotificationPreferencesInput, options?: Parameters<typeof customFetch>[1]): Promise<MemberNotificationPreferencesResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<MemberNotificationPreferencesResponse>(getUpdateMemberNotificationPreferencesUrl(),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(memberNotificationPreferencesInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateMemberNotificationPreferencesMutationKey = () => ['updateMemberNotificationPreferences'] as const;
+
+export const getUpdateMemberNotificationPreferencesMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMemberNotificationPreferences>>, TError,UpdateMemberNotificationPreferencesMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateMemberNotificationPreferences>>, TError,UpdateMemberNotificationPreferencesMutationVariables, TContext> => {
+
+const mutationKey = getUpdateMemberNotificationPreferencesMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateMemberNotificationPreferences>>, UpdateMemberNotificationPreferencesMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateMemberNotificationPreferences(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateMemberNotificationPreferencesMutationResult = NonNullable<Awaited<ReturnType<typeof updateMemberNotificationPreferences>>>
+    export type UpdateMemberNotificationPreferencesMutationBody = BodyType<MemberNotificationPreferencesInput>
+    export type UpdateMemberNotificationPreferencesMutationError = ErrorType<ErrorResponse>
+    export type UpdateMemberNotificationPreferencesMutationVariables = {data: BodyType<MemberNotificationPreferencesInput>}
+
+    /**
+ * @summary Update in-app weekly learning reminder preferences
+ */
+export const useUpdateMemberNotificationPreferences = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMemberNotificationPreferences>>, TError,UpdateMemberNotificationPreferencesMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateMemberNotificationPreferences>>,
+        TError,
+        UpdateMemberNotificationPreferencesMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateMemberNotificationPreferencesMutationOptions(options));
     }
 
 export const getListMemberJournalTradesUrl = (params?: ListMemberJournalTradesParams,) => {

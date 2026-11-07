@@ -808,6 +808,109 @@ export const UpdateMemberLearningProgressResponse = zod.object({
 
 
 /**
+ * @summary Read private notifications and reminder preferences for the signed-in member
+ */
+export const getMemberNotificationsResponseNotificationsItemTitleMax = 160;
+
+export const getMemberNotificationsResponseNotificationsItemMessageMax = 500;
+
+export const getMemberNotificationsResponseUnreadCountMin = 0;
+
+export const getMemberNotificationsResponsePreferencesReminderDayOfWeekMin = 0;
+export const getMemberNotificationsResponsePreferencesReminderDayOfWeekMax = 6;
+
+export const getMemberNotificationsResponsePreferencesReminderLocalTimeRegExp = new RegExp('^(?:[01][0-9]|2[0-3]):[0-5][0-9]$');
+export const getMemberNotificationsResponsePreferencesTimezoneMax = 80;
+
+
+
+export const GetMemberNotificationsResponse = zod.object({
+  "notifications": zod.array(zod.object({
+  "notificationId": zod.string().uuid(),
+  "kind": zod.enum(['learning_reminder', 'announcement']),
+  "title": zod.string().max(getMemberNotificationsResponseNotificationsItemTitleMax),
+  "message": zod.string().max(getMemberNotificationsResponseNotificationsItemMessageMax),
+  "targetPath": zod.enum(['/member/learning', '/member/dashboard']),
+  "createdAt": zod.coerce.date(),
+  "readAt": zod.coerce.date().nullable()
+})),
+  "unreadCount": zod.number().int().min(getMemberNotificationsResponseUnreadCountMin),
+  "preferences": zod.object({
+  "learningRemindersEnabled": zod.boolean(),
+  "reminderDayOfWeek": zod.number().int().min(getMemberNotificationsResponsePreferencesReminderDayOfWeekMin).max(getMemberNotificationsResponsePreferencesReminderDayOfWeekMax),
+  "reminderLocalTime": zod.string().regex(getMemberNotificationsResponsePreferencesReminderLocalTimeRegExp),
+  "timezone": zod.string().min(1).max(getMemberNotificationsResponsePreferencesTimezoneMax),
+  "updatedAt": zod.coerce.date().nullable()
+})
+})
+
+
+/**
+ * @summary Mark one notification belonging to the signed-in member as read
+ */
+export const MarkMemberNotificationReadParams = zod.object({
+  "notificationId": zod.coerce.string().uuid()
+})
+
+export const markMemberNotificationReadResponseUnreadCountMin = 0;
+
+
+
+export const MarkMemberNotificationReadResponse = zod.object({
+  "unreadCount": zod.number().int().min(markMemberNotificationReadResponseUnreadCountMin)
+})
+
+
+/**
+ * @summary Mark all notifications belonging to the signed-in member as read
+ */
+export const markAllMemberNotificationsReadResponseUnreadCountMin = 0;
+
+
+
+export const MarkAllMemberNotificationsReadResponse = zod.object({
+  "unreadCount": zod.number().int().min(markAllMemberNotificationsReadResponseUnreadCountMin)
+})
+
+
+/**
+ * @summary Update in-app weekly learning reminder preferences
+ */
+export const updateMemberNotificationPreferencesBodyReminderDayOfWeekMin = 0;
+export const updateMemberNotificationPreferencesBodyReminderDayOfWeekMax = 6;
+
+export const updateMemberNotificationPreferencesBodyReminderLocalTimeRegExp = new RegExp('^(?:[01][0-9]|2[0-3]):[0-5][0-9]$');
+export const updateMemberNotificationPreferencesBodyTimezoneMax = 80;
+
+
+
+export const UpdateMemberNotificationPreferencesBody = zod.object({
+  "learningRemindersEnabled": zod.boolean(),
+  "reminderDayOfWeek": zod.number().int().min(updateMemberNotificationPreferencesBodyReminderDayOfWeekMin).max(updateMemberNotificationPreferencesBodyReminderDayOfWeekMax),
+  "reminderLocalTime": zod.string().regex(updateMemberNotificationPreferencesBodyReminderLocalTimeRegExp),
+  "timezone": zod.string().min(1).max(updateMemberNotificationPreferencesBodyTimezoneMax)
+})
+
+export const updateMemberNotificationPreferencesResponsePreferencesReminderDayOfWeekMin = 0;
+export const updateMemberNotificationPreferencesResponsePreferencesReminderDayOfWeekMax = 6;
+
+export const updateMemberNotificationPreferencesResponsePreferencesReminderLocalTimeRegExp = new RegExp('^(?:[01][0-9]|2[0-3]):[0-5][0-9]$');
+export const updateMemberNotificationPreferencesResponsePreferencesTimezoneMax = 80;
+
+
+
+export const UpdateMemberNotificationPreferencesResponse = zod.object({
+  "preferences": zod.object({
+  "learningRemindersEnabled": zod.boolean(),
+  "reminderDayOfWeek": zod.number().int().min(updateMemberNotificationPreferencesResponsePreferencesReminderDayOfWeekMin).max(updateMemberNotificationPreferencesResponsePreferencesReminderDayOfWeekMax),
+  "reminderLocalTime": zod.string().regex(updateMemberNotificationPreferencesResponsePreferencesReminderLocalTimeRegExp),
+  "timezone": zod.string().min(1).max(updateMemberNotificationPreferencesResponsePreferencesTimezoneMax),
+  "updatedAt": zod.coerce.date().nullable()
+})
+})
+
+
+/**
  * @summary List the current member's journal trades
  */
 export const listMemberJournalTradesQueryInstrumentMax = 24;
