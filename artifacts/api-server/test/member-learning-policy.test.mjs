@@ -8,13 +8,14 @@ const lessons = [
   { lesson_key: "bos-and-choch", title: "BOS and CHoCH", summary: "Study breaks", body_markdown: "BOS content", sequence: 3 },
 ];
 
-test("lesson content is hidden until the preceding lesson is completed", () => {
+test("published lesson content is readable ahead while progress stays sequential", () => {
   const response = buildMemberLearningResponse(lessons);
   assert.equal(response.lessons[0].locked, false);
   assert.equal(response.lessons[0].bodyMarkdown, "Orientation content");
   assert.equal(response.lessons[1].locked, true);
-  assert.equal(response.lessons[1].bodyMarkdown, "");
+  assert.equal(response.lessons[1].bodyMarkdown, "Market structure content");
   assert.equal(response.lessons[2].locked, true);
+  assert.equal(response.lessons[2].bodyMarkdown, "BOS content");
   assert.equal(response.nextLessonId, "orientation");
 });
 

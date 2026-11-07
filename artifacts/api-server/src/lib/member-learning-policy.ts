@@ -20,7 +20,7 @@ export function buildMemberLearningResponse(rows: MemberLearningRow[]) {
       lessonId: String(row.lesson_key),
       title: String(row.title),
       summary: String(row.summary),
-      bodyMarkdown: locked ? "" : String(row.body_markdown),
+      bodyMarkdown: String(row.body_markdown),
       sequence: Number(row.sequence),
       progress,
       locked,

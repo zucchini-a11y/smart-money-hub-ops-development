@@ -164,7 +164,7 @@ export function MemberLearningExperience() {
       if (selectedId !== null) setSelectedId(null);
       return;
     }
-    if (selectedId && visibleLessons.some((lesson) => lesson.lessonId === selectedId && !lesson.locked)) return;
+    if (selectedId && visibleLessons.some((lesson) => lesson.lessonId === selectedId)) return;
     const next = learning.data?.nextLessonId;
     const nextLesson = next ? visibleLessons.find((lesson) => lesson.lessonId === next && !lesson.locked) : undefined;
     setSelectedId(nextLesson?.lessonId ?? visibleLessons.find((lesson) => !lesson.locked)?.lessonId ?? visibleLessons[0].lessonId);
@@ -299,15 +299,13 @@ export function MemberLearningExperience() {
                       <button
                         className={`ml-lesson-item${isActive ? ' is-active' : ''}${isComplete ? ' is-complete' : ''}${lesson.locked ? ' is-locked' : ''}`}
                         type="button"
-                        onClick={() => { if (lesson.locked) return; setSelectedId(lesson.lessonId); setSavedMessage(''); setActionError(''); }}
-                        disabled={lesson.locked}
-                        aria-disabled={lesson.locked}
-                        aria-label={`${lesson.title}${lesson.locked ? ', locked. Complete the prior lesson first.' : ''}`}
+                        onClick={() => { setSelectedId(lesson.lessonId); setSavedMessage(''); setActionError(''); setDiagramOpen(false); }}
+                        aria-label={`${lesson.title}${lesson.locked ? ', available to read; progress requires earlier lessons to be completed.' : ''}`}
                         aria-current={isActive ? 'step' : undefined}
                         data-testid={`learning-lesson-${lesson.lessonId}`}
                       >
                         <span className="ml-lesson-number">{String(lesson.sequence || index + 1).padStart(2, '0')}</span>
-                        <span className="ml-lesson-label"><strong>{lesson.title}</strong><small>{lesson.locked ? 'Locked' : lessonStatus(lesson.progress)}</small></span>
+                        <span className="ml-lesson-label"><strong>{lesson.title}</strong><small>{lesson.locked ? 'Read ahead' : lessonStatus(lesson.progress)}</small></span>
                         <span className="ml-lesson-state" aria-hidden="true">{lesson.locked ? <LockKeyhole size={13} /> : isComplete ? <Check size={14} /> : isActive ? <ChevronRight size={15} /> : <Circle size={11} />}</span>
                       </button>
                     </li>
@@ -329,45 +327,40 @@ export function MemberLearningExperience() {
                   <span><span className="ml-live-dot" /> LESSON {String(selected.sequence || activeIndex + 1).padStart(2, '0')}</span>
                   <span className={`ml-status-chip ${selected.progress === 'completed' ? 'is-done' : ''}`}>
                     {selected.locked ? <LockKeyhole size={13} /> : selected.progress === 'completed' ? <CheckCircle2 size={13} /> : <Clock3 size={13} />}
-                    {selected.locked ? 'Locked' : lessonStatus(selected.progress)}
+                    {selected.locked ? 'Reading ahead' : lessonStatus(selected.progress)}
                   </span>
                 </div>
-                {selected.locked ? (
-                  <section className="ml-locked-content" aria-live="polite" data-testid="learning-lesson-locked">
-                    <span className="ml-locked-icon"><LockKeyhole size={19} /></span>
-                    <span className="ml-eyebrow">NEXT STEP LOCKED</span>
-                    <h2>{selected.title}</h2>
-                    <p>Complete the prior lesson first to unlock this part of your learning path.</p>
-                  </section>
-                ) : (
-                  <>
-                    <h2>{selected.title}</h2>
-                    <p className="ml-summary">{selected.summary}</p>
-                    <div className="ml-reading-rule"><span>STUDY NOTES</span><i /></div>
-                    <div className="ml-body" data-testid="learning-lesson-body">{renderLessonMarkdown(selected.bodyMarkdown)}</div>
-                    {diagramLessonIds.has(selected.lessonId) && (
-                      <div className="ml-lesson-visual">
-                        <button
-                          className="ml-diagram-toggle"
-                          type="button"
-                          aria-expanded={diagramOpen}
-                          aria-controls={`lesson-diagram-${selected.lessonId}`}
-                          onClick={() => setDiagramOpen((open) => !open)}
-                        >
-                          {diagramOpen ? <EyeOff size={15} /> : <Eye size={15} />}
-                          {diagramOpen ? 'Hide visual explanation' : 'Show visual explanation'}
-                          <ChevronRight size={14} className={diagramOpen ? 'is-expanded' : ''} />
-                        </button>
-                        {diagramOpen && (
-                          <div id={`lesson-diagram-${selected.lessonId}`} className="ml-diagram-content">
-                            <MemberLessonDiagram lessonId={selected.lessonId} />
-                          </div>
-                        )}
+                {selected.locked && (
+                  <aside className="ml-read-ahead-note" role="note" data-testid="learning-read-ahead-note">
+                    <LockKeyhole size={16} />
+                    <span><strong>Reading ahead is available.</strong> Complete earlier lessons before recording progress on this one.</span>
+                  </aside>
+                )}
+                <h2>{selected.title}</h2>
+                <p className="ml-summary">{selected.summary}</p>
+                <div className="ml-reading-rule"><span>STUDY NOTES</span><i /></div>
+                <div className="ml-body" data-testid="learning-lesson-body">{renderLessonMarkdown(selected.bodyMarkdown)}</div>
+                {diagramLessonIds.has(selected.lessonId) && (
+                  <div className="ml-lesson-visual">
+                    <button
+                      className="ml-diagram-toggle"
+                      type="button"
+                      aria-expanded={diagramOpen}
+                      aria-controls={`lesson-diagram-${selected.lessonId}`}
+                      onClick={() => setDiagramOpen((open) => !open)}
+                    >
+                      {diagramOpen ? <EyeOff size={15} /> : <Eye size={15} />}
+                      {diagramOpen ? 'Hide visual explanation' : 'Show visual explanation'}
+                      <ChevronRight size={14} className={diagramOpen ? 'is-expanded' : ''} />
+                    </button>
+                    {diagramOpen && (
+                      <div id={`lesson-diagram-${selected.lessonId}`} className="ml-diagram-content">
+                        <MemberLessonDiagram lessonId={selected.lessonId} />
                       </div>
                     )}
-                    {selected.progress === 'completed' && selected.completedAt && <p className="ml-completed-date"><CheckCircle2 size={14} /> Completed {formatDate(selected.completedAt)}</p>}
-                  </>
+                  </div>
                 )}
+                {selected.progress === 'completed' && selected.completedAt && <p className="ml-completed-date"><CheckCircle2 size={14} /> Completed {formatDate(selected.completedAt)}</p>}
                 {savedMessage && <p className="ml-save-message" role="status" data-testid="learning-saved-message"><CheckCircle2 size={15} /> {savedMessage}</p>}
                 {actionError && <p className="ml-action-error" role="alert" data-testid="learning-save-error">{actionError}</p>}
                 <div className="ml-reading-actions">
