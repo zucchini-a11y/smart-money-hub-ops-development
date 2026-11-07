@@ -4,8 +4,8 @@ A Python Telegram Bot API app for SMC education, assessments, trade journaling, 
 
 ## Run & Operate
 
-- Add `TELEGRAM_BOT_TOKEN` in **Tools → Secrets**, then run the **Smart Money Hub Bot** workflow.
-- `python3 -m smart_money_hub_bot` — run the bot directly from the project root
+- The Replit **Smart Money Hub Bot** workflow configuration was removed from `.replit`; do not restore or run live Telegram polling unless the user explicitly asks.
+- Project Run starts only the Operations web app and API. Telegram polling and scheduled posts are not part of the Replit website preview.
 - `python3 -m unittest discover -s tests -v` — run the offline test suite
 - `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
 - `pnpm run typecheck` — full typecheck across all packages
@@ -13,7 +13,7 @@ A Python Telegram Bot API app for SMC education, assessments, trade journaling, 
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - Required env: `DATABASE_URL` — Postgres connection string
-- Bot secret: `TELEGRAM_BOT_TOKEN` — get it from Telegram's `@BotFather`; never put it in code
+- Never use a live Telegram bot token in Replit Development. Bot polling must remain stopped unless explicitly requested.
 - Optional bot setting: `SMH_DATABASE_PATH` — defaults to `data/smart_money_hub.sqlite3`
 - Optional admin secret: `ADMIN_TELEGRAM_ID` — numeric Telegram user ID shown by `/myid`
 - Optional reminder settings: `SMH_REMINDER_TIMEZONE` (default `Africa/Lagos`) and `SMH_SUNDAY_REMINDER_TIME` (default `09:00`)
@@ -62,7 +62,7 @@ Teaching principles: no confirmation, no entry; no retest, no entry; a POI needs
 
 ## Gotchas
 
-- Add the Telegram token through Replit Secrets before starting the bot workflow.
+- Do not connect or start live Telegram polling from the Replit Project workflow. Keep VPS bot operations separate.
 - Polling and a Telegram webhook cannot be used at the same time; startup detects an existing webhook and stops without changing it.
 - Restarting the process clears in-progress flows, but does not remove completed SQLite records.
 - Existing `assessment_results` rows are migrated into the assessment history and retained; old entries have no per-question answers or topic breakdown.
