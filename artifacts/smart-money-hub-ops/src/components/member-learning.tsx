@@ -16,11 +16,16 @@ import {
   ChevronRight,
   Circle,
   Clock3,
+  Eye,
+  EyeOff,
   LockKeyhole,
   RefreshCw,
   ShieldCheck,
 } from 'lucide-react';
 import './member-learning.css';
+import { MemberLessonDiagram } from './member-learning-diagrams';
+
+const diagramLessonIds = new Set(['orientation', 'market-structure', 'bos-and-choch']);
 
 function lessonStatus(progress: MemberLearningLesson['progress']) {
   if (progress === 'completed') return 'Completed';
@@ -123,6 +128,7 @@ export function MemberLearningExperience() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [savedMessage, setSavedMessage] = useState('');
   const [actionError, setActionError] = useState('');
+  const [diagramOpen, setDiagramOpen] = useState(false);
 
   useEffect(() => {
     if (!lessons.length) {
@@ -134,6 +140,10 @@ export function MemberLearningExperience() {
     const nextLesson = next ? lessons.find((lesson) => lesson.lessonId === next && !lesson.locked) : undefined;
     setSelectedId(nextLesson?.lessonId ?? lessons.find((lesson) => !lesson.locked)?.lessonId ?? lessons[0].lessonId);
   }, [lessons, learning.data?.nextLessonId, selectedId]);
+
+  useEffect(() => {
+    setDiagramOpen(false);
+  }, [selectedId]);
 
   const response = learning.data as MemberLearningResponse | undefined;
   const selected = lessons.find((lesson) => lesson.lessonId === selectedId) ?? null;
@@ -275,6 +285,26 @@ export function MemberLearningExperience() {
                     <p className="ml-summary">{selected.summary}</p>
                     <div className="ml-reading-rule"><span>STUDY NOTES</span><i /></div>
                     <div className="ml-body" data-testid="learning-lesson-body">{renderLessonMarkdown(selected.bodyMarkdown)}</div>
+                    {diagramLessonIds.has(selected.lessonId) && (
+                      <div className="ml-lesson-visual">
+                        <button
+                          className="ml-diagram-toggle"
+                          type="button"
+                          aria-expanded={diagramOpen}
+                          aria-controls={`lesson-diagram-${selected.lessonId}`}
+                          onClick={() => setDiagramOpen((open) => !open)}
+                        >
+                          {diagramOpen ? <EyeOff size={15} /> : <Eye size={15} />}
+                          {diagramOpen ? 'Hide visual explanation' : 'Show visual explanation'}
+                          <ChevronRight size={14} className={diagramOpen ? 'is-expanded' : ''} />
+                        </button>
+                        {diagramOpen && (
+                          <div id={`lesson-diagram-${selected.lessonId}`} className="ml-diagram-content">
+                            <MemberLessonDiagram lessonId={selected.lessonId} />
+                          </div>
+                        )}
+                      </div>
+                    )}
                     {selected.progress === 'completed' && selected.completedAt && <p className="ml-completed-date"><CheckCircle2 size={14} /> Completed {formatDate(selected.completedAt)}</p>}
                   </>
                 )}

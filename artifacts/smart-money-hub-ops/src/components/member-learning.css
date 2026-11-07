@@ -231,6 +231,120 @@
   font: 12px 'DM Mono', monospace;
 }
 
+.ml-lesson-visual {
+  margin-top: 25px;
+  padding-top: 17px;
+  border-top: 1px solid var(--ml-line);
+}
+.ml-diagram-toggle {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 13px;
+  border: 1px solid rgba(157, 176, 215, .28);
+  border-radius: 7px 14px 7px 14px;
+  color: #c9c2ff;
+  background: rgba(132, 111, 230, .08);
+  font: 700 11px 'Manrope', sans-serif;
+  cursor: pointer;
+  transition: border-color .18s ease, background .18s ease, color .18s ease;
+}
+.ml-diagram-toggle:hover {
+  border-color: rgba(91, 216, 231, .48);
+  color: #80e6ed;
+  background: rgba(91, 216, 231, .08);
+}
+.ml-diagram-toggle > svg:first-child { color: #68dce8; }
+.ml-diagram-toggle > svg:last-child { transition: transform .18s ease; }
+.ml-diagram-toggle > svg:last-child.is-expanded { transform: rotate(90deg); }
+.ml-diagram-content { margin-top: 15px; animation: ml-diagram-reveal .24s ease both; }
+.ml-diagram-panel {
+  display: grid;
+  gap: 13px;
+  padding: clamp(15px, 2.5vw, 24px);
+  border: 1px solid rgba(154, 173, 214, .2);
+  border-radius: 12px 22px 12px 22px;
+  background: linear-gradient(145deg, rgba(20, 31, 53, .95), rgba(12, 20, 37, .96));
+}
+.ml-diagram-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.ml-diagram-heading h3 {
+  margin: 5px 0 0;
+  color: #eef2ff;
+  font-size: 16px;
+  letter-spacing: -.03em;
+}
+.ml-diagram-note {
+  flex: 0 0 auto;
+  padding: 6px 8px;
+  border: 1px solid rgba(91, 216, 231, .2);
+  border-radius: 99px;
+  color: #93dce3;
+  font: 8px 'DM Mono', monospace;
+  letter-spacing: .06em;
+}
+.ml-diagram-canvas {
+  overflow: hidden;
+  border: 1px solid rgba(154, 173, 214, .14);
+  border-radius: 10px;
+  background:
+    radial-gradient(ellipse at 72% 12%, rgba(111, 83, 196, .12), transparent 55%),
+    #0b1324;
+}
+.ml-diagram-canvas svg { display: block; width: 100%; height: auto; }
+.ml-diagram-description {
+  margin: 0;
+  color: #c0cbe0;
+  font-size: 11px;
+  line-height: 1.75;
+}
+.ml-diagram-disclaimer {
+  margin: -6px 0 0;
+  color: #8696b5;
+  font: 9px/1.6 'DM Mono', monospace;
+}
+.ml-comparison-diagrams {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.ml-comparison-card {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 9px;
+  margin: 0;
+}
+.ml-comparison-card figcaption {
+  color: #e9edff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+.ml-comparison-card p {
+  margin: 0;
+  color: #aebad2;
+  font-size: 10px;
+  line-height: 1.7;
+}
+@keyframes ml-diagram-reveal {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (max-width: 620px) {
+  .ml-diagram-heading { align-items: flex-start; flex-direction: column; }
+  .ml-diagram-note { white-space: nowrap; }
+  .ml-comparison-diagrams { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ml-diagram-content { animation: none; }
+}
+
 /* Member-area night interface: a precise navy canvas with restrained spectral accents. */
 .ml-page {
   --ml-ink: #edf2ff;
