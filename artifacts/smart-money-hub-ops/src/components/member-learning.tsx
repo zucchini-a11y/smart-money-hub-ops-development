@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import './member-learning.css';
 import { MemberLessonDiagram } from './member-learning-diagrams';
+import { MemberCoachPopout } from './member-coach-popout';
 
 const diagramLessonIds = new Set([
   'candle-anatomy',
@@ -503,6 +504,7 @@ export function MemberLearningExperience() {
           <span>Education only. Trading involves risk and is not financial advice.</span>
         </footer>
       </div>
+      {lessons.length > 0 && <MemberCoachPopout lessonTitle={selected?.title} />}
     </main>
   );
 }

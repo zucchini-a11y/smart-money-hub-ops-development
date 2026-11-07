@@ -1,0 +1,166 @@
+.ml-coach-dock {
+  position: fixed;
+  z-index: 90;
+  right: clamp(14px, 2.4vw, 30px);
+  bottom: clamp(14px, 2.4vw, 28px);
+  display: grid;
+  justify-items: end;
+  gap: 12px;
+  font-family: 'Manrope', sans-serif;
+}
+
+.ml-coach-launcher {
+  min-height: 62px;
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  padding: 7px 15px 7px 8px;
+  border: 1px solid rgba(99, 221, 230, .35);
+  border-radius: 18px 7px 18px 7px;
+  color: #eef5ff;
+  background: linear-gradient(135deg, rgba(29, 38, 64, .97), rgba(16, 25, 43, .98));
+  box-shadow: 0 18px 48px rgba(0, 0, 0, .38), 0 0 28px rgba(85, 202, 220, .11);
+  cursor: pointer;
+  transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+}
+.ml-coach-launcher:hover { transform: translateY(-2px); border-color: rgba(99, 221, 230, .72); box-shadow: 0 21px 54px rgba(0, 0, 0, .42), 0 0 32px rgba(85, 202, 220, .17); }
+.ml-coach-launcher:focus-visible, .ml-coach-icon-button:focus-visible, .ml-coach-form button:focus-visible { outline: 3px solid #70e3ed; outline-offset: 3px; }
+.ml-coach-launcher-avatar { width: 44px; height: 44px; display: grid; place-items: center; overflow: hidden; border: 1px solid rgba(164, 143, 255, .44); border-radius: 13px 4px 13px 4px; background: rgba(122, 104, 203, .16); }
+.ml-coach-launcher-avatar .mx-vayda-portrait.is-compact { width: 40px; height: 45px; }
+.ml-coach-launcher > span:nth-child(2) { display: grid; gap: 2px; text-align: left; }
+.ml-coach-launcher strong { font-size: 12px; letter-spacing: .01em; }
+.ml-coach-launcher small { color: #a8b8d5; font-size: 9px; }
+.ml-coach-launcher > svg { margin-left: 3px; color: #71e1e9; }
+
+.ml-coach-popout {
+  width: min(390px, calc(100vw - 28px));
+  height: min(620px, calc(100dvh - 110px));
+  min-height: 390px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(120, 159, 198, .26);
+  border-radius: 19px 7px 19px 7px;
+  color: #eaf1ff;
+  background:
+    radial-gradient(ellipse at 90% 0%, rgba(100, 87, 190, .2), transparent 48%),
+    linear-gradient(155deg, rgba(17, 27, 47, .99), rgba(9, 16, 31, .995));
+  box-shadow: 0 30px 90px rgba(0, 0, 0, .52), 0 0 42px rgba(78, 188, 214, .1);
+  animation: ml-coach-open .22s ease both;
+  backdrop-filter: blur(18px);
+}
+@keyframes ml-coach-open {
+  from { opacity: 0; transform: translateY(8px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.ml-coach-popout-head {
+  min-height: 66px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(145, 168, 207, .15);
+  background: rgba(5, 10, 23, .3);
+}
+.ml-coach-popout-head > .mx-vayda-portrait.is-compact { width: 43px; height: 47px; flex: 0 0 43px; }
+.ml-coach-popout-heading { min-width: 0; flex: 1; display: grid; gap: 4px; }
+.ml-coach-popout-heading strong { color: #f3f5ff; font-size: 12px; letter-spacing: .02em; }
+.ml-coach-popout-heading span { color: #aab8d1; font-size: 9px; }
+.ml-coach-icon-button {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(154, 173, 214, .18);
+  border-radius: 10px 4px 10px 4px;
+  color: #b6c4de;
+  background: rgba(255, 255, 255, .035);
+  cursor: pointer;
+}
+.ml-coach-icon-button:hover:not(:disabled) { border-color: rgba(104, 221, 230, .42); color: #79e3eb; }
+.ml-coach-icon-button:disabled { opacity: .45; cursor: not-allowed; }
+
+.ml-coach-lesson-context {
+  display: grid;
+  gap: 4px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(145, 168, 207, .1);
+  background: rgba(114, 98, 195, .08);
+}
+.ml-coach-lesson-context span { color: #a99aff; font: 8px 'DM Mono', monospace; letter-spacing: .14em; }
+.ml-coach-lesson-context strong { overflow: hidden; color: #e0e6fa; font-size: 10px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+
+.ml-coach-thread {
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 15px 13px;
+  scrollbar-color: rgba(147, 131, 235, .34) transparent;
+}
+.ml-coach-welcome {
+  align-self: flex-start;
+  max-width: 94%;
+  padding: 12px 13px;
+  border: 1px solid rgba(150, 166, 210, .15);
+  border-radius: 4px 14px 14px 14px;
+  background: rgba(255, 255, 255, .045);
+}
+.ml-coach-welcome > span { color: #7fe0e9; font: 8px 'DM Mono', monospace; letter-spacing: .14em; }
+.ml-coach-welcome p { margin: 7px 0 0; color: #d2dcee; font-size: 11px; line-height: 1.65; }
+.ml-coach-line { max-width: 91%; display: flex; align-items: flex-end; gap: 7px; }
+.ml-coach-line p { margin: 0; padding: 10px 12px; border: 1px solid rgba(151, 169, 211, .14); color: #e0e8fa; font-size: 11px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ml-coach-line.is-assistant p { border-radius: 4px 13px 13px 13px; background: rgba(255, 255, 255, .045); }
+.ml-coach-line.is-user { align-self: flex-end; }
+.ml-coach-line.is-user p { border-color: rgba(94, 204, 215, .22); border-radius: 13px 4px 13px 13px; background: rgba(53, 152, 168, .14); color: #e5f9fb; }
+.ml-coach-caret { display: inline-block; width: 5px; height: 12px; margin-left: 2px; vertical-align: -2px; background: #78e2ea; animation: ml-coach-caret-blink .75s steps(2, start) infinite; }
+@keyframes ml-coach-caret-blink { to { visibility: hidden; } }
+.ml-coach-line .mx-vayda-portrait.is-compact { width: 30px; height: 35px; flex: 0 0 30px; }
+.ml-coach-typing { display: flex; align-items: center; gap: 8px; align-self: flex-start; }
+.ml-coach-typing .mx-vayda-portrait.is-compact { width: 32px; height: 37px; flex: 0 0 32px; }
+.ml-coach-typing > span { display: inline-flex; align-items: center; gap: 3px; padding: 10px 12px; border: 1px solid rgba(151, 169, 211, .14); border-radius: 4px 13px 13px 13px; color: #bdd0e6; background: rgba(255, 255, 255, .045); font-size: 10px; }
+.ml-coach-typing i { width: 4px; height: 4px; border-radius: 50%; background: #77dfe8; animation: ml-coach-dot 1s ease-in-out infinite; }
+.ml-coach-typing i:nth-of-type(2) { animation-delay: .14s; }
+.ml-coach-typing i:nth-of-type(3) { animation-delay: .28s; }
+@keyframes ml-coach-dot { 50% { opacity: .25; transform: translateY(-3px); } }
+
+.ml-coach-disclaimer, .ml-coach-error { flex: 0 0 auto; margin: 0 13px 8px; padding: 8px 10px; border-radius: 7px; font-size: 9px; line-height: 1.5; }
+.ml-coach-disclaimer { color: #9eb5c7; background: rgba(82, 159, 170, .08); }
+.ml-coach-error { color: #ffc0c5; background: rgba(152, 60, 76, .16); }
+.ml-coach-form {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 38px;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid rgba(145, 168, 207, .14);
+  background: rgba(5, 10, 23, .36);
+}
+.ml-coach-form textarea { width: 100%; min-height: 42px; max-height: 92px; resize: vertical; padding: 10px 11px; border: 1px solid rgba(149, 168, 210, .2); border-radius: 10px 4px 10px 4px; outline: none; color: #edf3ff; background: rgba(255, 255, 255, .045); font: 11px/1.55 'Manrope', sans-serif; }
+.ml-coach-form textarea::placeholder { color: #8e9bb5; }
+.ml-coach-form textarea:focus { border-color: rgba(91, 216, 231, .65); box-shadow: 0 0 0 3px rgba(91, 216, 231, .08); }
+.ml-coach-form textarea:disabled { opacity: .64; }
+.ml-coach-form button { width: 38px; height: 38px; align-self: end; display: grid; place-items: center; border: 0; border-radius: 11px 4px 11px 4px; color: #081521; background: #6ddde5; cursor: pointer; transition: background .18s ease, transform .18s ease; }
+.ml-coach-form button:hover:not(:disabled) { transform: translateY(-1px); background: #a0f1ed; }
+.ml-coach-form button:disabled { opacity: .38; cursor: not-allowed; }
+.ml-coach-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+.ml-coach-popout-foot { display: flex; justify-content: space-between; gap: 8px; padding: 0 12px 10px; color: #8f9db6; font-size: 8px; }
+.ml-coach-popout-foot span:first-child { display: inline-flex; align-items: center; gap: 4px; }
+.ml-coach-popout-foot svg { color: #77dfe8; }
+
+@media (max-width: 600px) {
+  .ml-coach-dock { right: 10px; bottom: 10px; gap: 8px; }
+  .ml-coach-launcher { min-height: 55px; gap: 8px; padding: 6px 11px 6px 6px; border-radius: 15px 6px 15px 6px; }
+  .ml-coach-launcher-avatar { width: 40px; height: 40px; }
+  .ml-coach-launcher-avatar .mx-vayda-portrait.is-compact { width: 36px; height: 41px; }
+  .ml-coach-popout { width: min(420px, calc(100vw - 20px)); height: min(72dvh, 600px); min-height: min(390px, calc(100dvh - 96px)); border-radius: 16px 6px 16px 6px; }
+  .ml-coach-popout-foot { flex-wrap: wrap; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ml-coach-launcher, .ml-coach-popout, .ml-coach-typing i, .ml-coach-caret { animation: none !important; transition: none !important; }
+}

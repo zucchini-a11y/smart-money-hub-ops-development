@@ -392,9 +392,9 @@ export function MemberDashboardExperience({
   );
 }
 
-type VaydaState = 'idle' | 'blinking' | 'breathing' | 'listening' | 'thinking' | 'speaking';
+export type VaydaState = 'idle' | 'blinking' | 'breathing' | 'listening' | 'thinking' | 'speaking';
 
-function VaydaPortrait({ state = 'idle', compact = false }: { state?: VaydaState; compact?: boolean }) {
+export function VaydaPortrait({ state = 'idle', compact = false }: { state?: VaydaState; compact?: boolean }) {
   const id = useId().replace(/:/g, '');
   return <span className={`mx-vayda-portrait state-${state}${compact ? ' is-compact' : ''}`} aria-hidden="true">
     <span className="mx-vayda-glow" />
