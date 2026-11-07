@@ -74,6 +74,7 @@ import type {
   MemberTelegramLink,
   MobileTokenExchangeRequest,
   MobileTokenExchangeSuccess,
+  PortalBotConnections,
   PortalCaseAssignmentInput,
   PortalCaseDetail,
   PortalCaseList,
@@ -3684,6 +3685,84 @@ export function useGetPortalCommandCenter<TData = Awaited<ReturnType<typeof getP
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetPortalCommandCenterQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetPortalBotConnectionsUrl = () => {
+
+
+
+
+  return `/api/portal/bot-connections`
+}
+
+/**
+ * Owner-only read-only checks. Telegram identity checks use getMe only; they do not poll, send messages, publish, or control bot processes.
+ * @summary Check bot identity and runtime connections in Development
+ */
+export const getPortalBotConnections = async ( options?: Parameters<typeof customFetch>[1]): Promise<PortalBotConnections> => {
+
+  return customFetch<PortalBotConnections>(getGetPortalBotConnectionsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPortalBotConnectionsQueryKey = () => {
+    return [
+    `/api/portal/bot-connections`
+    ] as const;
+    }
+
+
+export const getGetPortalBotConnectionsQueryOptions = <TData = Awaited<ReturnType<typeof getPortalBotConnections>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPortalBotConnections>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPortalBotConnectionsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPortalBotConnections>>> = ({ signal }) => getPortalBotConnections({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPortalBotConnections>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPortalBotConnectionsQueryResult = NonNullable<Awaited<ReturnType<typeof getPortalBotConnections>>>
+export type GetPortalBotConnectionsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Check bot identity and runtime connections in Development
+ */
+
+export function useGetPortalBotConnections<TData = Awaited<ReturnType<typeof getPortalBotConnections>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPortalBotConnections>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPortalBotConnectionsQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

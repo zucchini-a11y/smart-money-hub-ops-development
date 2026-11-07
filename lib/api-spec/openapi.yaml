@@ -1038,6 +1038,40 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /portal/bot-connections:
+    get:
+      operationId: getPortalBotConnections
+      tags:
+        - supportPortal
+      summary: Check bot identity and runtime connections in Development
+      description: Owner-only read-only checks. Telegram identity checks use getMe only; they do not poll, send messages, publish, or control bot processes.
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Development bot connection checks
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalBotConnections"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Owner access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Available only in the Development isolated-test environment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /portal/channel-history:
     get:
       operationId: getPortalChannelHistory
@@ -4956,6 +4990,78 @@ components:
         - updated
         - canConfirm
         - canCancel
+    PortalBotConnections:
+      type: object
+      properties:
+        scope:
+          type: string
+          enum:
+            - development_isolated_test
+        readOnly:
+          type: boolean
+          const: true
+        refreshedAt:
+          type: string
+          format: date-time
+        connections:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortalBotConnection"
+      required:
+        - scope
+        - readOnly
+        - refreshedAt
+        - connections
+    PortalBotConnection:
+      type: object
+      properties:
+        id:
+          type: string
+          enum:
+            - test
+            - coach
+            - pro_signals
+        label:
+          type: string
+        identityStatus:
+          type: string
+          enum:
+            - verified
+            - not_configured
+            - invalid_credentials
+            - identity_mismatch
+            - unavailable
+        username:
+          type:
+            - string
+            - "null"
+        identityCheckedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        runtimeStatus:
+          type: string
+          enum:
+            - running
+            - stale
+            - unknown
+        lastHeartbeat:
+          type:
+            - string
+            - "null"
+          format: date-time
+        note:
+          type: string
+      required:
+        - id
+        - label
+        - identityStatus
+        - username
+        - identityCheckedAt
+        - runtimeStatus
+        - lastHeartbeat
+        - note
     PortalCommandCenterAlert:
       type: object
       properties:

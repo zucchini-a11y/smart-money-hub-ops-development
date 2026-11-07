@@ -336,3 +336,17 @@ mtime_ms = 1793998204185
 storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/7befb6ed-54c1-4957-ab25-c736ea75cca0/bc471d2e-11ba-4696-b0f7-e280239e74a3"
 storage_version_token = "1793998238328782"
 content_type = "text/html"
+
+[[outputs]]
+id = "J3_pMzoDTAUBn08kM0R9L"
+uri = "file://generated-artifacts/smh-development-source-20261107.zip"
+type = "unspecified"
+title = "Complete Smart Money Hub Development source"
+description = "Full Development source archive including portal, API, shared libraries, bot source, migrations, tests, and build configuration. Excludes secrets, database contents, Git history, dependencies, and user attachments."
+logical_id = "5d648b88-dbd3-410a-8e73-c5c163af305f"
+content_hash = "sha256:7108cadced815d2f294d3ff291509901bb2f55719774a0889994a2d09239e330"
+size = 4217780
+mtime_ms = 1794025608425
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/5d648b88-dbd3-410a-8e73-c5c163af305f/9d84d1c8-a65e-43e4-a15a-b45873291dd2"
+storage_version_token = "1794025643526468"
+content_type = "application/octet-stream"

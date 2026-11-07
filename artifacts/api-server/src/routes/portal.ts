@@ -51,6 +51,7 @@ import {
   GetPortalCaseResponse,
   GetPortalDashboardResponse,
   GetPortalCommandCenterResponse,
+  GetPortalBotConnectionsResponse,
   GetPortalChannelHistoryQueryParams,
   GetPortalChannelHistoryResponse,
   ListPortalTradesResponse,
@@ -107,6 +108,7 @@ import {
   isDevelopmentCommandCenterAvailable,
 } from "../lib/owner-command-center-policy";
 import { readDevelopmentCommandCenter } from "../lib/portal-command-center";
+import { checkTelegramIdentity } from "../lib/telegram-identity-check";
 import { readDevelopmentChannelHistory } from "../lib/portal-channel-history";
 import {
   canManageProReviews,
@@ -150,6 +152,74 @@ const supportSchema = resolvePortalSupportSchema(
   process.env.NODE_ENV,
   process.env.PORTAL_SUPPORT_SCHEMA,
 );
+
+type BotConnectionId = "test" | "coach" | "pro_signals";
+type BotIdentityCacheEntry = {
+  expiresAt: number;
+  identityStatus: "verified" | "not_configured" | "invalid_credentials" | "identity_mismatch" | "unavailable";
+  username: string | null;
+  identityCheckedAt: string | null;
+};
+const botIdentityCache = new Map<BotConnectionId, BotIdentityCacheEntry>();
+const BOT_IDENTITY_CACHE_MS = 60_000;
+
+async function readBotIdentity(
+  id: BotConnectionId,
+  token: string | undefined,
+  expectedUsername: string | null,
+  now: number,
+): Promise<BotIdentityCacheEntry> {
+  const cached = botIdentityCache.get(id);
+  if (cached && cached.expiresAt > now) return cached;
+  const checked = await checkTelegramIdentity(token, expectedUsername);
+  const entry: BotIdentityCacheEntry = {
+    ...checked,
+    identityCheckedAt: checked.identityStatus === "not_configured"
+      ? null
+      : new Date(now).toISOString(),
+    expiresAt: now + BOT_IDENTITY_CACHE_MS,
+  };
+  botIdentityCache.set(id, entry);
+  return entry;
+}
+
+async function readTestBotRuntime(): Promise<{
+  runtimeStatus: "running" | "stale" | "unknown";
+  lastHeartbeat: string | null;
+}> {
+  try {
+    const result = await pool.query(
+      "SELECT value FROM smh_test.kv WHERE key='command_center_health' LIMIT 1",
+    );
+    let snapshot: unknown = result.rows[0]?.value;
+    if (typeof snapshot === "string") {
+      try {
+        snapshot = JSON.parse(snapshot) as unknown;
+      } catch {
+        return { runtimeStatus: "unknown", lastHeartbeat: null };
+      }
+    }
+    if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+      return { runtimeStatus: "unknown", lastHeartbeat: null };
+    }
+    const checkedAt = (snapshot as Record<string, unknown>).checked_at;
+    if (typeof checkedAt !== "string") {
+      return { runtimeStatus: "unknown", lastHeartbeat: null };
+    }
+    const heartbeatMs = Date.parse(checkedAt);
+    const ageMs = Date.now() - heartbeatMs;
+    if (!Number.isFinite(heartbeatMs) || ageMs < -30_000) {
+      return { runtimeStatus: "unknown", lastHeartbeat: null };
+    }
+    return {
+      runtimeStatus: ageMs <= 150_000 ? "running" : "stale",
+      lastHeartbeat: new Date(heartbeatMs).toISOString(),
+    };
+  } catch {
+    return { runtimeStatus: "unknown", lastHeartbeat: null };
+  }
+}
+
 function rewritePortalSchemaQuery(query: unknown): unknown {
   const rewrite = (sql: string) => sql.replace(/\bsmh\./g, `${supportSchema}.`);
   if (typeof query === "string") return rewrite(query);
@@ -1572,6 +1642,57 @@ router.get("/portal/command-center", async (req, res): Promise<void> => {
     },
   );
   res.json(GetPortalCommandCenterResponse.parse(snapshot));
+});
+
+router.get("/portal/bot-connections", async (req, res): Promise<void> => {
+  if (!canViewOwnerCommandCenter(req.portalIdentity!.role)) {
+    res.status(403).json({ error: "Only the owner can view bot connections." });
+    return;
+  }
+  if (!isDevelopmentCommandCenterAvailable(process.env.NODE_ENV, supportSchema)) {
+    res.status(404).json({ error: "Bot connection checks are available only in isolated Development." });
+    return;
+  }
+
+  const checkedAt = Date.now();
+  const [testIdentity, coachIdentity, signalsIdentity, testRuntime] = await Promise.all([
+    readBotIdentity("test", process.env.SMH_TEST_TELEGRAM_BOT_TOKEN, null, checkedAt),
+    readBotIdentity("coach", process.env.SMH_TEST_COACH_BOT_TOKEN, null, checkedAt),
+    readBotIdentity("pro_signals", process.env.SMH_TEST_PRO_SIGNALS_BOT_TOKEN, null, checkedAt),
+    readTestBotRuntime(),
+  ]);
+  const snapshot = {
+    scope: "development_isolated_test" as const,
+    readOnly: true as const,
+    refreshedAt: new Date().toISOString(),
+    connections: [
+      {
+        id: "test" as const,
+        label: "Private test bot",
+        ...testIdentity,
+        runtimeStatus: testRuntime.runtimeStatus,
+        lastHeartbeat: testRuntime.lastHeartbeat,
+        note: "Development test identity and its isolated heartbeat only. Publishing is not triggered by this check.",
+      },
+      {
+        id: "coach" as const,
+        label: "Coach bot",
+        ...coachIdentity,
+        runtimeStatus: "unknown" as const,
+        lastHeartbeat: null,
+        note: "Telegram identity check only. This portal does not yet receive a live Coach process heartbeat.",
+      },
+      {
+        id: "pro_signals" as const,
+        label: "PRO Signals bot",
+        ...signalsIdentity,
+        runtimeStatus: "unknown" as const,
+        lastHeartbeat: null,
+        note: "Telegram identity check only. This portal does not yet receive a live PRO Signals process heartbeat.",
+      },
+    ],
+  };
+  res.json(GetPortalBotConnectionsResponse.parse(snapshot));
 });
 
 router.get("/portal/channel-history", async (req, res): Promise<void> => {

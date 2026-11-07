@@ -1,7 +1,12 @@
-import { useGetPortalCommandCenter, getGetPortalCommandCenterQueryKey } from '@workspace/api-client-react';
-import type { PortalCommandCenter } from '@workspace/api-client-react';
 import {
-  Activity, ArrowRight, BellRing, Bot, Check, CircleAlert, Clock3, Database,
+  useGetPortalBotConnections,
+  getGetPortalBotConnectionsQueryKey,
+  useGetPortalCommandCenter,
+  getGetPortalCommandCenterQueryKey,
+} from '@workspace/api-client-react';
+import type { PortalBotConnection, PortalCommandCenter } from '@workspace/api-client-react';
+import {
+  Activity, ArrowRight, ArrowUpRight, BellRing, Bot, Check, CircleAlert, Clock3, Database,
   FileText, Gauge, History, LockKeyhole, Radio, RefreshCw, ShieldCheck, Users, Wrench,
 } from 'lucide-react';
 import { Link } from 'wouter';
@@ -13,6 +18,23 @@ const formatDate = (value?: string | null) => {
 };
 const human = (value: string) => value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 const statusTone = (value: string) => ['healthy', 'running', 'enabled', 'true'].includes(value.toLowerCase()) ? 'good' : ['unknown', 'not_connected'].includes(value.toLowerCase()) ? 'neutral' : 'caution';
+const identityLabel: Record<PortalBotConnection['identityStatus'], string> = {
+  verified: 'Telegram identity verified',
+  not_configured: 'Not configured',
+  invalid_credentials: 'Credentials rejected',
+  identity_mismatch: 'Wrong bot identity',
+  unavailable: 'Check unavailable',
+};
+const runtimeLabel: Record<PortalBotConnection['runtimeStatus'], string> = {
+  running: 'Recent heartbeat',
+  stale: 'Heartbeat is stale',
+  unknown: 'Runtime not verified',
+};
+const developmentSecretNames: Partial<Record<PortalBotConnection['id'], string>> = {
+  test: 'SMH_TEST_TELEGRAM_BOT_TOKEN',
+  coach: 'SMH_TEST_COACH_BOT_TOKEN',
+  pro_signals: 'SMH_TEST_PRO_SIGNALS_BOT_TOKEN',
+};
 
 const portalControls = [
   { title: 'Trade management', detail: 'Review this deployment’s trade records and prepare guarded updates.', href: '/trades', label: 'Open trade management', icon: Activity, scope: 'Owner route' },
@@ -34,6 +56,64 @@ const telegramOnly = [
   'FAQ assistant toggles',
   'Bot workflow start and restart',
 ];
+
+function BotConnections() {
+  const query = useGetPortalBotConnections({
+    query: {
+      queryKey: getGetPortalBotConnectionsQueryKey(),
+      staleTime: 15_000,
+      refetchOnMount: 'always',
+      refetchInterval: 60_000,
+    },
+  });
+
+  const destinationFor = (connection: PortalBotConnection) => {
+    if (connection.id === 'test') {
+      return connection.username ? `https://t.me/${encodeURIComponent(connection.username)}` : null;
+    }
+    return connection.id === 'coach'
+      ? 'https://t.me/SmartMoneyHubSignalsBot'
+      : 'https://t.me/SMHProSignalsassistantbot';
+  };
+
+  return <section className="bot-connections-panel" aria-labelledby="bot-connections-title" data-testid="bot-live-connections">
+    <div className="bot-section-heading">
+      <div><span className="bot-overline">DEVELOPMENT · READ-ONLY CHECKS</span><h2 id="bot-connections-title">Bot connections</h2><p>Identity is checked with Telegram. Only the private test bot currently reports a process heartbeat.</p></div>
+      <button className="btn btn-outline" onClick={() => void query.refetch()} disabled={query.isFetching} aria-label="Refresh bot connections" data-testid="button-refresh-bot-connections"><RefreshCw size={14} className={query.isFetching ? 'bot-rotate' : ''}/>{query.isFetching ? 'Checking' : 'Check now'}</button>
+    </div>
+    {query.isLoading ? <div className="bot-connection-grid" aria-label="Checking bot connections">{[0, 1, 2].map((item) => <div className="bot-connection-card bot-connection-loading" key={item}><span className="skeleton"/><span className="skeleton"/><span className="skeleton"/></div>)}</div>
+      : query.isError ? <div className="bot-connection-feedback" role="alert" data-testid="bot-connections-error"><CircleAlert size={17}/><span>{query.error instanceof Error ? query.error.message : 'Bot connection checks could not be loaded.'}</span><button className="btn btn-quiet" onClick={() => void query.refetch()}>Retry</button></div>
+      : query.data ? <div className="bot-connection-grid">{query.data.connections.map((connection) => {
+        const destination = destinationFor(connection);
+        const identityTone = connection.identityStatus === 'verified' ? 'good'
+          : connection.identityStatus === 'not_configured' ? 'neutral' : 'caution';
+        const runtimeTone = connection.runtimeStatus === 'running' ? 'good'
+          : connection.runtimeStatus === 'stale' ? 'caution' : 'neutral';
+        return <article className="bot-connection-card" key={connection.id} data-testid={`bot-connection-${connection.id}`}>
+          <div className="bot-connection-card-head"><span className={`bot-connection-icon connection-${connection.id}`}><Bot size={17}/></span><div><span className="bot-overline">{connection.id === 'test' ? 'PRIVATE INSTANCE' : 'TELEGRAM BOT'}</span><h3>{connection.label}</h3></div></div>
+          <div className="bot-connection-states">
+            <span className={`bot-connection-state tone-${identityTone}`}><i/>{identityLabel[connection.identityStatus]}</span>
+            <span className={`bot-connection-state tone-${runtimeTone}`}><i/>{runtimeLabel[connection.runtimeStatus]}</span>
+          </div>
+          {connection.username && <p className="bot-connection-username">@{connection.username}</p>}
+          <p className="bot-connection-note">{connection.identityStatus === 'not_configured'
+            ? `Development secret ${developmentSecretNames[connection.id]} is not configured. Use a dedicated test identity; never reuse a live bot token.`
+            : connection.identityStatus === 'invalid_credentials'
+              ? `Telegram rejected ${developmentSecretNames[connection.id]}. Check the Development secret without pasting it into chat.`
+              : connection.note}</p>
+          <div className="bot-connection-foot">
+            <span>{connection.lastHeartbeat ? `Heartbeat · ${formatDate(connection.lastHeartbeat)}` : 'No process heartbeat recorded'}</span>
+            {destination && (connection.id !== 'test' || connection.identityStatus === 'verified') && <a className="btn btn-quiet bot-telegram-action" href={destination} target="_blank" rel="noreferrer" aria-label={`Open ${connection.label} in Telegram`}>Open {connection.id === 'pro_signals' ? 'PRO bot' : connection.id === 'coach' ? 'Coach bot' : 'test bot'} <ArrowUpRight size={14}/></a>}
+          </div>
+          {connection.id === 'test' && <Link className="btn btn-outline bot-connection-tool" href="/command-center">Open test command center <ArrowRight size={14}/></Link>}
+          {connection.id === 'coach' && <Link className="btn btn-outline bot-connection-tool" href="/operations">Open service health <ArrowRight size={14}/></Link>}
+          {connection.id === 'pro_signals' && <div className="bot-connection-tools"><Link className="btn btn-outline" href="/signals">Signals &amp; zones <ArrowRight size={14}/></Link><Link className="btn btn-outline" href="/command-center/pro-access">PRO access review <ArrowRight size={14}/></Link></div>}
+        </article>;
+      })}</div>
+        : <div className="bot-connection-feedback">No Development bot connections were returned.</div>}
+    <div className="bot-connection-safety"><LockKeyhole size={14}/><span>These checks never poll Telegram, send a message, publish a post, change permissions, or start a bot. Coach and PRO process status stays unknown until their own heartbeat is connected.</span></div>
+  </section>;
+}
 
 function Snapshot({ data, onRefresh, refreshing }: { data: PortalCommandCenter; onRefresh: () => void; refreshing: boolean }) {
   const metrics = [
@@ -102,11 +182,13 @@ export default function BotControl() {
   const query = useGetPortalCommandCenter({ query: { enabled: isDevelopment, queryKey: getGetPortalCommandCenterQueryKey(), staleTime: 15_000, refetchOnMount: 'always', refetchInterval: isDevelopment ? 30_000 : false } });
   return <main className="page bot-control-page">
     <header className="bot-control-heading">
-      <div><div className="bot-kicker"><span><Gauge size={14}/></span> OWNER OPERATIONS <i/> VAYDA SMART MONEY HUB</div><div className="eyebrow">PRIVATE CONTROL INDEX</div><h1>Bot control center</h1><p className="subheading">One place to see what the portal can control—and what still lives in Telegram or Replit.</p></div>
+      <div><div className="bot-kicker"><span><Gauge size={14}/></span> OWNER OPERATIONS <i/> VAYDA SMART MONEY HUB</div><div className="eyebrow">PRIVATE CONTROL INDEX</div><h1>Bot control center</h1><p className="subheading">Check the bot identities, open each destination, and reach the owner tools that manage them.</p></div>
       {isDevelopment && <Link className="btn btn-outline bot-command-link" href="/command-center" data-testid="link-bot-control-command-center"><Gauge size={15}/>Open read-only command center<ArrowRight size={14}/></Link>}
     </header>
 
     <div className="bot-intro-band"><div className="bot-intro-mark"><ShieldCheck size={19}/></div><div><strong>Controls stay attached to their owning deployment.</strong><p>No environment switching, production toggles, credentials, bot-process controls, or Telegram admin actions are exposed here.</p></div><span>OWNER ONLY</span></div>
+
+    {isDevelopment && <BotConnections/>}
 
     <section className="bot-portal-controls" aria-labelledby="portal-controls-title">
       <div className="bot-section-heading"><div><span className="bot-overline">AVAILABLE IN THIS PORTAL</span><h2 id="portal-controls-title">Website controls</h2><p>Each link opens an existing owner page; availability and scope are described at the destination.</p></div><span className="bot-count">{portalControls.length} routes</span></div>

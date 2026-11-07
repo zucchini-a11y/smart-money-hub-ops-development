@@ -7,10 +7,10 @@ import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import {
   getGetPortalSessionQueryKey, getGetPortalDashboardQueryKey, getListPortalCasesQueryKey,
-  getGetPortalCaseQueryKey, getListPortalStaffQueryKey, usePortalLogin, useGetPortalSession,
-  useGetPortalDashboard, useListPortalCases, useGetPortalCase, useListPortalStaff,
-  usePortalLogout, useCreatePortalCaseReply, useClosePortalCase, useCreatePortalStaff,
-  useUpdatePortalStaff, useChangePortalPassword, useAssignPortalCase, useAddPortalCaseNote,
+  getListPortalStaffQueryKey, usePortalLogin, useGetPortalSession,
+  useListPortalCases, useListPortalStaff,
+  usePortalLogout, useCreatePortalStaff,
+  useUpdatePortalStaff, useChangePortalPassword,
   useListStaffTasks, useCreateStaffTask, useUpdateStaffTaskStatus, useListStaffTeams,
   useCreateStaffTeam, useSetStaffTeamMembers,
   useListStaffTaskNotifications, useMarkStaffTaskNotificationRead,
@@ -25,7 +25,7 @@ import {
   getGetPortalCommandCenterQueryKey,
   useGetPortalCommandCenter,
 } from '@workspace/api-client-react';
-import type { MemberSession, PortalCaseSummary, PortalSession, PortalStaff, StaffPerformanceRow, StaffTask, StaffTeam } from '@workspace/api-client-react';
+import type { MemberSession, PortalSession, PortalStaff, StaffPerformanceRow, StaffTask, StaffTeam } from '@workspace/api-client-react';
 import {
   Activity, ArrowLeft, ArrowUpRight, Check, CheckCircle2, ChevronLeft, ChevronRight, CircleHelp,
   Bell, Eye, EyeOff, FileText, KeyRound, LockKeyhole, LogOut, MessageSquareText,
@@ -54,7 +54,7 @@ import Signals from '@/pages/signals';
 import BotControl from '@/pages/bot-control';
 import MemberAccessPage from '@/pages/member-access';
 import { trackEvent } from '@/lib/analytics';
-import { WebsiteChats } from './WebsiteSupport';
+import { SupportInbox } from './SupportInbox';
 import { publicSiteLinks } from './public-site/config';
 const brandLogoUrl = `${import.meta.env.BASE_URL}vayda-logo.png`;
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -454,7 +454,11 @@ function Login() {
       <div className="login-brand"><Brand /></div>
       <div className="login-copy"><div className="eyebrow" style={{ color: '#d5b56f' }}>SMART MONEY HUB</div><h1>Welcome back.</h1><p>Sign in to continue to your account.</p></div>
     </section>
-    <section className="login-panel"><div className="login-form">
+    <section className="login-panel"><div className="login-panel-content">
+      <button type="button" className="login-home-link" onClick={() => navigate('/')} data-testid="button-login-home">
+        <ArrowLeft size={15}/> Back to public home
+      </button>
+      <div className="login-form">
       <div className="eyebrow">WELCOME BACK</div><h2>Sign in</h2><p>Enter the email or username and password connected to your account.</p>
       {error && <div className="notice notice-error" role="alert" data-testid="status-login-error">{error}</div>}
       {notice && <div className="notice notice-info" role="status" data-testid="status-login-notice">{notice}</div>}
@@ -478,6 +482,7 @@ function Login() {
         <button className="login-link-button" type="button" onClick={() => setRecoveryStep('closed')}>Back to sign in</button>
       </form>}
       <div className="login-note" data-testid="status-member-signup-paused">New member registration is paused. Existing members can still sign in.</div>
+      </div>
     </div></section>
   </main>;
 }
@@ -681,12 +686,12 @@ function AppShell({ session, children }: { session: PortalSession; children: Rea
   const navItems = session.role === 'agent'
     ? [
       { href: '/tasks', label: 'My Tasks', icon: <CheckCircle2 />, testId: 'link-my-tasks' },
-      { href: '/staff/support', label: 'My Support Cases', icon: <MessageSquareText />, testId: 'link-my-support-cases' },
+      { href: '/staff/support', label: 'Support inbox', icon: <MessageSquareText />, testId: 'link-my-support-cases' },
       { href: '/tasks', label: 'Notifications', icon: <Bell />, testId: 'link-notifications', scrollTarget: 'notifications' },
       { href: '/tasks', label: 'Submit Work', icon: <FileText />, testId: 'link-submit-work', scrollTarget: 'submit-work' },
     ]
     : [
-      { href: '/staff/support', label: 'Support', icon: <MessageSquareText />, testId: 'link-support' },
+      { href: '/staff/support', label: 'Support inbox', icon: <MessageSquareText />, testId: 'link-support' },
       { href: '/tasks', label: 'Staff Tasks', icon: <CheckCircle2 />, testId: 'link-staff-tasks' },
       { href: '/staff', label: 'Staff', icon: <Users />, testId: session.role === 'owner' ? 'link-staff-accounts' : 'link-staff' },
       ...(session.role === 'owner' ? [
@@ -815,42 +820,8 @@ function CommandCenter({ session }: { session: PortalSession }) {
   </main>;
 }
 
-function CaseTable({ cases }: { cases: PortalCaseSummary[] }) {
-  const [, navigate] = useLocation();
-  if (!cases.length) return <Empty title="No cases match this view">Try adjusting your search or selecting a different status.</Empty>;
-  return <div className="table-wrap"><table className="case-table" data-testid="table-cases"><thead><tr><th>Case</th><th>Member question</th><th>Status</th><th>Last updated</th><th></th></tr></thead><tbody>{cases.map((item) => {
-    const casePath = `/cases/${encodeURIComponent(item.caseId)}`;
-    return <tr
-      key={item.caseId}
-      className="case-row-action"
-      data-testid={`row-case-${item.caseId}`}
-      onClick={(event) => {
-        if (event.target instanceof Element && event.target.closest('a,button')) return;
-        navigate(casePath);
-      }}
-    ><td><Link className="case-link case-id" href={casePath} data-testid={`link-case-${item.caseId}`}>{item.caseId}</Link><div className="muted-small">Member {item.memberId}</div></td><td className="question-cell"><Link href={casePath} className="case-question-link" data-testid={`link-question-${item.caseId}`}><span className="question-main">{item.question}</span><span className="muted-small">Received {prettyDate(item.created)}</span></Link></td><td><Status value={item.status}/></td><td>{prettyDate(item.updated)}</td><td><Link href={casePath} className="btn btn-quiet" aria-label={`Open case ${item.caseId}`} data-testid={`button-open-case-${item.caseId}`}><ArrowUpRight size={15}/></Link></td></tr>;
-  })}</tbody></table></div>;
-}
-
 function Queue({ session }: { session: PortalSession }) {
-  const [status, setStatus] = useState('all');
-  const [search, setSearch] = useState('');
-  const dashboard = useGetPortalDashboard({ query: { queryKey: getGetPortalDashboardQueryKey(), staleTime: 20_000 } });
-  const params = { status: status === 'all' ? 'all' as const : status as 'open' | 'reply_sending' | 'reply_uncertain' | 'replied' | 'closed', search: search.trim() || undefined, limit: 100 };
-  const cases = useListPortalCases(params, { query: { queryKey: getListPortalCasesQueryKey(params), staleTime: 15_000 } });
-  const count = dashboard.data?.openCount ?? 0;
-  return <main className="page">
-    <div className="page-heading"><div><div className="eyebrow">VAYDA OPERATIONS</div><h1>{session.role === 'agent' ? 'My Support Cases' : 'Support'}</h1><p className="subheading">{session.role === 'agent' ? 'View and reply to the member cases assigned to you.' : 'Review member questions and send a helpful reply.'}</p></div><div className="ws-inbox-links"><Link className="btn btn-outline" href="/staff/support/website-chats" data-testid="link-website-chats">Website Chats</Link><span className="secure-label" style={{ fontSize: 11, color: '#6b7c71' }}><Activity size={14}/> Updates automatically</span></div></div>
-    {dashboard.isLoading ? <div className="stats-grid">{[0,1,2,3].map((i)=><div className="stat-card" key={i}><div style={{width:'65%'}}><div className="skeleton"/><div className="skeleton" style={{width:'45%',marginTop:12,height:26}}/></div></div>)}</div> : dashboard.isError ? <div className="notice notice-error" role="alert" data-testid="status-dashboard-error">{errMessage(dashboard.error)} <button className="btn btn-quiet" onClick={() => dashboard.refetch()}>Retry</button></div> : <div className="stats-grid" data-testid="dashboard-stats">
-      <div className="stat-card"><div><div className="stat-label">Open cases</div><div className="stat-value">{count}</div></div><div className="stat-icon"><MessageSquareText size={17}/></div></div>
-      <div className="stat-card warning"><div><div className="stat-label">Delivery uncertain</div><div className="stat-value">{dashboard.data?.uncertainCount ?? 0}</div></div><div className="stat-icon"><CircleHelp size={17}/></div></div>
-      <div className="stat-card"><div><div className="stat-label">Replied</div><div className="stat-value">{dashboard.data?.repliedCount ?? 0}</div></div><div className="stat-icon"><CheckCircle2 size={17}/></div></div>
-      <div className="stat-card closed"><div><div className="stat-label">Closed</div><div className="stat-value">{dashboard.data?.closedCount ?? 0}</div></div><div className="stat-icon"><FileText size={17}/></div></div>
-    </div>}
-    <section className="section-panel"><div className="section-head"><div><h2 className="section-title">Member cases</h2><p className="section-note">{cases.data ? `${cases.data.total} total cases` : 'Review and respond to submitted questions'}</p></div><div className="toolbar"><div className="search-wrap"><Search/><input className="search-input" type="search" placeholder="Search cases or members" value={search} onChange={(event) => setSearch(event.target.value)} data-testid="input-case-search"/></div><select className="filter-select" value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Filter cases by status" data-testid="select-case-status"><option value="all">All statuses</option><option value="open">Open</option><option value="reply_sending">Sending</option><option value="reply_uncertain">Uncertain</option><option value="replied">Replied</option><option value="closed">Closed</option></select></div></div>
-      {cases.isLoading ? <LoadingRows/> : cases.isError ? <ErrorState error={cases.error} retry={() => cases.refetch()}/> : cases.data?.cases.length ? <CaseTable cases={cases.data.cases}/> : <Empty title={search || status !== 'all' ? 'No matching cases' : 'Your queue is clear'}>{search || status !== 'all' ? 'No cases match those filters. Refine your search to see more.' : 'There are no cases to review right now. New member requests will appear here.'}</Empty>}
-    </section>
-  </main>;
+  return <SupportInbox session={session}/>;
 }
 
 function TaskCenter({ session }: { session: PortalSession }) {
@@ -1105,76 +1076,7 @@ function TaskEditForm({
 
 function CaseDetail({ session }: { session: PortalSession }) {
   const { caseId = '' } = useParams<{ caseId: string }>();
-  const client = useQueryClient();
-  const detail = useGetPortalCase(caseId, { query: { queryKey: getGetPortalCaseQueryKey(caseId), enabled: Boolean(caseId), staleTime: 15_000 } });
-  const reply = useCreatePortalCaseReply();
-  const close = useClosePortalCase();
-  const assignment = useAssignPortalCase();
-  const addNote = useAddPortalCaseNote();
-  const canAssign = session.role === 'owner' || session.role === 'manager';
-  const staff = useListPortalStaff({ query: { queryKey: getListPortalStaffQueryKey(), enabled: canAssign } });
-  const [text, setText] = useState('');
-  const [noteText, setNoteText] = useState('');
-  const [feedback, setFeedback] = useState('');
-  const [failure, setFailure] = useState('');
-  const [location, navigate] = useLocation();
-  const sendReply = (event: FormEvent) => {
-    event.preventDefault(); setFailure(''); setFeedback('');
-    if (text.trim().length < 3 || text.trim().length > 3000) { setFailure('Your reply must be between 3 and 3,000 characters.'); return; }
-    const requestId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `portal-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    reply.mutate({ caseId, data: { text: text.trim(), requestId } }, { onSuccess: async () => {
-      trackEvent('support_reply_queued');
-      setText(''); setFeedback('Reply submitted. Delivery status will update when confirmed.');
-      await Promise.all([client.invalidateQueries({ queryKey: getGetPortalCaseQueryKey(caseId) }), client.invalidateQueries({ queryKey: getListPortalCasesQueryKey() }), client.invalidateQueries({ queryKey: getGetPortalDashboardQueryKey() })]);
-    }, onError: (error) => setFailure(errMessage(error, 'Reply could not be submitted. Check the case before retrying.')) });
-  };
-  const closeCase = () => {
-    if (!window.confirm('Close this support case? You can review the conversation, but cannot submit another reply.')) return;
-    close.mutate({ caseId }, { onSuccess: async () => {
-      trackEvent('support_case_closed');
-      await Promise.all([client.invalidateQueries({ queryKey: getGetPortalCaseQueryKey(caseId) }), client.invalidateQueries({ queryKey: getListPortalCasesQueryKey() }), client.invalidateQueries({ queryKey: getGetPortalDashboardQueryKey() })]);
-    }, onError: (error) => setFailure(errMessage(error, 'The case could not be closed.')) });
-  };
-  const assignTo = (staffId: string) => {
-    assignment.mutate(
-      { caseId, data: { assignedStaffId: staffId || null } },
-      { onSuccess: async () => {
-         trackEvent('support_case_assigned', { has_assignee: Boolean(staffId) });
-        await Promise.all([
-          client.invalidateQueries({ queryKey: getGetPortalCaseQueryKey(caseId) }),
-          client.invalidateQueries({ queryKey: getListPortalCasesQueryKey() }),
-          client.invalidateQueries({ queryKey: getGetPortalDashboardQueryKey() }),
-        ]);
-      }, onError: (error) => setFailure(errMessage(error, 'The case could not be assigned.')) },
-    );
-  };
-  const submitNote = (event: FormEvent) => {
-    event.preventDefault();
-    setFailure('');
-    addNote.mutate({ caseId, data: { text: noteText.trim() } }, {
-      onSuccess: async () => {
-        setNoteText('');
-        await client.invalidateQueries({ queryKey: getGetPortalCaseQueryKey(caseId) });
-      },
-      onError: (error) => setFailure(errMessage(error, 'The private note could not be saved.')),
-    });
-  };
-  if (detail.isLoading) return <main className="page"><div className="skeleton" style={{height:26,width:250,marginBottom:24}}/><div className="section-panel"><LoadingRows/></div></main>;
-  if (detail.isError) return <main className="page"><ErrorState error={detail.error} retry={() => detail.refetch()}/></main>;
-  const item = detail.data;
-  if (!item) return <main className="page"><Empty title="Case not found">This case may have been removed or you may not have access.</Empty></main>;
-  const isClosed = item.status === 'closed';
-  return <main className="page">
-    <div className="page-heading"><div><Link className="eyebrow" href="/staff/support" data-testid="link-back-queue"><ArrowLeft size={13} style={{verticalAlign:'middle',marginRight:6}}/>SUPPORT QUEUE</Link><h1 style={{fontSize:31}}>Case conversation</h1><p className="subheading">Review the member question and send a response as yourself.</p></div>{!isClosed && <button className="btn btn-outline" onClick={closeCase} disabled={close.isPending} data-testid="button-close-case"><Check size={14}/>{close.isPending ? 'Closing…' : 'Close case'}</button>}</div>
-    {failure && <div className="notice notice-error" role="alert" data-testid="status-case-error">{failure}</div>}{feedback && <div className="notice notice-info" role="status" data-testid="status-reply-success">{feedback}</div>}
-    <div className="case-layout"><section className="case-content"><div className="case-top"><div className="case-topline"><span className="case-id" data-testid="text-case-id">{item.caseId}</span><Status value={item.status}/></div><h2 className="case-question" data-testid="text-case-question">{item.question}</h2><div className="case-meta"><span>Member ID {item.memberId}</span><span>Submitted {prettyDate(item.created)}</span><span>Updated {prettyDate(item.updated)}</span></div></div>
-       <div className="thread"><div className="thread-label">Conversation · {item.replies.length} {item.replies.length === 1 ? 'reply' : 'replies'}</div><article className="message"><div className="message-head"><span className="message-name">Member {item.memberId}</span><time className="message-date">{prettyDate(item.created)}</time></div><p className="message-text">{item.question}</p></article>{item.replies.map((entry) => <article className="message reply" key={entry.replyId} data-testid={`reply-${entry.replyId}`}><div className="message-head"><span className="message-name">{entry.responderName}</span><span style={{display:'flex',gap:9,alignItems:'center'}}><Status value={entry.status}/><time className="message-date">{prettyDate(entry.created)}</time></span></div><p className="message-text">{entry.text}</p></article>)}{item.replies.length === 0 && <div className="muted-small" style={{padding:'3px 0 8px'}}>No replies have been sent yet.</div>}</div>
-       <section className="thread" aria-label="Private staff notes"><div className="thread-label">Private staff notes · not sent to the member</div>{item.notes.map((note) => <article className="message" key={note.noteId} data-testid={`note-${note.noteId}`}><div className="message-head"><span className="message-name">{note.responderName}</span><time className="message-date">{prettyDate(note.created)}</time></div><p className="message-text">{note.text}</p></article>)}{!isClosed && <form onSubmit={submitNote} className="reply-form"><label htmlFor="private-note">Add an internal note</label><textarea id="private-note" className="reply-area" value={noteText} onChange={(event) => setNoteText(event.target.value)} maxLength={3000} placeholder="Visible only to authorized support staff…" data-testid="input-private-note"/><div className="reply-footer"><span className="reply-hint">This note is never sent to the member.</span><button className="btn btn-outline" type="submit" disabled={addNote.isPending || noteText.trim().length < 3} data-testid="button-save-private-note">{addNote.isPending ? 'Saving…' : 'Save note'}</button></div></form>}</section>
-       <section className="thread" aria-label="Case activity"><div className="thread-label">Case activity</div>{item.events.length === 0 ? <div className="muted-small">No case changes recorded yet.</div> : item.events.map((entry) => <article className="message" key={entry.eventId} data-testid={`case-event-${entry.eventId}`}><div className="message-head"><span className="message-name">{entry.actorName}</span><time className="message-date">{prettyDate(entry.created)}</time></div><p className="message-text">{entry.eventType.replaceAll('_',' ')}{entry.newValue ? ` · ${entry.newValue}` : ''}</p></article>)}</section>
-      {!isClosed && <form className="reply-form" onSubmit={sendReply}><label htmlFor="reply-text">Your reply</label><textarea id="reply-text" className="reply-area" placeholder="Write a clear, helpful response to the member…" maxLength={3000} minLength={3} value={text} onChange={(event) => setText(event.target.value)} data-testid="input-reply-text"/><div className="reply-footer"><span className="reply-hint">Sent under your staff display name · {text.length}/3,000</span><button className="btn btn-primary" type="submit" disabled={reply.isPending || text.trim().length < 3} data-testid="button-send-reply">{reply.isPending ? 'Submitting…' : 'Submit reply'}<ArrowUpRight size={14}/></button></div></form>}
-      {isClosed && <div className="reply-form"><div className="notice notice-info" style={{margin:0}}>This case is closed. Replies are no longer available.</div></div>}
-    </section><aside className="case-aside"><h3 className="aside-title">Case details</h3><div className="detail-item"><div className="detail-label">Case reference</div><div className="detail-value">{item.caseId}</div></div><div className="detail-item"><div className="detail-label">Member</div><div className="detail-value">{item.memberId}</div></div><div className="detail-item"><div className="detail-label">Case status</div><div className="detail-value">{item.workflowStatus.replaceAll('_',' ')}</div></div><div className="detail-item"><div className="detail-label">Priority · category</div><div className="detail-value">{item.priority} · {item.category.replaceAll('_',' ')}</div></div><div className="detail-item"><div className="detail-label">Assigned staff</div>{canAssign ? <><select className="filter-select" aria-label="Assign case" value={item.assignedStaffId ?? ''} onChange={(event) => assignTo(event.target.value)} disabled={assignment.isPending || staff.isLoading || staff.isError} data-testid="select-case-assignee"><option value="">Unassigned</option>{staff.data?.staff.filter((person) => person.active && person.role !== 'owner').map((person) => <option value={person.staffId} key={person.staffId}>{person.displayName} · {person.role}</option>)}</select>{staff.isError && <div className="muted-small">Assignment list unavailable.</div>}</> : <div className="detail-value">{item.assignedStaffId ?? 'Unassigned'}</div>}</div><div className="detail-item"><div className="detail-label">Delivery state</div><div className="detail-value"><Status value={item.status}/></div></div><div className="detail-item"><div className="detail-label">Created</div><div className="detail-value">{prettyDate(item.created)}</div></div><div className="detail-item"><div className="detail-label">Last activity</div><div className="detail-value">{prettyDate(item.updated)}</div></div></aside></div>
-  </main>;
+  return <SupportInbox session={session} initialCaseId={caseId}/>;
 }
 
 function TeamAccessPanel() {
@@ -1393,7 +1295,7 @@ function ProtectedRouter({ session }: { session: PortalSession }) {
     // Password page remains reachable for voluntary changes.
   }
   return <AppShell session={session}><Switch>
-    <Route path="/staff/support/website-chats">{() => <WebsiteChats session={session}/>}</Route>
+    <Route path="/staff/support/website-chats">{() => <SupportInbox session={session}/>}</Route>
     <Route path="/staff/support">{() => <Queue session={session}/>}</Route>
     <Route path="/bot-control">{() => session.role === 'owner' ? <BotControl/> : <AccessDenied/>}</Route>
     <Route path="/command-center/member-access">{() => session.role === 'owner' ? <MemberAccessPage/> : <AccessDenied/>}</Route>

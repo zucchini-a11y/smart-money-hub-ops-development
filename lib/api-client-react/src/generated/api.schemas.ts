@@ -1415,6 +1415,63 @@ export interface PortalTradeAction {
   canCancel: boolean;
 }
 
+export type PortalBotConnectionsScope = typeof PortalBotConnectionsScope[keyof typeof PortalBotConnectionsScope];
+
+
+export const PortalBotConnectionsScope = {
+  development_isolated_test: 'development_isolated_test',
+} as const;
+
+export type PortalBotConnectionId = typeof PortalBotConnectionId[keyof typeof PortalBotConnectionId];
+
+
+export const PortalBotConnectionId = {
+  test: 'test',
+  coach: 'coach',
+  pro_signals: 'pro_signals',
+} as const;
+
+export type PortalBotConnectionIdentityStatus = typeof PortalBotConnectionIdentityStatus[keyof typeof PortalBotConnectionIdentityStatus];
+
+
+export const PortalBotConnectionIdentityStatus = {
+  verified: 'verified',
+  not_configured: 'not_configured',
+  invalid_credentials: 'invalid_credentials',
+  identity_mismatch: 'identity_mismatch',
+  unavailable: 'unavailable',
+} as const;
+
+export type PortalBotConnectionRuntimeStatus = typeof PortalBotConnectionRuntimeStatus[keyof typeof PortalBotConnectionRuntimeStatus];
+
+
+export const PortalBotConnectionRuntimeStatus = {
+  running: 'running',
+  stale: 'stale',
+  unknown: 'unknown',
+} as const;
+
+export interface PortalBotConnection {
+  id: PortalBotConnectionId;
+  label: string;
+  identityStatus: PortalBotConnectionIdentityStatus;
+  /** @nullable */
+  username: string | null;
+  /** @nullable */
+  identityCheckedAt: string | null;
+  runtimeStatus: PortalBotConnectionRuntimeStatus;
+  /** @nullable */
+  lastHeartbeat: string | null;
+  note: string;
+}
+
+export interface PortalBotConnections {
+  scope: PortalBotConnectionsScope;
+  readOnly: true;
+  refreshedAt: string;
+  connections: PortalBotConnection[];
+}
+
 export type ProMemberApplicationEducationEligibility = typeof ProMemberApplicationEducationEligibility[keyof typeof ProMemberApplicationEducationEligibility];
 
 

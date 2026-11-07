@@ -1082,6 +1082,27 @@ export const GetPortalCommandCenterResponse = zod.object({
 
 
 /**
+ * Owner-only read-only checks. Telegram identity checks use getMe only; they do not poll, send messages, publish, or control bot processes.
+ * @summary Check bot identity and runtime connections in Development
+ */
+export const GetPortalBotConnectionsResponse = zod.object({
+  "scope": zod.enum(['development_isolated_test']),
+  "readOnly": zod.literal(true),
+  "refreshedAt": zod.coerce.date(),
+  "connections": zod.array(zod.object({
+  "id": zod.enum(['test', 'coach', 'pro_signals']),
+  "label": zod.string(),
+  "identityStatus": zod.enum(['verified', 'not_configured', 'invalid_credentials', 'identity_mismatch', 'unavailable']),
+  "username": zod.string().nullable(),
+  "identityCheckedAt": zod.coerce.date().nullable(),
+  "runtimeStatus": zod.enum(['running', 'stale', 'unknown']),
+  "lastHeartbeat": zod.coerce.date().nullable(),
+  "note": zod.string()
+}))
+})
+
+
+/**
  * Owner-only history from the main bot's Development schema or the isolated test schema. Production data is not connected.
  * @summary Read a selected Development bot's channel post history
  */

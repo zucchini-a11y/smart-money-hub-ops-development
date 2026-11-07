@@ -1,0 +1,47 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --background: 220 27% 7%;
+  --foreground: 210 22% 91%;
+  --border: 215 18% 19%;
+  --card: 219 25% 10%;
+  --card-foreground: 210 22% 91%;
+  --primary: 152 75% 48%;
+  --primary-foreground: 220 27% 7%;
+  --muted: 215 20% 14%;
+  --muted-foreground: 213 12% 56%;
+  --accent: 190 82% 52%;
+  --app-font-sans: 'DM Sans', sans-serif;
+  --app-font-serif: 'Manrope', sans-serif;
+  --app-font-mono: 'IBM Plex Mono', monospace;
+}
+
+.smh-support-extract {
+  min-height: 100vh;
+  background: #f6f3eb;
+  color: #30423a;
+  font-family: var(--app-font-sans);
+}
+
+.smh-support-extract * { box-sizing: border-box; }
+.smh-support-extract button,
+.smh-support-extract input,
+.smh-support-extract select { font: inherit; }
+.smh-support-extract button { cursor: pointer; }
+.smh-support-extract .surface { background:#fbfaf6;border:1px solid #e8e3d9;border-radius:12px; }
+.smh-support-extract .label { color:#7b877f;font:500 10px var(--app-font-mono);letter-spacing:.14em;text-transform:uppercase; }
+.smh-support-extract .button { display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid #dcded4;border-radius:7px;background:#fffefa;color:#45554b;padding:10px 13px;font-size:12px;font-weight:650; }
+.smh-support-extract .button-primary { background:#2d6650;border-color:#2d6650;color:#fffdf5; }
+.smh-support-extract .button:hover { filter:brightness(.98); }
+.smh-support-extract .status { display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border-radius:99px;font-size:10px;font-weight:650;white-space:nowrap; }
+.smh-support-extract .status::before { content:'';width:6px;height:6px;border-radius:50%;background:currentColor; }
+.smh-support-extract .status-open { color:#8a6421;background:#f4ead1; }
+.smh-support-extract .status-replied { color:#39735c;background:#e4efe7; }
+.smh-support-extract .status-closed { color:#777f7a;background:#ecece7; }
+.smh-support-extract .muted { color:#879088;font-size:11px; }
+.smh-support-extract .row-hover:hover { background:#f8f6f0; }
+@media (max-width: 760px) {
+  .smh-support-extract .stats { grid-template-columns:repeat(2,minmax(0,1fr)) !important; }
+  .smh-support-extract .toolbar { flex-direction:column;align-items:stretch !important; }
+  .smh-support-extract .toolbar input { width:100% !important; }
+}
