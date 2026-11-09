@@ -12,6 +12,7 @@
     "member-notifications:migrate-dev": "tsx src/scripts/migrate-development-member-notifications.ts",
     "member-announcements:migrate-dev": "tsx src/scripts/migrate-development-member-announcements.ts",
     "portal:reset-dev-owner": "tsx src/scripts/reset-development-portal-owner.ts",
+    "portal:check-dev-owner-password": "tsx src/scripts/check-development-portal-owner-password.ts",
     "test": "tsx --test test/*.test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
