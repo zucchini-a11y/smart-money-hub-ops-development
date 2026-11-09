@@ -392,3 +392,17 @@ mtime_ms = 1794062890915
 storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/af3a8d2c-915f-4743-94a5-a3757a035a82/fbb63549-0ca5-4972-aeeb-3155d96a9b2b"
 storage_version_token = "1794062900129233"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "PAiSXMLRsXGlISwDCLBRS"
+uri = "file://generated-artifacts/smh-hostinger-release/smh-complete-platform-source-20261109.zip"
+type = "unspecified"
+title = "Smart Money Hub complete platform release bundle"
+description = "Verified source and built Portal, landing, and API package for Hostinger handoff. Contains no credentials or database data. Read HOSTINGER-DEPLOYMENT-NOTES.txt before deploying; Development and Production migrations are separated."
+logical_id = "9570c5aa-7c2c-49ac-86f5-9c210ae38b89"
+content_hash = "sha256:45dc500f3c8051306e8f6924ac1a47b90fd9e3352d3f4da6182f27b183967ad7"
+size = 8881630
+mtime_ms = 1794187799365
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/9570c5aa-7c2c-49ac-86f5-9c210ae38b89/8794d6fc-d751-4a71-ad43-ea94d99fcea2"
+storage_version_token = "1794187808890107"
+content_type = "application/octet-stream"
