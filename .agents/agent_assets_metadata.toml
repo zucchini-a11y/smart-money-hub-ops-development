@@ -406,3 +406,17 @@ mtime_ms = 1794187799365
 storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/9570c5aa-7c2c-49ac-86f5-9c210ae38b89/8794d6fc-d751-4a71-ad43-ea94d99fcea2"
 storage_version_token = "1794187808890107"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "P7fuGwCpEt2MwoA0UvdAD"
+uri = "file://generated-artifacts/smh-hostinger-release/HOSTINGER-DEPLOYMENT-NOTES.txt"
+type = "text"
+title = "Hostinger deployment notes"
+description = "Standalone copy of the notes inside the release ZIP. Development-only deployment guidance, route requirements, and safeguards for Production, migrations, and bot services."
+logical_id = "e0b149d5-c6a9-475a-9761-bc58d070311c"
+content_hash = "sha256:4dd154f58e2309a67ddbb879a0849ec66a6fd6adbd55524ff851f15d8424ed98"
+size = 4265
+mtime_ms = 1794188421549
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/e0b149d5-c6a9-475a-9761-bc58d070311c/f6569be8-eb5a-42d9-8dec-4de1d74db5df"
+storage_version_token = "1794188428091691"
+content_type = "text/plain"
