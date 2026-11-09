@@ -420,3 +420,17 @@ mtime_ms = 1794188421549
 storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/e0b149d5-c6a9-475a-9761-bc58d070311c/f6569be8-eb5a-42d9-8dec-4de1d74db5df"
 storage_version_token = "1794188428091691"
 content_type = "text/plain"
+
+[[outputs]]
+id = "1FNmhMESqO17QIXxZHTMt"
+uri = "file://generated-artifacts/smh-hostinger-release/smh-portal-build-for-sftp-20261109.zip"
+type = "unspecified"
+title = "Portal build for VPS staging"
+description = "Portal frontend files in a smh-portal-release-20261109 folder, ready to extract locally and upload by SFTP. Frontend only; no API or secrets. Do not activate routes until the administrator inspects it."
+logical_id = "fa230aa5-82a9-4fff-889f-45d468662770"
+content_hash = "sha256:139ed04ebe2ca62bd3d1ca9bb73dd276b8ab5a7098c086f981a86736232472ad"
+size = 584299
+mtime_ms = 1794188835261
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:21fbc753-1dd7-46f9-ba93-7d15c8a38899/fa230aa5-82a9-4fff-889f-45d468662770/532e2c9e-61d3-471f-940c-67b2fe9f125a"
+storage_version_token = "1794188846344603"
+content_type = "application/octet-stream"
