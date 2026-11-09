@@ -29,7 +29,7 @@ import type { MemberSession, PortalSession, PortalStaff, StaffPerformanceRow, St
 import {
   Activity, ArrowLeft, ArrowUpRight, Check, CheckCircle2, ChevronLeft, ChevronRight, CircleHelp,
   Bell, Eye, EyeOff, FileText, KeyRound, LockKeyhole, LogOut, MessageSquareText,
-  Plus, Search, ShieldCheck, Users, X, Gauge, RefreshCw, Radio, CircleAlert, Database, History, Bot, Clapperboard,
+  Plus, Search, ShieldCheck, Users, X, Gauge, RefreshCw, Radio, CircleAlert, Database, History, Bot, BrainCircuit, Clapperboard,
 } from 'lucide-react';
 import { Link, Route, Switch, Router as WouterRouter, useLocation, useParams } from 'wouter';
 import { ClerkProvider, UserProfile, useAuth, useClerk, useSignIn, useSignUp } from '@clerk/react';
@@ -57,6 +57,7 @@ import TradeManagement from '@/pages/trades';
 import Signals from '@/pages/signals';
 import BotControl, { BotConnections } from '@/pages/bot-control';
 import MemberAccessPage from '@/pages/member-access';
+import OwnerMindMap from '@/pages/owner-mind-map';
 import { trackEvent } from '@/lib/analytics';
 import { SupportInbox } from './SupportInbox';
 import { publicSiteLinks } from './public-site/config';
@@ -762,6 +763,7 @@ function AppShell({ session, children }: { session: PortalSession; children: Rea
       ...(session.role === 'owner' ? [
          { href: '/bot-control', label: 'Bot Control', icon: <Bot />, testId: 'link-owner-bot-control' },
          { href: '/operations', label: 'Operations Center', icon: <Gauge />, testId: 'link-owner-operations' },
+         { href: '/command-center/mind-map', label: 'Mind map', icon: <BrainCircuit />, testId: 'link-owner-mind-map' },
          { href: '/command-center/member-access', label: 'Member access', icon: <Users />, testId: 'link-owner-member-access' },
          { href: '/command-center/member-course-videos', label: 'Member video lessons', icon: <Clapperboard />, testId: 'link-owner-member-course-videos' },
         { href: '/trades', label: 'Trade management', icon: <Activity />, testId: 'link-owner-trades' },
@@ -828,7 +830,7 @@ function AppShell({ session, children }: { session: PortalSession; children: Rea
     knownReportNoticeIds.current = unreadIds;
   }, [reportNotificationQuery.data?.notifications, toast]);
   const signOut = () => logout.mutate(undefined, { onSuccess: async () => { await clerk.signOut().catch(() => undefined); client.clear(); navigate('/login'); }, onError: () => client.invalidateQueries({ queryKey: sessionKey }) });
-    return <div className={`portal-shell ${location === '/command-center' ? 'portal-owner-shell' : ''}`}>
+    return <div className={`portal-shell ${location.startsWith('/command-center') ? 'portal-owner-shell' : ''}`}>
     <aside className="sidebar"><Brand/><div className="nav-label">Main menu</div>{navItems.map((item) => <Link key={item.testId} href={item.href} onClick={() => item.scrollTarget && setScrollTarget(item.scrollTarget)} className={`nav-link ${(item.scrollTarget ? activeScrollTarget === item.scrollTarget : location === item.href) ? 'active' : ''}`} data-testid={item.testId}>{item.icon}{item.label}</Link>)}<div className="sidebar-bottom"><div className="person"><span className="person-avatar">{initials(session.displayName)}</span><div><div className="person-name">{session.displayName}</div><div className="person-role">{session.role === 'owner' ? 'Owner' : session.role === 'manager' ? 'Support Manager' : 'Support Agent'}</div></div></div>{session.role === 'owner' && <><Link className={`account-link owner-command-link ${location === '/command-center' ? 'selected' : ''}`} href="/command-center"><Gauge size={14}/>Command center <span>DEV</span></Link><Link className={`account-link owner-education-link ${location === '/command-center/education-videos' ? 'selected' : ''}`} href="/command-center/education-videos" data-testid="link-owner-education-videos"><FileText size={14}/>Education videos</Link><Link className={`account-link owner-history-link ${location === '/command-center/channel-history' ? 'selected' : ''}`} href="/command-center/channel-history" data-testid="link-owner-channel-history"><History size={14}/>Channel history</Link></>}<Link className="account-link" href="/account/password"><KeyRound size={14}/>Change password</Link><button className="signout" onClick={signOut} disabled={logout.isPending} data-testid="button-sign-out"><LogOut size={13} style={{ verticalAlign: 'middle', marginRight: 6 }} />{logout.isPending ? 'Signing out…' : 'Sign out'}</button></div></aside>
      <div className="main-column"><div className="mobile-top"><Brand/><div className="mobile-actions">{session.role === 'owner' && <><Link href="/bot-control" aria-label="Bot control center" data-testid="mobile-quick-bot-control"><Bot size={17}/></Link><Link href="/command-center" aria-label="Owner command center"><Gauge size={17}/></Link><Link href="/command-center/education-videos" aria-label="Education videos" data-testid="mobile-link-owner-education-videos"><FileText size={17}/></Link><Link href="/command-center/channel-history" aria-label="Channel history" data-testid="mobile-link-owner-channel-history"><History size={17}/></Link><Link href="/trades" aria-label="Trade management" data-testid="mobile-link-owner-trades"><Activity size={17}/></Link></>}<Link href="/account/password" aria-label="Change password"><KeyRound size={17}/></Link><button onClick={signOut} aria-label="Sign out"><LogOut size={17}/></button></div></div><nav className="mobile-nav" aria-label="Portal navigation">{navItems.map((item) => <Link key={item.testId} href={item.href} onClick={() => item.scrollTarget && setScrollTarget(item.scrollTarget)} className={`mobile-nav-link ${(item.scrollTarget ? activeScrollTarget === item.scrollTarget : location === item.href) ? 'active' : ''}`} data-testid={`mobile-${item.testId}`}>{item.icon}<span>{item.label}</span></Link>)}</nav><header className="topbar"><div className="crumb">{location === '/bot-control' ? 'Owner tools / Bot control center' : location.startsWith('/command-center') ? 'Owner tools / Command center' : location === '/trades' ? 'Owner tools / Trade management' : 'Staff Support Portal'}</div><div className="top-right"><span className="secure-label"><span className="secure-dot"/ >Private workspace</span><span>{session.displayName}</span></div></header>{children}</div>
   </div>;
@@ -1371,6 +1373,7 @@ function ProtectedRouter({ session }: { session: PortalSession }) {
     <Route path="/command-center/member-access">{() => session.role === 'owner' ? <MemberAccessPage/> : <AccessDenied/>}</Route>
     <Route path="/command-center/pro-access">{() => session.role === 'owner' ? <ProAccessReview/> : <AccessDenied/>}</Route>
     <Route path="/command-center/education-videos">{() => session.role === 'owner' ? <EducationVideos/> : <AccessDenied/>}</Route>
+    <Route path="/command-center/mind-map">{() => session.role === 'owner' ? <OwnerMindMap/> : <AccessDenied/>}</Route>
     <Route path="/command-center/member-course-videos">{() => session.role === 'owner' ? <OwnerMemberCourseVideos/> : <AccessDenied/>}</Route>
     <Route path="/command-center/channel-history">{() => session.role === 'owner' ? <ChannelHistory/> : <AccessDenied/>}</Route>
     <Route path="/trades">{() => session.role === 'owner' ? <TradeManagement/> : <AccessDenied/>}</Route>
