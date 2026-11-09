@@ -1,32 +1,17 @@
 import { stdin, stdout } from "node:process";
+import { createInterface } from "node:readline/promises";
 import { StringDecoder } from "node:string_decoder";
 import { pool } from "@workspace/db";
 import { verifyPassword } from "../lib/portal-crypto";
 import { resolvePortalSupportSchema } from "../lib/portal-support-schema";
 
-function readLine(prompt: string): Promise<string> {
-  return new Promise((resolve) => {
-    stdout.write(prompt);
-    let value = "";
-    const onData = (chunk: Buffer): void => {
-      for (const character of chunk.toString("utf8")) {
-        if (character === "\r" || character === "\n") {
-          stdin.removeListener("data", onData);
-          stdin.pause();
-          stdout.write("\n");
-          resolve(value);
-          return;
-        }
-        if (character === "\u007f" || character === "\b") {
-          value = Array.from(value).slice(0, -1).join("");
-        } else if (!/[\u0000-\u001f\u007f]/u.test(character)) {
-          value += character;
-        }
-      }
-    };
-    stdin.resume();
-    stdin.on("data", onData);
-  });
+async function readLine(prompt: string): Promise<string> {
+  const terminal = createInterface({ input: stdin, output: stdout });
+  try {
+    return await terminal.question(prompt);
+  } finally {
+    terminal.close();
+  }
 }
 
 function readHidden(prompt: string): Promise<string> {
