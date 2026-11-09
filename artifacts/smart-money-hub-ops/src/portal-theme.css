@@ -352,6 +352,14 @@ h1 { font:700 clamp(28px,3vw,38px) Manrope,sans-serif;letter-spacing:-.045em;col
   transition: color .18s ease;
 }
 .login-screen .login-link-button:hover { color: var(--auth-bright); }
+.login-screen .login-recovery-hint {
+  max-width: 300px;
+  margin: 7px auto 0;
+  color: var(--auth-dim);
+  font-size: 10px;
+  line-height: 1.55;
+  text-align: center;
+}
 .login-screen .notice { border-radius: 2px; font-size: 11px; }
 .login-screen .notice-error { border-color: rgba(213,143,132,.32); background: rgba(213,143,132,.08); color: #e8b2aa; }
 .login-screen .notice-info { border-color: rgba(98,225,207,.2); background: rgba(98,225,207,.06); color: #a7e8df; }

@@ -219,12 +219,12 @@ function passwordRecoveryErrorMessage(failure: unknown): string {
     console.warn('Clerk password recovery error code:', code);
   }
   if (code && /(strategy|password|reset).*(not_enabled|disabled)|(not_enabled|disabled).*(strategy|password|reset)/i.test(code)) {
-    return 'Email password recovery is not enabled in the Development sign-in settings. The administrator must enable it before a recovery code can be sent.';
+    return 'Member email recovery is not enabled in Development. This option cannot reset an Owner Portal password.';
   }
   if (code && /(too_many|rate_limit|request_throttled)/i.test(code)) {
     return 'Too many recovery requests. Wait a few minutes, then try again.';
   }
-  return 'Development sign-in could not start password recovery. Check the member account email and try again. If it continues, the Development recovery settings need to be checked.';
+  return 'Member password recovery could not be started. Confirm this is a registered member account. Owner Portal passwords use a separate Development reset and cannot be changed here.';
 }
 
 function Login() {
@@ -517,7 +517,8 @@ function Login() {
         <div className="form-field"><label className="form-label" htmlFor="login-identifier">Email or username</label><input id="login-identifier" className="field-input" type="text" autoComplete="username" required maxLength={254} value={identifier} onChange={(event) => setIdentifier(event.target.value)} data-testid="input-identifier" /></div>
         <div className="form-field"><label className="form-label" htmlFor="login-password">Password</label><div className="password-wrap"><input id="login-password" className="field-input" type={showPassword ? 'text' : 'password'} autoComplete="current-password" required maxLength={256} value={password} onChange={(event) => setPassword(event.target.value)} data-testid="input-password" /><button type="button" className="password-toggle" aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword(!showPassword)} data-testid="button-toggle-password">{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button></div></div>
         <button className="btn btn-primary" type="submit" disabled={busy || login.isPending} data-testid="button-sign-in">{busy ? 'Signing in…' : 'Sign in'} <ChevronRight size={15} /></button>
-        <button className="login-link-button" type="button" onClick={() => void startRecovery()} disabled={busy} data-testid="button-forgot-member-password">Forgot password?</button>
+        <button className="login-link-button" type="button" onClick={() => void startRecovery()} disabled={busy} data-testid="button-forgot-member-password">Forgot member password?</button>
+        <p className="login-recovery-hint">For member accounts only. This does not reset an Owner Portal password.</p>
       </form> : recoveryStep === 'code' ? <form onSubmit={verifyRecoveryCode}>
         <div className="form-field"><label className="form-label" htmlFor="member-reset-code">Email recovery code</label><input id="member-reset-code" className="field-input" inputMode="numeric" autoComplete="one-time-code" required maxLength={12} value={recoveryCode} onChange={(event) => setRecoveryCode(event.target.value)} /></div>
         <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? 'Checking code…' : 'Verify code'} <ChevronRight size={15} /></button>
