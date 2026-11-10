@@ -781,9 +781,8 @@ function SystemMap3D({
         const z = targetZ + (brainZ - targetZ) * anatomy;
         const rotatedX = x * cosYaw + z * sinYaw;
         const rotatedZ = -x * sinYaw + z * cosYaw;
-        const centeredY = y - 0.58;
-        const rotatedY = centeredY * cosPitch - rotatedZ * sinPitch;
-        const depth = centeredY * sinPitch + rotatedZ * cosPitch;
+        const rotatedY = y * cosPitch - rotatedZ * sinPitch;
+        const depth = y * sinPitch + rotatedZ * cosPitch;
         const perspective = 3.4 / (3.4 + depth);
         return {
           node,
@@ -807,9 +806,8 @@ function SystemMap3D({
       const projectCloudPoint = (point: { x: number; y: number; z: number }) => {
         const rotatedX = point.x * cosYaw + point.z * sinYaw;
         const rotatedZ = -point.x * sinYaw + point.z * cosYaw;
-        const centeredY = point.y - 0.58;
-        const rotatedY = centeredY * cosPitch - rotatedZ * sinPitch;
-        const depth = centeredY * sinPitch + rotatedZ * cosPitch;
+        const rotatedY = point.y * cosPitch - rotatedZ * sinPitch;
+        const depth = point.y * sinPitch + rotatedZ * cosPitch;
         const perspective = 3.4 / (3.4 + depth);
         return {
           x: centerX + rotatedX * scale * perspective,
@@ -875,7 +873,7 @@ function SystemMap3D({
         }
         const depthAlpha = Math.max(0.24, 0.92 - point.depth * 0.38);
         const foldLight = particle.shade === undefined ? 1 : Math.min(1.4, particle.shade * 2.4);
-        const hubScale = (particle.hub ? 1.7 : 1) * (particle.body ? 0.5 : 0.55);
+        const hubScale = (particle.hub ? 1.7 : 1) * (particle.body ? 0.55 : 0.6);
         const spriteSize = (2.4 + 4 * point.perspective) * pointScale * particle.size * hubScale;
         context.globalAlpha = Math.min(
           1,
