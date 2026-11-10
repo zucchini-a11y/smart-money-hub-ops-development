@@ -212,6 +212,31 @@ function clerkErrorCode(failure: unknown): string | undefined {
   return typeof first?.code === 'string' ? first.code : undefined;
 }
 
+function memberSignInErrorMessage(failure: unknown): string {
+  if (isConnectionFailure(failure)) {
+    return 'We could not connect to member sign-in. Check your connection and try again.';
+  }
+  const code = clerkErrorCode(failure);
+  if (import.meta.env.DEV && code) {
+    console.warn('Member sign-in failed with Clerk code:', code);
+  }
+  if (code && /(strategy|password|email).*(not_enabled|disabled)|(not_enabled|disabled).*(strategy|password|email)/i.test(code)) {
+    return 'Member email/password sign-in is disabled in this Development environment. The Clerk Development sign-in settings need to allow it.';
+  }
+  if (code && /(too_many|rate_limit|request_throttled)/i.test(code)) {
+    return 'Too many sign-in attempts. Wait a few minutes, then try again.';
+  }
+  return 'The email or password is incorrect, or this member account is not registered in Development. Use the account created for this Development environment.';
+}
+
+function memberApiErrorMessage(failure: unknown): string | undefined {
+  if (!failure || typeof failure !== 'object') return undefined;
+  const data = (failure as { data?: unknown }).data;
+  if (!data || typeof data !== 'object') return undefined;
+  const message = (data as { error?: unknown }).error;
+  return typeof message === 'string' ? message : undefined;
+}
+
 function passwordRecoveryErrorMessage(failure: unknown): string {
   if (isConnectionFailure(failure)) {
     return 'We could not connect to the recovery service. Please try again.';
@@ -271,7 +296,8 @@ function Login() {
   }, [staffSession.data, memberSession.data, navigate, returnTo]);
 
   const finishMemberSignIn = async () => {
-    await signIn.finalize();
+    const finalized = await signIn.finalize();
+    if (finalized.error) throw finalized.error;
     const member = await getMemberSession();
     if (!member.learningDashboard) {
       throw Object.assign(new Error('This account does not currently have a member learning dashboard entitlement.'), { status: 403 });
@@ -300,7 +326,20 @@ function Login() {
       await clerk.signOut().catch(() => undefined);
       const status = (failure as { status?: number })?.status;
       if (status === 403) {
+        const apiMessage = memberApiErrorMessage(failure);
+        if (apiMessage === 'Verify your email address before opening the member dashboard.') {
+          throw new Error('Sign-in succeeded, but this member account’s email is not verified yet. Complete email verification, then sign in again.');
+        }
+        if (apiMessage === 'Use the shared sign-in page with your staff account.') {
+          throw new Error('This email belongs to an Owner or staff account. Use the Owner / Staff sign-in option instead of Member sign-in.');
+        }
+        if (apiMessage === 'This account is not authorized to access the member dashboard.') {
+          throw new Error('This account is not allowed to use the member dashboard. Contact the administrator if you believe this is an error.');
+        }
         throw new Error('Sign-in succeeded, but this account is not currently eligible for the member dashboard. Verify the email used at registration, then contact the owner if access is still unavailable.');
+      }
+      if (status === 401) {
+        throw new Error('Clerk accepted the sign-in, but the member session was not established. Refresh the page and try again.');
       }
       throw new Error('Sign-in succeeded, but member access could not be checked. Please try again.');
     }
@@ -353,7 +392,7 @@ function Login() {
         if (staffSignInUnavailable) {
           throw new Error('Sign-in is temporarily unavailable. Please try again shortly.');
         }
-        throw new Error('The email or password is incorrect. Use the email connected to your account, or choose “Forgot password?”');
+        throw new Error(memberSignInErrorMessage(attempt.error));
       }
       if (signIn.status === 'needs_first_factor') {
         if (signIn.supportedFirstFactors.some((factor) => factor.strategy === 'email_code')) {

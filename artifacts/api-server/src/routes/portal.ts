@@ -119,6 +119,7 @@ import {
   safeProReviewCommand,
   safeProReviewEvent,
 } from "../lib/pro-member-review-policy";
+import { developmentProSignalsChannelId } from "../lib/pro-signals-entitlement";
 import {
   hashPassword,
   hashSessionToken,
@@ -2415,7 +2416,11 @@ router.get("/portal/pro-applications", async (req, res): Promise<void> => {
     not_yet_eligible: "r.status='not_yet_eligible'",
     all: "TRUE",
   };
-  const proSignalsChannelId = process.env.PRO_SIGNALS_CHANNEL_ID?.trim() ?? "";
+  const proSignalsChannelId = developmentProSignalsChannelId(
+    process.env.NODE_ENV,
+    supportSchema,
+    process.env.SMH_TEST_PRO_SIGNALS_CHANNEL_ID,
+  );
   const result = await pool.query(
     `SELECT r.id,r.user_id,r.username,r.status,r.registration_status,r.funding_status,r.source,
             r.evidence_file_id,r.evidence_kind,r.evidence_submitted_at,r.created,r.updated,
@@ -2439,7 +2444,11 @@ router.get("/portal/pro-applications/:requestId", async (req, res): Promise<void
     res.status(400).json({ error: "Check the application and try again." });
     return;
   }
-  const proSignalsChannelId = process.env.PRO_SIGNALS_CHANNEL_ID?.trim() ?? "";
+  const proSignalsChannelId = developmentProSignalsChannelId(
+    process.env.NODE_ENV,
+    supportSchema,
+    process.env.SMH_TEST_PRO_SIGNALS_CHANNEL_ID,
+  );
   const applicationResult = await pool.query(
     `SELECT r.id,r.user_id,r.username,r.status,r.registration_status,r.funding_status,r.source,
             r.evidence_file_id,r.evidence_kind,r.evidence_submitted_at,r.created,r.updated,
