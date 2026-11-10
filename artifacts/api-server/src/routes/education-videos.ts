@@ -23,7 +23,7 @@ const supportSchema = resolvePortalSupportSchema(
 // Persistent video storage has not been provisioned. Never fall back to local disk.
 const videoStorageAvailable = false;
 
-router.use("/portal", (_req, res, next) => {
+router.use("/portal/education-videos", (_req, res, next) => {
   res.setHeader("Cache-Control", "no-store");
   next();
 }, requirePortalSession, requirePasswordReady);

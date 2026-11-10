@@ -142,7 +142,7 @@ async function listVerifiedDevelopmentMembers(): Promise<string[]> {
 }
 
 router.use(
-  "/portal",
+  "/portal/member-announcements",
   noStore,
   requirePortalSession,
   requirePasswordReady,

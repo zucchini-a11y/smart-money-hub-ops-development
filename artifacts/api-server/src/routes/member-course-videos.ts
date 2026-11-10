@@ -151,7 +151,7 @@ async function streamProtectedFile(
 }
 
 router.use(
-  "/portal",
+  "/portal/member-course-videos",
   (_req, res, next) => {
     privateResponse(res);
     next();
