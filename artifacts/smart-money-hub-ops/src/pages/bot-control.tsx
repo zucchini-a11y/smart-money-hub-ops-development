@@ -118,7 +118,7 @@ export function BotConnections() {
             {destination && (connection.id !== 'test' || connection.identityStatus === 'verified') && <a className="btn btn-quiet bot-telegram-action" href={destination} target="_blank" rel="noreferrer" aria-label={`Open ${connection.label} in Telegram`}>Open {connection.id === 'pro_signals' ? 'PRO bot' : connection.id === 'coach' ? 'Coach bot' : 'test bot'} <ArrowUpRight size={14}/></a>}
           </div>
           {connection.id === 'test' && <Link className="btn btn-outline bot-connection-tool" href="/command-center">Open test command center <ArrowRight size={14}/></Link>}
-          {connection.id === 'coach' && <Link className="btn btn-outline bot-connection-tool" href="/operations">Open service health <ArrowRight size={14}/></Link>}
+          {connection.id === 'coach' && <Link className="btn btn-outline bot-connection-tool" href="/command-center">Open system health <ArrowRight size={14}/></Link>}
           {connection.id === 'pro_signals' && <div className="bot-connection-tools"><Link className="btn btn-outline" href="/signals">Signals &amp; zones <ArrowRight size={14}/></Link><Link className="btn btn-outline" href="/command-center/pro-access">PRO access review <ArrowRight size={14}/></Link></div>}
         </article>;
       })}</div>

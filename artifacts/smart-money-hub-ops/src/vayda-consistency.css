@@ -524,36 +524,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .signals-page .signals-confirm-area, .signals-page .signals-action-footer,
 .signals-page .signals-footnote { color:#c4ccc2; background:rgba(255,255,255,.025); border-color:var(--sig-border); }
 
-/* Operations Center stays distinct in information architecture, not in brand color. */
-.shell {
-  color: var(--smh-text);
-  background: radial-gradient(ellipse at 65% -10%, rgba(98,225,207,.075), transparent 42%), #0c1112;
-  font-family: var(--app-font-sans);
-}
-.shell .panel { background:linear-gradient(145deg,rgba(255,255,255,.025),transparent 50%),#141c1b; border-color:var(--smh-line); }
-.shell aside { background:#0a1011!important; border-color:var(--smh-line)!important; }
-.shell header { border-color:var(--smh-line)!important; }
-.shell .grid-bg { background-image:linear-gradient(rgba(215,189,123,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(215,189,123,.035) 1px,transparent 1px); }
-.shell [class*="text-slate-"] { color:#a5aaa1; }
-.shell [class*="text-emerald-"], .shell [class*="text-cyan-"] { color:var(--smh-teal); }
-.shell [class*="text-amber-"] { color:var(--smh-gold); }
-.shell [class*="text-slate-100"], .shell [class*="text-slate-200"], .shell [class*="text-slate-300"] { color:var(--smh-text); }
-.shell [class*="border-white/"] { border-color:var(--smh-line); }
-.shell [class*="bg-white/"] { background-color:rgba(255,255,255,.025); }
-.shell .display, .shell h1, .shell h2, .shell h3 { color:var(--smh-text); }
-.shell .workspace-card { background:rgba(255,255,255,.02); border-color:var(--smh-line); }
-.shell .workspace-card:hover, .shell .workspace-card-selected { background:rgba(98,225,207,.06); border-color:rgba(98,225,207,.25); }
-.shell .map-control:hover { color:var(--smh-teal); border-color:rgba(98,225,207,.35); }
-.shell .network-panel { background:linear-gradient(145deg,#151e1c,#101716); }
-.shell .network-map-stage { background:radial-gradient(ellipse at 50% 48%,rgba(98,225,207,.075),transparent 58%),#0f1716; }
-.shell .network-node { background:linear-gradient(145deg,#192220,#111918); border-color:var(--smh-line); }
-.shell .network-node-copy strong { color:var(--smh-text); }
-.shell .network-node-icon, .shell .network-node-dashboard .network-node-icon { color:var(--smh-teal); background:rgba(98,225,207,.075); border-color:rgba(98,225,207,.2); }
-.shell .network-node-icon-bot { color:var(--smh-gold); background:rgba(215,189,123,.08); border-color:rgba(215,189,123,.2); }
-.shell .network-signal { background:rgba(255,255,255,.025); border-color:var(--smh-line); }
-.shell .network-scope-tag { color:var(--smh-teal); border-color:rgba(98,225,207,.2); background:rgba(98,225,207,.05); }
-.shell footer { color:#78817b!important; }
-
 @media (max-width: 720px) {
   .portal-shell .page { padding-inline: 14px; }
   .portal-shell .section-head { padding: 16px; }

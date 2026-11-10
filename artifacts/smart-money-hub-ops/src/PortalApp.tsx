@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type ReactNode, type FormEvent, type ChangeEvent } from 'react';
-import OperationsApp from './App';
 import PublicSite from './public-site/PublicSite';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { ErrorBoundary } from '@/components/error-boundary';
@@ -24,6 +23,8 @@ import {
   getListStaffActivityReportsQueryKey, getGetStaffPerformanceQueryKey, getListStaffTeamsQueryKey,
   getGetPortalCommandCenterQueryKey,
   useGetPortalCommandCenter,
+   getHealthCheckQueryKey,
+   useHealthCheck,
 } from '@workspace/api-client-react';
 import type { MemberSession, PortalSession, PortalStaff, StaffPerformanceRow, StaffTask, StaffTeam } from '@workspace/api-client-react';
 import {
@@ -763,7 +764,6 @@ function AppShell({ session, children }: { session: PortalSession; children: Rea
       ...(import.meta.env.DEV ? [{ href: '/staff/announcements', label: 'Member announcements', icon: <Bell />, testId: 'link-member-announcements' }] : []),
       ...(session.role === 'owner' ? [
          { href: '/bot-control', label: 'Bot Control', icon: <Bot />, testId: 'link-owner-bot-control' },
-         { href: '/operations', label: 'Operations Center', icon: <Gauge />, testId: 'link-owner-operations' },
          { href: '/command-center/mind-map', label: 'Mind map', icon: <BrainCircuit />, testId: 'link-owner-mind-map' },
          { href: '/command-center/member-access', label: 'Member access', icon: <Users />, testId: 'link-owner-member-access' },
          { href: '/command-center/member-course-videos', label: 'Member video lessons', icon: <Clapperboard />, testId: 'link-owner-member-course-videos' },
@@ -848,13 +848,22 @@ function commandLabel(value: string | boolean | null | undefined) {
 }
 function CommandCenter({ session }: { session: PortalSession }) {
   const query = useGetPortalCommandCenter({ query: { queryKey: getGetPortalCommandCenterQueryKey(), staleTime: 15_000, refetchOnMount: 'always', refetchInterval: 30_000 } });
+  const apiHealth = useHealthCheck({
+    query: { queryKey: getHealthCheckQueryKey(), refetchInterval: 15_000, refetchIntervalInBackground: false },
+  });
   if (session.role !== 'owner') return <AccessDenied/>;
   const data = query.data;
   const testBot = data?.bots.find((bot) => bot.id === 'isolated_test');
+  const apiHealthStatus = apiHealth.isLoading
+    ? 'Checking'
+    : apiHealth.isError
+      ? 'Unavailable'
+      : apiHealth.data?.status ?? 'Unknown';
   const refreshed = data?.refreshedAt ? new Date(data.refreshedAt) : null;
   const stale = query.isStale || Boolean(refreshed && Date.now() - refreshed.getTime() > 5 * 60_000);
   const timestamp = (value?: string | null) => prettyDate(value);
   const overviewItems = data ? [
+    { label: 'API health endpoint', value: apiHealthStatus, icon: <Database size={17}/>, tone: apiHealth.isError ? 'rose' : 'cyan', detail: 'GET /api/healthz · checks every 15 seconds' },
     { label: 'Open support cases', value: data.overview.openSupportCases, icon: <MessageSquareText size={17}/>, tone: 'green' },
     { label: 'Uncertain replies', value: data.overview.uncertainSupportCases, icon: <CircleHelp size={17}/>, tone: 'amber' },
     { label: 'Overdue tasks', value: data.overview.overdueTasks, icon: <CircleAlert size={17}/>, tone: 'rose' },
@@ -879,7 +888,7 @@ function CommandCenter({ session }: { session: PortalSession }) {
     <div className="command-heading"><div><div className="eyebrow">OPERATIONAL VISIBILITY</div><h1>Command center</h1><p className="subheading">A careful read of stored test records — not a live bot monitor.</p></div><div className="command-heading-actions"><Link className="btn btn-primary btn-large" href="/command-center/pro-access"><ShieldCheck size={15}/>PRO access review</Link><Link className="btn btn-outline btn-large" href="/command-center/education-videos" data-testid="link-education-videos"><FileText size={15}/>Education videos</Link>{data && <div className={`freshness ${stale ? 'is-stale' : 'is-fresh'}`}><span className="freshness-dot"/><div><strong>{stale ? 'Snapshot may be stale' : 'Snapshot recently checked'}</strong><span>Refreshed {timestamp(data.refreshedAt)}</span></div><button className="btn btn-outline" aria-label="Refresh command center data" onClick={() => query.refetch()} disabled={query.isFetching}><RefreshCw size={14} className={query.isFetching ? 'refreshing' : ''}/><span>{query.isFetching ? 'Refreshing' : 'Refresh'}</span></button></div>}</div></div>
     {data && <section className="command-scope" aria-label="Data scope"><div className="scope-icon"><Database size={18}/></div><div><strong>{data.scope === 'development_isolated_test' ? 'Isolated Development data' : commandLabel(data.scope)}</strong><p>This view reads stored Development test data only. Production data is not connected.</p></div><span className="readonly-tag">{data.readOnly ? 'READ ONLY' : 'READ ONLY VIEW'}</span></section>}
     {query.isLoading ? <section className="command-loading" aria-label="Loading command center" data-testid="command-loading"><div className="command-loading-head"><div className="skeleton"/><div className="skeleton"/></div><div className="command-loading-grid">{[0,1,2,3,4,5].map(i=><div className="command-skeleton-card" key={i}><div className="skeleton"/><div className="skeleton"/></div>)}</div><div className="skeleton" style={{height:140,marginTop:18}}/></section> : query.isError ? <section className="section-panel command-feedback"><ErrorState error={query.error} retry={() => query.refetch()}/></section> : data ? <>
-      <section className="command-metrics" aria-label="Stored data overview">{overviewItems.map(item=><article className={`command-metric metric-${item.tone}`} key={item.label}><div className="command-metric-top"><span>{item.label}</span><span className="command-metric-icon">{item.icon}</span></div><strong>{item.value}</strong><small>stored records</small></article>)}</section>
+       <section className="command-metrics" aria-label="Stored data overview">{overviewItems.map(item=><article className={`command-metric metric-${item.tone}`} key={item.label}><div className="command-metric-top"><span>{item.label}</span><span className="command-metric-icon">{item.icon}</span></div><strong>{item.value}</strong><small>{'detail' in item ? item.detail : 'stored records'}</small></article>)}</section>
       <section className="command-panel live-panel"><div className="command-panel-head"><div><div className="eyebrow">PRIVATE TEST BOT</div><h2>Development heartbeat</h2></div><span className={`unknown-chip ${testBot?.processStatus === 'running' ? 'chip-live' : ''}`}>{testBot?.processStatus === 'running' ? 'Heartbeat received' : 'No heartbeat in this workspace'}</span></div><p className="live-intro">{testBot?.note ?? 'No recent process health report has been received in the isolated Development environment.'} Status refreshes automatically every 30 seconds. This does not monitor the VPS.</p><div className="unknown-grid">{liveRows.map(({ label, value })=>{const state=value.toLowerCase().replace(/[^a-z0-9]+/g,'-');return <div className={`unknown-row state-${state}`} key={label}><span className="unknown-indicator">{value === 'running' || value === 'healthy' || value === 'enabled' ? '✓' : value === 'unknown' || value === 'not_connected' ? '—' : '!'}</span><span>{label}</span><strong>{commandLabel(value)}</strong></div>})}<div className="unknown-row"><span className="unknown-indicator">◷</span><span>Last health check</span><strong>{timestamp(testBot?.healthCheckedAt)}</strong></div></div><p className="monitoring-caveat">Publishing is a configuration setting, not proof of delivery. The bot checks below test Telegram credentials only; they never send or publish a message.</p></section>
       <BotConnections/>
       <section className="command-panel" aria-label="Monitoring alerts" data-testid="command-alerts"><div className="command-panel-head"><div><div className="eyebrow">READ-ONLY MONITORING</div><h2>Alerts needing attention</h2><p>Stale bot heartbeats and recorded signal/analysis operation states, grouped to avoid repeats.</p></div><span className={`count-tag ${data.alerts.length ? 'alert-count' : ''}`}>{data.alerts.length ? `${data.alerts.length} alert${data.alerts.length === 1 ? '' : 's'}` : 'No active alerts'}</span></div>{data.alerts.length ? <div className="monitor-alert-list">{data.alerts.map((alert,index)=><article className={`monitor-alert severity-${alert.severity}`} key={`${alert.category}-${alert.destination}-${index}`}><span className="monitor-alert-icon"><CircleAlert size={16}/></span><div className="monitor-alert-copy"><strong>{alert.title}</strong><span>{commandLabel(alert.sourceBot)} · {alert.destination}{alert.count > 1 ? ` · ${alert.count} recorded operations` : ''}</span></div><time>{timestamp(alert.latestAt)}</time></article>)}</div> : <div className="command-empty">No supported monitoring alerts are active. This does not confirm current channel access.</div>}</section>
@@ -1350,19 +1359,22 @@ function AccessDenied({ returnPath = '/staff/support' }: { returnPath?: string }
 
 function ProtectedRouter({ session }: { session: PortalSession }) {
   const [location, navigate] = useLocation();
+  const isLegacyOperations = location === '/operations' || location.startsWith('/operations/');
+  const legacyDestination = session.mustChangePassword
+    ? '/account/password'
+    : session.role === 'owner'
+      ? '/command-center'
+      : session.dashboardPath;
   const shouldReturnToDashboard = !session.mustChangePassword
     && (location === '/' || location === '/support' || location === '/login' || location === '/staff/login');
   useEffect(() => {
     if (session.mustChangePassword && location !== '/account/password') navigate('/account/password');
     else if (shouldReturnToDashboard) navigate(session.dashboardPath);
   }, [session.mustChangePassword, shouldReturnToDashboard, session.dashboardPath, location, navigate]);
-  if ((session.mustChangePassword && location !== '/account/password') || shouldReturnToDashboard) return <div className="page"><div className="skeleton" style={{width:220,height:24}}/></div>;
-  if (location === '/operations' || location.startsWith('/operations/')) {
-    const routeBase = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/operations`;
-    return session.role === 'owner'
-      ? <OperationsApp routeBase={routeBase} />
-      : <AccessDenied returnPath={session.dashboardPath}/>;
-  }
+  useEffect(() => {
+    if (isLegacyOperations) navigate(legacyDestination, { replace: true });
+  }, [isLegacyOperations, legacyDestination, navigate]);
+  if ((session.mustChangePassword && location !== '/account/password') || shouldReturnToDashboard || isLegacyOperations) return <main className="page"><div className="skeleton" style={{width:220,height:24}}/><p className="muted-small" style={{marginTop:12}}>Opening your portal…</p><Link className="btn btn-outline" href={legacyDestination} style={{marginTop:10}}>Continue to portal dashboard <ChevronRight size={14}/></Link></main>;
   if (!session.mustChangePassword && location === '/account/password') {
     // Password page remains reachable for voluntary changes.
   }
