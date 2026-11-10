@@ -64,12 +64,16 @@
 .omh-clear-search { display: grid; flex: none; width: 25px; height: 25px; place-items: center; border: 0; background: transparent; color: #9bb0a8; }
 .omh-count { color: #9fe0ca; font-size: 10px; white-space: nowrap; }
 .omh-count span { margin-left: 5px; color: #62736d; font-size: 7px; letter-spacing: .12em; }
-.omh-map-stage { position: relative; height: 430px; overflow: hidden; border: 1px solid var(--omh-line); background: radial-gradient(ellipse at 50% 49%, rgba(29,91,76,.14), transparent 56%), linear-gradient(145deg, rgba(13,22,22,.87), rgba(8,14,15,.91)); }
-.omh-stage-grid { position: absolute; z-index: 0; inset: 0; opacity: .5; background-image: linear-gradient(rgba(156,188,179,.028) 1px, transparent 1px), linear-gradient(90deg, rgba(156,188,179,.028) 1px, transparent 1px); background-size: 30px 30px; mask-image: radial-gradient(ellipse, #000 10%, transparent 83%); pointer-events: none; }
+.omh-map-stage { position: relative; height: 430px; overflow: hidden; border: 1px solid var(--omh-line); background: radial-gradient(ellipse at 50% 48%, rgba(27,95,75,.15), rgba(6,14,12,.12) 48%, transparent 78%), linear-gradient(145deg, #050908, #030605); }
+.omh-stage-grid { position: absolute; z-index: 0; inset: 0; opacity: .22; background-image: linear-gradient(rgba(156,188,179,.028) 1px, transparent 1px), linear-gradient(90deg, rgba(156,188,179,.028) 1px, transparent 1px); background-size: 30px 30px; mask-image: radial-gradient(ellipse, #000 10%, transparent 83%); pointer-events: none; }
 .omh-system-canvas { position: absolute; z-index: 1; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: grab; }
 .omh-system-canvas:active { cursor: grabbing; }
 .omh-3d-caption { position: absolute; z-index: 2; top: 14px; right: 14px; left: 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px; color: #8fa79d; font: 8px 'DM Mono', monospace; letter-spacing: .11em; pointer-events: none; }
 .omh-3d-caption span:last-child { color: #62776e; font-size: 7px; text-align: right; }
+.omh-3d-controls { position: absolute; z-index: 3; top: 34px; right: 12px; display: flex; gap: 5px; }
+.omh-3d-controls button { display: inline-flex; min-height: 25px; align-items: center; justify-content: center; gap: 5px; border: 1px solid rgba(131,230,201,.16); border-radius: 2px; padding: 4px 7px; background: rgba(5,12,11,.78); color: #90a99e; font: 7px 'DM Mono', monospace; letter-spacing: .1em; }
+.omh-3d-controls button:hover,.omh-3d-controls button[aria-pressed="true"] { border-color: rgba(131,230,201,.42); color: #c9f4e5; }
+.omh-3d-controls button:focus-visible { outline: 2px solid #a0f1d9; outline-offset: 2px; }
 .omh-node-grid { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 18px 9%; padding: 17px 5% 0; }
 .omh-branch { display: flex; min-width: 0; flex-direction: column; gap: 11px; }
 .omh-branch:nth-child(2),.omh-branch:nth-child(4) { justify-self: end; width: 100%; }
@@ -167,6 +171,8 @@
   .omh-map-stage { height: 330px; }
   .omh-3d-caption { top: 11px; right: 10px; left: 10px; font-size: 7px; }
   .omh-3d-caption span:last-child { max-width: 185px; font-size: 6px; }
+  .omh-3d-controls { top: 30px; right: 9px; }
+  .omh-3d-controls button { min-height: 24px; padding: 4px 6px; font-size: 6px; }
   .omh-node-grid { display: flex; flex-direction: column; gap: 18px; padding: 15px 0 0; }
   .omh-branch { gap: 8px; }
   .omh-branch:nth-child(2),.omh-branch:nth-child(4) { width: 100%; }

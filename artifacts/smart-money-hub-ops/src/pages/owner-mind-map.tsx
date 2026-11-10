@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import {
   ArrowDown, ArrowUpRight, Bot, BookOpen, Boxes, ChevronRight, CircleHelp,
-  Command, Database, Globe2, Layers3, Network, Search, ShieldCheck, Sparkles,
-  X,
+  Command, Database, Globe2, Layers3, Network, Pause, Play, RotateCcw, Search,
+  ShieldCheck, Sparkles, X,
 } from 'lucide-react';
 import './owner-mind-map.css';
 
@@ -67,12 +67,12 @@ const nodes: MapNode[] = [
 const groupById = new Map(groups.map((group) => [group.id, group]));
 
 const nodePositions: Record<string, [number, number, number]> = {
-  'owner-portal': [0, 0, 0],
-  'member-learning': [0.92, 0.08, 0.28],
-  signals: [-0.92, 0.06, 0.28],
-  coach: [0.12, 0.86, -0.43],
-  knowledge: [-0.62, -0.72, -0.28],
-  'shared-platform': [0.66, -0.7, -0.28],
+  'owner-portal': [0, 0.12, 0.48],
+  'member-learning': [0.48, 0.28, 0.16],
+  signals: [-0.48, 0.28, 0.16],
+  coach: [0.02, 0.58, -0.08],
+  knowledge: [-0.32, -0.16, -0.3],
+  'shared-platform': [0.32, -0.16, -0.3],
 };
 
 const nodeColors: Record<GroupId, string> = {
@@ -80,6 +80,15 @@ const nodeColors: Record<GroupId, string> = {
   bots: '#e4bd79',
   intelligence: '#d69aa8',
   foundation: '#8dbed0',
+};
+
+const nodeLabelOffsets: Record<string, { x: number; y: number; align: CanvasTextAlign }> = {
+  'owner-portal': { x: 0, y: 17, align: 'center' },
+  'member-learning': { x: 10, y: -5, align: 'left' },
+  signals: { x: -10, y: -5, align: 'right' },
+  coach: { x: 0, y: -14, align: 'center' },
+  knowledge: { x: -10, y: 14, align: 'right' },
+  'shared-platform': { x: 10, y: 14, align: 'left' },
 };
 
 function SystemMap3D({
@@ -91,9 +100,12 @@ function SystemMap3D({
   visibleIds: Set<string>;
   onSelect: (id: string) => void;
 }) {
+  const [autoRotate, setAutoRotate] = useState(true);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const currentRef = useRef({ selectedId, visibleIds, onSelect });
-  currentRef.current = { selectedId, visibleIds, onSelect };
+  const currentRef = useRef({ selectedId, visibleIds, onSelect, autoRotate });
+  const resetViewRef = useRef<() => void>(() => {});
+  const redrawRef = useRef<() => void>(() => {});
+  currentRef.current = { selectedId, visibleIds, onSelect, autoRotate };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -116,6 +128,83 @@ function SystemMap3D({
     let pointerStartX = 0;
     let pointerStartY = 0;
     let projectedNodes: { id: string; x: number; y: number; depth: number }[] = [];
+    let pinchDistance = 0;
+    const pointers = new Map<number, { x: number; y: number }>();
+
+    type CloudPoint = { x: number; y: number; z: number; nodeId: string; size: number; phase: number; opacity: number };
+    let seed = 934761;
+    const random = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+    const nearestNodeId = (point: { x: number; y: number; z: number }) => nodes.reduce((nearest, node) => {
+      const [x, y, z] = nodePositions[node.id];
+      const distance = (point.x - x) ** 2 + (point.y - y) ** 2 * 1.2 + (point.z - z) ** 2;
+      return distance < nearest.distance ? { id: node.id, distance } : nearest;
+    }, { id: nodes[0].id, distance: Number.POSITIVE_INFINITY }).id;
+    const cloudPoints: CloudPoint[] = [];
+    for (let index = 0; index < 1_650; index += 1) {
+      const vertical = random() * 2 - 1;
+      const angle = random() * Math.PI * 2;
+      const ring = Math.sqrt(1 - vertical * vertical);
+      const rawX = Math.cos(angle) * ring;
+      const rawZ = Math.sin(angle) * ring;
+      const radial = index < 1_100 ? 0.76 + random() * 0.25 : 0.24 + random() * 0.72;
+      const fold = 1 + 0.045 * Math.sin(angle * 5 + vertical * 7) + 0.028 * Math.cos(angle * 9 - vertical * 4);
+      const taper = 0.86 + 0.14 * Math.max(0, vertical + 0.2);
+      const point = {
+        x: Math.sign(rawX || 1) * (0.035 + Math.abs(rawX) * 0.66) * radial * fold * taper,
+        y: 0.12 + vertical * 0.72 * radial * fold,
+        z: rawZ * 0.49 * radial * fold,
+      };
+      cloudPoints.push({
+        ...point,
+        nodeId: nearestNodeId(point),
+        size: 0.55 + random() * 1.45,
+        phase: random() * Math.PI * 2,
+        opacity: 0.28 + random() * 0.6,
+      });
+    }
+    for (let index = 0; index < 240; index += 1) {
+      const progress = random();
+      const radius = 0.13 * (1 - progress) + 0.018;
+      cloudPoints.push({
+        x: (random() - 0.5) * radius + 0.018 * Math.sin(progress * 8),
+        y: -0.5 - progress * 0.68,
+        z: (random() - 0.5) * radius * 0.78,
+        nodeId: 'shared-platform',
+        size: 0.55 + random() * 1.25,
+        phase: random() * Math.PI * 2,
+        opacity: 0.24 + random() * 0.55,
+      });
+    }
+    const pointsByNode = new Map<string, CloudPoint[]>();
+    nodes.forEach(({ id }) => pointsByNode.set(id, cloudPoints.filter((point) => point.nodeId === id)));
+    const neuralStrands: { nodeId: string; points: { x: number; y: number; z: number }[] }[] = [];
+    nodes.forEach(({ id }) => {
+      const cloud = pointsByNode.get(id) ?? [];
+      for (let strandIndex = 0; strandIndex < 28 && cloud.length > 1; strandIndex += 1) {
+        const start = cloud[Math.floor(random() * cloud.length)];
+        let end = cloud[Math.floor(random() * cloud.length)];
+        for (let attempt = 0; attempt < 8 && end === start; attempt += 1) end = cloud[Math.floor(random() * cloud.length)];
+        const bend = { x: (random() - 0.5) * 0.2, y: (random() - 0.5) * 0.24, z: (random() - 0.5) * 0.2 };
+        const points = Array.from({ length: 9 }, (_, pointIndex) => {
+          const t = pointIndex / 8;
+          const inverse = 1 - t;
+          return {
+            x: inverse * inverse * start.x + 2 * inverse * t * ((start.x + end.x) / 2 + bend.x) + t * t * end.x,
+            y: inverse * inverse * start.y + 2 * inverse * t * ((start.y + end.y) / 2 + bend.y) + t * t * end.y,
+            z: inverse * inverse * start.z + 2 * inverse * t * ((start.z + end.z) / 2 + bend.z) + t * t * end.z,
+          };
+        });
+        neuralStrands.push({ nodeId: id, points });
+      }
+    });
+    const nodeColorsById = new Map(nodes.map((node) => [node.id, nodeColors[node.group]]));
+    const toRgba = (hex: string, alpha: number) => {
+      const value = Number.parseInt(hex.slice(1), 16);
+      return `rgba(${(value >> 16) & 255},${(value >> 8) & 255},${value & 255},${alpha})`;
+    };
 
     const resize = () => {
       window.cancelAnimationFrame(frame);
@@ -134,8 +223,8 @@ function SystemMap3D({
       if (!width || !height) return;
 
       const centerX = width / 2;
-      const centerY = height / 2 - 8;
-      const scale = Math.min(width * 0.34, height * 0.37) * zoom;
+      const centerY = height * 0.51;
+      const scale = Math.min(width * 0.47, height * 0.39) * zoom;
       const cosYaw = Math.cos(yaw);
       const sinYaw = Math.sin(yaw);
       const cosPitch = Math.cos(pitch);
@@ -157,19 +246,54 @@ function SystemMap3D({
       });
       projectedNodes = projected.map(({ node, x, y, depth }) => ({ id: node.id, x, y, depth }));
 
-      // Subtle projected orbital rings give the map depth without implying live telemetry.
-      context.save();
-      context.translate(centerX, centerY);
-      context.strokeStyle = 'rgba(131,230,201,.075)';
-      context.lineWidth = 1;
-      context.beginPath();
-      context.ellipse(0, 0, scale * 0.97, scale * 0.31, -0.12, 0, Math.PI * 2);
-      context.stroke();
-      context.strokeStyle = 'rgba(141,190,208,.055)';
-      context.beginPath();
-      context.ellipse(0, 0, scale * 0.68, scale * 0.96, 0.2, 0, Math.PI * 2);
-      context.stroke();
-      context.restore();
+      const projectCloudPoint = (point: { x: number; y: number; z: number }) => {
+        const rotatedX = point.x * cosYaw + point.z * sinYaw;
+        const rotatedZ = -point.x * sinYaw + point.z * cosYaw;
+        const rotatedY = point.y * cosPitch - rotatedZ * sinPitch;
+        const depth = point.y * sinPitch + rotatedZ * cosPitch;
+        const perspective = 3.7 / (3.7 + depth);
+        return {
+          x: centerX + rotatedX * scale * perspective,
+          y: centerY - rotatedY * scale * perspective,
+          depth,
+          perspective,
+        };
+      };
+
+      const backdrop = context.createRadialGradient(centerX, centerY - scale * 0.08, scale * 0.04, centerX, centerY, scale * 1.2);
+      backdrop.addColorStop(0, 'rgba(42,116,94,.11)');
+      backdrop.addColorStop(0.55, 'rgba(14,44,38,.06)');
+      backdrop.addColorStop(1, 'rgba(3,8,8,0)');
+      context.fillStyle = backdrop;
+      context.fillRect(0, 0, width, height);
+
+      context.globalCompositeOperation = 'lighter';
+      neuralStrands.forEach(({ nodeId, points }, strandIndex) => {
+        const color = nodeColorsById.get(nodeId) ?? '#83e6c9';
+        const active = currentRef.current.visibleIds.has(nodeId);
+        context.beginPath();
+        points.forEach((point, index) => {
+          const projectedPoint = projectCloudPoint(point);
+          if (index === 0) context.moveTo(projectedPoint.x, projectedPoint.y);
+          else context.lineTo(projectedPoint.x, projectedPoint.y);
+        });
+        context.strokeStyle = toRgba(color, active ? 0.13 + 0.035 * Math.sin(tick * 0.025 + strandIndex) : 0.012);
+        context.lineWidth = 0.55;
+        context.stroke();
+      });
+
+      cloudPoints.forEach((particle) => {
+        const point = projectCloudPoint(particle);
+        const active = currentRef.current.visibleIds.has(particle.nodeId);
+        const color = nodeColorsById.get(particle.nodeId) ?? '#83e6c9';
+        const pulse = reducedMotion.matches ? 1 : 0.78 + Math.sin(tick * 0.025 + particle.phase) * 0.22;
+        const depthAlpha = Math.max(0.24, 0.92 - point.depth * 0.38);
+        context.fillStyle = toRgba(color, particle.opacity * depthAlpha * pulse * (active ? 1 : 0.07));
+        context.beginPath();
+        context.arc(point.x, point.y, particle.size * Math.max(0.66, point.perspective), 0, Math.PI * 2);
+        context.fill();
+      });
+      context.globalCompositeOperation = 'source-over';
 
       const connectionSet = new Set<string>();
       nodes.forEach((node) => {
@@ -191,17 +315,18 @@ function SystemMap3D({
         const shown = currentRef.current.visibleIds.has(fromId) && currentRef.current.visibleIds.has(toId);
         const nearer = Math.max(0, 1 - Math.max(from.depth, to.depth) / 3);
         context.strokeStyle = `rgba(131,230,201,${(shown ? 0.22 : 0.045) * (0.45 + nearer * 0.55)})`;
-        context.setLineDash([3, 6]);
         context.beginPath();
         context.moveTo(from.x, from.y);
-        context.lineTo(to.x, to.y);
+        const controlX = (from.x + to.x) / 2;
+        const controlY = (from.y + to.y) / 2 - scale * 0.1;
+        context.quadraticCurveTo(controlX, controlY, to.x, to.y);
         context.stroke();
-        context.setLineDash([]);
 
         if (shown && !reducedMotion.matches) {
           const pulse = (tick * 0.007 + index * 0.19) % 1;
-          const px = from.x + (to.x - from.x) * pulse;
-          const py = from.y + (to.y - from.y) * pulse;
+          const inverse = 1 - pulse;
+          const px = inverse * inverse * from.x + 2 * inverse * pulse * controlX + pulse * pulse * to.x;
+          const py = inverse * inverse * from.y + 2 * inverse * pulse * controlY + pulse * pulse * to.y;
           context.fillStyle = 'rgba(161,255,240,.82)';
           context.shadowColor = '#83e6c9';
           context.shadowBlur = 9;
@@ -219,7 +344,7 @@ function SystemMap3D({
           const active = currentRef.current.visibleIds.has(node.id);
           const selected = currentRef.current.selectedId === node.id;
           const color = nodeColors[node.group];
-          const radius = (node.id === 'owner-portal' ? 12 : 8) * Math.max(0.72, perspective);
+          const radius = (selected ? 7 : 5.2) * Math.max(0.72, perspective);
           const alpha = active ? Math.max(0.48, 0.92 - depth * 0.14) : 0.15;
 
           context.globalAlpha = alpha;
@@ -248,30 +373,57 @@ function SystemMap3D({
           }
 
           context.globalAlpha = active ? 0.96 : 0.34;
-          context.textAlign = 'center';
-          context.textBaseline = 'top';
+          const labelOffset = nodeLabelOffsets[node.id];
+          context.textAlign = labelOffset.align;
+          context.textBaseline = 'middle';
           context.fillStyle = '#e4efea';
-          context.font = `600 ${Math.max(10, Math.min(13, width / 66))}px system-ui, sans-serif`;
-          context.fillText(node.title, x, y + radius + 9);
+          context.font = `600 ${Math.max(8, Math.min(10, width / 54))}px system-ui, sans-serif`;
+          context.fillText(node.title, x + labelOffset.x, y + labelOffset.y);
           context.globalAlpha = 1;
         });
 
       context.globalAlpha = 1;
       if (!reducedMotion.matches) {
-        yaw += 0.0016;
+        if (currentRef.current.autoRotate && !pointerDown) yaw += 0.00075;
         tick += 1;
         frame = window.requestAnimationFrame(draw);
       }
     };
 
+    resetViewRef.current = () => {
+      yaw = -0.28;
+      pitch = 0.12;
+      zoom = 1;
+      if (reducedMotion.matches) draw();
+    };
+    redrawRef.current = () => {
+      if (reducedMotion.matches) draw();
+    };
     const pointerStart = (event: PointerEvent) => {
+      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      canvas.setPointerCapture(event.pointerId);
+      if (pointers.size > 1) {
+        pointerMoved = true;
+        pointerDown = false;
+        const [first, second] = Array.from(pointers.values());
+        pinchDistance = Math.hypot(first.x - second.x, first.y - second.y);
+        return;
+      }
       pointerDown = true;
       pointerMoved = false;
       lastX = pointerStartX = event.clientX;
       lastY = pointerStartY = event.clientY;
-      canvas.setPointerCapture(event.pointerId);
     };
     const pointerMove = (event: PointerEvent) => {
+      if (pointers.has(event.pointerId)) pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (pointers.size > 1) {
+        const [first, second] = Array.from(pointers.values());
+        const distance = Math.hypot(first.x - second.x, first.y - second.y);
+        if (pinchDistance > 0) zoom = Math.max(0.68, Math.min(1.8, zoom * distance / pinchDistance));
+        pinchDistance = distance;
+        if (reducedMotion.matches) draw();
+        return;
+      }
       if (!pointerDown) return;
       const dx = event.clientX - lastX;
       const dy = event.clientY - lastY;
@@ -285,15 +437,17 @@ function SystemMap3D({
       lastY = event.clientY;
     };
     const pointerEnd = (event: PointerEvent) => {
-      if (!pointerDown) return;
+      const wasTap = pointerDown && !pointerMoved && pointers.size === 1;
       pointerDown = false;
-      if (!pointerMoved) {
+      pointers.delete(event.pointerId);
+      if (pointers.size < 2) pinchDistance = 0;
+      if (wasTap) {
         const bounds = canvas.getBoundingClientRect();
         const x = event.clientX - bounds.left;
         const y = event.clientY - bounds.top;
         const nearest = projectedNodes
           .map((point) => ({ ...point, distance: Math.hypot(point.x - x, point.y - y) }))
-          .filter((point) => point.distance <= 30)
+          .filter((point) => point.distance <= 26)
           .sort((a, b) => a.distance - b.distance)[0];
         if (nearest) currentRef.current.onSelect(nearest.id);
       }
@@ -326,17 +480,32 @@ function SystemMap3D({
       canvas.removeEventListener('pointercancel', pointerEnd);
       canvas.removeEventListener('wheel', wheel);
       reducedMotion.removeEventListener('change', motionChange);
+      resetViewRef.current = () => {};
+      redrawRef.current = () => {};
     };
   }, []);
 
+  useEffect(() => {
+    redrawRef.current();
+  }, [selectedId, visibleIds, autoRotate]);
+
   return (
-    <canvas
-      ref={canvasRef}
-      className="omh-system-canvas"
-      role="img"
-      aria-label="Animated three-dimensional conceptual map connecting the Owner Portal, member learning, the Signals bot, Coach bot, knowledge library, and shared platform. Drag to rotate, scroll to zoom, or select nodes below."
-      data-testid="canvas-owner-system-map-3d"
-    />
+    <>
+      <canvas
+        ref={canvasRef}
+        className="omh-system-canvas"
+        role="img"
+        aria-label="Animated three-dimensional neural cloud map connecting the Owner Portal, member learning, the Signals bot, Coach bot, knowledge library, and shared platform. Drag to rotate, pinch or scroll to zoom, and tap a glowing node to select it."
+        data-testid="canvas-owner-system-map-3d"
+      />
+      <div className="omh-3d-controls" aria-label="3D map controls">
+        <button type="button" onClick={() => setAutoRotate((turning) => !turning)} aria-pressed={autoRotate} aria-label={autoRotate ? 'Pause automatic rotation' : 'Resume automatic rotation'} title={autoRotate ? 'Pause rotation' : 'Resume rotation'}>
+          {autoRotate ? <Pause size={12} /> : <Play size={12} />}
+          <span>{autoRotate ? 'PAUSE' : 'ROTATE'}</span>
+        </button>
+        <button type="button" onClick={() => resetViewRef.current()} aria-label="Reset 3D map view" title="Reset view"><RotateCcw size={12} /></button>
+      </div>
+    </>
   );
 }
 
