@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import {
-  ArrowDown, ArrowUpRight, Bot, BookOpen, Boxes, ChevronRight, CircleHelp,
+  ArrowUpRight, Bot, BookOpen, Boxes, ChevronRight, CircleHelp,
   Command, Database, Globe2, Layers3, Network, Pause, Play, RotateCcw, Search,
   ShieldCheck, Sparkles, X,
 } from 'lucide-react';
@@ -17,78 +17,110 @@ type MapNode = {
 };
 
 const groups = [
-  { id: 'portal', label: 'Portal experience', color: 'mint' },
-  { id: 'bots', label: 'Bot experiences', color: 'amber' },
-  { id: 'intelligence', label: 'Knowledge & intelligence', color: 'rose' },
-  { id: 'foundation', label: 'Platform foundation', color: 'blue' },
+  { id: 'orchestration', label: 'Intake & review', color: 'mint' },
+  { id: 'publishing', label: 'Content & delivery', color: 'amber' },
+  { id: 'access', label: 'Member & PRO flows', color: 'rose' },
+  { id: 'operations', label: 'Health & recovery', color: 'blue' },
 ] as const;
 
 type GroupId = typeof groups[number]['id'];
 
 const nodes: MapNode[] = [
   {
-    id: 'owner-portal', title: 'Owner Portal', subtitle: 'Operations & oversight',
-    group: 'portal', icon: Command,
-    description: 'The private owner workspace: a single place to understand the product surface, review operations, and move between the portal’s tools.',
-    connects: ['Member learning', 'Signals bot', 'Coach bot', 'Shared platform'],
+    id: 'signal-core', title: 'Signals Bot', subtitle: 'One bot · internal workflows',
+    group: 'orchestration', icon: Bot,
+    description: 'The central Smart Money Hub Signal Bot. Every branch represents an internal workflow of this bot; separate bot identities are not shown.',
+    connects: ['Telegram intake', 'Review controls', 'Signals & zones', 'PRO Signals delivery', 'Market Analysis delivery', 'Education & sessions', 'Member & PRO access', 'Telegram support', 'Health & recovery'],
   },
   {
-    id: 'member-learning', title: 'Member learning', subtitle: 'Courses · progress · journal',
-    group: 'portal', icon: BookOpen,
-    description: 'The member-facing learning journey, bringing course content, progress, calendar, journal, and coaching into one coherent experience.',
-    connects: ['Owner Portal', 'Coach bot', 'Knowledge library'],
+    id: 'telegram-intake', title: 'Telegram intake', subtitle: 'Updates · commands · polling',
+    group: 'orchestration', icon: Network,
+    description: 'Incoming Telegram updates and command routing. The actual polling process is separate from this animated view and is not started or measured here.',
+    connects: ['Signals Bot', 'Review controls', 'Telegram support', 'Health & recovery'],
   },
   {
-    id: 'signals', title: 'Signals bot', subtitle: 'Market education & support',
-    group: 'bots', icon: Network,
-    description: 'A Telegram-oriented learning surface for market education and member support. This map describes product relationships, not current operation.',
-    connects: ['Owner Portal', 'Member learning', 'Shared knowledge'],
+    id: 'review-controls', title: 'Review controls', subtitle: 'Draft · confirm · cancel',
+    group: 'orchestration', icon: Command,
+    description: 'Owner review controls for eligible signal and post actions. The diagram represents the product flow, not a live queue or a publication confirmation.',
+    connects: ['Signals Bot', 'Signals & zones', 'PRO Signals delivery', 'Market Analysis delivery', 'Education & sessions'],
   },
   {
-    id: 'coach', title: 'Coach bot', subtitle: 'Guided reflection & check-ins',
-    group: 'bots', icon: Sparkles,
-    description: 'A conversational coaching experience that can support member reflection and learning, connected conceptually to shared knowledge and progress.',
-    connects: ['Owner Portal', 'Member learning', 'Knowledge library'],
+    id: 'signal-zones', title: 'Signals & zones', subtitle: 'Chart review · setup controls',
+    group: 'publishing', icon: Sparkles,
+    description: 'Development signal and zone preparation, chart review, and guarded action controls. A draft is not a live trade instruction.',
+    connects: ['Signals Bot', 'Review controls', 'PRO Signals delivery', 'Health & recovery'],
   },
   {
-    id: 'knowledge', title: 'Knowledge library', subtitle: 'Lessons · references · context',
-    group: 'intelligence', icon: Layers3,
-    description: 'Reusable learning material and product context that can inform member-facing experiences without implying a live data connection.',
-    connects: ['Member learning', 'Signals bot', 'Coach bot'],
+    id: 'pro-publishing', title: 'PRO Signals delivery', subtitle: 'Verified PRO channel',
+    group: 'publishing', icon: ArrowUpRight,
+    description: 'Prepared and reviewed signal posts for the verified PRO Signals destination, with publication outcomes recorded where the deployment provides them.',
+    connects: ['Signals Bot', 'Review controls', 'Member & PRO access', 'Health & recovery'],
   },
   {
-    id: 'shared-platform', title: 'Shared platform', subtitle: 'Identity · services · storage',
-    group: 'foundation', icon: Database,
-    description: 'The conceptual foundation beneath the portal and bot-related modules: identity, shared application services, and durable product data.',
-    connects: ['Owner Portal', 'Signals bot', 'Coach bot'],
+    id: 'analysis-publishing', title: 'Market Analysis delivery', subtitle: 'Editorial channel posts',
+    group: 'publishing', icon: BookOpen,
+    description: 'Editorial market-analysis drafts, review, scheduling, and delivery to the Market Analysis channel. The map does not claim a post is currently queued or sent.',
+    connects: ['Signals Bot', 'Review controls', 'Education & sessions', 'Health & recovery'],
+  },
+  {
+    id: 'education-schedule', title: 'Education & sessions', subtitle: 'Group lessons · calendar posts',
+    group: 'publishing', icon: Layers3,
+    description: 'Education-group lessons and promotions, plus session-oriented content. Scheduled posts are held rather than sent late when their valid window has passed.',
+    connects: ['Signals Bot', 'Review controls', 'Market Analysis delivery', 'Member & PRO access'],
+  },
+  {
+    id: 'member-access', title: 'Member & PRO access', subtitle: 'Identity · eligibility · invites',
+    group: 'access', icon: ShieldCheck,
+    description: 'Telegram identity linking and the separate PRO eligibility and access-review flow. Linking an identity alone does not grant PRO access.',
+    connects: ['Signals Bot', 'PRO Signals delivery', 'Education & sessions', 'Telegram support'],
+  },
+  {
+    id: 'telegram-support', title: 'Telegram support', subtitle: 'Cases · replies · handoff',
+    group: 'access', icon: CircleHelp,
+    description: 'Telegram-origin support cases, staff follow-up, and handoff where the relevant support service is connected.',
+    connects: ['Signals Bot', 'Telegram intake', 'Member & PRO access', 'Health & recovery'],
+  },
+  {
+    id: 'health-recovery', title: 'Health & recovery', subtitle: 'Heartbeat · errors · safe retries',
+    group: 'operations', icon: Database,
+    description: 'Operational health signals, publishing failures, and recovery safeguards. Live production health is not connected to this Development mind map.',
+    connects: ['Signals Bot', 'Telegram intake', 'Signals & zones', 'PRO Signals delivery', 'Market Analysis delivery', 'Telegram support'],
   },
 ];
 
 const groupById = new Map(groups.map((group) => [group.id, group]));
 
 const nodePositions: Record<string, [number, number, number]> = {
-  'owner-portal': [0, 0.12, 0.48],
-  'member-learning': [0.48, 0.28, 0.16],
-  signals: [-0.48, 0.28, 0.16],
-  coach: [0.02, 0.58, -0.08],
-  knowledge: [-0.32, -0.16, -0.3],
-  'shared-platform': [0.32, -0.16, -0.3],
+  'signal-core': [0, 0.12, 0.48],
+  'telegram-intake': [0.02, 0.58, -0.08],
+  'review-controls': [0.43, 0.3, 0.2],
+  'signal-zones': [-0.46, 0.3, 0.18],
+  'pro-publishing': [0.57, 0.04, 0.02],
+  'analysis-publishing': [-0.57, 0.04, 0.02],
+  'education-schedule': [0, -0.36, -0.22],
+  'member-access': [0.42, -0.25, -0.23],
+  'telegram-support': [-0.42, -0.25, -0.23],
+  'health-recovery': [0, -0.61, 0.04],
 };
 
 const nodeColors: Record<GroupId, string> = {
-  portal: '#83e6c9',
-  bots: '#e4bd79',
-  intelligence: '#d69aa8',
-  foundation: '#8dbed0',
+  orchestration: '#83e6c9',
+  publishing: '#e4bd79',
+  access: '#d69aa8',
+  operations: '#8dbed0',
 };
 
 const nodeLabelOffsets: Record<string, { x: number; y: number; align: CanvasTextAlign }> = {
-  'owner-portal': { x: 0, y: 17, align: 'center' },
-  'member-learning': { x: 10, y: -5, align: 'left' },
-  signals: { x: -10, y: -5, align: 'right' },
-  coach: { x: 0, y: -14, align: 'center' },
-  knowledge: { x: -10, y: 14, align: 'right' },
-  'shared-platform': { x: 10, y: 14, align: 'left' },
+  'signal-core': { x: 0, y: 17, align: 'center' },
+  'telegram-intake': { x: 0, y: -14, align: 'center' },
+  'review-controls': { x: 10, y: -5, align: 'left' },
+  'signal-zones': { x: -10, y: -5, align: 'right' },
+  'pro-publishing': { x: 10, y: -2, align: 'left' },
+  'analysis-publishing': { x: -10, y: -2, align: 'right' },
+  'education-schedule': { x: 0, y: 16, align: 'center' },
+  'member-access': { x: 10, y: 12, align: 'left' },
+  'telegram-support': { x: -10, y: 12, align: 'right' },
+  'health-recovery': { x: 0, y: 18, align: 'center' },
 };
 
 function SystemMap3D({
@@ -172,7 +204,7 @@ function SystemMap3D({
         x: (random() - 0.5) * radius + 0.018 * Math.sin(progress * 8),
         y: -0.5 - progress * 0.68,
         z: (random() - 0.5) * radius * 0.78,
-        nodeId: 'shared-platform',
+        nodeId: 'health-recovery',
         size: 0.55 + random() * 1.25,
         phase: random() * Math.PI * 2,
         opacity: 0.24 + random() * 0.55,
@@ -495,7 +527,7 @@ function SystemMap3D({
         ref={canvasRef}
         className="omh-system-canvas"
         role="img"
-        aria-label="Animated three-dimensional neural cloud map connecting the Owner Portal, member learning, the Signals bot, Coach bot, knowledge library, and shared platform. Drag to rotate, pinch or scroll to zoom, and tap a glowing node to select it."
+        aria-label="Animated three-dimensional neural cloud map of the Signal Bot's internal workflows. Drag to rotate, pinch or scroll to zoom, and tap a glowing node to select it."
         data-testid="canvas-owner-system-map-3d"
       />
       <div className="omh-3d-controls" aria-label="3D map controls">
@@ -586,7 +618,7 @@ function ParticleField() {
 export default function OwnerMindMap() {
   const [query, setQuery] = useState('');
   const [activeGroups, setActiveGroups] = useState<Set<string>>(() => new Set(groups.map(({ id }) => id)));
-  const [selectedId, setSelectedId] = useState('owner-portal');
+  const [selectedId, setSelectedId] = useState('signal-core');
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const selectedNode = nodes.find((node) => node.id === selectedId) ?? nodes[0];
@@ -645,7 +677,7 @@ export default function OwnerMindMap() {
             <div className="omh-brand-mark" aria-hidden="true"><Network size={18} strokeWidth={1.5} /></div>
             <div>
               <p className="omh-overline">SMART MONEY HUB <span>/</span> OWNER SPACE</p>
-              <h1>System mind map</h1>
+              <h1>Signals Bot system map</h1>
             </div>
           </div>
           <div className="omh-private"><ShieldCheck size={14} /> PRIVATE OWNER VIEW</div>
@@ -653,9 +685,9 @@ export default function OwnerMindMap() {
 
         <section className="omh-intro" aria-labelledby="omh-page-title">
           <div>
-            <p className="omh-kicker">THE PRODUCT, AT A GLANCE</p>
-            <h2 id="omh-page-title">One ecosystem.<br /><em>Connected by design.</em></h2>
-            <p className="omh-intro-copy">A conceptual map of how the Portal and bot-related modules fit together.</p>
+            <p className="omh-kicker">ONE BOT · INTERNAL WORKFLOWS</p>
+            <h2 id="omh-page-title">One bot.<br /><em>Every workflow.</em></h2>
+            <p className="omh-intro-copy">Explore the Signal Bot’s intake, review, publishing, member-access, support, and recovery flows.</p>
           </div>
           <div className="omh-map-stamp">
             <span className="omh-stamp-dot" />
@@ -664,36 +696,36 @@ export default function OwnerMindMap() {
           </div>
         </section>
 
-        <section className="omh-workspace" aria-label="Smart Money Hub system map">
+        <section className="omh-workspace" aria-label="Signals Bot internal workflow map">
           <div className="omh-map-column">
             <div className="omh-toolbar">
               <label className="omh-search">
                 <Search size={16} aria-hidden="true" />
-                <span className="omh-sr-only">Search map nodes</span>
+                <span className="omh-sr-only">Search bot workflows</span>
                 <input
                   ref={searchRef}
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Find a module or capability"
+                  placeholder="Find a bot workflow"
                   type="search"
                   data-testid="input-mindmap-search"
                 />
                 {query ? <button type="button" className="omh-clear-search" aria-label="Clear search" onClick={() => setQuery('')}><X size={14} /></button> : <kbd>⌘ K</kbd>}
               </label>
-              <span className="omh-count">{visibleNodes.length.toString().padStart(2, '0')} <span>MODULES IN VIEW</span></span>
+              <span className="omh-count">{visibleNodes.length.toString().padStart(2, '0')} <span>WORKFLOWS IN VIEW</span></span>
             </div>
 
             <div className="omh-map-stage">
               <div className="omh-stage-grid" aria-hidden="true" />
               <SystemMap3D selectedId={selectedId} visibleIds={visibleIds} onSelect={selectNode} />
               <div className="omh-3d-caption">
-                <span>3D SYSTEM MAP</span>
-                 <span>DRAG TO ROTATE · PINCH TO ZOOM · TAP A NODE</span>
+                <span>SIGNALS BOT · 3D WORKFLOW MAP</span>
+                <span>DRAG · PINCH TO ZOOM · TAP A WORKFLOW</span>
               </div>
-              <div className="omh-stage-foot"><span>PRODUCT CONCEPT</span><span>ANIMATED VIEW</span><span>OWNER ONLY</span></div>
+              <div className="omh-stage-foot"><span>ANIMATED CONCEPT</span><span>NOT LIVE TELEMETRY</span><span>OWNER ONLY</span></div>
             </div>
 
-            <div className="omh-node-grid" aria-label="System map nodes">
+            <div className="omh-node-grid" aria-label="Signal Bot workflows">
               {groups.map((group, groupIndex) => {
                 const groupNodes = nodes.filter((node) => node.group === group.id);
                 return (
@@ -750,7 +782,7 @@ export default function OwnerMindMap() {
 
           <aside className={`omh-detail ${mobileDetailOpen ? 'is-mobile-open' : ''}`} aria-live="polite">
             <div className="omh-detail-top">
-              <span className="omh-detail-tag"><span /> NODE PROFILE</span>
+              <span className="omh-detail-tag"><span /> WORKFLOW PROFILE</span>
               <button className="omh-detail-close" type="button" onClick={() => setMobileDetailOpen(false)} aria-label="Close node details"><X size={16} /></button>
             </div>
             <div className={`omh-detail-icon tone-${groupById.get(selectedNode.group)?.color ?? 'mint'}`}>
@@ -761,7 +793,7 @@ export default function OwnerMindMap() {
             <p className="omh-detail-subtitle">{selectedNode.subtitle}</p>
             <p className="omh-detail-description">{selectedNode.description}</p>
             <div className="omh-detail-rule" />
-            <p className="omh-detail-section-title">CONNECTED CONCEPTS <span>{String(selectedNode.connects.length).padStart(2, '0')}</span></p>
+            <p className="omh-detail-section-title">LINKED FLOWS <span>{String(selectedNode.connects.length).padStart(2, '0')}</span></p>
             <div className="omh-connected-list">
               {selectedNode.connects.map((connected, index) => {
                 const target = nodes.find((node) => node.title === connected);
@@ -782,9 +814,9 @@ export default function OwnerMindMap() {
         </section>
 
         <footer className="omh-footer">
-          <div className="omh-footer-left"><span className="omh-footer-mark"><Boxes size={14} /></span><span>SMART MONEY HUB <b>·</b> INTERNAL SYSTEMS MAP</span></div>
-          <div className="omh-footer-note">A working model of the product ecosystem</div>
-          <button className="omh-help" type="button" onClick={() => selectNode('shared-platform')} aria-label="View platform foundation"><Globe2 size={15} /></button>
+          <div className="omh-footer-left"><span className="omh-footer-mark"><Boxes size={14} /></span><span>SMART MONEY HUB <b>·</b> SIGNAL BOT FLOWS</span></div>
+          <div className="omh-footer-note">Animated workflow view · no process is started</div>
+          <button className="omh-help" type="button" onClick={() => selectNode('health-recovery')} aria-label="View health and recovery workflow"><Globe2 size={15} /></button>
         </footer>
       </div>
     </main>
