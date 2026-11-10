@@ -688,7 +688,7 @@ export default function OwnerMindMap() {
               <SystemMap3D selectedId={selectedId} visibleIds={visibleIds} onSelect={selectNode} />
               <div className="omh-3d-caption">
                 <span>3D SYSTEM MAP</span>
-                <span>DRAG TO ROTATE · SCROLL TO ZOOM · SELECT A NODE BELOW</span>
+                 <span>DRAG TO ROTATE · PINCH TO ZOOM · TAP A NODE</span>
               </div>
               <div className="omh-stage-foot"><span>PRODUCT CONCEPT</span><span>ANIMATED VIEW</span><span>OWNER ONLY</span></div>
             </div>
