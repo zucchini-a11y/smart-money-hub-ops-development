@@ -32,3 +32,4 @@
 - [Public landing-page scope](public-registration-pause.md) — keep the public site focused; member self-sign-up is approved, but never grant staff or PRO access.
 - [Vite React optimizer cache](vite-react-optimizer-cache.md) — if runtime React versions mismatch despite matching dependencies, clear the artifact's stale optimized dependency cache.
 - [Portal auth route ordering](portal-auth-route-ordering.md) — scope staff-session guards to their route namespace so they cannot intercept public login endpoints.
+- [Signals Bot mind map](signals-bot-mind-map.md) — map the Signal Bot’s internal workflows, not separate quiz, test, or Coach bots; never imply live status without telemetry.
