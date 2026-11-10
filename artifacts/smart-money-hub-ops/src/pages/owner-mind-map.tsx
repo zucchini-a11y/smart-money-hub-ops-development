@@ -66,6 +66,280 @@ const nodes: MapNode[] = [
 
 const groupById = new Map(groups.map((group) => [group.id, group]));
 
+const nodePositions: Record<string, [number, number, number]> = {
+  'owner-portal': [0, 0, 0],
+  'member-learning': [0.92, 0.08, 0.28],
+  signals: [-0.92, 0.06, 0.28],
+  coach: [0.12, 0.86, -0.43],
+  knowledge: [-0.62, -0.72, -0.28],
+  'shared-platform': [0.66, -0.7, -0.28],
+};
+
+const nodeColors: Record<GroupId, string> = {
+  portal: '#83e6c9',
+  bots: '#e4bd79',
+  intelligence: '#d69aa8',
+  foundation: '#8dbed0',
+};
+
+function SystemMap3D({
+  selectedId,
+  visibleIds,
+  onSelect,
+}: {
+  selectedId: string;
+  visibleIds: Set<string>;
+  onSelect: (id: string) => void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const currentRef = useRef({ selectedId, visibleIds, onSelect });
+  currentRef.current = { selectedId, visibleIds, onSelect };
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext('2d');
+    if (!canvas || !context) return;
+
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let frame = 0;
+    let width = 0;
+    let height = 0;
+    let dpr = 1;
+    let yaw = -0.28;
+    let pitch = 0.12;
+    let zoom = 1;
+    let tick = 0;
+    let pointerDown = false;
+    let pointerMoved = false;
+    let lastX = 0;
+    let lastY = 0;
+    let pointerStartX = 0;
+    let pointerStartY = 0;
+    let projectedNodes: { id: string; x: number; y: number; depth: number }[] = [];
+
+    const resize = () => {
+      window.cancelAnimationFrame(frame);
+      const bounds = canvas.getBoundingClientRect();
+      width = bounds.width;
+      height = bounds.height;
+      dpr = Math.min(window.devicePixelRatio || 1, 1.75);
+      canvas.width = Math.floor(width * dpr);
+      canvas.height = Math.floor(height * dpr);
+      draw();
+    };
+
+    const draw = () => {
+      context.setTransform(dpr, 0, 0, dpr, 0, 0);
+      context.clearRect(0, 0, width, height);
+      if (!width || !height) return;
+
+      const centerX = width / 2;
+      const centerY = height / 2 - 8;
+      const scale = Math.min(width * 0.34, height * 0.37) * zoom;
+      const cosYaw = Math.cos(yaw);
+      const sinYaw = Math.sin(yaw);
+      const cosPitch = Math.cos(pitch);
+      const sinPitch = Math.sin(pitch);
+      const projected = nodes.map((node) => {
+        const [x, y, z] = nodePositions[node.id];
+        const rotatedX = x * cosYaw + z * sinYaw;
+        const rotatedZ = -x * sinYaw + z * cosYaw;
+        const rotatedY = y * cosPitch - rotatedZ * sinPitch;
+        const depth = y * sinPitch + rotatedZ * cosPitch;
+        const perspective = 3.7 / (3.7 + depth);
+        return {
+          node,
+          x: centerX + rotatedX * scale * perspective,
+          y: centerY - rotatedY * scale * perspective,
+          depth,
+          perspective,
+        };
+      });
+      projectedNodes = projected.map(({ node, x, y, depth }) => ({ id: node.id, x, y, depth }));
+
+      // Subtle projected orbital rings give the map depth without implying live telemetry.
+      context.save();
+      context.translate(centerX, centerY);
+      context.strokeStyle = 'rgba(131,230,201,.075)';
+      context.lineWidth = 1;
+      context.beginPath();
+      context.ellipse(0, 0, scale * 0.97, scale * 0.31, -0.12, 0, Math.PI * 2);
+      context.stroke();
+      context.strokeStyle = 'rgba(141,190,208,.055)';
+      context.beginPath();
+      context.ellipse(0, 0, scale * 0.68, scale * 0.96, 0.2, 0, Math.PI * 2);
+      context.stroke();
+      context.restore();
+
+      const connectionSet = new Set<string>();
+      nodes.forEach((node) => {
+        node.connects.forEach((title) => {
+          const target = nodes.find((item) => item.title === title);
+          if (!target) return;
+          connectionSet.add([node.id, target.id].sort().join('|'));
+        });
+      });
+
+      context.lineWidth = 1;
+      Array.from(connectionSet).forEach((key, index) => {
+        const [fromId, toId] = key.split('|');
+        const fromIndex = nodes.findIndex(({ id }) => id === fromId);
+        const toIndex = nodes.findIndex(({ id }) => id === toId);
+        const from = projected[fromIndex];
+        const to = projected[toIndex];
+        if (!from || !to) return;
+        const shown = currentRef.current.visibleIds.has(fromId) && currentRef.current.visibleIds.has(toId);
+        const nearer = Math.max(0, 1 - Math.max(from.depth, to.depth) / 3);
+        context.strokeStyle = `rgba(131,230,201,${(shown ? 0.22 : 0.045) * (0.45 + nearer * 0.55)})`;
+        context.setLineDash([3, 6]);
+        context.beginPath();
+        context.moveTo(from.x, from.y);
+        context.lineTo(to.x, to.y);
+        context.stroke();
+        context.setLineDash([]);
+
+        if (shown && !reducedMotion.matches) {
+          const pulse = (tick * 0.007 + index * 0.19) % 1;
+          const px = from.x + (to.x - from.x) * pulse;
+          const py = from.y + (to.y - from.y) * pulse;
+          context.fillStyle = 'rgba(161,255,240,.82)';
+          context.shadowColor = '#83e6c9';
+          context.shadowBlur = 9;
+          context.beginPath();
+          context.arc(px, py, 2, 0, Math.PI * 2);
+          context.fill();
+          context.shadowBlur = 0;
+        }
+      });
+
+      projected
+        .slice()
+        .sort((a, b) => b.depth - a.depth)
+        .forEach(({ node, x, y, depth, perspective }) => {
+          const active = currentRef.current.visibleIds.has(node.id);
+          const selected = currentRef.current.selectedId === node.id;
+          const color = nodeColors[node.group];
+          const radius = (node.id === 'owner-portal' ? 12 : 8) * Math.max(0.72, perspective);
+          const alpha = active ? Math.max(0.48, 0.92 - depth * 0.14) : 0.15;
+
+          context.globalAlpha = alpha;
+          const glow = context.createRadialGradient(x, y, 0, x, y, radius * 3.1);
+          glow.addColorStop(0, `${color}70`);
+          glow.addColorStop(1, `${color}00`);
+          context.fillStyle = glow;
+          context.beginPath();
+          context.arc(x, y, radius * 3.1, 0, Math.PI * 2);
+          context.fill();
+
+          context.fillStyle = '#091110';
+          context.strokeStyle = color;
+          context.lineWidth = selected ? 2 : 1.35;
+          context.beginPath();
+          context.arc(x, y, radius, 0, Math.PI * 2);
+          context.fill();
+          context.stroke();
+
+          if (selected) {
+            context.strokeStyle = `${color}80`;
+            context.lineWidth = 1;
+            context.beginPath();
+            context.arc(x, y, radius + 6, 0, Math.PI * 2);
+            context.stroke();
+          }
+
+          context.globalAlpha = active ? 0.96 : 0.34;
+          context.textAlign = 'center';
+          context.textBaseline = 'top';
+          context.fillStyle = '#e4efea';
+          context.font = `600 ${Math.max(10, Math.min(13, width / 66))}px system-ui, sans-serif`;
+          context.fillText(node.title, x, y + radius + 9);
+          context.globalAlpha = 1;
+        });
+
+      context.globalAlpha = 1;
+      if (!reducedMotion.matches) {
+        yaw += 0.0016;
+        tick += 1;
+        frame = window.requestAnimationFrame(draw);
+      }
+    };
+
+    const pointerStart = (event: PointerEvent) => {
+      pointerDown = true;
+      pointerMoved = false;
+      lastX = pointerStartX = event.clientX;
+      lastY = pointerStartY = event.clientY;
+      canvas.setPointerCapture(event.pointerId);
+    };
+    const pointerMove = (event: PointerEvent) => {
+      if (!pointerDown) return;
+      const dx = event.clientX - lastX;
+      const dy = event.clientY - lastY;
+      if (Math.hypot(event.clientX - pointerStartX, event.clientY - pointerStartY) > 5) pointerMoved = true;
+      if (pointerMoved) {
+        yaw += dx * 0.008;
+        pitch = Math.max(-0.8, Math.min(0.8, pitch + dy * 0.006));
+        if (reducedMotion.matches) draw();
+      }
+      lastX = event.clientX;
+      lastY = event.clientY;
+    };
+    const pointerEnd = (event: PointerEvent) => {
+      if (!pointerDown) return;
+      pointerDown = false;
+      if (!pointerMoved) {
+        const bounds = canvas.getBoundingClientRect();
+        const x = event.clientX - bounds.left;
+        const y = event.clientY - bounds.top;
+        const nearest = projectedNodes
+          .map((point) => ({ ...point, distance: Math.hypot(point.x - x, point.y - y) }))
+          .filter((point) => point.distance <= 30)
+          .sort((a, b) => a.distance - b.distance)[0];
+        if (nearest) currentRef.current.onSelect(nearest.id);
+      }
+    };
+    const wheel = (event: WheelEvent) => {
+      event.preventDefault();
+      zoom = Math.max(0.72, Math.min(1.55, zoom * Math.exp(-event.deltaY * 0.001)));
+      if (reducedMotion.matches) draw();
+    };
+    const motionChange = () => {
+      window.cancelAnimationFrame(frame);
+      draw();
+    };
+
+    resize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(canvas);
+    canvas.addEventListener('pointerdown', pointerStart);
+    canvas.addEventListener('pointermove', pointerMove);
+    canvas.addEventListener('pointerup', pointerEnd);
+    canvas.addEventListener('pointercancel', pointerEnd);
+    canvas.addEventListener('wheel', wheel, { passive: false });
+    reducedMotion.addEventListener('change', motionChange);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+      canvas.removeEventListener('pointerdown', pointerStart);
+      canvas.removeEventListener('pointermove', pointerMove);
+      canvas.removeEventListener('pointerup', pointerEnd);
+      canvas.removeEventListener('pointercancel', pointerEnd);
+      canvas.removeEventListener('wheel', wheel);
+      reducedMotion.removeEventListener('change', motionChange);
+    };
+  }, []);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="omh-system-canvas"
+      role="img"
+      aria-label="Animated three-dimensional conceptual map connecting the Owner Portal, member learning, the Signals bot, Coach bot, knowledge library, and shared platform. Drag to rotate, scroll to zoom, or select nodes below."
+      data-testid="canvas-owner-system-map-3d"
+    />
+  );
+}
+
 function ParticleField() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -217,7 +491,7 @@ export default function OwnerMindMap() {
           <div className="omh-map-stamp">
             <span className="omh-stamp-dot" />
             <span>CONCEPTUAL TOPOLOGY</span>
-            <small>Static view · not live telemetry</small>
+            <small>Animated 3D · not live telemetry</small>
           </div>
         </section>
 
@@ -242,65 +516,49 @@ export default function OwnerMindMap() {
 
             <div className="omh-map-stage">
               <div className="omh-stage-grid" aria-hidden="true" />
-              <div className="omh-orbit omh-orbit-one" aria-hidden="true" />
-              <div className="omh-orbit omh-orbit-two" aria-hidden="true" />
-              <svg className="omh-connectors" viewBox="0 0 900 460" preserveAspectRatio="none" aria-hidden="true">
-                <path d="M450 95 C450 155 190 130 190 216 M450 95 C450 155 710 130 710 216 M450 95 C450 180 190 280 190 342 M450 95 C450 180 710 280 710 342" />
-                <path className="omh-connectors-fine" d="M190 216 C300 267 350 300 450 342 M710 216 C600 267 550 300 450 342" />
-                <circle cx="450" cy="95" r="3" /><circle cx="190" cy="216" r="2" /><circle cx="710" cy="216" r="2" />
-                <circle cx="190" cy="342" r="2" /><circle cx="710" cy="342" r="2" />
-              </svg>
-
-              <button
-                className={`omh-core ${selectedId === 'owner-portal' ? 'is-selected' : ''} ${visibleIds.has('owner-portal') ? '' : 'is-dimmed'}`}
-                onClick={() => selectNode('owner-portal')}
-                disabled={!visibleIds.has('owner-portal')}
-                aria-pressed={selectedId === 'owner-portal'}
-                data-testid="button-node-owner-portal"
-              >
-                <span className="omh-core-halo" />
-                <span className="omh-core-icon"><Command size={20} /></span>
-                <span className="omh-core-copy"><small>PRIVATE CONTROL ROOM</small><strong>Smart Money Hub<br />Portal</strong></span>
-                <ArrowDown className="omh-core-down" size={14} />
-              </button>
-
-              <div className="omh-node-grid">
-                {groups.map((group, groupIndex) => {
-                  const groupNodes = nodes.filter((node) => node.group === group.id && node.id !== 'owner-portal');
-                  return (
-                    <section key={group.id} className={`omh-branch omh-branch-${groupIndex + 1}`} aria-label={group.label}>
-                      <div className={`omh-branch-heading tone-${group.color}`}>
-                        <span className="omh-branch-dot" />
-                        <span>{group.label}</span>
-                      </div>
-                      <div className="omh-branch-nodes">
-                        {groupNodes.map((node, nodeIndex) => {
-                          const Icon = node.icon;
-                          const active = selectedId === node.id;
-                          return (
-                            <button
-                              id={`omh-node-${node.id}`}
-                              key={node.id}
-                              className={`omh-node tone-${group.color} ${active ? 'is-selected' : ''} ${visibleIds.has(node.id) ? '' : 'is-dimmed'}`}
-                              onClick={() => selectNode(node.id)}
-                              onKeyDown={(event) => selectFromKeyboard(event, nodes.filter((item) => visibleIds.has(item.id)).findIndex((item) => item.id === node.id))}
-                              disabled={!visibleIds.has(node.id)}
-                              aria-pressed={active}
-                              data-testid={`button-node-${node.id}`}
-                            >
-                              <span className="omh-node-icon"><Icon size={15} /></span>
-                              <span className="omh-node-label"><strong>{node.title}</strong><small>{node.subtitle}</small></span>
-                              <ChevronRight size={14} className="omh-node-chevron" />
-                              {nodeIndex === 0 && <span className="omh-node-index">0{groupIndex + 1}</span>}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </section>
-                  );
-                })}
+              <SystemMap3D selectedId={selectedId} visibleIds={visibleIds} onSelect={selectNode} />
+              <div className="omh-3d-caption">
+                <span>3D SYSTEM MAP</span>
+                <span>DRAG TO ROTATE · SCROLL TO ZOOM · SELECT A NODE BELOW</span>
               </div>
-              <div className="omh-stage-foot"><span>STRUCTURE / 01</span><span>SELECT A NODE TO EXPLORE</span><span>OWNER MAP</span></div>
+              <div className="omh-stage-foot"><span>PRODUCT CONCEPT</span><span>ANIMATED VIEW</span><span>OWNER ONLY</span></div>
+            </div>
+
+            <div className="omh-node-grid" aria-label="System map nodes">
+              {groups.map((group, groupIndex) => {
+                const groupNodes = nodes.filter((node) => node.group === group.id);
+                return (
+                  <section key={group.id} className={`omh-branch omh-branch-${groupIndex + 1}`} aria-label={group.label}>
+                    <div className={`omh-branch-heading tone-${group.color}`}>
+                      <span className="omh-branch-dot" />
+                      <span>{group.label}</span>
+                    </div>
+                    <div className="omh-branch-nodes">
+                      {groupNodes.map((node, nodeIndex) => {
+                        const Icon = node.icon;
+                        const active = selectedId === node.id;
+                        return (
+                          <button
+                            id={`omh-node-${node.id}`}
+                            key={node.id}
+                            className={`omh-node tone-${group.color} ${active ? 'is-selected' : ''} ${visibleIds.has(node.id) ? '' : 'is-dimmed'}`}
+                            onClick={() => selectNode(node.id)}
+                            onKeyDown={(event) => selectFromKeyboard(event, nodes.filter((item) => visibleIds.has(item.id)).findIndex((item) => item.id === node.id))}
+                            disabled={!visibleIds.has(node.id)}
+                            aria-pressed={active}
+                            data-testid={`button-node-${node.id}`}
+                          >
+                            <span className="omh-node-icon"><Icon size={15} /></span>
+                            <span className="omh-node-label"><strong>{node.title}</strong><small>{node.subtitle}</small></span>
+                            <ChevronRight size={14} className="omh-node-chevron" />
+                            {nodeIndex === 0 && <span className="omh-node-index">0{groupIndex + 1}</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
+                );
+              })}
             </div>
 
             <div className="omh-legend" aria-label="Filter map by category">
