@@ -128,21 +128,21 @@ const nodes: MapNode[] = [
 const groupById = new Map(groups.map((group) => [group.id, group]));
 
 const nodePositions: Record<string, [number, number, number]> = {
-  ecosystem: [0, 0.12, 0.48],
-  'pro-signals-bot': [-0.46, 0.3, 0.15],
-  'coach-bot': [0.46, 0.3, 0.15],
-  'isolated-dev-bot': [-0.44, -0.19, 0.13],
-  'whatsapp-assistant': [0.44, -0.19, 0.13],
-  'signals-zones': [-0.58, 0.33, -0.18],
-  'pro-channel': [0.58, 0.33, -0.18],
-  'market-analysis': [-0.58, -0.06, -0.18],
-  'education-sessions': [0.58, -0.06, -0.18],
-  'member-academy': [-0.43, -0.43, -0.1],
-  'pro-access': [0.43, -0.43, -0.1],
-  'support-handoff': [0, -0.42, 0.28],
-  'owner-review': [0, 0.58, -0.3],
-  'health-recovery': [-0.2, -0.63, 0.08],
-  'shared-records': [0.2, -0.63, 0.08],
+  ecosystem: [0, 0.61, 0.34],
+  'pro-signals-bot': [-0.23, 0.69, 0.16],
+  'coach-bot': [0.23, 0.69, 0.16],
+  'isolated-dev-bot': [-0.22, 0.5, 0.16],
+  'whatsapp-assistant': [0.22, 0.5, 0.16],
+  'signals-zones': [-0.28, 0.72, -0.07],
+  'pro-channel': [0.28, 0.72, -0.07],
+  'market-analysis': [-0.27, 0.56, -0.1],
+  'education-sessions': [0.27, 0.56, -0.1],
+  'member-academy': [-0.2, 0.47, -0.17],
+  'pro-access': [0.2, 0.47, -0.17],
+  'support-handoff': [0.02, 0.47, 0.27],
+  'owner-review': [0, 0.79, -0.05],
+  'health-recovery': [-0.09, 0.4, -0.22],
+  'shared-records': [0.09, 0.4, -0.22],
 };
 
 const nodeColors: Record<GroupId, string> = {
@@ -371,80 +371,279 @@ function SystemMap3D({
     let pinchDistance = 0;
     const pointers = new Map<number, { x: number; y: number }>();
 
-    type CloudPoint = { x: number; y: number; z: number; nodeId: string; size: number; phase: number; opacity: number };
+    type CloudPoint = {
+      x: number;
+      y: number;
+      z: number;
+      nodeId: string;
+      size: number;
+      phase: number;
+      opacity: number;
+      body: boolean;
+      shade?: number;
+      nx?: number;
+      ny?: number;
+      nz?: number;
+      hub?: boolean;
+    };
+    type BrainFiber = { nodeId: string; points: { x: number; y: number; z: number }[] };
+    type BrainLink = { from: CloudPoint; to: CloudPoint; groupId: GroupId };
     let seed = 934761;
     const random = () => {
       seed = (seed * 1664525 + 1013904223) >>> 0;
       return seed / 4294967296;
     };
-    const nearestNodeId = (point: { x: number; y: number; z: number }) => nodes.reduce((nearest, node) => {
-      const [x, y, z] = nodePositions[node.id];
-      const distance = (point.x - x) ** 2 + (point.y - y) ** 2 * 1.2 + (point.z - z) ** 2;
-      return distance < nearest.distance ? { id: node.id, distance } : nearest;
-    }, { id: nodes[0].id, distance: Number.POSITIVE_INFINITY }).id;
+    const randomNormal = () => {
+      let uniform = 0;
+      while (!uniform) uniform = random();
+      return Math.sqrt(-2 * Math.log(uniform)) * Math.cos(2 * Math.PI * random());
+    };
+    const unitVector = (): [number, number, number] => {
+      const x = randomNormal();
+      const y = randomNormal();
+      const z = randomNormal();
+      const magnitude = Math.hypot(x, y, z) || 1;
+      return [x / magnitude, y / magnitude, z / magnitude];
+    };
+    const groupDirections = groups.map((_, index) => {
+      const angle = index * 2.4;
+      const y = 1 - ((index + 0.5) / groups.length) * 2;
+      const radius = Math.sqrt(1 - y * y);
+      return [Math.cos(angle) * radius, y, Math.sin(angle) * radius] as const;
+    });
+    const nearestGroupId = (direction: [number, number, number]): GroupId => {
+      let nearestIndex = 0;
+      let nearestDistance = Number.POSITIVE_INFINITY;
+      groupDirections.forEach((candidate, index) => {
+        const distance = (candidate[0] - direction[0]) ** 2
+          + (candidate[1] - direction[1]) ** 2
+          + (candidate[2] - direction[2]) ** 2;
+        if (distance < nearestDistance) {
+          nearestIndex = index;
+          nearestDistance = distance;
+        }
+      });
+      return groups[nearestIndex].id;
+    };
+    const nearestNodeId = (point: { x: number; y: number; z: number }, groupId: GroupId) => {
+      const candidates = nodes.filter((node) => node.group === groupId);
+      return candidates.reduce((nearest, node) => {
+        const [x, y, z] = nodePositions[node.id];
+        const distance = (point.x - x) ** 2 + (point.y - y) ** 2 * 1.2 + (point.z - z) ** 2;
+        return distance < nearest.distance ? { id: node.id, distance } : nearest;
+      }, { id: candidates[0].id, distance: Number.POSITIVE_INFINITY }).id;
+    };
     const cloudPoints: CloudPoint[] = [];
-    for (let index = 0; index < 1_650; index += 1) {
-      const vertical = random() * 2 - 1;
-      const angle = random() * Math.PI * 2;
-      const ring = Math.sqrt(1 - vertical * vertical);
-      const rawX = Math.cos(angle) * ring;
-      const rawZ = Math.sin(angle) * ring;
-      const radial = index < 1_100 ? 0.76 + random() * 0.25 : 0.24 + random() * 0.72;
-      const fold = 1 + 0.045 * Math.sin(angle * 5 + vertical * 7) + 0.028 * Math.cos(angle * 9 - vertical * 4);
-      const taper = 0.86 + 0.14 * Math.max(0, vertical + 0.2);
+    const neuralStrands: BrainFiber[] = [];
+    const brainLinks: BrainLink[] = [];
+    const surfaceWave = (x: number, y: number, z: number) => {
+      const waves = [
+        [19, 5, 3, 0.3],
+        [-7, 17, 9, 1.7],
+        [6, -9, 21, 2.6],
+        [15, 13, -12, 4.1],
+        [-12, 6, 16, 5.3],
+      ];
+      return waves.reduce((value, [a, b, c, offset]) => value
+        + Math.sin(a * x + b * y + c * z + offset + 1.6 * Math.sin(0.8 * (c * x - a * z) + offset)), 0) / waves.length;
+    };
+    const lightMagnitude = Math.hypot(-0.4, 0.7, 0.6);
+    const lightDirection: [number, number, number] = [-0.4 / lightMagnitude, 0.7 / lightMagnitude, 0.6 / lightMagnitude];
+    const brainPoint = (
+      x: number,
+      y: number,
+      z: number,
+      nx: number,
+      ny: number,
+      nz: number,
+      groupId: GroupId,
+    ) => {
+      const normalLength = Math.hypot(nx, ny, nz) || 1;
+      const normalX = nx / normalLength;
+      const normalY = ny / normalLength;
+      const normalZ = nz / normalLength;
+      const scaledX = x / 0.3;
+      const scaledY = (y - 0.6) / 0.2;
+      const scaledZ = z / 0.36;
+      let foldStrength = Math.min(1, Math.abs(surfaceWave(scaledX * 1.3, scaledY * 1.3, scaledZ * 1.3)) / 0.1);
+      if (Math.abs(x) < 0.014 && scaledY > -0.5) foldStrength = 0;
+      if (Math.abs(scaledY + 0.03 - 0.5 * scaledZ) < 0.07 && Math.abs(scaledX) > 0.55) foldStrength = Math.min(foldStrength, 0.05);
+      if (scaledY > 0.1 && Math.abs(scaledZ - (0.12 - 0.3 * Math.abs(scaledX))) < 0.04) foldStrength = Math.min(foldStrength, 0.05);
+      if (random() > 0.18 + 0.82 * foldStrength) return false;
+      const light = Math.max(0, normalX * lightDirection[0] + normalY * lightDirection[1] + normalZ * lightDirection[2]);
+      const shade = (0.22 + 0.78 * light) * (0.15 + 0.85 * Math.pow(foldStrength, 0.7));
+      const compression = 1 - 0.1 * (1 - foldStrength);
       const point = {
-        x: Math.sign(rawX || 1) * (0.035 + Math.abs(rawX) * 0.66) * radial * fold * taper,
-        y: 0.12 + vertical * 0.72 * radial * fold,
-        z: rawZ * 0.49 * radial * fold,
+        x: x * compression,
+        y: 0.6 + (y - 0.6) * compression,
+        z: z * compression,
       };
       cloudPoints.push({
         ...point,
-        nodeId: nearestNodeId(point),
-        size: 0.55 + random() * 1.45,
+        nodeId: nearestNodeId(point, groupId),
+        size: 0.86 + random() * 0.28,
         phase: random() * Math.PI * 2,
-        opacity: 0.28 + random() * 0.6,
+        opacity: 0.78 + random() * 0.22,
+        body: false,
+        shade,
+        nx: normalX,
+        ny: normalY,
+        nz: normalZ,
       });
+      return true;
+    };
+    const temporalRegion = (x: number, y: number, z: number) => ((Math.abs(x) - 0.18) / 0.1) ** 2
+      + ((y - 0.5) / 0.09) ** 2 + ((z - 0.04) / 0.21) ** 2;
+    const cerebrumInterior = (x: number, y: number, z: number) => (x / 0.29) ** 2
+      + ((y - 0.62) / 0.2) ** 2 + (z / 0.36) ** 2;
+
+    let accepted = 0;
+    for (let attempts = 0; accepted < 16_000 && attempts < 110_000; attempts += 1) {
+      const [a, rawB, c] = unitVector();
+      const b = rawB < 0 ? rawB * 0.75 : rawB;
+      const x = a * 0.29 * (1 - 0.2 * Math.max(0, c));
+      const y = 0.62 + b * 0.2;
+      const z = c * 0.36;
+      if (temporalRegion(x, y, z) < 1) continue;
+      const groupId = nearestGroupId([a + randomNormal() * 0.2, b + randomNormal() * 0.2, c + randomNormal() * 0.2]);
+      if (brainPoint(x, y, z, a / 0.29, b / 0.2, c / 0.36, groupId)) accepted += 1;
     }
-    for (let index = 0; index < 240; index += 1) {
-      const progress = random();
-      const radius = 0.13 * (1 - progress) + 0.018;
+
+    accepted = 0;
+    for (let attempts = 0; accepted < 3_600 && attempts < 30_000; attempts += 1) {
+      const [a, b, c] = unitVector();
+      const side = random() < 0.5 ? -1 : 1;
+      const x = side * (0.18 + a * 0.1);
+      const y = 0.5 + b * 0.09;
+      const z = 0.04 + c * 0.21;
+      if (cerebrumInterior(x, y, z) < 1) continue;
+      const groupId = nearestGroupId([side * 0.5 + randomNormal() * 0.2, -0.6, 0.3]);
+      if (brainPoint(x, y, z, side * a / 0.1, b / 0.09, c / 0.21, groupId)) accepted += 1;
+    }
+
+    for (let index = 0; index < 1_600; index += 1) {
+      const [a, b, c] = unitVector();
+      const folia = 0.5 + 0.5 * Math.sin(b * 80 + a * 2);
+      const normalLength = Math.hypot(a / 0.19, b / 0.085, c / 0.13) || 1;
+      const light = Math.max(0, (a / 0.19 * lightDirection[0] + b / 0.085 * lightDirection[1] + c / 0.13 * lightDirection[2]) / normalLength);
+      const groupId = groups[Math.floor(random() * groups.length)].id;
+      const point = { x: a * 0.19, y: 0.41 + b * 0.085, z: -0.21 + c * 0.13 };
       cloudPoints.push({
-        x: (random() - 0.5) * radius + 0.018 * Math.sin(progress * 8),
-        y: -0.5 - progress * 0.68,
-        z: (random() - 0.5) * radius * 0.78,
-        nodeId: 'health-recovery',
-        size: 0.55 + random() * 1.25,
+        ...point,
+        nodeId: nearestNodeId(point, groupId),
+        size: 0.86 + random() * 0.28,
         phase: random() * Math.PI * 2,
-        opacity: 0.24 + random() * 0.55,
+        opacity: 0.78 + random() * 0.22,
+        body: false,
+        shade: (0.22 + 0.78 * light) * (0.2 + 0.8 * folia),
+        nx: a,
+        ny: b,
+        nz: c,
       });
     }
-    const pointsByNode = new Map<string, CloudPoint[]>();
-    nodes.forEach(({ id }) => pointsByNode.set(id, cloudPoints.filter((point) => point.nodeId === id)));
-    const neuralStrands: { nodeId: string; points: { x: number; y: number; z: number }[] }[] = [];
-    nodes.forEach(({ id }) => {
-      const cloud = pointsByNode.get(id) ?? [];
-      for (let strandIndex = 0; strandIndex < 18 && cloud.length > 1; strandIndex += 1) {
-        const start = cloud[Math.floor(random() * cloud.length)];
-        let end = cloud[Math.floor(random() * cloud.length)];
-        for (let attempt = 0; attempt < 8 && end === start; attempt += 1) end = cloud[Math.floor(random() * cloud.length)];
-        const bend = { x: (random() - 0.5) * 0.2, y: (random() - 0.5) * 0.24, z: (random() - 0.5) * 0.2 };
-        const points = Array.from({ length: 9 }, (_, pointIndex) => {
-          const t = pointIndex / 8;
-          const inverse = 1 - t;
-          return {
-            x: inverse * inverse * start.x + 2 * inverse * t * ((start.x + end.x) / 2 + bend.x) + t * t * end.x,
-            y: inverse * inverse * start.y + 2 * inverse * t * ((start.y + end.y) / 2 + bend.y) + t * t * end.y,
-            z: inverse * inverse * start.z + 2 * inverse * t * ((start.z + end.z) / 2 + bend.z) + t * t * end.z,
-          };
-        });
-        neuralStrands.push({ nodeId: id, points });
+
+    const brainstemCenter = (y: number): [number, number, number] => [
+      0.015 * (0.04 - y) * 3,
+      y,
+      -0.09 + 0.03 * (y - 0.04) / 0.36,
+    ];
+    const brainstemRadius = (y: number) => 0.036 + 0.035 * Math.exp(-(((y - 0.22) / 0.07) ** 2));
+    for (let index = 0; index < 350; index += 1) {
+      const y = 0.17 + random() * 0.23;
+      const angle = random() * Math.PI * 2;
+      const radius = brainstemRadius(y) * Math.sqrt(random());
+      const [centerX, centerY, centerZ] = brainstemCenter(y);
+      cloudPoints.push({
+        x: centerX + Math.cos(angle) * radius,
+        y: centerY,
+        z: centerZ + Math.sin(angle) * radius,
+        nodeId: 'health-recovery',
+        size: 0.86 + random() * 0.28,
+        phase: random() * Math.PI * 2,
+        opacity: 0.78 + random() * 0.22,
+        body: true,
+      });
+    }
+
+    const catmullRom = (controlPoints: [number, number, number][], progress: number): [number, number, number] => {
+      const lastSegment = controlPoints.length - 1;
+      const scaledProgress = progress * lastSegment;
+      const segment = Math.min(lastSegment - 1, Math.floor(scaledProgress));
+      const fraction = scaledProgress - segment;
+      const p0 = controlPoints[Math.max(0, segment - 1)];
+      const p1 = controlPoints[segment];
+      const p2 = controlPoints[segment + 1];
+      const p3 = controlPoints[Math.min(lastSegment, segment + 2)];
+      return [0, 1, 2].map((axis) => 0.5 * (
+        2 * p1[axis]
+        + (p2[axis] - p0[axis]) * fraction
+        + (2 * p0[axis] - 5 * p1[axis] + 4 * p2[axis] - p3[axis]) * fraction ** 2
+        + (3 * p1[axis] - p0[axis] - 3 * p2[axis] + p3[axis]) * fraction ** 3
+      )) as [number, number, number];
+    };
+    for (let strandIndex = 0; strandIndex < 6; strandIndex += 1) {
+      const angle = strandIndex * 1.05;
+      const controlPoints: [number, number, number][] = [];
+      for (let pointIndex = 0; pointIndex <= 3; pointIndex += 1) {
+        const y = 0.4 - pointIndex * 0.08;
+        const [centerX, , centerZ] = brainstemCenter(y);
+        const radius = brainstemRadius(y) * 0.8;
+        controlPoints.push([centerX + Math.cos(angle) * radius, y, centerZ + Math.sin(angle) * radius]);
       }
-    });
-    const nodeColorsById = new Map(nodes.map((node) => [node.id, nodeColors[node.group]]));
+      const points = Array.from({ length: 23 }, (_, pointIndex) => {
+        const [x, y, z] = catmullRom(controlPoints, pointIndex / 22);
+        return { x, y, z };
+      });
+      neuralStrands.push({ nodeId: 'health-recovery', points });
+    }
+
+    const pointsByGroup = new Map<GroupId, CloudPoint[]>(
+      groups.map((group) => [group.id, cloudPoints.filter((point) => !point.body
+        && nodes.find((node) => node.id === point.nodeId)?.group === group.id)]),
+    );
+    for (let hubIndex = 0; hubIndex < 16; hubIndex += 1) {
+      const groupId = groups[hubIndex % groups.length].id;
+      const sameGroupPoints = pointsByGroup.get(groupId) ?? [];
+      const hub = sameGroupPoints[Math.floor(random() * sameGroupPoints.length)];
+      if (!hub) continue;
+      hub.hub = true;
+      let linked = 0;
+      for (let attempt = 0; attempt < 900 && linked < 22; attempt += 1) {
+        const point = sameGroupPoints[Math.floor(random() * sameGroupPoints.length)];
+        if (!point || point === hub) continue;
+        const distance = Math.hypot(point.x - hub.x, point.y - hub.y, point.z - hub.z);
+        if (distance < 0.3) {
+          brainLinks.push({ from: hub, to: point, groupId });
+          linked += 1;
+        }
+      }
+    }
     const toRgba = (hex: string, alpha: number) => {
       const value = Number.parseInt(hex.slice(1), 16);
       return `rgba(${(value >> 16) & 255},${(value >> 8) & 255},${value & 255},${alpha})`;
     };
+    const nodeGroupById = new Map(nodes.map((node) => [node.id, node.group]));
+    const brainColorsByGroup: Record<GroupId, string> = {
+      bots: '#c7b3a5',
+      publishing: '#d3c1b5',
+      members: '#d9cbbb',
+      operations: '#cdb9ad',
+    };
+    const brainSpritesByGroup = new Map<GroupId, HTMLCanvasElement>();
+    groups.forEach((group) => {
+      const sprite = document.createElement('canvas');
+      sprite.width = sprite.height = 32;
+      const spriteContext = sprite.getContext('2d');
+      if (!spriteContext) return;
+      const gradient = spriteContext.createRadialGradient(16, 16, 0, 16, 16, 16);
+      gradient.addColorStop(0, '#fff');
+      gradient.addColorStop(0.18, brainColorsByGroup[group.id]);
+      gradient.addColorStop(0.5, toRgba(brainColorsByGroup[group.id], 0.25));
+      gradient.addColorStop(1, toRgba(brainColorsByGroup[group.id], 0));
+      spriteContext.fillStyle = gradient;
+      spriteContext.fillRect(0, 0, 32, 32);
+      brainSpritesByGroup.set(group.id, sprite);
+    });
 
     const resize = () => {
       window.cancelAnimationFrame(frame);
@@ -463,8 +662,10 @@ function SystemMap3D({
       if (!width || !height) return;
 
       const centerX = width / 2;
-      const centerY = height * 0.51;
-      const scale = Math.min(width * 0.47, height * 0.39) * zoom;
+      const centerY = height / 2;
+      const baseScale = Math.min(width * 1.5, height * 0.7);
+      const scale = baseScale * zoom;
+      const pointScale = (baseScale / 330) * Math.sqrt(zoom);
       const cosYaw = Math.cos(yaw);
       const sinYaw = Math.sin(yaw);
       const cosPitch = Math.cos(pitch);
@@ -475,7 +676,7 @@ function SystemMap3D({
         const rotatedZ = -x * sinYaw + z * cosYaw;
         const rotatedY = y * cosPitch - rotatedZ * sinPitch;
         const depth = y * sinPitch + rotatedZ * cosPitch;
-        const perspective = 3.7 / (3.7 + depth);
+        const perspective = 3.4 / (3.4 + depth);
         return {
           node,
           x: centerX + rotatedX * scale * perspective,
@@ -491,7 +692,7 @@ function SystemMap3D({
         const rotatedZ = -point.x * sinYaw + point.z * cosYaw;
         const rotatedY = point.y * cosPitch - rotatedZ * sinPitch;
         const depth = point.y * sinPitch + rotatedZ * cosPitch;
-        const perspective = 3.7 / (3.7 + depth);
+        const perspective = 3.4 / (3.4 + depth);
         return {
           x: centerX + rotatedX * scale * perspective,
           y: centerY - rotatedY * scale * perspective,
@@ -508,8 +709,8 @@ function SystemMap3D({
       context.fillRect(0, 0, width, height);
 
       context.globalCompositeOperation = 'lighter';
-      neuralStrands.forEach(({ nodeId, points }, strandIndex) => {
-        const color = nodeColorsById.get(nodeId) ?? '#83e6c9';
+      neuralStrands.forEach(({ nodeId, points }) => {
+        const color = brainColorsByGroup[nodeGroupById.get(nodeId) ?? 'operations'];
         const active = currentRef.current.visibleIds.has(nodeId);
         context.beginPath();
         points.forEach((point, index) => {
@@ -517,22 +718,47 @@ function SystemMap3D({
           if (index === 0) context.moveTo(projectedPoint.x, projectedPoint.y);
           else context.lineTo(projectedPoint.x, projectedPoint.y);
         });
-        context.strokeStyle = toRgba(color, active ? 0.13 + 0.035 * Math.sin(tick * 0.025 + strandIndex) : 0.012);
-        context.lineWidth = 0.55;
+        context.strokeStyle = toRgba(color, active ? 0.17 : 0.012);
+        context.lineWidth = 0.6;
+        context.stroke();
+      });
+
+      brainLinks.forEach(({ from, to, groupId }) => {
+        if (!currentRef.current.visibleIds.has(from.nodeId) || !currentRef.current.visibleIds.has(to.nodeId)) return;
+        const start = projectCloudPoint(from);
+        const end = projectCloudPoint(to);
+        context.strokeStyle = toRgba(brainColorsByGroup[groupId], 0.13);
+        context.lineWidth = 0.7;
+        context.beginPath();
+        context.moveTo(start.x, start.y);
+        context.lineTo(end.x, end.y);
         context.stroke();
       });
 
       cloudPoints.forEach((particle) => {
         const point = projectCloudPoint(particle);
         const active = currentRef.current.visibleIds.has(particle.nodeId);
-        const color = nodeColorsById.get(particle.nodeId) ?? '#83e6c9';
-        const pulse = reducedMotion.matches ? 1 : 0.78 + Math.sin(tick * 0.025 + particle.phase) * 0.22;
+        const groupId = nodeGroupById.get(particle.nodeId) ?? 'bots';
+        const sprite = brainSpritesByGroup.get(groupId);
+        if (!sprite) return;
+        let faceAlpha = 1;
+        if (particle.nx !== undefined && particle.ny !== undefined && particle.nz !== undefined) {
+          const normalDepth = sinPitch * particle.ny
+            + cosPitch * (-particle.nx * sinYaw + particle.nz * cosYaw);
+          faceAlpha = normalDepth > 0.12 ? 0 : normalDepth > -0.05 ? 0.5 : 1;
+          if (!faceAlpha) return;
+        }
         const depthAlpha = Math.max(0.24, 0.92 - point.depth * 0.38);
-        context.fillStyle = toRgba(color, particle.opacity * depthAlpha * pulse * (active ? 1 : 0.07));
-        context.beginPath();
-        context.arc(point.x, point.y, particle.size * Math.max(0.66, point.perspective), 0, Math.PI * 2);
-        context.fill();
+        const foldLight = particle.shade === undefined ? 1 : Math.min(1.4, particle.shade * 2.4);
+        const hubScale = (particle.hub ? 2.2 : 1) * (particle.body ? 0.55 : 0.6);
+        const spriteSize = (2.4 + 4 * point.perspective) * pointScale * particle.size * hubScale;
+        context.globalAlpha = Math.min(
+          1,
+          foldLight * particle.opacity * depthAlpha * faceAlpha * (active ? 1 : 0.05) * (particle.hub ? 1.6 : 0.9),
+        );
+        context.drawImage(sprite, point.x - spriteSize / 2, point.y - spriteSize / 2, spriteSize, spriteSize);
       });
+      context.globalAlpha = 1;
       context.globalCompositeOperation = 'source-over';
 
       const connectionSet = new Set<string>();

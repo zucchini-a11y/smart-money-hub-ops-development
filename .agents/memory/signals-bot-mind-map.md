@@ -11,8 +11,14 @@ Runtime indicators must use process heartbeats, not Telegram identity checks. Th
 
 Show Development command-center warnings/errors as visible issue halos on affected map nodes and list their stored summaries when selected. A missing/erroring alert feed must never look like a clean bill of health.
 
+Match the central brain to the uploaded Mind Map Demo: folded cerebrum with a clear center fissure, separate temporal lobes, cerebellum, and brainstem, rendered as shaded rotating 3D points with neural links. Keep operational node and issue overlays on top; do not substitute a plain sphere.
+
 Issue halos and detail entries come from the Development command-center alerts and recent stored errors. Keep those explicitly Development-scoped, distinguish recorded alerts from currently active faults, and show the feed as unavailable rather than clear when it cannot be read.
 
 **Why:** the user clarified that the map should include all bots and all functioning features, not focus on one bot.
 
 **How to apply:** when adding nodes or live indicators, use verified product capabilities and label status as conceptual/unknown unless a trustworthy runtime telemetry source is connected. Keep Development telemetry isolated from Production. Do not start bot workflows just to animate the map.
+
+**Why:** the user explicitly asked for the brain to match the uploaded reference.
+
+**How to apply:** preserve the anatomical point-cloud structure and lighting when refining the brain; keep map interactions, labels, status indicators, and issue markers separate from the anatomy rendering.
