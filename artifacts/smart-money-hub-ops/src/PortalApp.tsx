@@ -229,6 +229,7 @@ function passwordRecoveryErrorMessage(failure: unknown): string {
 }
 
 function Login() {
+  const [loginMode, setLoginMode] = useState<'portal' | 'member'>('portal');
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -310,27 +311,32 @@ function Login() {
     setError('');
     setNotice('');
     setBusy(true);
-    let staffSignInUnavailable = false;
     try {
       if (isSignedIn) {
         await clerk.signOut();
         client.clear();
       }
-      try {
-        const session = await login.mutateAsync({ data: { identifier: identifier.trim(), password } });
-        trackEvent('staff_login_succeeded', { password_change_required: session.mustChangePassword });
-        client.setQueryData(sessionKey, session);
-        await client.invalidateQueries({ queryKey: sessionKey });
-        navigate(session.mustChangePassword ? '/account/password' : session.dashboardPath);
-        return;
-      } catch (staffFailure) {
-        const status = (staffFailure as { status?: number })?.status;
-        if (status !== 400 && status !== 401) {
-          if (isConnectionFailure(staffFailure) || (typeof status === 'number' && status >= 500)) {
-            staffSignInUnavailable = true;
-          } else {
-            throw staffFailure;
+
+      if (loginMode === 'portal') {
+        try {
+          const session = await login.mutateAsync({ data: { identifier: identifier.trim(), password } });
+          trackEvent('staff_login_succeeded', { password_change_required: session.mustChangePassword });
+          client.setQueryData(sessionKey, session);
+          await client.invalidateQueries({ queryKey: sessionKey });
+          navigate(session.mustChangePassword ? '/account/password' : session.dashboardPath);
+          return;
+        } catch (portalFailure) {
+          const status = (portalFailure as { status?: number })?.status;
+          if (isConnectionFailure(portalFailure) || (typeof status === 'number' && status >= 500)) {
+            throw new Error('Owner and staff sign-in is temporarily unavailable. Please try again later.');
           }
+          if (status === 401) {
+            throw new Error('Owner/Staff sign-in was rejected. Use the Development Owner password you set and verified in Replit Shell. Member password recovery does not reset this password.');
+          }
+          if (status === 400) {
+            throw new Error('Enter the Owner/Staff email and Development password.');
+          }
+          throw portalFailure;
         }
       }
 
@@ -339,6 +345,7 @@ function Login() {
       } catch {
         // No existing staff session is expected for member sign-in.
       }
+
       if (!clerkLoaded) throw new Error('Member sign-in is still loading. Try again in a moment.');
       const attempt = await signIn.password({ identifier: identifier.trim(), password }).catch((memberFailure) => {
         if (isConnectionFailure(memberFailure)) {
@@ -347,9 +354,6 @@ function Login() {
         throw memberFailure;
       });
       if (attempt.error) {
-        if (staffSignInUnavailable) {
-          throw new Error('Sign-in is temporarily unavailable. Please try again shortly.');
-        }
         throw new Error('The email or password is incorrect. Use the email connected to your account, or choose “Forgot password?”');
       }
       if (signIn.status === 'needs_first_factor') {
@@ -509,17 +513,35 @@ function Login() {
       <div className="eyebrow">WELCOME BACK</div><h2>Sign in</h2><p>Enter the email or username and password connected to your account.</p>
       {error && <div className="notice notice-error" role="alert" data-testid="status-login-error">{error}</div>}
       {notice && <div className="notice notice-info" role="status" data-testid="status-login-notice">{notice}</div>}
+      {memberLoginStep === 'credentials' && recoveryStep === 'closed' && <div className="login-mode-switch" role="group" aria-label="Choose account type">
+        <button
+          type="button"
+          className={loginMode === 'portal' ? 'active' : ''}
+          aria-pressed={loginMode === 'portal'}
+          onClick={() => { setLoginMode('portal'); setPassword(''); setError(''); setNotice(''); setShowPassword(false); }}
+          data-testid="button-login-owner-staff"
+        >Owner / Staff</button>
+        <button
+          type="button"
+          className={loginMode === 'member' ? 'active' : ''}
+          aria-pressed={loginMode === 'member'}
+          onClick={() => { setLoginMode('member'); setPassword(''); setError(''); setNotice(''); setShowPassword(false); }}
+          data-testid="button-login-member"
+        >Member</button>
+      </div>}
       {memberLoginStep !== 'credentials' ? <form onSubmit={verifyMemberSignInCode}>
         <div className="form-field"><label className="form-label" htmlFor="member-signin-code">Email verification code</label><input id="member-signin-code" className="field-input" inputMode="numeric" autoComplete="one-time-code" required maxLength={12} value={memberLoginCode} onChange={(event) => setMemberLoginCode(event.target.value)} /></div>
         <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? 'Verifying…' : 'Verify and continue'} <ChevronRight size={15} /></button>
         <button className="login-link-button" type="button" onClick={() => void resendMemberSignInCode()} disabled={busy}>Resend code</button>
         <button className="login-link-button" type="button" onClick={() => { setMemberLoginStep('credentials'); setMemberLoginCode(''); setNotice(''); }} disabled={busy}>Back to sign in</button>
-      </form> : recoveryStep === 'closed' ? <form onSubmit={submit}>
-        <div className="form-field"><label className="form-label" htmlFor="login-identifier">Email or username</label><input id="login-identifier" className="field-input" type="text" autoComplete="username" required maxLength={254} value={identifier} onChange={(event) => setIdentifier(event.target.value)} data-testid="input-identifier" /></div>
-        <div className="form-field"><label className="form-label" htmlFor="login-password">Password</label><div className="password-wrap"><input id="login-password" className="field-input" type={showPassword ? 'text' : 'password'} autoComplete="current-password" required maxLength={256} value={password} onChange={(event) => setPassword(event.target.value)} data-testid="input-password" /><button type="button" className="password-toggle" aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword(!showPassword)} data-testid="button-toggle-password">{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button></div></div>
-        <button className="btn btn-primary" type="submit" disabled={busy || login.isPending} data-testid="button-sign-in">{busy ? 'Signing in…' : 'Sign in'} <ChevronRight size={15} /></button>
-        <button className="login-link-button" type="button" onClick={() => void startRecovery()} disabled={busy} data-testid="button-forgot-member-password">Forgot member password?</button>
-        <p className="login-recovery-hint">For member accounts only. This does not reset an Owner Portal password.</p>
+      </form> : recoveryStep === 'closed' ? <form onSubmit={submit} autoComplete={loginMode === 'portal' ? 'off' : undefined}>
+        <div className="form-field"><label className="form-label" htmlFor="login-identifier">{loginMode === 'portal' ? 'Owner or staff email' : 'Member email or username'}</label><input id="login-identifier" className="field-input" type="text" autoComplete={loginMode === 'portal' ? 'off' : 'username'} required maxLength={254} value={identifier} onChange={(event) => setIdentifier(event.target.value)} data-testid="input-identifier" /></div>
+        <div className="form-field"><label className="form-label" htmlFor="login-password">Password</label><div className="password-wrap"><input id="login-password" className="field-input" type={showPassword ? 'text' : 'password'} autoComplete={loginMode === 'portal' ? 'new-password' : 'current-password'} required maxLength={256} value={password} onChange={(event) => setPassword(event.target.value)} data-testid="input-password" /><button type="button" className="password-toggle" aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword(!showPassword)} data-testid="button-toggle-password">{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button></div></div>
+        <button className="btn btn-primary" type="submit" disabled={busy || login.isPending} data-testid="button-sign-in">{busy ? 'Signing in…' : loginMode === 'portal' ? 'Sign in to Portal' : 'Sign in'} <ChevronRight size={15} /></button>
+        {loginMode === 'member' ? <>
+          <button className="login-link-button" type="button" onClick={() => void startRecovery()} disabled={busy} data-testid="button-forgot-member-password">Forgot member password?</button>
+          <p className="login-recovery-hint">For member accounts only. This does not reset an Owner Portal password.</p>
+        </> : <p className="login-recovery-hint">Owner and staff accounts use a separate Development Portal password. Member password recovery does not change it.</p>}
       </form> : recoveryStep === 'code' ? <form onSubmit={verifyRecoveryCode}>
         <div className="form-field"><label className="form-label" htmlFor="member-reset-code">Email recovery code</label><input id="member-reset-code" className="field-input" inputMode="numeric" autoComplete="one-time-code" required maxLength={12} value={recoveryCode} onChange={(event) => setRecoveryCode(event.target.value)} /></div>
         <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? 'Checking code…' : 'Verify code'} <ChevronRight size={15} /></button>
@@ -530,12 +552,12 @@ function Login() {
         <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? 'Updating password…' : 'Update password'} <ChevronRight size={15} /></button>
         <button className="login-link-button" type="button" onClick={() => setRecoveryStep('closed')}>Back to sign in</button>
       </form>}
-      <div className="login-note" data-testid="status-member-signup-open">
+      {loginMode === 'member' && <div className="login-note" data-testid="status-member-signup-open">
         New to Smart Money Hub?{' '}
         <button className="login-link-button" type="button" onClick={() => navigate('/sign-up')} data-testid="button-login-create-account">
           Create an account
         </button>
-      </div>
+      </div>}
       </div>
     </div></section>
   </main>;
