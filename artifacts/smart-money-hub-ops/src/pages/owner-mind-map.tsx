@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import {
+  getGetPortalCommandCenterQueryKey,
   getGetPortalBotConnectionsQueryKey,
+  useGetPortalCommandCenter,
   useGetPortalBotConnections,
 } from '@workspace/api-client-react';
-import type { PortalBotConnection } from '@workspace/api-client-react';
+import type { PortalBotConnection, PortalCommandCenter } from '@workspace/api-client-react';
 import {
-  ArrowUpRight, Bot, BookOpen, Boxes, ChevronRight, CircleHelp,
+  ArrowUpRight, Bot, BookOpen, Boxes, ChevronRight, CircleAlert, CircleHelp,
   Command, Database, Globe2, Layers3, Network, Pause, Play, Radio, RotateCcw, Search,
   ShieldCheck, Sparkles, X,
 } from 'lucide-react';
@@ -182,6 +184,89 @@ type RuntimeIndicator = {
   identityStatus?: PortalBotConnection['identityStatus'];
 };
 
+type DiagramIssueItem = {
+  key: string;
+  title: string;
+  severity: 'warning' | 'critical';
+  count: number;
+  latestAt: string | null;
+};
+
+type DiagramIssueMarker = {
+  severity: 'warning' | 'critical';
+  count: number;
+  items: DiagramIssueItem[];
+};
+
+function buildIssueMarkers(data: PortalCommandCenter | undefined) {
+  const collected = new Map<string, Map<string, DiagramIssueItem>>();
+  if (!data || data.scope !== 'development_isolated_test') return new Map<string, DiagramIssueMarker>();
+
+  const addIssue = (nodeId: string, issue: DiagramIssueItem) => {
+    const items = collected.get(nodeId) ?? new Map<string, DiagramIssueItem>();
+    const existing = items.get(issue.key);
+    if (existing) {
+      existing.count += issue.count;
+      if (issue.latestAt && (!existing.latestAt || issue.latestAt > existing.latestAt)) existing.latestAt = issue.latestAt;
+    } else {
+      items.set(issue.key, { ...issue });
+    }
+    collected.set(nodeId, items);
+  };
+
+  data.alerts.forEach((alert) => {
+    const targets = new Set<string>(['ecosystem']);
+    if (alert.category === 'pro_stale_applications') {
+      targets.add('pro-access');
+      targets.add('support-handoff');
+    } else if (alert.destination === 'PRO Signals') {
+      targets.add('isolated-dev-bot');
+      targets.add('signals-zones');
+      targets.add('pro-channel');
+    } else if (alert.destination === 'Market Analysis') {
+      targets.add('isolated-dev-bot');
+      targets.add('market-analysis');
+    } else {
+      targets.add('isolated-dev-bot');
+      targets.add('health-recovery');
+    }
+    const issue: DiagramIssueItem = {
+      key: `alert:${alert.category}:${alert.destination}`,
+      title: alert.title,
+      severity: alert.severity,
+      count: alert.count,
+      latestAt: alert.latestAt,
+    };
+    targets.forEach((nodeId) => addIssue(nodeId, issue));
+  });
+
+  const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+  data.recentErrors.forEach((error) => {
+    const errorAt = Date.parse(error.latestAt);
+    if (!Number.isFinite(errorAt) || errorAt < oneDayAgo) return;
+    const issue: DiagramIssueItem = {
+      key: `error:${error.category}`,
+      title: `Recorded ${error.category.replaceAll('_', ' ')} error`,
+      severity: 'warning',
+      count: error.count,
+      latestAt: error.latestAt,
+    };
+    ['ecosystem', 'isolated-dev-bot', 'health-recovery'].forEach((nodeId) => addIssue(nodeId, issue));
+  });
+
+  return new Map([...collected.entries()].map(([nodeId, itemMap]) => {
+    const items = [...itemMap.values()].sort((a, b) => {
+      if (a.severity !== b.severity) return a.severity === 'critical' ? -1 : 1;
+      return (b.latestAt ?? '').localeCompare(a.latestAt ?? '');
+    });
+    return [nodeId, {
+      severity: items.some((item) => item.severity === 'critical') ? 'critical' as const : 'warning' as const,
+      count: items.reduce((total, item) => total + item.count, 0),
+      items,
+    }];
+  }));
+}
+
 function runtimeIndicatorFor(
   nodeId: string,
   connections: PortalBotConnection[] | undefined,
@@ -245,20 +330,22 @@ function SystemMap3D({
   visibleIds,
   labelIds,
   runtimeByNode,
+  issuesByNode,
   onSelect,
 }: {
   selectedId: string;
   visibleIds: Set<string>;
   labelIds: Set<string>;
   runtimeByNode: Map<string, RuntimeIndicator>;
+  issuesByNode: Map<string, DiagramIssueMarker>;
   onSelect: (id: string) => void;
 }) {
   const [autoRotate, setAutoRotate] = useState(true);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const currentRef = useRef({ selectedId, visibleIds, labelIds, runtimeByNode, onSelect, autoRotate });
+  const currentRef = useRef({ selectedId, visibleIds, labelIds, runtimeByNode, issuesByNode, onSelect, autoRotate });
   const resetViewRef = useRef<() => void>(() => {});
   const redrawRef = useRef<() => void>(() => {});
-  currentRef.current = { selectedId, visibleIds, labelIds, runtimeByNode, onSelect, autoRotate };
+  currentRef.current = { selectedId, visibleIds, labelIds, runtimeByNode, issuesByNode, onSelect, autoRotate };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -525,6 +612,22 @@ function SystemMap3D({
             context.stroke();
           }
 
+          const issueMarker = currentRef.current.issuesByNode.get(node.id);
+          if (issueMarker) {
+            const issueColor = issueMarker.severity === 'critical' ? '#ff7770' : '#e2bc76';
+            const pulse = reducedMotion.matches ? 0 : Math.sin(tick * 0.08) * 1.15;
+            context.globalAlpha = active ? 0.94 : 0.3;
+            context.strokeStyle = issueColor;
+            context.lineWidth = 1.5;
+            context.beginPath();
+            context.arc(x, y, radius + 5 + pulse, 0, Math.PI * 2);
+            context.stroke();
+            context.fillStyle = issueColor;
+            context.beginPath();
+            context.arc(x - radius * 1.45, y - radius * 1.45, 2.5, 0, Math.PI * 2);
+            context.fill();
+          }
+
           const runtime = currentRef.current.runtimeByNode.get(node.id);
           if (runtime) {
             const statusColor = runtime.tone === 'good' ? '#80e2b8' : runtime.tone === 'caution' ? '#e2bc76' : '#84958e';
@@ -657,7 +760,7 @@ function SystemMap3D({
 
   useEffect(() => {
     redrawRef.current();
-  }, [selectedId, visibleIds, labelIds, runtimeByNode, autoRotate]);
+  }, [selectedId, visibleIds, labelIds, runtimeByNode, issuesByNode, autoRotate]);
 
   return (
     <>
@@ -770,6 +873,16 @@ export default function OwnerMindMap() {
       refetchIntervalInBackground: false,
     },
   });
+  const issueQuery = useGetPortalCommandCenter({
+    query: {
+      enabled: import.meta.env.DEV,
+      queryKey: getGetPortalCommandCenterQueryKey(),
+      staleTime: 15_000,
+      refetchOnMount: 'always',
+      refetchInterval: import.meta.env.DEV ? 30_000 : false,
+      refetchIntervalInBackground: false,
+    },
+  });
   const selectedNode = nodes.find((node) => node.id === selectedId) ?? nodes[0];
   const normalizedQuery = query.trim().toLowerCase();
   const visibleNodes = useMemo(() => nodes.filter((node) => {
@@ -802,6 +915,15 @@ export default function OwnerMindMap() {
     });
     return indicators;
   }, [runtimeQuery.data?.connections, runtimeQuery.isLoading, runtimeQuery.isError]);
+  const issuesByNode = useMemo(() => buildIssueMarkers(issueQuery.data), [issueQuery.data]);
+  const selectedIssues = issuesByNode.get(selectedNode.id);
+  const issueFeedText = !import.meta.env.DEV
+    ? 'Development issue feed only'
+    : issueQuery.isLoading
+      ? 'Checking Development issue feed'
+      : issueQuery.isError
+        ? 'Issue feed unavailable · health cannot be confirmed'
+        : `${issuesByNode.get('ecosystem')?.count ?? 0} recorded Development issues · not a Production health check`;
 
   useEffect(() => {
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
@@ -890,18 +1012,23 @@ export default function OwnerMindMap() {
 
             <div className="omh-map-stage">
               <div className="omh-stage-grid" aria-hidden="true" />
-              <SystemMap3D selectedId={selectedId} visibleIds={visibleIds} labelIds={labelIds} runtimeByNode={runtimeByNode} onSelect={selectNode} />
+              <SystemMap3D selectedId={selectedId} visibleIds={visibleIds} labelIds={labelIds} runtimeByNode={runtimeByNode} issuesByNode={issuesByNode} onSelect={selectNode} />
               <div className="omh-3d-caption">
                 <span>SMART MONEY HUB · 3D ECOSYSTEM</span>
                 <span>SEARCH OR TAP TO REVEAL · DRAG · PINCH</span>
               </div>
-              <div className="omh-stage-foot"><span>ALL BOTS &amp; WORKFLOWS</span><span>DEV HEARTBEAT FEED</span><span>OWNER ONLY</span></div>
+              <div className="omh-stage-foot"><span>ALL BOTS &amp; WORKFLOWS</span><span>DEV ALERTS + HEARTBEATS</span><span>OWNER ONLY</span></div>
             </div>
 
             <div className="omh-runtime-legend" aria-label="Runtime status legend">
               <span><i className="tone-good" />Recent heartbeat</span>
               <span><i className="tone-caution" />Stale heartbeat</span>
               <span><i className="tone-neutral" />Unknown / no source</span>
+              <span><i className="omh-issue-legend-dot" />Recorded issue</span>
+            </div>
+            <div className={`omh-issue-feed-state ${issueQuery.isError ? 'is-unavailable' : ''}`} role="status" data-testid="mindmap-issue-feed-state">
+              <CircleAlert size={13} />
+              <span>{issueFeedText}</span>
             </div>
 
             <div className="omh-node-grid" aria-label="Smart Money Hub systems and workflows">
@@ -917,6 +1044,7 @@ export default function OwnerMindMap() {
                       {groupNodes.map((node, nodeIndex) => {
                         const Icon = node.icon;
                         const active = selectedId === node.id;
+                        const issues = issuesByNode.get(node.id);
                         const runtime = runtimeIndicatorFor(
                           node.id,
                           runtimeQuery.data?.connections,
@@ -939,6 +1067,7 @@ export default function OwnerMindMap() {
                               <strong>{node.title}</strong>
                               <small>{node.subtitle}</small>
                               {runtime && <span className={`omh-runtime-status tone-${runtime.tone}`} data-testid={`runtime-status-${node.id}`}><i />{runtime.label}</span>}
+                              {issues && <span className={`omh-issue-status severity-${issues.severity}`} data-testid={`issue-status-${node.id}`}><CircleAlert size={10} />{issues.count} recorded</span>}
                             </span>
                             <ChevronRight size={14} className="omh-node-chevron" />
                             {nodeIndex === 0 && <span className="omh-node-index">0{groupIndex + 1}</span>}
@@ -981,6 +1110,15 @@ export default function OwnerMindMap() {
             <h3>{selectedNode.title}</h3>
             <p className="omh-detail-subtitle">{selectedNode.subtitle}</p>
             <p className="omh-detail-description">{selectedNode.description}</p>
+            {selectedIssues && <section className={`omh-issue-detail severity-${selectedIssues.severity}`} aria-label={`${selectedNode.title} recorded issues`} data-testid={`issue-detail-${selectedNode.id}`}>
+              <div className="omh-issue-detail-heading"><CircleAlert size={14} /><strong>{selectedIssues.count} RECORDED DEVELOPMENT ISSUE{selectedIssues.count === 1 ? '' : 'S'}</strong></div>
+              <ul>{selectedIssues.items.slice(0, 4).map((issue) => <li key={issue.key}>
+                <span>{issue.title}</span>
+                <small>{issue.count} recorded{issue.latestAt ? ` · ${formatHeartbeat(issue.latestAt)}` : ''}</small>
+              </li>)}</ul>
+              <small>Stored alert summary; it does not prove the issue is still active.</small>
+            </section>}
+            {import.meta.env.DEV && issueQuery.isError && <div className="omh-issue-feed-unavailable" role="alert"><CircleAlert size={13} />Issue feed unavailable. The map cannot confirm current health.</div>}
             {selectedRuntime && <section className={`omh-runtime-detail tone-${selectedRuntime.tone}`} aria-label={`${selectedNode.title} runtime status`} data-testid={`runtime-detail-${selectedNode.id}`}>
               <div className="omh-runtime-detail-heading"><Radio size={13} /><strong>{selectedRuntime.label === 'NO HEARTBEAT SOURCE' ? 'PROCESS STATUS · SOURCE NOT CONNECTED' : 'PROCESS STATUS · DEVELOPMENT FEED'}</strong><span className={`omh-runtime-status tone-${selectedRuntime.tone}`}><i />{selectedRuntime.label}</span></div>
               <p>{selectedRuntime.detail}</p>

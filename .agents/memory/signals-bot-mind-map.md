@@ -9,6 +9,10 @@ Keep 3D diagram labels hidden by default; reveal matching search results or the 
 
 Runtime indicators must use process heartbeats, not Telegram identity checks. The existing Development feed has a process heartbeat for the isolated test bot; Coach and PRO Signals currently have identity checks only, and WhatsApp has no heartbeat source. Show missing/stale data as unknown/stale, never as idle or stopped.
 
+Show Development command-center warnings/errors as visible issue halos on affected map nodes and list their stored summaries when selected. A missing/erroring alert feed must never look like a clean bill of health.
+
+Issue halos and detail entries come from the Development command-center alerts and recent stored errors. Keep those explicitly Development-scoped, distinguish recorded alerts from currently active faults, and show the feed as unavailable rather than clear when it cannot be read.
+
 **Why:** the user clarified that the map should include all bots and all functioning features, not focus on one bot.
 
 **How to apply:** when adding nodes or live indicators, use verified product capabilities and label status as conceptual/unknown unless a trustworthy runtime telemetry source is connected. Keep Development telemetry isolated from Production. Do not start bot workflows just to animate the map.

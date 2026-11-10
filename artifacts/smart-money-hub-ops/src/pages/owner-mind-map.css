@@ -111,6 +111,23 @@
 .omh-runtime-legend i.tone-good { background: #80e2b8; box-shadow: 0 0 8px rgba(128,226,184,.32); }
 .omh-runtime-legend i.tone-caution { background: #e2bc76; box-shadow: 0 0 8px rgba(226,188,118,.25); }
 .omh-runtime-legend i.tone-neutral { background: #84958e; }
+.omh-runtime-legend i.omh-issue-legend-dot { background: #ff7770; box-shadow: 0 0 8px rgba(255,119,112,.32); }
+.omh-issue-feed-state { display: flex; align-items: center; gap: 7px; border: 1px solid rgba(163,193,188,.1); border-top: 0; padding: 7px 12px; background: rgba(11,17,18,.55); color: #8c9b95; font-size: 8px; }
+.omh-issue-feed-state > svg { flex: none; color: #e2bc76; }
+.omh-issue-feed-state.is-unavailable { border-color: rgba(255,119,112,.26); color: #edaaa4; }
+.omh-issue-feed-state.is-unavailable > svg { color: #ff7770; }
+.omh-issue-status { display: inline-flex; width: fit-content; align-items: center; gap: 4px; margin-top: 5px; border: 1px solid rgba(226,188,118,.28); border-radius: 999px; padding: 2px 6px; color: #e2bc76; background: rgba(159,112,37,.1); font: 7px 'DM Mono', monospace; white-space: nowrap; }
+.omh-issue-status.severity-critical { border-color: rgba(255,119,112,.35); color: #ff8b82; background: rgba(133,44,40,.12); }
+.omh-issue-detail { margin-top: 12px; border: 1px solid rgba(226,188,118,.3); padding: 10px; background: rgba(107,75,25,.08); }
+.omh-issue-detail.severity-critical { border-color: rgba(255,119,112,.35); background: rgba(133,44,40,.1); }
+.omh-issue-detail-heading { display: flex; align-items: center; gap: 7px; color: #e2bc76; }
+.omh-issue-detail.severity-critical .omh-issue-detail-heading { color: #ff8b82; }
+.omh-issue-detail-heading > strong { font: 7px 'DM Mono', monospace; letter-spacing: .08em; }
+.omh-issue-detail ul { display: grid; gap: 7px; margin: 9px 0; padding: 0; list-style: none; }
+.omh-issue-detail li { display: grid; gap: 3px; color: #d5ded9; font-size: 9px; line-height: 1.45; }
+.omh-issue-detail li small,.omh-issue-detail > small { color: #87958f; font-size: 8px; }
+.omh-issue-feed-unavailable { display: flex; align-items: flex-start; gap: 7px; margin-top: 12px; border: 1px solid rgba(255,119,112,.3); padding: 9px; color: #f0aaa4; font-size: 9px; line-height: 1.5; }
+.omh-issue-feed-unavailable svg { flex: none; }
 .omh-node-chevron { flex: none; color: #62736c; }
 .omh-node-index { position: absolute; top: 4px; right: 6px; color: #63776e; font: 7px 'DM Mono', monospace; }
 .is-dimmed { opacity: .2 !important; }
