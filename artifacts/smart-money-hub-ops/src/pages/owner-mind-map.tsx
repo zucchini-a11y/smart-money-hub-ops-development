@@ -8,7 +8,7 @@ import {
 import type { PortalBotConnection, PortalCommandCenter } from '@workspace/api-client-react';
 import {
   ArrowUpRight, Bot, BookOpen, Boxes, ChevronRight, CircleAlert, CircleHelp,
-  Command, Database, Globe2, Layers3, Network, Pause, Play, Radio, RotateCcw, Search,
+  Command, Database, Globe2, Layers3, Move, Network, Pause, Play, Radio, RotateCcw, Search,
   Settings2, ShieldCheck, Sparkles, X,
 } from 'lucide-react';
 import {
@@ -412,6 +412,8 @@ function SystemMap3D({
   onSelect: (id: string) => void;
 }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [dragMode, setDragMode] = useState<'move' | 'rotate'>('move');
+  const dragModeRef = useRef<'move' | 'rotate'>('move');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const currentRef = useRef({ selectedId, visibleIds, labelIds, runtimeByNode, issuesByNode, settings, setSettings, onSelect });
   const resetViewRef = useRef<() => void>(() => {});
@@ -432,6 +434,8 @@ function SystemMap3D({
     let yaw = -0.28;
     let pitch = 0.12;
     let zoom = 1;
+    let panX = 0;
+    let panY = 0;
     let tick = 0;
     let pointerDown = false;
     let pointerMoved = false;
@@ -441,6 +445,7 @@ function SystemMap3D({
     let pointerStartY = 0;
     let projectedNodes: { id: string; x: number; y: number; depth: number }[] = [];
     let pinchDistance = 0;
+    let pinchCenter: { x: number; y: number } | null = null;
     const pointers = new Map<number, { x: number; y: number }>();
 
     type CloudPoint = {
@@ -781,13 +786,14 @@ function SystemMap3D({
         const z = targetZ + (brainZ - targetZ) * anatomy;
         const rotatedX = x * cosYaw + z * sinYaw;
         const rotatedZ = -x * sinYaw + z * cosYaw;
-        const rotatedY = y * cosPitch - rotatedZ * sinPitch;
-        const depth = y * sinPitch + rotatedZ * cosPitch;
+        const centeredY = y - 0.58;
+        const rotatedY = centeredY * cosPitch - rotatedZ * sinPitch;
+        const depth = centeredY * sinPitch + rotatedZ * cosPitch;
         const perspective = 3.4 / (3.4 + depth);
         return {
           node,
-          x: centerX + rotatedX * scale * perspective,
-          y: centerY - rotatedY * scale * perspective,
+          x: centerX + panX + rotatedX * scale * perspective,
+          y: centerY + panY - rotatedY * scale * perspective,
           depth,
           perspective,
         };
@@ -806,12 +812,13 @@ function SystemMap3D({
       const projectCloudPoint = (point: { x: number; y: number; z: number }) => {
         const rotatedX = point.x * cosYaw + point.z * sinYaw;
         const rotatedZ = -point.x * sinYaw + point.z * cosYaw;
-        const rotatedY = point.y * cosPitch - rotatedZ * sinPitch;
-        const depth = point.y * sinPitch + rotatedZ * cosPitch;
+        const centeredY = point.y - 0.58;
+        const rotatedY = centeredY * cosPitch - rotatedZ * sinPitch;
+        const depth = centeredY * sinPitch + rotatedZ * cosPitch;
         const perspective = 3.4 / (3.4 + depth);
         return {
-          x: centerX + rotatedX * scale * perspective,
-          y: centerY - rotatedY * scale * perspective,
+          x: centerX + panX + rotatedX * scale * perspective,
+          y: centerY + panY - rotatedY * scale * perspective,
           depth,
           perspective,
         };
@@ -873,7 +880,7 @@ function SystemMap3D({
         }
         const depthAlpha = Math.max(0.24, 0.92 - point.depth * 0.38);
         const foldLight = particle.shade === undefined ? 1 : Math.min(1.4, particle.shade * 2.4);
-        const hubScale = (particle.hub ? 1.7 : 1) * (particle.body ? 0.55 : 0.6);
+        const hubScale = (particle.hub ? 2.2 : 1) * (particle.body ? 0.55 : 0.6);
         const spriteSize = (2.4 + 4 * point.perspective) * pointScale * particle.size * hubScale;
         context.globalAlpha = Math.min(
           1,
@@ -933,21 +940,21 @@ function SystemMap3D({
           const active = currentRef.current.visibleIds.has(node.id);
           const selected = currentRef.current.selectedId === node.id;
           const color = nodeColors[node.group];
-          const radius = (selected ? 7 : 5.2) * Math.max(0.72, perspective);
+          const radius = (selected ? 4.5 : 3.6) * Math.max(0.72, perspective);
           const alpha = active ? Math.max(0.48, 0.92 - depth * 0.14) : 0.15;
 
           context.globalAlpha = alpha;
-          const glow = context.createRadialGradient(x, y, 0, x, y, radius * 3.1);
+          const glow = context.createRadialGradient(x, y, 0, x, y, radius * 2.4);
           glow.addColorStop(0, `${color}70`);
           glow.addColorStop(1, `${color}00`);
           context.fillStyle = glow;
           context.beginPath();
-          context.arc(x, y, radius * 3.1, 0, Math.PI * 2);
+          context.arc(x, y, radius * 2.4, 0, Math.PI * 2);
           context.fill();
 
           context.fillStyle = '#091110';
           context.strokeStyle = color;
-          context.lineWidth = selected ? 2 : 1.35;
+          context.lineWidth = selected ? 1.5 : 1.1;
           context.beginPath();
           context.arc(x, y, radius, 0, Math.PI * 2);
           context.fill();
@@ -957,23 +964,23 @@ function SystemMap3D({
             context.strokeStyle = `${color}80`;
             context.lineWidth = 1;
             context.beginPath();
-            context.arc(x, y, radius + 6, 0, Math.PI * 2);
+            context.arc(x, y, radius + 4, 0, Math.PI * 2);
             context.stroke();
           }
 
           const issueMarker = currentRef.current.issuesByNode.get(node.id);
           if (issueMarker) {
             const issueColor = issueMarker.severity === 'critical' ? '#ff7770' : '#e2bc76';
-            const pulse = reducedMotion.matches ? 0 : Math.sin(tick * 0.08) * 1.15;
+            const pulse = reducedMotion.matches ? 0 : Math.sin(tick * 0.08) * 0.8;
             context.globalAlpha = active ? 0.94 : 0.3;
             context.strokeStyle = issueColor;
             context.lineWidth = 1.5;
             context.beginPath();
-            context.arc(x, y, radius + 5 + pulse, 0, Math.PI * 2);
+            context.arc(x, y, radius + 3 + pulse, 0, Math.PI * 2);
             context.stroke();
             context.fillStyle = issueColor;
             context.beginPath();
-            context.arc(x - radius * 1.45, y - radius * 1.45, 2.5, 0, Math.PI * 2);
+            context.arc(x - radius * 1.45, y - radius * 1.45, 2, 0, Math.PI * 2);
             context.fill();
           }
 
@@ -983,11 +990,11 @@ function SystemMap3D({
             context.globalAlpha = active ? 1 : 0.28;
             context.fillStyle = '#07100e';
             context.beginPath();
-            context.arc(x + radius * 1.45, y - radius * 1.45, 4.2, 0, Math.PI * 2);
+            context.arc(x + radius * 1.45, y - radius * 1.45, 3.2, 0, Math.PI * 2);
             context.fill();
             context.fillStyle = statusColor;
             context.beginPath();
-            context.arc(x + radius * 1.45, y - radius * 1.45, 2.5, 0, Math.PI * 2);
+            context.arc(x + radius * 1.45, y - radius * 1.45, 2, 0, Math.PI * 2);
             context.fill();
           }
 
@@ -1019,6 +1026,8 @@ function SystemMap3D({
       yaw = -0.28;
       pitch = 0.12;
       zoom = 1;
+      panX = 0;
+      panY = 0;
       if (reducedMotion.matches) draw();
     };
     redrawRef.current = () => {
@@ -1032,6 +1041,7 @@ function SystemMap3D({
         pointerDown = false;
         const [first, second] = Array.from(pointers.values());
         pinchDistance = Math.hypot(first.x - second.x, first.y - second.y);
+        pinchCenter = { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 };
         return;
       }
       pointerDown = true;
@@ -1044,8 +1054,14 @@ function SystemMap3D({
       if (pointers.size > 1) {
         const [first, second] = Array.from(pointers.values());
         const distance = Math.hypot(first.x - second.x, first.y - second.y);
-        if (pinchDistance > 0) zoom = Math.max(0.68, Math.min(1.8, zoom * distance / pinchDistance));
+        const center = { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 };
+        if (pinchDistance > 0) zoom = Math.max(0.4, Math.min(4.5, zoom * distance / pinchDistance));
+        if (pinchCenter) {
+          panX += center.x - pinchCenter.x;
+          panY += center.y - pinchCenter.y;
+        }
         pinchDistance = distance;
+        pinchCenter = center;
         if (reducedMotion.matches) draw();
         return;
       }
@@ -1054,8 +1070,13 @@ function SystemMap3D({
       const dy = event.clientY - lastY;
       if (Math.hypot(event.clientX - pointerStartX, event.clientY - pointerStartY) > 5) pointerMoved = true;
       if (pointerMoved) {
-        yaw += dx * 0.008;
-        pitch = Math.max(-0.8, Math.min(0.8, pitch + dy * 0.006));
+        if (dragModeRef.current === 'move') {
+          panX += dx;
+          panY += dy;
+        } else {
+          yaw += dx * 0.008;
+          pitch = Math.max(-0.8, Math.min(0.8, pitch + dy * 0.006));
+        }
         if (reducedMotion.matches) draw();
       }
       lastX = event.clientX;
@@ -1065,7 +1086,10 @@ function SystemMap3D({
       const wasTap = pointerDown && !pointerMoved && pointers.size === 1;
       pointerDown = false;
       pointers.delete(event.pointerId);
-      if (pointers.size < 2) pinchDistance = 0;
+      if (pointers.size < 2) {
+        pinchDistance = 0;
+        pinchCenter = null;
+      }
       if (wasTap) {
         const bounds = canvas.getBoundingClientRect();
         const x = event.clientX - bounds.left;
@@ -1079,11 +1103,13 @@ function SystemMap3D({
     };
     const wheel = (event: WheelEvent) => {
       event.preventDefault();
-      zoom = Math.max(0.72, Math.min(1.55, zoom * Math.exp(-event.deltaY * 0.001)));
+      zoom = Math.max(0.4, Math.min(4.5, zoom * Math.exp(-event.deltaY * 0.001)));
       if (reducedMotion.matches) draw();
     };
     focusViewRef.current = () => {
       zoom = zoom > 1.45 ? 1 : 1.55;
+      panX = 0;
+      panY = 0;
       if (reducedMotion.matches) draw();
     };
     const motionChange = () => {
@@ -1125,13 +1151,27 @@ function SystemMap3D({
         ref={canvasRef}
         className="omh-system-canvas"
         role="img"
-        aria-label="Animated three-dimensional neural cloud map of Smart Money Hub bots and workflows. Drag to rotate, pinch or scroll to zoom, and tap a glowing node to select it."
+        aria-label="Animated three-dimensional neural cloud map of Smart Money Hub bots and workflows. Drag to move, switch to rotate mode to turn it, pinch or scroll to zoom, and tap a glowing node to select it."
         data-testid="canvas-owner-system-map-3d"
       />
       <div className="omh-3d-controls" aria-label="3D map controls">
         <button type="button" onClick={() => setSettings((current) => ({ ...current, turning: !current.turning }))} aria-pressed={settings.turning} aria-label={settings.turning ? 'Pause automatic rotation' : 'Resume automatic rotation'} title={settings.turning ? 'Pause rotation' : 'Resume rotation'}>
           {settings.turning ? <Pause size={12} /> : <Play size={12} />}
-          <span>{settings.turning ? 'PAUSE' : 'ROTATE'}</span>
+          <span>{settings.turning ? 'PAUSE' : 'AUTO'}</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            const nextMode = dragModeRef.current === 'move' ? 'rotate' : 'move';
+            dragModeRef.current = nextMode;
+            setDragMode(nextMode);
+          }}
+          aria-pressed={dragMode === 'move'}
+          aria-label={dragMode === 'move' ? 'Drag mode: move map. Switch to rotate' : 'Drag mode: rotate map. Switch to move'}
+          title={dragMode === 'move' ? 'Drag to move · tap to switch to rotate' : 'Drag to rotate · tap to switch to move'}
+        >
+          {dragMode === 'move' ? <Move size={12} /> : <RotateCcw size={12} />}
+          <span>{dragMode === 'move' ? 'MOVE' : 'ROTATE'}</span>
         </button>
         <button type="button" onClick={() => setSettingsOpen((open) => !open)} aria-expanded={settingsOpen} aria-controls="omh-map-settings" aria-label="Open mind map settings" title="Settings"><Settings2 size={12} /></button>
         <button type="button" onClick={() => resetViewRef.current()} aria-label="Reset 3D map view" title="Reset view"><RotateCcw size={12} /></button>
@@ -1488,7 +1528,7 @@ export default function OwnerMindMap() {
     if (activeView === 'Files') {
       return <section className="omh-view-panel" aria-label="Map files"><div className="omh-view-heading"><span>FILES</span><strong>Linked files</strong><small>Only files connected to this application would appear here.</small></div><div className="omh-view-empty">No application file records are linked to this map. The reference HTML is used for design guidance, not treated as an uploaded production file.</div></section>;
     }
-    return <section className="omh-view-panel" aria-label="Map guide"><div className="omh-view-heading"><span>LEARN</span><strong>How to use the map</strong><small>Use search or tap a node to reveal its label and workflow details.</small></div><div className="omh-guide-grid"><article><b>Rotate</b><span>Drag with a mouse or finger. The motion control pauses automatic rotation.</span></article><article><b>Zoom</b><span>Pinch on touchscreens or use the scroll wheel.</span></article><article><b>Filter</b><span>Choose system groups in Settings to focus the map.</span></article><article><b>Check status</b><span>Heartbeat dots and issue rings use Development-only evidence; unknown does not mean stopped.</span></article></div></section>;
+    return <section className="omh-view-panel" aria-label="Map guide"><div className="omh-view-heading"><span>LEARN</span><strong>How to use the map</strong><small>Use search or tap a node to reveal its label and workflow details.</small></div><div className="omh-guide-grid"><article><b>Move and rotate</b><span>Drag in Move mode to reposition the map. Switch to Rotate in the map controls to turn it. The motion control pauses automatic rotation.</span></article><article><b>Zoom</b><span>Pinch on touchscreens or use the scroll wheel. Two-finger movement also pans.</span></article><article><b>Filter</b><span>Choose system groups in Settings to focus the map.</span></article><article><b>Check status</b><span>Heartbeat dots and issue rings use Development-only evidence; unknown does not mean stopped.</span></article></div></section>;
   };
 
   const walkthroughCopy = [
