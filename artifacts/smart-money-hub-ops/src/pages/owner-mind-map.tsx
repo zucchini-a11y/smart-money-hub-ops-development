@@ -940,33 +940,25 @@ function SystemMap3D({
           const active = currentRef.current.visibleIds.has(node.id);
           const selected = currentRef.current.selectedId === node.id;
           const color = nodeColors[node.group];
-          const radius = (selected ? 4.5 : 3.6) * Math.max(0.72, perspective);
+          const radius = 1.8 * Math.max(0.72, perspective);
           const alpha = active ? Math.max(0.48, 0.92 - depth * 0.14) : 0.15;
 
-          context.globalAlpha = alpha;
-          const glow = context.createRadialGradient(x, y, 0, x, y, radius * 2.4);
+          context.globalAlpha = selected ? Math.min(1, alpha + 0.12) : alpha;
+          const glow = context.createRadialGradient(x, y, 0, x, y, radius * 1.7);
           glow.addColorStop(0, `${color}70`);
           glow.addColorStop(1, `${color}00`);
           context.fillStyle = glow;
           context.beginPath();
-          context.arc(x, y, radius * 2.4, 0, Math.PI * 2);
+          context.arc(x, y, radius * 1.7, 0, Math.PI * 2);
           context.fill();
 
           context.fillStyle = '#091110';
           context.strokeStyle = color;
-          context.lineWidth = selected ? 1.5 : 1.1;
+          context.lineWidth = selected ? 1.1 : 0.8;
           context.beginPath();
           context.arc(x, y, radius, 0, Math.PI * 2);
           context.fill();
           context.stroke();
-
-          if (selected) {
-            context.strokeStyle = `${color}80`;
-            context.lineWidth = 1;
-            context.beginPath();
-            context.arc(x, y, radius + 4, 0, Math.PI * 2);
-            context.stroke();
-          }
 
           const issueMarker = currentRef.current.issuesByNode.get(node.id);
           if (issueMarker) {
@@ -980,7 +972,7 @@ function SystemMap3D({
             context.stroke();
             context.fillStyle = issueColor;
             context.beginPath();
-            context.arc(x - radius * 1.45, y - radius * 1.45, 2, 0, Math.PI * 2);
+            context.arc(x - radius * 1.45, y - radius * 1.45, 1.6, 0, Math.PI * 2);
             context.fill();
           }
 
@@ -990,11 +982,11 @@ function SystemMap3D({
             context.globalAlpha = active ? 1 : 0.28;
             context.fillStyle = '#07100e';
             context.beginPath();
-            context.arc(x + radius * 1.45, y - radius * 1.45, 3.2, 0, Math.PI * 2);
+            context.arc(x + radius * 1.45, y - radius * 1.45, 2.4, 0, Math.PI * 2);
             context.fill();
             context.fillStyle = statusColor;
             context.beginPath();
-            context.arc(x + radius * 1.45, y - radius * 1.45, 2, 0, Math.PI * 2);
+            context.arc(x + radius * 1.45, y - radius * 1.45, 1.6, 0, Math.PI * 2);
             context.fill();
           }
 
