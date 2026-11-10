@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type Dispatch, type KeyboardEvent as ReactKeyboardEvent, type SetStateAction } from 'react';
 import {
   getGetPortalCommandCenterQueryKey,
   getGetPortalBotConnectionsQueryKey,
@@ -9,8 +9,16 @@ import type { PortalBotConnection, PortalCommandCenter } from '@workspace/api-cl
 import {
   ArrowUpRight, Bot, BookOpen, Boxes, ChevronRight, CircleAlert, CircleHelp,
   Command, Database, Globe2, Layers3, Network, Pause, Play, Radio, RotateCcw, Search,
-  ShieldCheck, Sparkles, X,
+  Settings2, ShieldCheck, Sparkles, X,
 } from 'lucide-react';
+import {
+  DEFAULT_MIND_MAP_SETTINGS,
+  MindMapSettingsPanel,
+  type MindMapPalette,
+  type MindMapLayout,
+  type MindMapSettings,
+  type MindMapTheme,
+} from './owner-mind-map-controls';
 import './owner-mind-map.css';
 
 type MapNode = {
@@ -31,6 +39,16 @@ const groups = [
 ] as const;
 
 type GroupId = typeof groups[number]['id'];
+const mapViews = ['Brain', 'Navigator', 'Numbers', 'Timeline', 'You', 'Lab', 'Review', 'Files', 'Learn'] as const;
+type MapViewId = typeof mapViews[number];
+
+const themeColors: Record<MindMapTheme, { background: string; panel: string; line: string; glow: string; accent: string }> = {
+  Original: { background: '#070c0d', panel: '#0d1516', line: 'rgba(163,193,188,.12)', glow: 'rgba(27,95,75,.15)', accent: '#83e6c9' },
+  Midnight: { background: '#060814', panel: '#0b1021', line: 'rgba(157,164,235,.16)', glow: 'rgba(81,79,165,.17)', accent: '#a5a6ff' },
+  Graphite: { background: '#101112', panel: '#17191a', line: 'rgba(190,200,205,.15)', glow: 'rgba(105,117,123,.13)', accent: '#c6d0d3' },
+  Plum: { background: '#100a12', panel: '#1a101e', line: 'rgba(195,150,210,.16)', glow: 'rgba(118,66,137,.16)', accent: '#d3a3e6' },
+  Ember: { background: '#120b09', panel: '#1b100c', line: 'rgba(220,150,110,.17)', glow: 'rgba(158,78,39,.16)', accent: '#f4a379' },
+};
 
 const nodes: MapNode[] = [
   {
@@ -145,11 +163,43 @@ const nodePositions: Record<string, [number, number, number]> = {
   'shared-records': [0.09, 0.4, -0.22],
 };
 
+const layoutCenters: Record<MindMapLayout, Record<GroupId, [number, number, number]>> = {
+  Spheres: {
+    bots: [-0.15, 0.67, 0.02],
+    publishing: [0.15, 0.67, 0.02],
+    members: [-0.15, 0.45, -0.12],
+    operations: [0.15, 0.45, -0.12],
+  },
+  'Folder tree': {
+    bots: [-0.2, 0.72, 0],
+    publishing: [0.2, 0.72, 0],
+    members: [-0.2, 0.44, -0.12],
+    operations: [0.2, 0.44, -0.12],
+  },
+  Cloud: {
+    bots: [-0.08, 0.68, 0.02],
+    publishing: [0.08, 0.64, 0.02],
+    members: [-0.07, 0.52, -0.08],
+    operations: [0.07, 0.48, -0.08],
+  },
+};
+
 const nodeColors: Record<GroupId, string> = {
   bots: '#83e6c9',
   publishing: '#e4bd79',
   members: '#d69aa8',
   operations: '#8dbed0',
+};
+
+const brainPaletteColors: Record<MindMapPalette, Record<GroupId, string>> = {
+  Natural: { bots: '#c7b3a5', publishing: '#d3c1b5', members: '#d9cbbb', operations: '#cdb9ad' },
+  Default: nodeColors,
+  Lava: { bots: '#e99a59', publishing: '#dc7253', members: '#c85159', operations: '#f0bd64' },
+  Ocean: { bots: '#83cbd4', publishing: '#72b5d2', members: '#8794d7', operations: '#9bd8c8' },
+  Forest: { bots: '#9fbe77', publishing: '#6fae86', members: '#b1b77b', operations: '#5caa94' },
+  Aurora: { bots: '#80d5b6', publishing: '#73c8d5', members: '#ad98df', operations: '#cf8dc8' },
+  Mono: { bots: '#c6c6c6', publishing: '#999999', members: '#dedede', operations: '#777777' },
+  Sunset: { bots: '#f19b69', publishing: '#e4747e', members: '#ce769d', operations: '#d3a05b' },
 };
 
 const nodeLabelOffsets: Record<string, { x: number; y: number; align: CanvasTextAlign }> = {
@@ -196,6 +246,15 @@ type DiagramIssueMarker = {
   severity: 'warning' | 'critical';
   count: number;
   items: DiagramIssueItem[];
+};
+
+type MapTimelineEntry = {
+  key: string;
+  kind: 'Alert' | 'Error';
+  title: string;
+  count: number;
+  latestAt: string | null;
+  severity: 'warning' | 'critical';
 };
 
 function buildIssueMarkers(data: PortalCommandCenter | undefined) {
@@ -331,6 +390,12 @@ function SystemMap3D({
   labelIds,
   runtimeByNode,
   issuesByNode,
+  settings,
+  setSettings,
+  activeGroups,
+  onToggleGroup,
+  onWalkthrough,
+  onReset,
   onSelect,
 }: {
   selectedId: string;
@@ -338,14 +403,21 @@ function SystemMap3D({
   labelIds: Set<string>;
   runtimeByNode: Map<string, RuntimeIndicator>;
   issuesByNode: Map<string, DiagramIssueMarker>;
+  settings: MindMapSettings;
+  setSettings: Dispatch<SetStateAction<MindMapSettings>>;
+  activeGroups: Set<string>;
+  onToggleGroup: (id: string) => void;
+  onWalkthrough: () => void;
+  onReset: () => void;
   onSelect: (id: string) => void;
 }) {
-  const [autoRotate, setAutoRotate] = useState(true);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const currentRef = useRef({ selectedId, visibleIds, labelIds, runtimeByNode, issuesByNode, onSelect, autoRotate });
+  const currentRef = useRef({ selectedId, visibleIds, labelIds, runtimeByNode, issuesByNode, settings, setSettings, onSelect });
   const resetViewRef = useRef<() => void>(() => {});
+  const focusViewRef = useRef<() => void>(() => {});
   const redrawRef = useRef<() => void>(() => {});
-  currentRef.current = { selectedId, visibleIds, labelIds, runtimeByNode, issuesByNode, onSelect, autoRotate };
+  currentRef.current = { selectedId, visibleIds, labelIds, runtimeByNode, issuesByNode, settings, setSettings, onSelect };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -376,10 +448,12 @@ function SystemMap3D({
       y: number;
       z: number;
       nodeId: string;
+      groupId: GroupId;
       size: number;
       phase: number;
       opacity: number;
       body: boolean;
+      layoutTargets?: Record<MindMapLayout, [number, number, number]>;
       shade?: number;
       nx?: number;
       ny?: number;
@@ -481,6 +555,7 @@ function SystemMap3D({
       cloudPoints.push({
         ...point,
         nodeId: nearestNodeId(point, groupId),
+        groupId,
         size: 0.86 + random() * 0.28,
         phase: random() * Math.PI * 2,
         opacity: 0.78 + random() * 0.22,
@@ -531,6 +606,7 @@ function SystemMap3D({
       cloudPoints.push({
         ...point,
         nodeId: nearestNodeId(point, groupId),
+        groupId,
         size: 0.86 + random() * 0.28,
         phase: random() * Math.PI * 2,
         opacity: 0.78 + random() * 0.22,
@@ -558,6 +634,7 @@ function SystemMap3D({
         y: centerY,
         z: centerZ + Math.sin(angle) * radius,
         nodeId: 'health-recovery',
+        groupId: 'operations',
         size: 0.86 + random() * 0.28,
         phase: random() * Math.PI * 2,
         opacity: 0.78 + random() * 0.22,
@@ -597,9 +674,27 @@ function SystemMap3D({
       neuralStrands.push({ nodeId: 'health-recovery', points });
     }
 
+    const volumeOffset = (radius: number): [number, number, number] => {
+      const [x, y, z] = unitVector();
+      const distance = Math.cbrt(random()) * radius;
+      return [x * distance, y * distance, z * distance];
+    };
+    cloudPoints.forEach((point) => {
+      const sphereOffset = volumeOffset(point.body ? 0.035 : 0.085);
+      const folderOffset = volumeOffset(point.body ? 0.028 : 0.065);
+      const cloudOffset = volumeOffset(point.body ? 0.08 : 0.34);
+      const sphereCenter = layoutCenters.Spheres[point.groupId];
+      const folderCenter = layoutCenters['Folder tree'][point.groupId];
+      const cloudCenter = layoutCenters.Cloud[point.groupId];
+      point.layoutTargets = {
+        Spheres: [sphereCenter[0] + sphereOffset[0], sphereCenter[1] + sphereOffset[1], sphereCenter[2] + sphereOffset[2]],
+        'Folder tree': [folderCenter[0] + folderOffset[0], folderCenter[1] + folderOffset[1], folderCenter[2] + folderOffset[2]],
+        Cloud: [cloudCenter[0] + cloudOffset[0], cloudCenter[1] + cloudOffset[1], cloudCenter[2] + cloudOffset[2]],
+      };
+    });
+
     const pointsByGroup = new Map<GroupId, CloudPoint[]>(
-      groups.map((group) => [group.id, cloudPoints.filter((point) => !point.body
-        && nodes.find((node) => node.id === point.nodeId)?.group === group.id)]),
+      groups.map((group) => [group.id, cloudPoints.filter((point) => !point.body && point.groupId === group.id)]),
     );
     for (let hubIndex = 0; hubIndex < 16; hubIndex += 1) {
       const groupId = groups[hubIndex % groups.length].id;
@@ -623,26 +718,25 @@ function SystemMap3D({
       return `rgba(${(value >> 16) & 255},${(value >> 8) & 255},${value & 255},${alpha})`;
     };
     const nodeGroupById = new Map(nodes.map((node) => [node.id, node.group]));
-    const brainColorsByGroup: Record<GroupId, string> = {
-      bots: '#c7b3a5',
-      publishing: '#d3c1b5',
-      members: '#d9cbbb',
-      operations: '#cdb9ad',
-    };
-    const brainSpritesByGroup = new Map<GroupId, HTMLCanvasElement>();
-    groups.forEach((group) => {
-      const sprite = document.createElement('canvas');
-      sprite.width = sprite.height = 32;
-      const spriteContext = sprite.getContext('2d');
-      if (!spriteContext) return;
-      const gradient = spriteContext.createRadialGradient(16, 16, 0, 16, 16, 16);
-      gradient.addColorStop(0, '#fff');
-      gradient.addColorStop(0.18, brainColorsByGroup[group.id]);
-      gradient.addColorStop(0.5, toRgba(brainColorsByGroup[group.id], 0.25));
-      gradient.addColorStop(1, toRgba(brainColorsByGroup[group.id], 0));
-      spriteContext.fillStyle = gradient;
-      spriteContext.fillRect(0, 0, 32, 32);
-      brainSpritesByGroup.set(group.id, sprite);
+    const brainSpritesByPalette = new Map<MindMapPalette, Map<GroupId, HTMLCanvasElement>>();
+    (Object.keys(brainPaletteColors) as MindMapPalette[]).forEach((palette) => {
+      const sprites = new Map<GroupId, HTMLCanvasElement>();
+      groups.forEach((group) => {
+        const sprite = document.createElement('canvas');
+        sprite.width = sprite.height = 32;
+        const spriteContext = sprite.getContext('2d');
+        if (!spriteContext) return;
+        const color = brainPaletteColors[palette][group.id];
+        const gradient = spriteContext.createRadialGradient(16, 16, 0, 16, 16, 16);
+        gradient.addColorStop(0, '#fff');
+        gradient.addColorStop(0.18, color);
+        gradient.addColorStop(0.5, toRgba(color, 0.25));
+        gradient.addColorStop(1, toRgba(color, 0));
+        spriteContext.fillStyle = gradient;
+        spriteContext.fillRect(0, 0, 32, 32);
+        sprites.set(group.id, sprite);
+      });
+      brainSpritesByPalette.set(palette, sprites);
     });
 
     const resize = () => {
@@ -665,13 +759,26 @@ function SystemMap3D({
       const centerY = height / 2;
       const baseScale = Math.min(width * 1.5, height * 0.7);
       const scale = baseScale * zoom;
-      const pointScale = (baseScale / 330) * Math.sqrt(zoom);
+      const settings = currentRef.current.settings;
+      const pointScale = (baseScale / 330) * Math.sqrt(zoom) * (settings.pointSize / 100);
       const cosYaw = Math.cos(yaw);
       const sinYaw = Math.sin(yaw);
       const cosPitch = Math.cos(pitch);
       const sinPitch = Math.sin(pitch);
       const projected = nodes.map((node) => {
-        const [x, y, z] = nodePositions[node.id];
+        const [brainX, brainY, brainZ] = nodePositions[node.id];
+        const sameGroup = nodes.filter((candidate) => candidate.group === node.group);
+        const groupIndex = sameGroup.findIndex((candidate) => candidate.id === node.id);
+        const angle = (groupIndex / Math.max(1, sameGroup.length)) * Math.PI * 2;
+        const center = layoutCenters[settings.layout][node.group];
+        const offsetRadius = settings.layout === 'Cloud' ? 0.055 : 0.035;
+        const targetX = center[0] + Math.cos(angle) * offsetRadius;
+        const targetY = center[1] + Math.sin(angle) * offsetRadius;
+        const targetZ = center[2] + Math.sin(angle * 1.7) * offsetRadius;
+        const anatomy = settings.anatomy / 100;
+        const x = targetX + (brainX - targetX) * anatomy;
+        const y = targetY + (brainY - targetY) * anatomy;
+        const z = targetZ + (brainZ - targetZ) * anatomy;
         const rotatedX = x * cosYaw + z * sinYaw;
         const rotatedZ = -x * sinYaw + z * cosYaw;
         const rotatedY = y * cosPitch - rotatedZ * sinPitch;
@@ -687,6 +794,15 @@ function SystemMap3D({
       });
       projectedNodes = projected.map(({ node, x, y, depth }) => ({ id: node.id, x, y, depth }));
 
+      const displayCloudPoint = (point: CloudPoint) => {
+        const target = point.layoutTargets?.[settings.layout] ?? [point.x, point.y, point.z];
+        const anatomy = settings.anatomy / 100;
+        return {
+          x: target[0] + (point.x - target[0]) * anatomy,
+          y: target[1] + (point.y - target[1]) * anatomy,
+          z: target[2] + (point.z - target[2]) * anatomy,
+        };
+      };
       const projectCloudPoint = (point: { x: number; y: number; z: number }) => {
         const rotatedX = point.x * cosYaw + point.z * sinYaw;
         const rotatedZ = -point.x * sinYaw + point.z * cosYaw;
@@ -702,19 +818,25 @@ function SystemMap3D({
       };
 
       const backdrop = context.createRadialGradient(centerX, centerY - scale * 0.08, scale * 0.04, centerX, centerY, scale * 1.2);
-      backdrop.addColorStop(0, 'rgba(42,116,94,.11)');
-      backdrop.addColorStop(0.55, 'rgba(14,44,38,.06)');
+      backdrop.addColorStop(0, toRgba(themeColors[settings.theme].accent, 0.11));
+      backdrop.addColorStop(0.55, toRgba(themeColors[settings.theme].accent, 0.045));
       backdrop.addColorStop(1, 'rgba(3,8,8,0)');
       context.fillStyle = backdrop;
       context.fillRect(0, 0, width, height);
 
       context.globalCompositeOperation = 'lighter';
-      neuralStrands.forEach(({ nodeId, points }) => {
-        const color = brainColorsByGroup[nodeGroupById.get(nodeId) ?? 'operations'];
+      if (settings.showLinks && settings.showBrainstem) neuralStrands.forEach(({ nodeId, points }) => {
+        const color = brainPaletteColors[settings.palette][nodeGroupById.get(nodeId) ?? 'operations'];
         const active = currentRef.current.visibleIds.has(nodeId);
         context.beginPath();
         points.forEach((point, index) => {
-          const projectedPoint = projectCloudPoint(point);
+          const center = layoutCenters[settings.layout].operations;
+          const anatomy = settings.anatomy / 100;
+          const projectedPoint = projectCloudPoint({
+            x: center[0] + (point.x - center[0]) * anatomy,
+            y: center[1] + (point.y - center[1]) * anatomy,
+            z: center[2] + (point.z - center[2]) * anatomy,
+          });
           if (index === 0) context.moveTo(projectedPoint.x, projectedPoint.y);
           else context.lineTo(projectedPoint.x, projectedPoint.y);
         });
@@ -723,11 +845,11 @@ function SystemMap3D({
         context.stroke();
       });
 
-      brainLinks.forEach(({ from, to, groupId }) => {
+      if (settings.showLinks) brainLinks.forEach(({ from, to, groupId }) => {
         if (!currentRef.current.visibleIds.has(from.nodeId) || !currentRef.current.visibleIds.has(to.nodeId)) return;
-        const start = projectCloudPoint(from);
-        const end = projectCloudPoint(to);
-        context.strokeStyle = toRgba(brainColorsByGroup[groupId], 0.13);
+        const start = projectCloudPoint(displayCloudPoint(from));
+        const end = projectCloudPoint(displayCloudPoint(to));
+        context.strokeStyle = toRgba(brainPaletteColors[settings.palette][groupId], 0.13);
         context.lineWidth = 0.7;
         context.beginPath();
         context.moveTo(start.x, start.y);
@@ -736,10 +858,11 @@ function SystemMap3D({
       });
 
       cloudPoints.forEach((particle) => {
-        const point = projectCloudPoint(particle);
+        if (particle.body && !settings.showBrainstem) return;
+        const point = projectCloudPoint(displayCloudPoint(particle));
         const active = currentRef.current.visibleIds.has(particle.nodeId);
-        const groupId = nodeGroupById.get(particle.nodeId) ?? 'bots';
-        const sprite = brainSpritesByGroup.get(groupId);
+        const groupId = particle.groupId;
+        const sprite = brainSpritesByPalette.get(settings.palette)?.get(groupId);
         if (!sprite) return;
         let faceAlpha = 1;
         if (particle.nx !== undefined && particle.ny !== undefined && particle.nz !== undefined) {
@@ -771,7 +894,7 @@ function SystemMap3D({
       });
 
       context.lineWidth = 1;
-      Array.from(connectionSet).forEach((key, index) => {
+      if (settings.showLinks) Array.from(connectionSet).forEach((key, index) => {
         const [fromId, toId] = key.split('|');
         const fromIndex = nodes.findIndex(({ id }) => id === fromId);
         const toIndex = nodes.findIndex(({ id }) => id === toId);
@@ -780,7 +903,7 @@ function SystemMap3D({
         if (!from || !to) return;
         const shown = currentRef.current.visibleIds.has(fromId) && currentRef.current.visibleIds.has(toId);
         const nearer = Math.max(0, 1 - Math.max(from.depth, to.depth) / 3);
-        context.strokeStyle = `rgba(131,230,201,${(shown ? 0.22 : 0.045) * (0.45 + nearer * 0.55)})`;
+        context.strokeStyle = toRgba(themeColors[settings.theme].accent, (shown ? 0.22 : 0.045) * (0.45 + nearer * 0.55));
         context.beginPath();
         context.moveTo(from.x, from.y);
         const controlX = (from.x + to.x) / 2;
@@ -793,8 +916,8 @@ function SystemMap3D({
           const inverse = 1 - pulse;
           const px = inverse * inverse * from.x + 2 * inverse * pulse * controlX + pulse * pulse * to.x;
           const py = inverse * inverse * from.y + 2 * inverse * pulse * controlY + pulse * pulse * to.y;
-          context.fillStyle = 'rgba(161,255,240,.82)';
-          context.shadowColor = '#83e6c9';
+          context.fillStyle = toRgba(themeColors[settings.theme].accent, 0.82);
+          context.shadowColor = themeColors[settings.theme].accent;
           context.shadowBlur = 9;
           context.beginPath();
           context.arc(px, py, 2, 0, Math.PI * 2);
@@ -868,7 +991,7 @@ function SystemMap3D({
             context.fill();
           }
 
-          const showLabel = currentRef.current.labelIds.has(node.id);
+          const showLabel = currentRef.current.settings.showLabels || currentRef.current.labelIds.has(node.id);
           if (showLabel) {
             context.globalAlpha = active ? 0.96 : 0.34;
             const labelOffset = nodeLabelOffsets[node.id];
@@ -883,7 +1006,10 @@ function SystemMap3D({
 
       context.globalAlpha = 1;
       if (!reducedMotion.matches) {
-        if (currentRef.current.autoRotate && !pointerDown) yaw += 0.00075;
+        if (settings.turning && !pointerDown) {
+          if (settings.limitRotation) yaw = -0.28 + Math.sin(tick * (0.0012 + settings.speed * 0.0001)) * 0.9;
+          else yaw += 0.0012 + (settings.speed / 100) * 0.01;
+        }
         tick += 1;
         frame = window.requestAnimationFrame(draw);
       }
@@ -956,6 +1082,10 @@ function SystemMap3D({
       zoom = Math.max(0.72, Math.min(1.55, zoom * Math.exp(-event.deltaY * 0.001)));
       if (reducedMotion.matches) draw();
     };
+    focusViewRef.current = () => {
+      zoom = zoom > 1.45 ? 1 : 1.55;
+      if (reducedMotion.matches) draw();
+    };
     const motionChange = () => {
       window.cancelAnimationFrame(frame);
       draw();
@@ -980,13 +1110,14 @@ function SystemMap3D({
       canvas.removeEventListener('wheel', wheel);
       reducedMotion.removeEventListener('change', motionChange);
       resetViewRef.current = () => {};
+      focusViewRef.current = () => {};
       redrawRef.current = () => {};
     };
   }, []);
 
   useEffect(() => {
     redrawRef.current();
-  }, [selectedId, visibleIds, labelIds, runtimeByNode, issuesByNode, autoRotate]);
+  }, [selectedId, visibleIds, labelIds, runtimeByNode, issuesByNode, settings]);
 
   return (
     <>
@@ -998,12 +1129,29 @@ function SystemMap3D({
         data-testid="canvas-owner-system-map-3d"
       />
       <div className="omh-3d-controls" aria-label="3D map controls">
-        <button type="button" onClick={() => setAutoRotate((turning) => !turning)} aria-pressed={autoRotate} aria-label={autoRotate ? 'Pause automatic rotation' : 'Resume automatic rotation'} title={autoRotate ? 'Pause rotation' : 'Resume rotation'}>
-          {autoRotate ? <Pause size={12} /> : <Play size={12} />}
-          <span>{autoRotate ? 'PAUSE' : 'ROTATE'}</span>
+        <button type="button" onClick={() => setSettings((current) => ({ ...current, turning: !current.turning }))} aria-pressed={settings.turning} aria-label={settings.turning ? 'Pause automatic rotation' : 'Resume automatic rotation'} title={settings.turning ? 'Pause rotation' : 'Resume rotation'}>
+          {settings.turning ? <Pause size={12} /> : <Play size={12} />}
+          <span>{settings.turning ? 'PAUSE' : 'ROTATE'}</span>
         </button>
+        <button type="button" onClick={() => setSettingsOpen((open) => !open)} aria-expanded={settingsOpen} aria-controls="omh-map-settings" aria-label="Open mind map settings" title="Settings"><Settings2 size={12} /></button>
         <button type="button" onClick={() => resetViewRef.current()} aria-label="Reset 3D map view" title="Reset view"><RotateCcw size={12} /></button>
       </div>
+      <MindMapSettingsPanel
+        open={settingsOpen}
+        settings={settings}
+        setSettings={setSettings}
+        groups={groups}
+        activeGroups={activeGroups}
+        onToggleGroup={onToggleGroup}
+        onClose={() => setSettingsOpen(false)}
+        onWalkthrough={onWalkthrough}
+        onRestoreBrain={() => {
+          setSettings((current) => ({ ...current, layout: 'Spheres', anatomy: 100, palette: 'Natural' }));
+          resetViewRef.current();
+        }}
+        onFocusBrain={() => focusViewRef.current()}
+        onReset={() => { onReset(); resetViewRef.current(); setSettingsOpen(false); }}
+      />
     </>
   );
 }
@@ -1088,6 +1236,9 @@ export default function OwnerMindMap() {
   const [selectedId, setSelectedId] = useState('ecosystem');
   const [revealedId, setRevealedId] = useState<string | null>(null);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+  const [settings, setSettings] = useState<MindMapSettings>(DEFAULT_MIND_MAP_SETTINGS);
+  const [walkthroughStep, setWalkthroughStep] = useState<number | null>(null);
+  const [activeView, setActiveView] = useState<MapViewId>('Brain');
   const searchRef = useRef<HTMLInputElement>(null);
   const runtimeQuery = useGetPortalBotConnections({
     query: {
@@ -1109,15 +1260,23 @@ export default function OwnerMindMap() {
       refetchIntervalInBackground: false,
     },
   });
-  const selectedNode = nodes.find((node) => node.id === selectedId) ?? nodes[0];
   const normalizedQuery = query.trim().toLowerCase();
   const visibleNodes = useMemo(() => nodes.filter((node) => {
     const matchesGroup = activeGroups.has(node.group);
     const matchesSearch = !normalizedQuery
       || `${node.title} ${node.subtitle} ${node.description} ${node.connects.join(' ')}`.toLowerCase().includes(normalizedQuery);
-    return matchesGroup && matchesSearch;
-  }), [activeGroups, normalizedQuery]);
+    const runtime = runtimeIndicatorFor(
+      node.id,
+      runtimeQuery.data?.connections,
+      runtimeQuery.isLoading,
+      runtimeQuery.isError,
+    );
+    const hasRuntimeEvidence = runtime?.label === 'RUNNING' || runtime?.label === 'STALE';
+    const matchesEvidence = !settings.hideUnverified || hasRuntimeEvidence;
+    return matchesGroup && matchesSearch && matchesEvidence;
+  }), [activeGroups, normalizedQuery, runtimeQuery.data?.connections, runtimeQuery.isLoading, runtimeQuery.isError, settings.hideUnverified]);
   const visibleIds = new Set(visibleNodes.map(({ id }) => id));
+  const selectedNode = visibleNodes.find((node) => node.id === selectedId) ?? visibleNodes[0] ?? nodes[0];
   const selectedRuntime = runtimeIndicatorFor(
     selectedNode.id,
     runtimeQuery.data?.connections,
@@ -1142,6 +1301,41 @@ export default function OwnerMindMap() {
     return indicators;
   }, [runtimeQuery.data?.connections, runtimeQuery.isLoading, runtimeQuery.isError]);
   const issuesByNode = useMemo(() => buildIssueMarkers(issueQuery.data), [issueQuery.data]);
+  const displayGroups = useMemo(() => {
+    if (settings.groupBy === 'Function') {
+      return groups.map((group) => ({
+        ...group,
+        nodes: visibleNodes.filter((node) => node.group === group.id),
+      })).filter((group) => group.nodes.length > 0);
+    }
+    if (settings.groupBy === 'Recorded issues') {
+      return [
+        { id: 'recorded-issues', label: 'Recorded issues', color: 'rose' as const, nodes: visibleNodes.filter((node) => issuesByNode.has(node.id)) },
+        { id: 'no-recorded-issues', label: 'No recorded issues', color: 'mint' as const, nodes: visibleNodes.filter((node) => !issuesByNode.has(node.id)) },
+      ].filter((group) => group.nodes.length > 0);
+    }
+    const statusFor = (node: MapNode) => {
+      const indicator = runtimeIndicatorFor(
+        node.id,
+        runtimeQuery.data?.connections,
+        runtimeQuery.isLoading,
+        runtimeQuery.isError,
+      );
+      if (indicator?.label === 'RUNNING') return 'Recent heartbeat';
+      if (indicator?.label === 'STALE') return 'Stale heartbeat';
+      if (indicator?.label === 'UNKNOWN' || indicator?.label === 'NO HEARTBEAT SOURCE') return 'Unknown / no source';
+      return 'Workflow not monitored';
+    };
+    return [
+      { id: 'recent', label: 'Recent heartbeat', color: 'mint' as const },
+      { id: 'stale', label: 'Stale heartbeat', color: 'amber' as const },
+      { id: 'unknown', label: 'Unknown / no source', color: 'rose' as const },
+      { id: 'unmonitored', label: 'Workflow not monitored', color: 'blue' as const },
+    ].map((group) => ({
+      ...group,
+      nodes: visibleNodes.filter((node) => statusFor(node) === group.label),
+    })).filter((group) => group.nodes.length > 0);
+  }, [settings.groupBy, visibleNodes, issuesByNode, runtimeQuery.data?.connections, runtimeQuery.isLoading, runtimeQuery.isError]);
   const selectedIssues = issuesByNode.get(selectedNode.id);
   const issueFeedText = !import.meta.env.DEV
     ? 'Development issue feed only'
@@ -1150,6 +1344,36 @@ export default function OwnerMindMap() {
       : issueQuery.isError
         ? 'Issue feed unavailable · health cannot be confirmed'
         : `${issuesByNode.get('ecosystem')?.count ?? 0} recorded Development issues · not a Production health check`;
+  const timelineItems = useMemo(() => {
+    if (!import.meta.env.DEV || issueQuery.data?.scope !== 'development_isolated_test') return [];
+    const entries: MapTimelineEntry[] = [
+      ...issueQuery.data.alerts.map((alert) => ({
+        key: `alert:${alert.category}:${alert.destination}`,
+        kind: 'Alert' as const,
+        title: alert.title,
+        count: alert.count,
+        latestAt: alert.latestAt,
+        severity: alert.severity,
+      })),
+      ...issueQuery.data.recentErrors.map((error) => ({
+        key: `error:${error.category}`,
+        kind: 'Error' as const,
+        title: `Recorded ${error.category.replaceAll('_', ' ')} error`,
+        count: error.count,
+        latestAt: error.latestAt,
+        severity: 'warning' as const,
+      })),
+    ];
+    return entries.sort((a, b) => (b.latestAt ?? '').localeCompare(a.latestAt ?? '')).slice(0, 20);
+  }, [issueQuery.data]);
+  const runtimeCounts = useMemo(() => {
+    const connections = import.meta.env.DEV ? runtimeQuery.data?.connections ?? [] : [];
+    return {
+      running: connections.filter((connection) => connection.runtimeStatus === 'running').length,
+      stale: connections.filter((connection) => connection.runtimeStatus === 'stale').length,
+      unknown: connections.filter((connection) => connection.runtimeStatus === 'unknown').length,
+    };
+  }, [runtimeQuery.data?.connections]);
 
   useEffect(() => {
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
@@ -1182,6 +1406,17 @@ export default function OwnerMindMap() {
     setMobileDetailOpen(true);
   };
 
+  const resetAllSettings = () => {
+    setSettings(DEFAULT_MIND_MAP_SETTINGS);
+    setActiveGroups(new Set(groups.map(({ id }) => id)));
+    setQuery('');
+    setRevealedId(null);
+    setSelectedId('ecosystem');
+    setMobileDetailOpen(false);
+    setActiveView('Brain');
+    setWalkthroughStep(null);
+  };
+
   const selectFromKeyboard = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
     event.preventDefault();
@@ -1189,8 +1424,92 @@ export default function OwnerMindMap() {
     document.getElementById(`omh-node-${visibleNodes[nextIndex]?.id}`)?.focus();
   };
 
+  const renderViewPanel = () => {
+    if (activeView === 'Brain') return null;
+    if (activeView === 'Navigator') {
+      return (
+        <section className="omh-view-panel" aria-label="System navigator">
+          <div className="omh-view-heading"><span>NAVIGATOR</span><strong>Jump to a system</strong><small>{visibleNodes.length} systems match your current filters.</small></div>
+          <div className="omh-view-node-links">{visibleNodes.map((node) => (
+            <button type="button" key={node.id} onClick={() => selectNode(node.id)} className={`tone-${groupById.get(node.group)?.color ?? 'mint'}`}>
+              <span>{node.title}</span><small>{node.subtitle}</small><ArrowUpRight size={13} />
+            </button>
+          ))}</div>
+        </section>
+      );
+    }
+    if (activeView === 'Numbers') {
+      const totalIssues = timelineItems.reduce((sum, item) => sum + item.count, 0);
+      return (
+        <section className="omh-view-panel" aria-label="Map counts">
+          <div className="omh-view-heading"><span>NUMBERS</span><strong>What is in this map</strong><small>Counts describe the map and connected Development records, not live Production health.</small></div>
+          <div className="omh-metric-grid">
+            <article><span>Mapped systems</span><strong>{nodes.length}</strong></article>
+            <article><span>Functions</span><strong>{groups.length}</strong></article>
+            <article><span>Development heartbeats</span><strong>{runtimeCounts.running}</strong></article>
+            <article><span>Development issue entries</span><strong>{totalIssues}</strong></article>
+          </div>
+          <div className="omh-count-bars" aria-label="Mapped systems by function">
+            {groups.map((group) => {
+              const count = nodes.filter((node) => node.group === group.id).length;
+              return <div key={group.id} className={`tone-${group.color}`}><span>{group.label}</span><i><b style={{ width: `${(count / Math.max(...groups.map((item) => nodes.filter((node) => node.group === item.id).length))) * 100}%` }} /></i><strong>{count}</strong></div>;
+            })}
+          </div>
+        </section>
+      );
+    }
+    if (activeView === 'Timeline' || activeView === 'Review') {
+      const entries = activeView === 'Review'
+        ? [...timelineItems].sort((a, b) => (a.severity === 'critical' ? -1 : 1) - (b.severity === 'critical' ? -1 : 1))
+        : timelineItems;
+      return (
+        <section className="omh-view-panel" aria-label={activeView === 'Review' ? 'Issue review' : 'Recorded issue timeline'}>
+          <div className="omh-view-heading"><span>{activeView === 'Review' ? 'REVIEW' : 'TIMELINE'}</span><strong>{activeView === 'Review' ? 'Recorded issues to review' : 'Recent recorded events'}</strong><small>{import.meta.env.DEV ? 'Read-only Development feed. A stored alert may no longer be active.' : 'The Development timeline is not available in this view.'}</small></div>
+          {!import.meta.env.DEV && <div className="omh-view-empty">The Development issue timeline is not available in this build.</div>}
+          {import.meta.env.DEV && issueQuery.isLoading && <div className="omh-view-empty">Checking the Development issue feed…</div>}
+          {import.meta.env.DEV && issueQuery.isError && <div className="omh-view-empty is-warning">Development issue feed unavailable. Current health cannot be confirmed.</div>}
+          {import.meta.env.DEV && !issueQuery.isLoading && !issueQuery.isError && !timelineItems.length && <div className="omh-view-empty">No recorded Development alerts or recent errors are available.</div>}
+          <div className="omh-timeline-list">
+            {entries.map((item) => <article key={item.key} className={`severity-${item.severity}`}>
+              <span className="omh-timeline-kind">{item.kind}</span>
+              <div><strong>{item.title}</strong><small>{item.count} recorded{item.latestAt ? ` · ${formatHeartbeat(item.latestAt)}` : ''}</small></div>
+              <span className="omh-timeline-severity">{item.severity}</span>
+            </article>)}
+          </div>
+        </section>
+      );
+    }
+    if (activeView === 'You') {
+      return <section className="omh-view-panel" aria-label="Owner view"><div className="omh-view-heading"><span>OWNER VIEW</span><strong>Your private system map</strong><small>This page is owner-only. It shows system relationships and operational summaries without exposing visitor conversation contents.</small></div><div className="omh-view-note">Selected system: <strong>{selectedNode.title}</strong>. Use search, the node list, or the 3D markers to move between systems.</div></section>;
+    }
+    if (activeView === 'Lab') {
+      return <section className="omh-view-panel" aria-label="Visual map lab"><div className="omh-view-heading"><span>VISUAL LAB</span><strong>Try the reference controls</strong><small>These controls change only this diagram. They do not start, stop, or reconfigure any bot.</small></div><div className="omh-view-actions"><button type="button" onClick={() => setSettings((current) => ({ ...current, layout: 'Spheres', anatomy: 100, palette: 'Natural' }))}>Restore reference brain</button><button type="button" onClick={() => setSettings((current) => ({ ...current, layout: 'Cloud', anatomy: 0 }))}>Preview cloud layout</button><button type="button" onClick={() => setSettings((current) => ({ ...current, layout: 'Folder tree', anatomy: 0 }))}>Preview folder layout</button></div></section>;
+    }
+    if (activeView === 'Files') {
+      return <section className="omh-view-panel" aria-label="Map files"><div className="omh-view-heading"><span>FILES</span><strong>Linked files</strong><small>Only files connected to this application would appear here.</small></div><div className="omh-view-empty">No application file records are linked to this map. The reference HTML is used for design guidance, not treated as an uploaded production file.</div></section>;
+    }
+    return <section className="omh-view-panel" aria-label="Map guide"><div className="omh-view-heading"><span>LEARN</span><strong>How to use the map</strong><small>Use search or tap a node to reveal its label and workflow details.</small></div><div className="omh-guide-grid"><article><b>Rotate</b><span>Drag with a mouse or finger. The motion control pauses automatic rotation.</span></article><article><b>Zoom</b><span>Pinch on touchscreens or use the scroll wheel.</span></article><article><b>Filter</b><span>Choose system groups in Settings to focus the map.</span></article><article><b>Check status</b><span>Heartbeat dots and issue rings use Development-only evidence; unknown does not mean stopped.</span></article></div></section>;
+  };
+
+  const walkthroughCopy = [
+    { title: 'The full ecosystem', body: 'The brain represents Smart Money Hub systems and workflows. Its links show the map’s conceptual relationships, not live service connections.' },
+    { title: 'Find a system', body: 'Search by bot, channel, member journey, or operation. Search results reveal matching labels on the brain.' },
+    { title: 'Inspect health', body: 'Select a node for its details. Only verified Development heartbeats show as running; stored alerts are not proof that a fault is still active.' },
+    { title: 'Tune the view', body: 'Open Settings to change themes, colors, layout, anatomy, labels, motion, and point size. These are visual-only controls.' },
+  ];
+
   return (
-    <main className="owner-map-page">
+    <main
+      className="owner-map-page"
+      data-theme={settings.theme.toLowerCase()}
+      style={{
+        '--omh-bg': themeColors[settings.theme].background,
+        '--omh-panel-color': themeColors[settings.theme].panel,
+        '--omh-line-color': themeColors[settings.theme].line,
+        '--omh-glow': themeColors[settings.theme].glow,
+        '--omh-mint': themeColors[settings.theme].accent,
+      } as CSSProperties}
+    >
       <ParticleField />
       <div className="omh-shell">
         <header className="omh-header">
@@ -1204,6 +1523,10 @@ export default function OwnerMindMap() {
           <div className="omh-private"><ShieldCheck size={14} /> PRIVATE OWNER VIEW</div>
         </header>
 
+        <nav className="omh-map-tabs" aria-label="Mind map views">
+          {mapViews.map((view) => <button key={view} type="button" onClick={() => setActiveView(view)} aria-current={activeView === view ? 'page' : undefined}>{view}</button>)}
+        </nav>
+
         <section className="omh-intro" aria-labelledby="omh-page-title">
           <div>
             <p className="omh-kicker">ALL BOTS · ALL WORKFLOWS</p>
@@ -1216,6 +1539,8 @@ export default function OwnerMindMap() {
             <small>Animated 3D · not live telemetry</small>
           </div>
         </section>
+
+        {renderViewPanel()}
 
         <section className="omh-workspace" aria-label="Smart Money Hub bots and workflows">
           <div className="omh-map-column">
@@ -1238,7 +1563,20 @@ export default function OwnerMindMap() {
 
             <div className="omh-map-stage">
               <div className="omh-stage-grid" aria-hidden="true" />
-              <SystemMap3D selectedId={selectedId} visibleIds={visibleIds} labelIds={labelIds} runtimeByNode={runtimeByNode} issuesByNode={issuesByNode} onSelect={selectNode} />
+              <SystemMap3D
+                selectedId={selectedNode.id}
+                visibleIds={visibleIds}
+                labelIds={labelIds}
+                runtimeByNode={runtimeByNode}
+                issuesByNode={issuesByNode}
+                settings={settings}
+                setSettings={setSettings}
+                activeGroups={activeGroups}
+                onToggleGroup={toggleGroup}
+                onWalkthrough={() => setWalkthroughStep(0)}
+                onReset={resetAllSettings}
+                onSelect={selectNode}
+              />
               <div className="omh-3d-caption">
                 <span>SMART MONEY HUB · 3D ECOSYSTEM</span>
                 <span>SEARCH OR TAP TO REVEAL · DRAG · PINCH</span>
@@ -1258,8 +1596,8 @@ export default function OwnerMindMap() {
             </div>
 
             <div className="omh-node-grid" aria-label="Smart Money Hub systems and workflows">
-              {groups.map((group, groupIndex) => {
-                const groupNodes = nodes.filter((node) => node.group === group.id);
+              {displayGroups.map((group, groupIndex) => {
+                const groupNodes = group.nodes;
                 return (
                   <section key={group.id} className={`omh-branch omh-branch-${groupIndex + 1}`} aria-label={group.label}>
                     <div className={`omh-branch-heading tone-${group.color}`}>
@@ -1377,6 +1715,14 @@ export default function OwnerMindMap() {
           <div className="omh-footer-note">Animated ecosystem view · no process is started</div>
           <button className="omh-help" type="button" onClick={() => selectNode('health-recovery')} aria-label="View health and recovery workflow"><Globe2 size={15} /></button>
         </footer>
+        {walkthroughStep !== null && <div className="omh-walkthrough-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setWalkthroughStep(null); }}>
+          <section className="omh-walkthrough" role="dialog" aria-modal="true" aria-labelledby="omh-walkthrough-title">
+            <div className="omh-walkthrough-top"><span>MAP WALKTHROUGH · {walkthroughStep + 1}/4</span><button type="button" onClick={() => setWalkthroughStep(null)} aria-label="Close walkthrough"><X size={16} /></button></div>
+            <h3 id="omh-walkthrough-title">{walkthroughCopy[walkthroughStep].title}</h3>
+            <p>{walkthroughCopy[walkthroughStep].body}</p>
+            <div><button type="button" onClick={() => setWalkthroughStep((step) => Math.max(0, (step ?? 0) - 1))} disabled={walkthroughStep === 0}>Back</button><button type="button" onClick={() => setWalkthroughStep((step) => step !== null && step < walkthroughCopy.length - 1 ? step + 1 : null)}>{walkthroughStep === walkthroughCopy.length - 1 ? 'Finish' : 'Next'}</button></div>
+          </section>
+        </div>}
       </div>
     </main>
   );

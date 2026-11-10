@@ -13,6 +13,8 @@ Show Development command-center warnings/errors as visible issue halos on affect
 
 Match the central brain to the uploaded Mind Map Demo: folded cerebrum with a clear center fissure, separate temporal lobes, cerebellum, and brainstem, rendered as shaded rotating 3D points with neural links. Keep operational node and issue overlays on top; do not substitute a plain sphere.
 
+Carry over the demo's working visual controls and navigation: themes, point palettes, anatomy/layout morph, link and brainstem visibility, labels, grouping/visibility filters, rotation/speed/limit, point size, walkthrough, focus, reset, navigator, metrics, timeline, review, files, and guide views. Adapt note-specific options to real ecosystem data, not fabricated personal notes.
+
 Issue halos and detail entries come from the Development command-center alerts and recent stored errors. Keep those explicitly Development-scoped, distinguish recorded alerts from currently active faults, and show the feed as unavailable rather than clear when it cannot be read.
 
 **Why:** the user clarified that the map should include all bots and all functioning features, not focus on one bot.
@@ -22,3 +24,7 @@ Issue halos and detail entries come from the Development command-center alerts a
 **Why:** the user explicitly asked for the brain to match the uploaded reference.
 
 **How to apply:** preserve the anatomical point-cloud structure and lighting when refining the brain; keep map interactions, labels, status indicators, and issue markers separate from the anatomy rendering.
+
+**Why:** the user requested all controls and features from the uploaded demo, not only its brain appearance.
+
+**How to apply:** keep each visual option operational; use actual Development alerts for timeline/review and explicit empty states for unsupported file or personal-note data.
