@@ -1,10 +1,14 @@
 ---
-name: Signals Bot mind map
-description: The Owner-only 3D map should represent internal Smart Money Hub Signal Bot workflows.
+name: Smart Money Hub ecosystem map
+description: The Owner-only 3D map should show all bots and functional workflows together.
 ---
 
-Keep the Owner mind map centered on one Signals Bot and its internal workflows, such as Telegram intake, review, publishing, education/session posts, member/PRO access, support, and recovery. Do not model quiz, test, or Coach bots as separate map subjects.
+Show the full Smart Money Hub ecosystem in one Owner mind map: all bot identities and the functional workflows around publishing, member learning/access, support, and operations. Do not focus the visualization on a single bot. Keep isolated Development/test identities explicitly separate from Production.
 
-**Why:** the user wants the running features inside this bot visible together, not a map about separate bots.
+Keep 3D diagram labels hidden by default; reveal matching search results or the node the Owner explicitly selects. Keep the workflow list available for browsing.
 
-**How to apply:** when adding nodes or live indicators, use verified Signal Bot capabilities and label status as conceptual/unknown unless a trustworthy runtime telemetry source is connected. Do not start bot workflows just to animate the map.
+Runtime indicators must use process heartbeats, not Telegram identity checks. The existing Development feed has a process heartbeat for the isolated test bot; Coach and PRO Signals currently have identity checks only, and WhatsApp has no heartbeat source. Show missing/stale data as unknown/stale, never as idle or stopped.
+
+**Why:** the user clarified that the map should include all bots and all functioning features, not focus on one bot.
+
+**How to apply:** when adding nodes or live indicators, use verified product capabilities and label status as conceptual/unknown unless a trustworthy runtime telemetry source is connected. Keep Development telemetry isolated from Production. Do not start bot workflows just to animate the map.
