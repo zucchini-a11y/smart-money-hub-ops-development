@@ -31,3 +31,4 @@
 - [Shared support portal](shared-support-portal.md) — keep bot cases and replies behind one authenticated API; isolate Development data and require approval before production cutover.
 - [Public landing-page scope](public-registration-pause.md) — keep the public site focused; member self-sign-up is approved, but never grant staff or PRO access.
 - [Vite React optimizer cache](vite-react-optimizer-cache.md) — if runtime React versions mismatch despite matching dependencies, clear the artifact's stale optimized dependency cache.
+- [Portal auth route ordering](portal-auth-route-ordering.md) — scope staff-session guards to their route namespace so they cannot intercept public login endpoints.
