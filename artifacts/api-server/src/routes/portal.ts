@@ -587,12 +587,12 @@ router.post("/portal/auth/login", requireSameOrigin, async (req, res): Promise<v
   );
   if (!row || !row.active || !passwordMatches) {
     if (process.env.NODE_ENV !== "production") {
-      console.warn("[dev-portal-login-rejected]", {
+      req.log.warn({
         schema: supportSchema,
         accountFound: result.rows.length === 1,
         accountActive: Boolean(row?.active),
         passwordMatches: Boolean(row && passwordMatches),
-      });
+      }, "Development portal login rejected");
     }
     recordLoginFailure(key);
     res.status(401).json({ error: "Email or password is incorrect." });
