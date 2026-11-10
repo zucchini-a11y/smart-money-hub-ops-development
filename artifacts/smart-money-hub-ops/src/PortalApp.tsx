@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode, type FormEvent, type ChangeEvent } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode, type FormEvent, type ChangeEvent } from 'react';
 import PublicSite from './public-site/PublicSite';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { ErrorBoundary } from '@/components/error-boundary';
@@ -58,7 +58,7 @@ import TradeManagement from '@/pages/trades';
 import Signals from '@/pages/signals';
 import BotControl, { BotConnections } from '@/pages/bot-control';
 import MemberAccessPage from '@/pages/member-access';
-import OwnerMindMap from '@/pages/owner-mind-map';
+const OwnerMindMap = lazy(() => import('@/pages/owner-mind-map'));
 import { trackEvent } from '@/lib/analytics';
 import { SupportInbox } from './SupportInbox';
 import { publicSiteLinks } from './public-site/config';
@@ -1386,7 +1386,7 @@ function ProtectedRouter({ session }: { session: PortalSession }) {
     <Route path="/command-center/member-access">{() => session.role === 'owner' ? <MemberAccessPage/> : <AccessDenied/>}</Route>
     <Route path="/command-center/pro-access">{() => session.role === 'owner' ? <ProAccessReview/> : <AccessDenied/>}</Route>
     <Route path="/command-center/education-videos">{() => session.role === 'owner' ? <EducationVideos/> : <AccessDenied/>}</Route>
-    <Route path="/command-center/mind-map">{() => session.role === 'owner' ? <OwnerMindMap/> : <AccessDenied/>}</Route>
+    <Route path="/command-center/mind-map">{() => session.role === 'owner' ? <Suspense fallback={<main className="page"><div className="skeleton" style={{width:260,height:24}}/><p className="muted-small" style={{marginTop:12}}>Loading ecosystem map…</p></main>}><OwnerMindMap/></Suspense> : <AccessDenied/>}</Route>
     <Route path="/command-center/member-course-videos">{() => session.role === 'owner' ? <OwnerMemberCourseVideos/> : <AccessDenied/>}</Route>
     <Route path="/command-center/channel-history">{() => session.role === 'owner' ? <ChannelHistory/> : <AccessDenied/>}</Route>
     <Route path="/trades">{() => session.role === 'owner' ? <TradeManagement/> : <AccessDenied/>}</Route>

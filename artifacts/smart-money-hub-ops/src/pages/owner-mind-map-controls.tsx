@@ -35,7 +35,7 @@ export const DEFAULT_MIND_MAP_SETTINGS: MindMapSettings = {
   turning: true,
   speed: 35,
   limitRotation: false,
-  pointSize: 100,
+  pointSize: 80,
 };
 
 type MapGroup = { id: string; label: string; color: string };
@@ -165,7 +165,7 @@ export function MindMapSettingsPanel({
         <h3>Points</h3>
         <label className="omh-setting-range">
           <span><strong>Size</strong><output>{settings.pointSize}%</output></span>
-          <input type="range" min="40" max="220" value={settings.pointSize} onChange={(event) => update('pointSize', Number(event.target.value))} />
+          <input type="range" min="40" max="180" value={settings.pointSize} onChange={(event) => update('pointSize', Number(event.target.value))} />
         </label>
       </section>
 

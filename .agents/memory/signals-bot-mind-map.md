@@ -28,3 +28,9 @@ Issue halos and detail entries come from the Development command-center alerts a
 **Why:** the user requested all controls and features from the uploaded demo, not only its brain appearance.
 
 **How to apply:** keep each visual option operational; use actual Development alerts for timeline/review and explicit empty states for unsupported file or personal-note data.
+
+Use the authenticated Portal command center as the single operational workspace. Do not restore a separate Operations Center page or navigation link; keep `/operations` as a safe redirect into the portal, and surface any unique useful health check within the command center.
+
+**Why:** the user found the separate console confusing and wants all useful operations in the Portal.
+
+**How to apply:** consolidate new operational visibility into Owner portal routes and preserve existing role checks and environment boundaries.
