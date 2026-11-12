@@ -14,6 +14,7 @@ jobs:
   build-and-package:
     name: Verify and package Development
     runs-on: ubuntu-latest
+    environment: Development
     env:
       NODE_ENV: development
       PORT: "19849"
@@ -45,6 +46,8 @@ jobs:
 
       - name: Test API
         run: pnpm --filter @workspace/api-server run test
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Require Development Clerk publishable key
         shell: bash
