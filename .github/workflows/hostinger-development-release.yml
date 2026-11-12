@@ -19,6 +19,7 @@ jobs:
       NODE_ENV: development
       PORT: "19849"
       BASE_PATH: /
+      PORTAL_SUPPORT_SCHEMA: smh_test
       VITE_CLERK_PUBLISHABLE_KEY: ${{ vars.DEV_VITE_CLERK_PUBLISHABLE_KEY }}
       VITE_CLERK_PROXY_URL: ${{ vars.DEV_VITE_CLERK_PROXY_URL }}
 
@@ -43,6 +44,64 @@ jobs:
 
       - name: Typecheck workspace
         run: pnpm run typecheck
+
+      - name: Verify Development database target
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { createRequire } from "node:module";
+          import { resolve } from "node:path";
+
+          if (!process.env.DATABASE_URL) {
+            console.error("Development database target check failed: protected database secret is unavailable.");
+            process.exit(1);
+          }
+          if (process.env.PORTAL_SUPPORT_SCHEMA !== "smh_test") {
+            console.error("Development database target check failed: expected schema smh_test.");
+            process.exit(1);
+          }
+
+          const requireFromDb = createRequire(
+            resolve(process.env.GITHUB_WORKSPACE, "lib/db/package.json"),
+          );
+          const { Pool } = requireFromDb("pg");
+          const pool = new Pool({
+            connectionString: process.env.DATABASE_URL,
+            connectionTimeoutMillis: 10000,
+          });
+          let databaseMatches = false;
+          let schemaExists = false;
+          try {
+            const result = await pool.query(`
+              SELECT
+                current_database() = 'heliumdb' AS development_database,
+                EXISTS (
+                  SELECT 1 FROM information_schema.schemata
+                  WHERE schema_name = 'smh_test'
+                ) AS development_schema
+            `);
+            databaseMatches = result.rows[0]?.development_database === true;
+            schemaExists = result.rows[0]?.development_schema === true;
+          } catch {
+            console.error("Development database target check failed; connection details are suppressed.");
+            process.exitCode = 1;
+          } finally {
+            try {
+              await pool.end();
+            } catch {
+              process.exitCode = 1;
+            }
+          }
+
+          if (process.exitCode) process.exit();
+          if (!databaseMatches || !schemaExists) {
+            console.error("Development database target check failed: expected heliumdb with schema smh_test.");
+            process.exit(1);
+          }
+          console.log("Development database target verified: smh_test.");
+          NODE
 
       - name: Test API
         run: pnpm --filter @workspace/api-server run test
